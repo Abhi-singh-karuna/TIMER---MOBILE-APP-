@@ -28,6 +28,28 @@ const LANDSCAPE_COLOR_KEY = '@timer_app_landscape_color';
 const FILLER_COLOR_KEY = '@timer_filler_color';
 const SLIDER_BUTTON_COLOR_KEY = '@timer_slider_button_color';
 const TEXT_COLOR_KEY = '@timer_text_color';
+const PRESET_INDEX_KEY = '@timer_active_preset_index';
+
+export const LANDSCAPE_PRESETS = [
+  {
+    name: 'Deep Sea',
+    filler: '#00E5FF',
+    slider: '#00E5FF',
+    text: '#FFFFFF'
+  },
+  {
+    name: 'Lava Glow',
+    filler: '#FF9500',
+    slider: '#FF9500',
+    text: '#FFFFFF'
+  },
+  {
+    name: 'Neon Forest',
+    filler: '#34C759',
+    slider: '#34C759',
+    text: '#FFFFFF'
+  },
+];
 
 LogBox.ignoreLogs(['SafeAreaView has been deprecated']);
 
@@ -70,9 +92,10 @@ export default function App() {
   const [activeTimer, setActiveTimer] = useState<Timer | null>(null);
   const [currentScreen, setCurrentScreen] = useState<Screen>('list');
   const [completedAt, setCompletedAt] = useState('');
-  const [fillerColor, setFillerColor] = useState('#00E5FF');
-  const [sliderButtonColor, setSliderButtonColor] = useState('#00E5FF');
-  const [timerTextColor, setTimerTextColor] = useState('#FFFFFF');
+  const [fillerColor, setFillerColor] = useState(LANDSCAPE_PRESETS[0].filler);
+  const [sliderButtonColor, setSliderButtonColor] = useState(LANDSCAPE_PRESETS[0].slider);
+  const [timerTextColor, setTimerTextColor] = useState(LANDSCAPE_PRESETS[0].text);
+  const [activePresetIndex, setActivePresetIndex] = useState(0);
 
   const intervalRef = useRef<NodeJS.Timeout | null>(null);
 
@@ -86,14 +109,16 @@ export default function App() {
 
   const loadAllColors = async () => {
     try {
-      const [filler, sliderBtn, text] = await Promise.all([
+      const [filler, sliderBtn, text, presetIndex] = await Promise.all([
         AsyncStorage.getItem(FILLER_COLOR_KEY),
         AsyncStorage.getItem(SLIDER_BUTTON_COLOR_KEY),
         AsyncStorage.getItem(TEXT_COLOR_KEY),
+        AsyncStorage.getItem(PRESET_INDEX_KEY),
       ]);
       if (filler) setFillerColor(filler);
       if (sliderBtn) setSliderButtonColor(sliderBtn);
       if (text) setTimerTextColor(text);
+      if (presetIndex) setActivePresetIndex(parseInt(presetIndex, 10));
     } catch (e) {
       console.error('Failed to load color preferences:', e);
     }
@@ -327,6 +352,27 @@ export default function App() {
     setCurrentScreen('list');
   };
 
+  const handlePresetChange = async (index: number) => {
+    const preset = LANDSCAPE_PRESETS[index];
+    if (preset) {
+      setActivePresetIndex(index);
+      setFillerColor(preset.filler);
+      setSliderButtonColor(preset.slider);
+      setTimerTextColor(preset.text);
+
+      try {
+        await Promise.all([
+          AsyncStorage.setItem(PRESET_INDEX_KEY, index.toString()),
+          AsyncStorage.setItem(FILLER_COLOR_KEY, preset.filler),
+          AsyncStorage.setItem(SLIDER_BUTTON_COLOR_KEY, preset.slider),
+          AsyncStorage.setItem(TEXT_COLOR_KEY, preset.text),
+        ]);
+      } catch (e) {
+        console.error('Failed to save preset colors:', e);
+      }
+    }
+  };
+
   if (!fontsLoaded) {
     return null;
   }
@@ -367,6 +413,8 @@ export default function App() {
             onFillerColorChange={setFillerColor}
             onSliderButtonColorChange={setSliderButtonColor}
             onTimerTextColorChange={setTimerTextColor}
+            activePresetIndex={activePresetIndex}
+            onPresetChange={handlePresetChange}
           />
         );
 
