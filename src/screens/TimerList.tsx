@@ -54,6 +54,7 @@ interface TimerListProps {
     onDeleteTimer: (timer: Timer) => void;
     onStartTimer: (timer: Timer) => void;
     onPlayPause: (timer: Timer) => void;
+    onSettings?: () => void; // Optional: navigate to settings
 }
 
 export default function TimerList({
@@ -61,7 +62,8 @@ export default function TimerList({
     onAddTimer,
     onDeleteTimer,
     onStartTimer,
-    onPlayPause
+    onPlayPause,
+    onSettings
 }: TimerListProps) {
     const { width: screenWidth, height: screenHeight } = useWindowDimensions();
     const isLandscape = screenWidth > screenHeight;
@@ -204,14 +206,26 @@ export default function TimerList({
                                     </View>
                                 </ScrollView>
 
-                                {/* Detailed Reports Link - Anchored to bottom */}
-                                <TouchableOpacity
-                                    style={styles.detailedReportsBtn}
-                                    onPress={() => setShowReportPopup(true)}
-                                >
-                                    <Text style={styles.detailedReportsText}>DETAILED REPORTS</Text>
-                                    <MaterialIcons name="chevron-right" size={20} color="rgba(255,255,255,0.5)" />
-                                </TouchableOpacity>
+                                {/* Footer Row: Settings icon & Detailed Reports */}
+                                <View style={styles.leftPanelFooterRow}>
+                                    {onSettings && (
+                                        <TouchableOpacity
+                                            style={styles.settingsIconBtn}
+                                            onPress={onSettings}
+                                            activeOpacity={0.7}
+                                        >
+                                            <MaterialIcons name="settings" size={20} color="rgba(255,255,255,0.7)" />
+                                        </TouchableOpacity>
+                                    )}
+
+                                    <TouchableOpacity
+                                        style={styles.detailedReportsBtn}
+                                        onPress={() => setShowReportPopup(true)}
+                                    >
+                                        <Text style={styles.detailedReportsText}>DETAILED REPORTS</Text>
+                                        <MaterialIcons name="chevron-right" size={20} color="rgba(255,255,255,0.5)" />
+                                    </TouchableOpacity>
+                                </View>
                             </View>
                         </View>
 
@@ -272,6 +286,13 @@ export default function TimerList({
                                     </View>
                                 </View>
                             </View>
+
+                            {/* Settings Icon */}
+                            {onSettings && (
+                                <TouchableOpacity style={styles.settingsButton} onPress={onSettings} activeOpacity={0.7}>
+                                    <MaterialIcons name="settings" size={22} color="rgba(255,255,255,0.7)" />
+                                </TouchableOpacity>
+                            )}
                         </View>
 
                         {/* Separator Line */}
@@ -539,6 +560,20 @@ const styles = StyleSheet.create({
         borderWidth: 1,
         borderColor: 'rgba(255,255,255,0.08)',
         overflow: 'hidden',
+    },
+
+    settingsButton: {
+        position: 'absolute',
+        top: 16,
+        right: 16,
+        width: 40,
+        height: 40,
+        borderRadius: 20,
+        backgroundColor: 'rgba(255,255,255,0.08)',
+        alignItems: 'center',
+        justifyContent: 'center',
+        borderWidth: 1,
+        borderColor: 'rgba(255,255,255,0.1)',
     },
 
     headerInset: {
@@ -1051,9 +1086,6 @@ const styles = StyleSheet.create({
         justifyContent: 'space-between',
         paddingVertical: 12,
         paddingHorizontal: 4,
-        borderTopWidth: 1,
-        borderColor: 'rgba(255,255,255,0.06)',
-        marginTop: 8,
     },
 
     detailedReportsText: {
@@ -1062,6 +1094,22 @@ const styles = StyleSheet.create({
         letterSpacing: 0.5,
         color: 'rgba(255,255,255,0.5)',
         lineHeight: 14,
+    },
+
+    leftPanelFooterRow: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        borderTopWidth: 1,
+        borderColor: 'rgba(255,255,255,0.06)',
+        marginTop: 8,
+    },
+
+    settingsIconBtn: {
+        width: 40,
+        height: 40,
+        alignItems: 'center',
+        justifyContent: 'center',
     },
 
     // Keep existing landscape styles

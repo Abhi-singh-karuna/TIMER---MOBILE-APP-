@@ -44,16 +44,6 @@ export default function TaskComplete({ completedAt, onRestart, onDone }: TaskCom
         };
     }, []);
 
-    const toggleOrientation = async () => {
-        if (isLandscape) {
-            await ScreenOrientation.lockAsync(ScreenOrientation.OrientationLock.PORTRAIT_UP);
-            setIsLandscape(false);
-        } else {
-            await ScreenOrientation.lockAsync(ScreenOrientation.OrientationLock.LANDSCAPE_LEFT);
-            setIsLandscape(true);
-        }
-    };
-
     return (
         <LinearGradient
             colors={['#080C1A', '#0a3535', '#0a7070']}
@@ -73,18 +63,6 @@ export default function TaskComplete({ completedAt, onRestart, onDone }: TaskCom
                         <Text style={styles.completionLabel}>COMPLETED</Text>
                         <Text style={styles.completionPercent}>100%</Text>
                     </View>
-
-                    <TouchableOpacity
-                        style={styles.orientationButton}
-                        onPress={toggleOrientation}
-                        activeOpacity={0.7}
-                    >
-                        <MaterialIcons
-                            name={isLandscape ? "crop-portrait" : "crop-landscape"}
-                            size={20}
-                            color="rgba(255,255,255,0.6)"
-                        />
-                    </TouchableOpacity>
                 </View>
 
                 {/* Main Content - Split View in Landscape */}

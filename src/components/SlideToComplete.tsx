@@ -17,12 +17,14 @@ interface SlideToCompleteProps {
     onComplete: () => void;
     vertical?: boolean;
     colorTheme?: 'white' | 'black';
+    dynamicColor?: string; // Optional: dynamic color for handle and text
 }
 
 export default function SlideToComplete({
     onComplete,
     vertical = false,
-    colorTheme = 'white'
+    colorTheme = 'white',
+    dynamicColor = '#00E5FF'
 }: SlideToCompleteProps) {
     // Use a ref to store max slide distance so stable PanResponder can access it
     const maxSlideRef = useRef(0);
@@ -118,7 +120,7 @@ export default function SlideToComplete({
         extrapolate: 'clamp',
     });
 
-    const textColor = colorTheme === 'black' ? '#000' : (vertical ? '#00E5FF' : 'rgba(255,255,255,0.7)');
+    const textColor = colorTheme === 'black' ? '#000' : (vertical ? dynamicColor : 'rgba(255,255,255,0.7)');
 
     return (
         <View style={styles.container}>
@@ -139,8 +141,8 @@ export default function SlideToComplete({
                                 vertical ? { translateY: pan } : { translateX: pan },
                                 { scale: scale }
                             ],
-                            backgroundColor: colorTheme === 'black' ? 'rgba(0,0,0,0.8)' : '#00E5FF',
-                            shadowColor: colorTheme === 'black' ? '#000' : '#00E5FF',
+                            backgroundColor: colorTheme === 'black' ? 'rgba(0,0,0,0.8)' : dynamicColor,
+                            shadowColor: colorTheme === 'black' ? '#000' : dynamicColor,
                         }
                     ]}
                     {...panResponder.panHandlers}
@@ -148,7 +150,7 @@ export default function SlideToComplete({
                     <MaterialIcons
                         name={vertical ? "keyboard-double-arrow-down" : "keyboard-double-arrow-right"}
                         size={24}
-                        color={colorTheme === 'black' ? '#00E5FF' : '#000'}
+                        color={colorTheme === 'black' ? dynamicColor : '#000'}
                     />
                 </Animated.View>
             </View>

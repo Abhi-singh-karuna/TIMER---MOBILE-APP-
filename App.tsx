@@ -17,14 +17,21 @@ import EmptyState from './src/screens/EmptyState';
 import TimerList from './src/screens/TimerList';
 import ActiveTimer from './src/screens/ActiveTimer';
 import TaskComplete from './src/screens/TaskComplete';
+import SettingsScreen from './src/screens/SettingsScreen';
 import AddTimerModal from './src/components/AddTimerModal';
 import DeleteModal from './src/components/DeleteModal';
 import { Timer } from './src/constants/data';
 import { loadTimers, saveTimers } from './src/utils/storage';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+
+const LANDSCAPE_COLOR_KEY = '@timer_app_landscape_color';
+const FILLER_COLOR_KEY = '@timer_filler_color';
+const SLIDER_BUTTON_COLOR_KEY = '@timer_slider_button_color';
+const TEXT_COLOR_KEY = '@timer_text_color';
 
 LogBox.ignoreLogs(['SafeAreaView has been deprecated']);
 
-type Screen = 'list' | 'active' | 'complete';
+type Screen = 'list' | 'active' | 'complete' | 'settings';
 
 // Helper to convert HH:MM:SS or MM:SS to total seconds
 const timeToSeconds = (time: string): number => {
@@ -63,15 +70,34 @@ export default function App() {
   const [activeTimer, setActiveTimer] = useState<Timer | null>(null);
   const [currentScreen, setCurrentScreen] = useState<Screen>('list');
   const [completedAt, setCompletedAt] = useState('');
+  const [fillerColor, setFillerColor] = useState('#00E5FF');
+  const [sliderButtonColor, setSliderButtonColor] = useState('#00E5FF');
+  const [timerTextColor, setTimerTextColor] = useState('#FFFFFF');
 
   const intervalRef = useRef<NodeJS.Timeout | null>(null);
 
   useEffect(() => {
     initializeTimers();
+    loadAllColors();
     return () => {
       if (intervalRef.current) clearInterval(intervalRef.current);
     };
   }, []);
+
+  const loadAllColors = async () => {
+    try {
+      const [filler, sliderBtn, text] = await Promise.all([
+        AsyncStorage.getItem(FILLER_COLOR_KEY),
+        AsyncStorage.getItem(SLIDER_BUTTON_COLOR_KEY),
+        AsyncStorage.getItem(TEXT_COLOR_KEY),
+      ]);
+      if (filler) setFillerColor(filler);
+      if (sliderBtn) setSliderButtonColor(sliderBtn);
+      if (text) setTimerTextColor(text);
+    } catch (e) {
+      console.error('Failed to load color preferences:', e);
+    }
+  };
 
   // Timer countdown effect
   useEffect(() => {
@@ -325,6 +351,22 @@ export default function App() {
             onPlayPause={() => activeTimer && handlePlayPause(activeTimer)}
             onCancel={handleCancel}
             onComplete={handleComplete}
+            fillerColor={fillerColor}
+            sliderButtonColor={sliderButtonColor}
+            timerTextColor={timerTextColor}
+          />
+        );
+
+      case 'settings':
+        return (
+          <SettingsScreen
+            onBack={() => setCurrentScreen('list')}
+            fillerColor={fillerColor}
+            sliderButtonColor={sliderButtonColor}
+            timerTextColor={timerTextColor}
+            onFillerColorChange={setFillerColor}
+            onSliderButtonColorChange={setSliderButtonColor}
+            onTimerTextColorChange={setTimerTextColor}
           />
         );
 
@@ -348,6 +390,7 @@ export default function App() {
             onDeleteTimer={handleDeleteTimer}
             onStartTimer={handleStartTimer}
             onPlayPause={handlePlayPause}
+            onSettings={() => setCurrentScreen('settings')}
           />
         );
     }

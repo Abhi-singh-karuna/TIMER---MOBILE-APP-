@@ -28,6 +28,9 @@ interface ActiveTimerProps {
     onPlayPause: () => void;
     onCancel: () => void;
     onComplete: () => void;
+    fillerColor?: string;
+    sliderButtonColor?: string;
+    timerTextColor?: string;
 }
 
 export default function ActiveTimer({
@@ -39,7 +42,10 @@ export default function ActiveTimer({
     onBack,
     onPlayPause,
     onCancel,
-    onComplete
+    onComplete,
+    fillerColor = '#00E5FF',
+    sliderButtonColor = '#00E5FF',
+    timerTextColor = '#FFFFFF'
 }: ActiveTimerProps) {
     const { width, height } = useWindowDimensions();
     const [isLandscape, setIsLandscape] = React.useState(false);
@@ -92,12 +98,18 @@ export default function ActiveTimer({
     const minutes = timeParts.length === 3 ? timeParts[1] : timeParts[0];
     const seconds = timeParts.length === 3 ? timeParts[2] : timeParts[1];
 
-    // Animate water level smoothly when progress changes - LINEAR for smooth continuous flow
+    // Animate water level smoothly - matches the 1 second timer interval for seamless flow
+    // Using 1000ms duration means the animation completes exactly as the next update arrives
+    // This creates a perfectly continuous visual flow without stepping or flickering
     useEffect(() => {
+        // Stop any existing animation
+        waterLevel.stopAnimation();
+
+        // Start fresh animation to the new target
         Animated.timing(waterLevel, {
             toValue: progress,
-            duration: 1000, // Match timer update interval
-            easing: Easing.linear, // Smooth linear animation
+            duration: 1000, // Matches timer update interval for seamless continuous flow
+            easing: Easing.linear, // Linear = constant speed = no visible steps
             useNativeDriver: false,
         }).start();
     }, [progress]);
@@ -188,14 +200,6 @@ export default function ActiveTimer({
         };
     }, [isRunning]);
 
-    const toggleOrientation = async () => {
-        if (isLandscape) {
-            await ScreenOrientation.lockAsync(ScreenOrientation.OrientationLock.PORTRAIT_UP);
-        } else {
-            await ScreenOrientation.lockAsync(ScreenOrientation.OrientationLock.LANDSCAPE_LEFT);
-        }
-    };
-
     // Calculate water height based on progress
     const waterHeight = waterLevel.interpolate({
         inputRange: [0, 100],
@@ -244,7 +248,7 @@ export default function ActiveTimer({
             >
                 {/* Left Side: Vertical Slider (Upside to Downside) */}
                 <View style={styles.landscapeSlideContainer} pointerEvents="box-none">
-                    <SlideToComplete onComplete={onComplete} colorTheme={colorTheme} vertical={true} />
+                    <SlideToComplete onComplete={onComplete} colorTheme={colorTheme} vertical={true} dynamicColor={sliderButtonColor} />
                 </View>
 
                 {/* Bottom Left: Controls (Repositioned to the right of the slider) */}
@@ -253,7 +257,7 @@ export default function ActiveTimer({
                         style={[
                             styles.landscapePlayBtn,
                             { backgroundColor: btnBg, borderColor: btnBorder },
-                            isRunning && styles.landscapePlayBtnActive
+                            isRunning && { backgroundColor: sliderButtonColor, borderColor: sliderButtonColor }
                         ]}
                         onPress={onPlayPause}
                         activeOpacity={0.7}
@@ -274,7 +278,7 @@ export default function ActiveTimer({
                 <View style={styles.landscapeTimerContainer} pointerEvents="none">
                     <Text style={[styles.landscapeTimerLabel, { color: labelColor }]}>TIMER ({timerName})</Text>
                     <Text
-                        style={[styles.landscapeTimeText, { color: textColor }]}
+                        style={[styles.landscapeTimeText, { color: isBlack ? '#000' : timerTextColor }]}
                         numberOfLines={1}
                         adjustsFontSizeToFit
                     >
@@ -378,7 +382,7 @@ export default function ActiveTimer({
                                     inputRange: [0, 100],
                                     outputRange: ['0%', '100%'],
                                 }),
-                                backgroundColor: '#00E5FF',
+                                backgroundColor: fillerColor,
                                 overflow: 'hidden',
                                 zIndex: 1,
                             }
@@ -407,11 +411,7 @@ export default function ActiveTimer({
                                         <Text style={styles.endTimeText}>{isRunning ? 'RUNNING' : 'PAUSED'}</Text>
                                     </View>
                                 </View>
-                                <View style={styles.headerRight}>
-                                    <TouchableOpacity style={styles.backButton} onPress={toggleOrientation} activeOpacity={0.7}>
-                                        <MaterialIcons name="crop-landscape" size={20} color="rgba(255,255,255,0.7)" />
-                                    </TouchableOpacity>
-                                </View>
+                                <View style={styles.headerRight} />
                             </View>
                             {renderPortraitContent()}
                         </>
