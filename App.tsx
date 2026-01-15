@@ -29,6 +29,8 @@ const FILLER_COLOR_KEY = '@timer_filler_color';
 const SLIDER_BUTTON_COLOR_KEY = '@timer_slider_button_color';
 const TEXT_COLOR_KEY = '@timer_text_color';
 const PRESET_INDEX_KEY = '@timer_active_preset_index';
+const COMPLETION_SOUND_KEY = '@timer_completion_sound';
+const SOUND_REPETITION_KEY = '@timer_sound_repetition';
 
 export const LANDSCAPE_PRESETS = [
   {
@@ -97,6 +99,8 @@ export default function App() {
   const [sliderButtonColor, setSliderButtonColor] = useState(LANDSCAPE_PRESETS[0].slider);
   const [timerTextColor, setTimerTextColor] = useState(LANDSCAPE_PRESETS[0].text);
   const [activePresetIndex, setActivePresetIndex] = useState(0);
+  const [selectedSound, setSelectedSound] = useState(0);
+  const [soundRepetition, setSoundRepetition] = useState(1);
 
   const intervalRef = useRef<NodeJS.Timeout | null>(null);
 
@@ -110,16 +114,20 @@ export default function App() {
 
   const loadAllColors = async () => {
     try {
-      const [filler, sliderBtn, text, presetIndex] = await Promise.all([
+      const [filler, sliderBtn, text, presetIndex, sound, repetition] = await Promise.all([
         AsyncStorage.getItem(FILLER_COLOR_KEY),
         AsyncStorage.getItem(SLIDER_BUTTON_COLOR_KEY),
         AsyncStorage.getItem(TEXT_COLOR_KEY),
         AsyncStorage.getItem(PRESET_INDEX_KEY),
+        AsyncStorage.getItem(COMPLETION_SOUND_KEY),
+        AsyncStorage.getItem(SOUND_REPETITION_KEY),
       ]);
       if (filler) setFillerColor(filler);
       if (sliderBtn) setSliderButtonColor(sliderBtn);
       if (text) setTimerTextColor(text);
       if (presetIndex) setActivePresetIndex(parseInt(presetIndex, 10));
+      if (sound) setSelectedSound(parseInt(sound, 10));
+      if (repetition) setSoundRepetition(parseInt(repetition, 10));
     } catch (e) {
       console.error('Failed to load color preferences:', e);
     }
@@ -472,6 +480,10 @@ export default function App() {
             onTimerTextColorChange={setTimerTextColor}
             activePresetIndex={activePresetIndex}
             onPresetChange={handlePresetChange}
+            selectedSound={selectedSound}
+            soundRepetition={soundRepetition}
+            onSoundChange={setSelectedSound}
+            onRepetitionChange={setSoundRepetition}
           />
         );
 
@@ -482,6 +494,8 @@ export default function App() {
             borrowedTime={completedBorrowedTime}
             onRestart={handleRestart}
             onDone={handleDone}
+            selectedSound={selectedSound}
+            soundRepetition={soundRepetition}
           />
         );
 

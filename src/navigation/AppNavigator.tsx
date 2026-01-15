@@ -76,6 +76,10 @@ export default function AppNavigator({
                             onPlayPause={() => { }}
                             onCancel={() => props.navigation.goBack()}
                             onComplete={() => props.navigation.navigate('TaskComplete', { completedAt: '21:09' })}
+                            onBorrowTime={() => { }}
+                            fillerColor="#00E5FF"
+                            sliderButtonColor="#00E5FF"
+                            timerTextColor="#FFFFFF"
                         />
                     )}
                 </Stack.Screen>
@@ -86,6 +90,8 @@ export default function AppNavigator({
                             completedAt={(props.route.params as any)?.completedAt || '21:09'}
                             onRestart={() => props.navigation.goBack()}
                             onDone={() => props.navigation.navigate('TimerList' as any)}
+                            selectedSound={0}
+                            soundRepetition={1}
                         />
                     )}
                 </Stack.Screen>

@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect, useRef } from 'react';
 import {
     View,
     Text,
@@ -11,20 +11,100 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
 import { MaterialIcons } from '@expo/vector-icons';
 import * as ScreenOrientation from 'expo-screen-orientation';
+import { Audio } from 'expo-av';
+
+// Sound options matching SettingsScreen
+const SOUND_OPTIONS = [
+    {
+        id: 0,
+        name: 'Chime',
+        uri: 'https://assets.mixkit.co/active_storage/sfx/2869/2869-preview.mp3',
+    },
+    {
+        id: 1,
+        name: 'Success',
+        uri: 'https://assets.mixkit.co/active_storage/sfx/2870/2870-preview.mp3',
+    },
+    {
+        id: 2,
+        name: 'Alert',
+        uri: 'https://assets.mixkit.co/active_storage/sfx/2870/2870-preview.mp3',
+    },
+];
 
 interface TaskCompleteProps {
     completedAt: string;
     borrowedTime?: number;
     onRestart: () => void;
     onDone: () => void;
+    selectedSound: number;
+    soundRepetition: number;
 }
 
-export default function TaskComplete({ completedAt, borrowedTime = 0, onRestart, onDone }: TaskCompleteProps) {
+export default function TaskComplete({
+    completedAt,
+    borrowedTime = 0,
+    onRestart,
+    onDone,
+    selectedSound,
+    soundRepetition,
+}: TaskCompleteProps) {
     const { width, height } = useWindowDimensions();
     const [isLandscape, setIsLandscape] = React.useState(false);
+    const soundRef = useRef<Audio.Sound | null>(null);
+    const playCountRef = useRef(0);
+
+    // Play completion sound on mount
+    useEffect(() => {
+        const playSound = async () => {
+            try {
+                // Configure audio mode
+                await Audio.setAudioModeAsync({
+                    playsInSilentModeIOS: true,
+                    staysActiveInBackground: false,
+                });
+
+                const playSoundOnce = async () => {
+                    const soundUri = SOUND_OPTIONS[selectedSound]?.uri;
+                    if (!soundUri) return;
+
+                    const { sound } = await Audio.Sound.createAsync(
+                        { uri: soundUri },
+                        { shouldPlay: true }
+                    );
+                    soundRef.current = sound;
+
+                    sound.setOnPlaybackStatusUpdate((status) => {
+                        if (status.isLoaded && status.didJustFinish) {
+                            playCountRef.current += 1;
+                            sound.unloadAsync();
+
+                            // Play again if repetitions remaining
+                            if (playCountRef.current < soundRepetition) {
+                                setTimeout(() => playSoundOnce(), 300);
+                            }
+                        }
+                    });
+                };
+
+                playCountRef.current = 0;
+                await playSoundOnce();
+            } catch (error) {
+                console.error('Failed to play completion sound:', error);
+            }
+        };
+
+        playSound();
+
+        return () => {
+            if (soundRef.current) {
+                soundRef.current.unloadAsync();
+            }
+        };
+    }, [selectedSound, soundRepetition]);
 
     // Check orientation on mount and updates
-    React.useEffect(() => {
+    useEffect(() => {
         ScreenOrientation.getOrientationAsync().then(o => {
             setIsLandscape(
                 o === ScreenOrientation.Orientation.LANDSCAPE_LEFT ||

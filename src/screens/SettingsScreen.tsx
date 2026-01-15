@@ -1,4 +1,4 @@
-import React, { useRef, useEffect } from 'react';
+import React, { useRef, useEffect, useState } from 'react';
 import {
     View,
     Text,
@@ -8,21 +8,55 @@ import {
     useWindowDimensions,
     Platform,
     Animated,
+    ActivityIndicator,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
 import { MaterialIcons } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { Audio } from 'expo-av';
 
 const FILLER_COLOR_KEY = '@timer_filler_color';
 const SLIDER_BUTTON_COLOR_KEY = '@timer_slider_button_color';
 const TEXT_COLOR_KEY = '@timer_text_color';
 const PRESET_INDEX_KEY = '@timer_active_preset_index';
+const COMPLETION_SOUND_KEY = '@timer_completion_sound';
+const SOUND_REPETITION_KEY = '@timer_sound_repetition';
 
 // Default colors
 const DEFAULT_FILLER_COLOR = '#00E5FF';
 const DEFAULT_SLIDER_BUTTON_COLOR = '#00E5FF';
 const DEFAULT_TEXT_COLOR = '#FFFFFF';
+
+// Sound options with URLs to royalty-free sounds
+const SOUND_OPTIONS = [
+    {
+        id: 0,
+        name: 'Chime',
+        icon: 'notifications' as const,
+        color: '#00E5FF',
+        // Using a simple chime sound
+        uri: 'https://assets.mixkit.co/active_storage/sfx/2869/2869-preview.mp3',
+    },
+    {
+        id: 1,
+        name: 'Success',
+        icon: 'celebration' as const,
+        color: '#34C759',
+        // Using a success fanfare sound
+        uri: 'https://assets.mixkit.co/active_storage/sfx/1435/1435-preview.mp3',
+    },
+    {
+        id: 2,
+        name: 'Alert',
+        icon: 'campaign' as const,
+        color: '#FF9500',
+        // Using an alert tone
+        uri: 'https://assets.mixkit.co/active_storage/sfx/2870/2870-preview.mp3',
+    },
+];
+
+const REPETITION_OPTIONS = [1, 2, 3, 4, 5];
 
 interface SettingsScreenProps {
     onBack: () => void;
@@ -34,6 +68,10 @@ interface SettingsScreenProps {
     onTimerTextColorChange: (color: string) => void;
     activePresetIndex: number;
     onPresetChange: (index: number) => void;
+    selectedSound: number;
+    soundRepetition: number;
+    onSoundChange: (index: number) => void;
+    onRepetitionChange: (count: number) => void;
 }
 
 const COLOR_PRESETS = [
@@ -79,7 +117,11 @@ export default function SettingsScreen({
     onSliderButtonColorChange,
     onTimerTextColorChange,
     activePresetIndex,
-    onPresetChange
+    onPresetChange,
+    selectedSound,
+    soundRepetition,
+    onSoundChange,
+    onRepetitionChange,
 }: SettingsScreenProps) {
     const { width, height } = useWindowDimensions();
     const isLandscape = width > height;
@@ -87,6 +129,8 @@ export default function SettingsScreen({
     const previewWidth = isLandscape ? (width - 48 - 32) * 0.38 : width - 48;
     const pulseAnim = useRef(new Animated.Value(1)).current;
     const scrollRef = useRef<ScrollView>(null);
+    const [playingSound, setPlayingSound] = useState<number | null>(null);
+    const soundRef = useRef<Audio.Sound | null>(null);
 
     // Initial scroll to active preset
     useEffect(() => {
@@ -99,6 +143,15 @@ export default function SettingsScreen({
                 });
             }, 100);
         }
+    }, []);
+
+    // Cleanup sound on unmount
+    useEffect(() => {
+        return () => {
+            if (soundRef.current) {
+                soundRef.current.unloadAsync();
+            }
+        };
     }, []);
 
     const triggerPulse = () => {
@@ -154,6 +207,64 @@ export default function SettingsScreen({
         );
     };
 
+    const handleSoundSelect = async (soundIndex: number) => {
+        onSoundChange(soundIndex);
+        triggerPulse();
+        try {
+            await AsyncStorage.setItem(COMPLETION_SOUND_KEY, soundIndex.toString());
+        } catch (err) {
+            console.error('Failed to save sound selection:', err);
+        }
+    };
+
+    const handleRepetitionSelect = async (count: number) => {
+        onRepetitionChange(count);
+        triggerPulse();
+        try {
+            await AsyncStorage.setItem(SOUND_REPETITION_KEY, count.toString());
+        } catch (err) {
+            console.error('Failed to save repetition count:', err);
+        }
+    };
+
+    const handlePreviewSound = async (soundIndex: number) => {
+        try {
+            // Stop any currently playing sound
+            if (soundRef.current) {
+                await soundRef.current.stopAsync();
+                await soundRef.current.unloadAsync();
+                soundRef.current = null;
+            }
+
+            setPlayingSound(soundIndex);
+
+            // Configure audio mode
+            await Audio.setAudioModeAsync({
+                playsInSilentModeIOS: true,
+                staysActiveInBackground: false,
+            });
+
+            // Load and play the sound
+            const { sound } = await Audio.Sound.createAsync(
+                { uri: SOUND_OPTIONS[soundIndex].uri },
+                { shouldPlay: true }
+            );
+            soundRef.current = sound;
+
+            // Listen for playback completion
+            sound.setOnPlaybackStatusUpdate((status) => {
+                if (status.isLoaded && status.didJustFinish) {
+                    setPlayingSound(null);
+                    sound.unloadAsync();
+                    soundRef.current = null;
+                }
+            });
+        } catch (error) {
+            console.error('Failed to play sound:', error);
+            setPlayingSound(null);
+        }
+    };
+
     const handleResetToDefaults = async () => {
         try {
             await Promise.all([
@@ -161,11 +272,15 @@ export default function SettingsScreen({
                 AsyncStorage.setItem(SLIDER_BUTTON_COLOR_KEY, DEFAULT_SLIDER_BUTTON_COLOR),
                 AsyncStorage.setItem(TEXT_COLOR_KEY, DEFAULT_TEXT_COLOR),
                 AsyncStorage.setItem(PRESET_INDEX_KEY, '0'),
+                AsyncStorage.setItem(COMPLETION_SOUND_KEY, '0'),
+                AsyncStorage.setItem(SOUND_REPETITION_KEY, '1'),
             ]);
             onFillerColorChange(DEFAULT_FILLER_COLOR);
             onSliderButtonColorChange(DEFAULT_SLIDER_BUTTON_COLOR);
             onTimerTextColorChange(DEFAULT_TEXT_COLOR);
             onPresetChange(0);
+            onSoundChange(0);
+            onRepetitionChange(1);
         } catch (e) {
             console.error('Failed to reset colors:', e);
         }
@@ -352,6 +467,106 @@ export default function SettingsScreen({
         );
     };
 
+    // Render sound selection section
+    const renderSoundSection = () => {
+        return (
+            <View style={[styles.soundSection, isLandscape && styles.soundSectionLandscape]}>
+                <View style={styles.soundOptionsRow}>
+                    {SOUND_OPTIONS.map((sound) => (
+                        <TouchableOpacity
+                            key={sound.id}
+                            style={[
+                                styles.soundCard,
+                                selectedSound === sound.id && styles.soundCardSelected,
+                                selectedSound === sound.id && { borderColor: sound.color },
+                            ]}
+                            onPress={() => handleSoundSelect(sound.id)}
+                            activeOpacity={0.7}
+                        >
+                            {/* Sound Icon */}
+                            <View style={[
+                                styles.soundIconContainer,
+                                selectedSound === sound.id && { backgroundColor: `${sound.color}20` }
+                            ]}>
+                                <MaterialIcons
+                                    name={sound.icon}
+                                    size={24}
+                                    color={selectedSound === sound.id ? sound.color : 'rgba(255,255,255,0.5)'}
+                                />
+                            </View>
+
+                            {/* Sound Name */}
+                            <Text style={[
+                                styles.soundName,
+                                selectedSound === sound.id && { color: sound.color }
+                            ]}>
+                                {sound.name}
+                            </Text>
+
+                            {/* Preview Button */}
+                            <TouchableOpacity
+                                style={[
+                                    styles.previewButton,
+                                    { backgroundColor: `${sound.color}20`, borderColor: sound.color }
+                                ]}
+                                onPress={() => handlePreviewSound(sound.id)}
+                                activeOpacity={0.7}
+                            >
+                                {playingSound === sound.id ? (
+                                    <ActivityIndicator size="small" color={sound.color} />
+                                ) : (
+                                    <MaterialIcons name="play-arrow" size={18} color={sound.color} />
+                                )}
+                            </TouchableOpacity>
+
+                            {/* Selected Indicator */}
+                            {selectedSound === sound.id && (
+                                <View style={[styles.selectedIndicator, { backgroundColor: sound.color }]}>
+                                    <MaterialIcons name="check" size={12} color="#000" />
+                                </View>
+                            )}
+                        </TouchableOpacity>
+                    ))}
+                </View>
+            </View>
+        );
+    };
+
+    // Render repetition section
+    const renderRepetitionSection = () => {
+        return (
+            <View style={[styles.repetitionSection, isLandscape && styles.repetitionSectionLandscape]}>
+                <View style={styles.repetitionHeader}>
+                    <View style={styles.repetitionTitleRow}>
+                        <MaterialIcons name="repeat" size={18} color="#00E5FF" />
+                        <Text style={styles.repetitionTitle}>Repeat Count</Text>
+                    </View>
+                    <Text style={styles.repetitionValue}>{soundRepetition}x</Text>
+                </View>
+                <View style={styles.repetitionOptionsRow}>
+                    {REPETITION_OPTIONS.map((count) => (
+                        <TouchableOpacity
+                            key={count}
+                            style={[
+                                styles.repetitionPill,
+                                soundRepetition === count && styles.repetitionPillSelected,
+                            ]}
+                            onPress={() => handleRepetitionSelect(count)}
+                            activeOpacity={0.7}
+                        >
+                            <Text style={[
+                                styles.repetitionPillText,
+                                soundRepetition === count && styles.repetitionPillTextSelected,
+                            ]}>
+                                {count}x
+                            </Text>
+                        </TouchableOpacity>
+                    ))}
+                </View>
+            </View>
+        );
+    };
+
     // Portrait Layout
     const renderPortraitLayout = () => (
         <ScrollView style={styles.content} contentContainerStyle={styles.scrollContent}>
@@ -367,6 +582,18 @@ export default function SettingsScreen({
                 {renderColorPickerRow('Filler Color', 'gradient', fillerColor, handleFillerColorSelect)}
                 {renderColorPickerRow('Slider & Button', 'touch-app', sliderButtonColor, handleSliderButtonColorSelect)}
                 {renderColorPickerRow('Timer Text', 'text-fields', timerTextColor, handleTextColorSelect)}
+            </View>
+
+            {/* Completion Sound Section */}
+            <View style={styles.section}>
+                <Text style={styles.sectionTitle}>COMPLETION SOUND</Text>
+                {renderSoundSection()}
+            </View>
+
+            {/* Sound Repetition Section */}
+            <View style={styles.section}>
+                <Text style={styles.sectionTitle}>SOUND REPETITION</Text>
+                {renderRepetitionSection()}
             </View>
 
             {/* Reset to Defaults Section */}
@@ -407,12 +634,18 @@ export default function SettingsScreen({
                 </View>
             </View>
 
-            {/* Right Panel - Color Pickers */}
+            {/* Right Panel - Color Pickers & Sound Settings */}
             <ScrollView style={styles.rightPanelSettings} contentContainerStyle={styles.rightPanelContent}>
                 <Text style={styles.sectionTitleLandscape}>CUSTOMIZE COLORS</Text>
                 {renderColorPickerRow('Filler Color', 'gradient', fillerColor, handleFillerColorSelect)}
                 {renderColorPickerRow('Slider & Button', 'touch-app', sliderButtonColor, handleSliderButtonColorSelect)}
                 {renderColorPickerRow('Timer Text', 'text-fields', timerTextColor, handleTextColorSelect)}
+
+                <Text style={[styles.sectionTitleLandscape, { marginTop: 16 }]}>COMPLETION SOUND</Text>
+                {renderSoundSection()}
+
+                <Text style={[styles.sectionTitleLandscape, { marginTop: 16 }]}>SOUND REPETITION</Text>
+                {renderRepetitionSection()}
             </ScrollView>
         </View>
     );
@@ -599,8 +832,6 @@ const styles = StyleSheet.create({
         overflow: 'hidden',
         position: 'relative',
     },
-
-
 
     previewScroll: {
         flexGrow: 0,
@@ -846,6 +1077,142 @@ const styles = StyleSheet.create({
                 shadowOffset: { width: 0, height: 2 },
             },
         }),
+    },
+
+    // ========== Sound Section Styles ==========
+    soundSection: {
+        marginBottom: 8,
+    },
+
+    soundSectionLandscape: {
+        marginBottom: 4,
+    },
+
+    soundOptionsRow: {
+        flexDirection: 'row',
+        gap: 12,
+    },
+
+    soundCard: {
+        flex: 1,
+        backgroundColor: 'rgba(255,255,255,0.05)',
+        borderRadius: 16,
+        padding: 16,
+        alignItems: 'center',
+        borderWidth: 2,
+        borderColor: 'rgba(255,255,255,0.08)',
+        position: 'relative',
+    },
+
+    soundCardSelected: {
+        backgroundColor: 'rgba(255,255,255,0.08)',
+    },
+
+    soundIconContainer: {
+        width: 48,
+        height: 48,
+        borderRadius: 24,
+        backgroundColor: 'rgba(255,255,255,0.08)',
+        alignItems: 'center',
+        justifyContent: 'center',
+        marginBottom: 8,
+    },
+
+    soundName: {
+        fontSize: 12,
+        fontWeight: '600',
+        color: 'rgba(255,255,255,0.7)',
+        marginBottom: 12,
+    },
+
+    previewButton: {
+        width: 36,
+        height: 36,
+        borderRadius: 18,
+        alignItems: 'center',
+        justifyContent: 'center',
+        borderWidth: 1,
+    },
+
+    selectedIndicator: {
+        position: 'absolute',
+        top: 8,
+        right: 8,
+        width: 20,
+        height: 20,
+        borderRadius: 10,
+        alignItems: 'center',
+        justifyContent: 'center',
+    },
+
+    // ========== Repetition Section Styles ==========
+    repetitionSection: {
+        backgroundColor: 'rgba(255,255,255,0.05)',
+        borderRadius: 16,
+        padding: 16,
+        borderWidth: 1,
+        borderColor: 'rgba(255,255,255,0.08)',
+    },
+
+    repetitionSectionLandscape: {
+        padding: 12,
+    },
+
+    repetitionHeader: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        marginBottom: 12,
+    },
+
+    repetitionTitleRow: {
+        flexDirection: 'row',
+        alignItems: 'center',
+    },
+
+    repetitionTitle: {
+        fontSize: 14,
+        fontWeight: '600',
+        color: 'rgba(255,255,255,0.9)',
+        marginLeft: 10,
+    },
+
+    repetitionValue: {
+        fontSize: 16,
+        fontWeight: '700',
+        color: '#00E5FF',
+    },
+
+    repetitionOptionsRow: {
+        flexDirection: 'row',
+        gap: 8,
+    },
+
+    repetitionPill: {
+        flex: 1,
+        paddingVertical: 12,
+        paddingHorizontal: 16,
+        borderRadius: 12,
+        backgroundColor: 'rgba(255,255,255,0.08)',
+        alignItems: 'center',
+        justifyContent: 'center',
+        borderWidth: 1,
+        borderColor: 'rgba(255,255,255,0.1)',
+    },
+
+    repetitionPillSelected: {
+        backgroundColor: 'rgba(0, 229, 255, 0.2)',
+        borderColor: '#00E5FF',
+    },
+
+    repetitionPillText: {
+        fontSize: 14,
+        fontWeight: '600',
+        color: 'rgba(255,255,255,0.6)',
+    },
+
+    repetitionPillTextSelected: {
+        color: '#00E5FF',
     },
 
     // ========== Reset Button Styles ==========
