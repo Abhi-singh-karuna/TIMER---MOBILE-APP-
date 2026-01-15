@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import {
     View,
     Text,
@@ -16,7 +16,15 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
 import { BlurView } from 'expo-blur';
 import { MaterialIcons } from '@expo/vector-icons';
+import { Audio } from 'expo-av';
 import { Timer } from '../constants/data';
+
+// Sound options matching SettingsScreen
+const SOUND_OPTIONS = [
+    { id: 0, name: 'Chime', uri: 'https://assets.mixkit.co/active_storage/sfx/2869/2869-preview.mp3' },
+    { id: 1, name: 'Success', uri: 'https://assets.mixkit.co/active_storage/sfx/2568/2568-preview.mp3' },
+    { id: 2, name: 'Alert', uri: 'https://assets.mixkit.co/active_storage/sfx/2870/2870-preview.mp3' },
+];
 
 // Helper function to parse time string (HH:MM:SS or MM:SS) to seconds
 const parseTimeToSeconds = (timeStr: string): number => {
@@ -29,10 +37,11 @@ const parseTimeToSeconds = (timeStr: string): number => {
     return parts[0] * 60 + parts[1];
 };
 
-// Calculate completion percentage
-const getCompletionPercentage = (currentTime: string, totalTime: string): number => {
+// Calculate completion percentage with borrowed time awareness
+const getCompletionPercentage = (currentTime: string, totalTime: string, borrowedSeconds: number = 0): number => {
     const current = parseTimeToSeconds(currentTime);
-    const total = parseTimeToSeconds(totalTime);
+    const originalTotal = parseTimeToSeconds(totalTime);
+    const total = originalTotal + borrowedSeconds;
     if (total === 0) return 0;
     const elapsed = total - current;
     return Math.min(100, Math.max(0, (elapsed / total) * 100));
@@ -46,6 +55,34 @@ const formatTotalTime = (totalSeconds: number): string => {
     return `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
 };
 
+// Format borrowed time for display (e.g. +30 min or 1 hr 20 min)
+const formatBorrowedTime = (seconds: number): string => {
+    if (seconds <= 0) return '';
+    const h = Math.floor(seconds / 3600);
+    const m = Math.floor((seconds % 3600) / 60);
+    if (h > 0) {
+        return m > 0 ? `${h} hr ${m} min` : `${h} hr`;
+    }
+    return `+${m} min`;
+};
+
+// Format saved time (e.g. Saved 2 min or Saved 1 hr)
+const formatSavedTime = (seconds: number): string => {
+    if (seconds <= 0) return '';
+    const h = Math.floor(seconds / 3600);
+    const m = Math.floor((seconds % 3600) / 60);
+    if (h > 0) {
+        return m > 0 ? `Saved ${h}h ${m}m` : `Saved ${h}h`;
+    }
+    return `Saved ${m} min`;
+};
+
+// Format as 00:00:00 with borrowed time included
+const getExpandedTotal = (total: string, borrowedSecs: number): string => {
+    const originalSecs = parseTimeToSeconds(total);
+    return formatTotalTime(originalSecs + borrowedSecs);
+};
+
 const { width, height } = Dimensions.get('window');
 
 interface TimerListProps {
@@ -54,7 +91,11 @@ interface TimerListProps {
     onDeleteTimer: (timer: Timer) => void;
     onStartTimer: (timer: Timer) => void;
     onPlayPause: (timer: Timer) => void;
-    onSettings?: () => void; // Optional: navigate to settings
+    onSettings?: () => void;
+    onTimerCompleted?: (timer: Timer) => void;
+    onBorrowTime?: (timer: Timer, seconds: number) => void;
+    selectedSound?: number;
+    soundRepetition?: number;
 }
 
 export default function TimerList({
@@ -63,11 +104,97 @@ export default function TimerList({
     onDeleteTimer,
     onStartTimer,
     onPlayPause,
-    onSettings
+    onSettings,
+    onTimerCompleted,
+    onBorrowTime,
+    selectedSound = 0,
+    soundRepetition = 1
 }: TimerListProps) {
     const { width: screenWidth, height: screenHeight } = useWindowDimensions();
     const isLandscape = screenWidth > screenHeight;
     const [showReportPopup, setShowReportPopup] = useState(false);
+    const [completedPopupTimer, setCompletedPopupTimer] = useState<Timer | null>(null);
+    const prevTimersRef = React.useRef<Timer[]>([]);
+    const soundRef = useRef<Audio.Sound | null>(null);
+    const playCountRef = useRef(0);
+
+    // Play completion sound when popup shows
+    useEffect(() => {
+        if (!completedPopupTimer) return;
+
+        console.log('Completion popup triggered - playing sound');
+
+        const playSound = async () => {
+            try {
+                // Small delay to ensure popup is rendered
+                await new Promise(resolve => setTimeout(resolve, 100));
+
+                await Audio.setAudioModeAsync({
+                    playsInSilentModeIOS: true,
+                    staysActiveInBackground: false,
+                    shouldDuckAndroid: true,
+                    playThroughEarpieceAndroid: false,
+                });
+
+                const playSoundOnce = async () => {
+                    const soundUri = SOUND_OPTIONS[selectedSound]?.uri;
+                    console.log('Playing sound:', soundUri);
+                    if (!soundUri) {
+                        console.error('No sound URI found for index:', selectedSound);
+                        return;
+                    }
+
+                    const { sound } = await Audio.Sound.createAsync(
+                        { uri: soundUri },
+                        { shouldPlay: true, volume: 1.0 }
+                    );
+                    soundRef.current = sound;
+
+                    sound.setOnPlaybackStatusUpdate((status) => {
+                        if (status.isLoaded && status.didJustFinish) {
+                            playCountRef.current += 1;
+                            sound.unloadAsync();
+
+                            if (playCountRef.current < soundRepetition) {
+                                setTimeout(() => playSoundOnce(), 300);
+                            }
+                        }
+                    });
+                };
+
+                playCountRef.current = 0;
+                await playSoundOnce();
+            } catch (error) {
+                console.error('Failed to play completion sound:', error);
+            }
+        };
+
+        playSound();
+
+        return () => {
+            if (soundRef.current) {
+                soundRef.current.unloadAsync();
+            }
+        };
+    }, [completedPopupTimer, selectedSound, soundRepetition]);
+
+    // Detect when a timer completes and show popup
+    React.useEffect(() => {
+        // Check if any timer just transitioned to Completed status
+        for (const timer of timers) {
+            const prevTimer = prevTimersRef.current.find(t => t.id === timer.id);
+            if (prevTimer && prevTimer.status === 'Running' && timer.status === 'Completed') {
+                // Timer just completed - show popup
+                setCompletedPopupTimer(timer);
+                if (onTimerCompleted) {
+                    onTimerCompleted(timer);
+                }
+                break;
+            }
+        }
+        // Update ref for next comparison
+        prevTimersRef.current = [...timers];
+    }, [timers, onTimerCompleted]);
 
     // Calculate analytics
     const completedCount = timers.filter(t => t.status === 'Completed').length;
@@ -97,6 +224,12 @@ export default function TimerList({
     const remainingHours = Math.floor(timeRemainingSeconds / 3600);
     const remainingMinutes = Math.floor((timeRemainingSeconds % 3600) / 60);
     const remainingSeconds = timeRemainingSeconds % 60;
+
+    // Calculate total borrowed time
+    const totalBorrowedSeconds = timers.reduce((acc, timer) => acc + (timer.borrowedTime || 0), 0);
+    const borrowedHours = Math.floor(totalBorrowedSeconds / 3600);
+    const borrowedMinutes = Math.floor((totalBorrowedSeconds % 3600) / 60);
+    const borrowedSeconds = totalBorrowedSeconds % 60;
 
     // Render timer cards - for landscape, render in pairs for 2-column grid
     const renderTimerCards = () => {
@@ -345,8 +478,22 @@ export default function TimerList({
                                 <MaterialIcons name="analytics" size={32} color="#00E5FF" />
                                 <Text style={styles.modalTitle}>Detailed Reports</Text>
                             </View>
+                            <View style={styles.reportStatsRow}>
+                                <View style={styles.reportStatItem}>
+                                    <Text style={styles.reportStatLabel}>TOTAL BORROWED</Text>
+                                    <Text style={styles.reportStatValue}>
+                                        {String(borrowedHours).padStart(2, '0')}:{String(borrowedMinutes).padStart(2, '0')}:{String(borrowedSeconds).padStart(2, '0')}
+                                    </Text>
+                                </View>
+                                <View style={styles.reportStatItem}>
+                                    <Text style={styles.reportStatLabel}>TIMERS EXTENDED</Text>
+                                    <Text style={styles.reportStatValue}>
+                                        {timers.filter(t => (t.borrowedTime || 0) > 0).length}
+                                    </Text>
+                                </View>
+                            </View>
                             <Text style={styles.modalMessage}>
-                                This is an upcoming feature you can view in an upcoming version.
+                                You can analyze your timer extensions here to improve your focus/estimation.
                             </Text>
                             <TouchableOpacity
                                 style={styles.modalCloseBtn}
@@ -356,6 +503,172 @@ export default function TimerList({
                             </TouchableOpacity>
                         </LinearGradient>
                     </View>
+                </TouchableOpacity>
+            </Modal>
+
+            {/* Completion Popup Modal */}
+            <Modal
+                animationType="fade"
+                transparent={true}
+                visible={completedPopupTimer !== null}
+                supportedOrientations={['portrait', 'landscape']}
+                onRequestClose={() => setCompletedPopupTimer(null)}
+            >
+                <TouchableOpacity
+                    style={styles.modalOverlay}
+                    activeOpacity={1}
+                    onPress={() => setCompletedPopupTimer(null)}
+                >
+                    <BlurView intensity={25} tint="dark" style={StyleSheet.absoluteFill} />
+
+                    {isLandscape ? (
+                        /* LANDSCAPE: Combined compact layout */
+                        <View style={styles.completedPopupCombinedLandscape}>
+                            <LinearGradient
+                                colors={['rgba(20, 40, 55, 0.98)', 'rgba(10, 25, 35, 0.99)']}
+                                style={styles.completedPopupCombinedGradient}
+                            >
+                                <View style={styles.completedPopupLandscapeRow}>
+                                    {/* Left Section - Info */}
+                                    <View style={styles.completedPopupCombinedLeft}>
+                                        <View style={styles.completedPopupIconCircleCompact}>
+                                            <MaterialIcons name="check" size={20} color="#4CAF50" />
+                                        </View>
+                                        <Text style={styles.completedPopupTitleLandscapeCompact}>COMPLETED!</Text>
+                                        <Text style={styles.completedPopupTimerNameLandscapeCompact}>
+                                            {completedPopupTimer?.title || 'Timer'}
+                                        </Text>
+
+                                        <View style={styles.completedPopupDetailsContainerCompact}>
+                                            <View style={styles.completedPopupDetailRowCompact}>
+                                                <MaterialIcons name="play-circle-outline" size={12} color="#00E5FF" />
+                                                <Text style={styles.completedPopupDetailLabelCompact}>Started</Text>
+                                                <Text style={styles.completedPopupDetailValueCompact}>
+                                                    {completedPopupTimer?.startTime || '--:--'}
+                                                </Text>
+                                            </View>
+                                            <View style={styles.completedPopupDetailRowCompact}>
+                                                <MaterialIcons name="check-circle-outline" size={12} color="#4CAF50" />
+                                                <Text style={styles.completedPopupDetailLabelCompact}>Ended</Text>
+                                                <Text style={styles.completedPopupDetailValueCompact}>
+                                                    {new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })}
+                                                </Text>
+                                            </View>
+                                            <View style={styles.completedPopupDetailRowCompact}>
+                                                <MaterialIcons name="add-alarm" size={12} color="#FFD740" />
+                                                <Text style={styles.completedPopupDetailLabelCompact}>Extended</Text>
+                                                <Text style={styles.completedPopupDetailValueCompact}>
+                                                    {completedPopupTimer?.borrowedTime
+                                                        ? `${Math.floor((completedPopupTimer.borrowedTime || 0) / 60)}m`
+                                                        : 'None'}
+                                                </Text>
+                                            </View>
+                                        </View>
+                                    </View>
+
+                                    {/* Vertical Divider */}
+                                    <View style={styles.completedPopupDividerVerticalLandscape} />
+
+                                    {/* Right Section - Actions */}
+                                    <View style={styles.completedPopupCombinedRight}>
+                                        <Text style={styles.completedPopupExtendLabelLandscapeCompact}>EXTEND SESSION</Text>
+                                        <View style={styles.completedPopupExtendButtonsLandscapeCompact}>
+                                            {[1, 5, 10].map((mins) => (
+                                                <TouchableOpacity
+                                                    key={mins}
+                                                    style={styles.completedPopupExtendBtnLandscapeCompact}
+                                                    onPress={() => {
+                                                        if (completedPopupTimer && onBorrowTime) {
+                                                            onBorrowTime(completedPopupTimer, mins * 60);
+                                                            setCompletedPopupTimer(null);
+                                                        }
+                                                    }}
+                                                >
+                                                    <Text style={styles.completedPopupExtendBtnTextLandscapeCompact}>+{mins}m</Text>
+                                                </TouchableOpacity>
+                                            ))}
+                                        </View>
+
+                                        <TouchableOpacity
+                                            style={styles.completedPopupCloseBtnRedlandscape}
+                                            onPress={() => setCompletedPopupTimer(null)}
+                                        >
+                                            <Text style={styles.completedPopupCloseBtnTextRedlandscape}>CLOSE</Text>
+                                        </TouchableOpacity>
+                                    </View>
+                                </View>
+                            </LinearGradient>
+                        </View>
+                    ) : (
+                        /* PORTRAIT: Combined compact layout (Vertical) */
+                        <View style={styles.completedPopupCombinedPortrait}>
+                            <LinearGradient
+                                colors={['rgba(20, 40, 55, 0.98)', 'rgba(10, 25, 35, 0.99)']}
+                                style={styles.completedPopupCombinedGradient}
+                            >
+                                <View style={styles.completedPopupPortraitColumn}>
+                                    {/* Top Section - Info */}
+                                    <View style={styles.completedPopupCombinedTop}>
+                                        <View style={styles.completedPopupIconCircleCompact}>
+                                            <MaterialIcons name="check" size={24} color="#4CAF50" />
+                                        </View>
+                                        <Text style={styles.completedPopupTitleLandscapeCompact}>COMPLETED!</Text>
+                                        <Text style={styles.completedPopupTimerNameLandscapeCompact}>
+                                            {completedPopupTimer?.title || 'Timer'}
+                                        </Text>
+
+                                        <View style={styles.completedPopupDetailsContainerPortraitCompact}>
+                                            <View style={styles.completedPopupDetailRowCompact}>
+                                                <MaterialIcons name="play-circle-outline" size={14} color="#00E5FF" />
+                                                <Text style={styles.completedPopupDetailLabelCompact}>Started</Text>
+                                                <Text style={styles.completedPopupDetailValueCompact}>
+                                                    {completedPopupTimer?.startTime || '--:--'}
+                                                </Text>
+                                            </View>
+                                            <View style={styles.completedPopupDetailRowCompact}>
+                                                <MaterialIcons name="check-circle-outline" size={14} color="#4CAF50" />
+                                                <Text style={styles.completedPopupDetailLabelCompact}>Ended</Text>
+                                                <Text style={styles.completedPopupDetailValueCompact}>
+                                                    {new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })}
+                                                </Text>
+                                            </View>
+                                        </View>
+                                    </View>
+
+                                    {/* Horizontal Divider */}
+                                    <View style={styles.completedPopupDividerHorizontalPortrait} />
+
+                                    {/* Bottom Section - Actions */}
+                                    <View style={styles.completedPopupCombinedBottom}>
+                                        <Text style={styles.completedPopupExtendLabelLandscapeCompact}>EXTEND SESSION</Text>
+                                        <View style={styles.completedPopupExtendButtonsLandscapeCompact}>
+                                            {[1, 5, 10].map((mins) => (
+                                                <TouchableOpacity
+                                                    key={mins}
+                                                    style={styles.completedPopupExtendBtnLandscapeCompact}
+                                                    onPress={() => {
+                                                        if (completedPopupTimer && onBorrowTime) {
+                                                            onBorrowTime(completedPopupTimer, mins * 60);
+                                                            setCompletedPopupTimer(null);
+                                                        }
+                                                    }}
+                                                >
+                                                    <Text style={styles.completedPopupExtendBtnTextLandscapeCompact}>+{mins}m</Text>
+                                                </TouchableOpacity>
+                                            ))}
+                                        </View>
+
+                                        <TouchableOpacity
+                                            style={styles.completedPopupCloseBtnRedlandscape}
+                                            onPress={() => setCompletedPopupTimer(null)}
+                                        >
+                                            <Text style={styles.completedPopupCloseBtnTextRedlandscape}>CLOSE</Text>
+                                        </TouchableOpacity>
+                                    </View>
+                                </View>
+                            </LinearGradient>
+                        </View>
+                    )}
                 </TouchableOpacity>
             </Modal>
         </LinearGradient>
@@ -390,10 +703,15 @@ function TimerCard({ timer, onLongPress, onPress, onPlayPause, isLandscape }: Ti
     const isCompleted = timer.status === 'Completed';
     const isActive = isRunning || isPaused;
 
-    // Calculate completion percentage for progress fill
+    // Calculate completion percentage for progress fill (total including borrowed)
+    const borrowedSeconds = timer.borrowedTime || 0;
     const completionPercentage = isActive && timer.total
-        ? getCompletionPercentage(timer.time, timer.total)
+        ? getCompletionPercentage(timer.time, timer.total, borrowedSeconds)
         : 0;
+
+    const originalTotalSeconds = parseTimeToSeconds(timer.total);
+    const totalSeconds = originalTotalSeconds + borrowedSeconds;
+    const originalWeight = totalSeconds > 0 ? (originalTotalSeconds / totalSeconds) : 1;
 
     // Animated value for smooth progress transition
     const animatedProgress = React.useRef(new Animated.Value(completionPercentage)).current;
@@ -428,30 +746,78 @@ function TimerCard({ timer, onLongPress, onPress, onPlayPause, isLandscape }: Ti
             {(isActive || isCompleted) && (
                 <View style={styles.progressFillContainer}>
                     {isCompleted ? (
-                        // Completed timers show the percentage at which they were completed
-                        <View
-                            style={[
-                                styles.progressFill,
-                                {
-                                    width: `${timer.completedPercentage ?? 100}%`,
-                                    backgroundColor: 'rgba(76,175,80,0.35)'
-                                }
-                            ]}
-                        />
+                        // Completed timers show three segments: Original Used, Borrowed Used, Saved
+                        <View style={styles.multiProgressWrapper}>
+                            {/* Segment 1: Original Time Used */}
+                            <View
+                                style={[
+                                    styles.progressFill,
+                                    {
+                                        width: `${Math.min(originalTotalSeconds, Math.max(0, totalSeconds - (timer.savedTime || 0))) / totalSeconds * 100}%`,
+                                        backgroundColor: 'rgba(76,175,80,0.45)' // Slightly more opaque
+                                    }
+                                ]}
+                            />
+                            {/* Segment 2: Borrowed Time Used */}
+                            {totalSeconds > originalTotalSeconds && (totalSeconds - (timer.savedTime || 0)) > originalTotalSeconds && (
+                                <View
+                                    style={[
+                                        styles.progressFill,
+                                        {
+                                            left: `${originalTotalSeconds / totalSeconds * 100}%`,
+                                            width: `${(Math.min(totalSeconds, totalSeconds - (timer.savedTime || 0)) - originalTotalSeconds) / totalSeconds * 100}%`,
+                                            backgroundColor: 'rgba(38,120,40,0.6)' // More distinct dark green
+                                        }
+                                    ]}
+                                />
+                            )}
+                            {/* Segment 3: Saved Time (Remaining) */}
+                            {(timer.savedTime || 0) > 0 && (
+                                <View
+                                    style={[
+                                        styles.progressFill,
+                                        {
+                                            left: `${Math.max(0, totalSeconds - (timer.savedTime || 0)) / totalSeconds * 100}%`,
+                                            width: `${(timer.savedTime || 0) / totalSeconds * 100}%`,
+                                            backgroundColor: 'rgba(255,255,255,0.3)' // Even brighter ghost shade
+                                        }
+                                    ]}
+                                />
+                            )}
+                        </View>
                     ) : (
-                        // Active timers show animated progress
-                        <Animated.View
-                            style={[
-                                styles.progressFill,
-                                {
-                                    width: animatedProgress.interpolate({
-                                        inputRange: [0, 100],
-                                        outputRange: ['0%', '100%'],
-                                    }),
-                                    backgroundColor: isRunning ? 'rgba(0,229,255,0.35)' : 'rgba(255,165,0,0.35)'
-                                }
-                            ]}
-                        />
+                        // Active timers show animated progress with two segments
+                        <View style={styles.multiProgressWrapper}>
+                            {/* Original Segment Fill */}
+                            <Animated.View
+                                style={[
+                                    styles.progressFill,
+                                    {
+                                        width: animatedProgress.interpolate({
+                                            inputRange: [0, originalWeight * 100, 100],
+                                            outputRange: ['0%', `${originalWeight * 100}%`, `${originalWeight * 100}%`],
+                                        }),
+                                        backgroundColor: isRunning ? 'rgba(0,229,255,0.35)' : 'rgba(255,165,0,0.35)'
+                                    }
+                                ]}
+                            />
+                            {/* Borrowed Segment Fill */}
+                            {borrowedSeconds > 0 && (
+                                <Animated.View
+                                    style={[
+                                        styles.progressFill,
+                                        {
+                                            left: `${originalWeight * 100}%`,
+                                            width: animatedProgress.interpolate({
+                                                inputRange: [0, originalWeight * 100, 100],
+                                                outputRange: ['0%', '0%', `${(1 - originalWeight) * 100}%`],
+                                            }),
+                                            backgroundColor: isRunning ? 'rgba(0,114,128,0.5)' : 'rgba(128,82,0,0.5)' // Darker shades
+                                        }
+                                    ]}
+                                />
+                            )}
+                        </View>
                     )}
                 </View>
             )}
@@ -462,11 +828,29 @@ function TimerCard({ timer, onLongPress, onPress, onPlayPause, isLandscape }: Ti
                 style={styles.cardInset}
             />
 
-            {/* Status Badge */}
-            <View style={[styles.statusBadge, { backgroundColor: statusConfig.bgColor }]}>
-                <Text style={[styles.statusText, { color: statusConfig.color }]}>
-                    {statusConfig.label}
-                </Text>
+            {/* Status & Borrow Row */}
+            <View style={styles.statusRow}>
+                <View style={[styles.statusBadge, { backgroundColor: statusConfig.bgColor }]}>
+                    <Text style={[styles.statusText, { color: statusConfig.color }]}>
+                        {statusConfig.label}
+                    </Text>
+                </View>
+                {borrowedSeconds > 0 && (
+                    <View style={styles.borrowedBadgeSmall}>
+                        <MaterialIcons name="add-alarm" size={12} color="rgba(255,255,255,0.4)" />
+                        <Text style={styles.borrowedTextSmall}>
+                            {formatBorrowedTime(borrowedSeconds)}
+                        </Text>
+                    </View>
+                )}
+                {isCompleted && (timer.savedTime || 0) > 0 && (
+                    <View style={styles.savedBadgeSmall}>
+                        <MaterialIcons name="speed" size={12} color="rgba(76,175,80,0.6)" />
+                        <Text style={styles.savedTextSmall}>
+                            {formatSavedTime(timer.savedTime || 0)}
+                        </Text>
+                    </View>
+                )}
             </View>
 
             {/* Timer Info */}
@@ -479,8 +863,8 @@ function TimerCard({ timer, onLongPress, onPress, onPlayPause, isLandscape }: Ti
                         <Text style={[styles.timerTime, isCompleted && styles.timerTimeCompleted]}>
                             {timer.time}
                         </Text>
-                        {isActive && timer.total && (
-                            <Text style={styles.timerTotal}>/{timer.total}</Text>
+                        {timer.total && (
+                            <Text style={styles.timerTotal}>/{getExpandedTotal(timer.total, borrowedSeconds)}</Text>
                         )}
                     </View>
                 </View>
@@ -801,6 +1185,11 @@ const styles = StyleSheet.create({
         bottom: 0,
     },
 
+    multiProgressWrapper: {
+        flex: 1,
+        position: 'relative',
+    },
+
     progressEdge: {
         position: 'absolute',
         top: 0,
@@ -813,12 +1202,52 @@ const styles = StyleSheet.create({
         shadowOffset: { width: 0, height: 0 },
     },
 
+    statusRow: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 8,
+        marginBottom: 12,
+    },
+
     statusBadge: {
         alignSelf: 'flex-start',
         paddingHorizontal: 10,
         paddingVertical: 4,
         borderRadius: 8,
-        marginBottom: 12,
+    },
+
+    borrowedBadgeSmall: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 4,
+        paddingHorizontal: 8,
+        paddingVertical: 4,
+        borderRadius: 8,
+        backgroundColor: 'rgba(255,255,255,0.05)',
+    },
+
+    borrowedTextSmall: {
+        fontSize: 10,
+        fontWeight: '600',
+        color: 'rgba(255,255,255,0.4)',
+    },
+
+    savedBadgeSmall: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 4,
+        paddingHorizontal: 8,
+        paddingVertical: 4,
+        borderRadius: 8,
+        backgroundColor: 'rgba(76,175,80,0.1)',
+        borderWidth: 0.5,
+        borderColor: 'rgba(76,175,80,0.2)',
+    },
+
+    savedTextSmall: {
+        fontSize: 10,
+        fontWeight: '600',
+        color: 'rgba(76,175,80,0.8)',
     },
 
     statusText: {
@@ -1271,24 +1700,206 @@ const styles = StyleSheet.create({
         color: '#fff',
     },
     modalMessage: {
-        fontSize: 15,
-        color: 'rgba(255,255,255,0.7)',
+        fontSize: 14,
+        color: 'rgba(255,255,255,0.5)',
         textAlign: 'center',
-        lineHeight: 22,
-        marginBottom: 32,
+        lineHeight: 20,
+        marginBottom: 24,
+    },
+    reportStatsRow: {
+        flexDirection: 'row',
+        justifyContent: 'space-between',
+        width: '100%',
+        marginBottom: 20,
+        gap: 12,
+    },
+    reportStatItem: {
+        flex: 1,
+        backgroundColor: 'rgba(255,255,255,0.05)',
+        borderRadius: 16,
+        padding: 12,
+        alignItems: 'center',
+        borderWidth: 1,
+        borderColor: 'rgba(255,255,255,0.1)',
+    },
+    reportStatLabel: {
+        fontSize: 9,
+        fontWeight: '700',
+        color: 'rgba(255,255,255,0.4)',
+        letterSpacing: 1,
+        marginBottom: 4,
+    },
+    reportStatValue: {
+        fontSize: 16,
+        fontWeight: '700',
+        color: '#00E5FF',
     },
     modalCloseBtn: {
-        paddingHorizontal: 40,
+        width: '100%',
         paddingVertical: 14,
-        borderRadius: 20,
-        backgroundColor: 'rgba(0,229,255,0.12)',
+        borderRadius: 16,
+        backgroundColor: 'rgba(0, 229, 255, 0.1)',
         borderWidth: 1,
-        borderColor: 'rgba(0,229,255,0.3)',
+        borderColor: 'rgba(0, 229, 255, 0.3)',
+        alignItems: 'center',
     },
     modalCloseBtnText: {
         fontSize: 14,
         fontWeight: '700',
         color: '#00E5FF',
-        letterSpacing: 1.2,
+        letterSpacing: 2,
+    },
+
+    // UNIFIED COMPACT COMPLETION POPUP STYLES
+    completedPopupCombinedLandscape: {
+        width: '75%',
+        maxWidth: 520,
+        borderRadius: 24,
+        overflow: 'hidden',
+        borderWidth: 1,
+        borderColor: 'rgba(0, 229, 255, 0.2)',
+    },
+    completedPopupCombinedPortrait: {
+        width: '85%',
+        maxWidth: 340,
+        borderRadius: 24,
+        overflow: 'hidden',
+        borderWidth: 1,
+        borderColor: 'rgba(0, 229, 255, 0.2)',
+    },
+    completedPopupCombinedGradient: {
+        padding: 16,
+    },
+    completedPopupLandscapeRow: {
+        flexDirection: 'row',
+        alignItems: 'center',
+    },
+    completedPopupPortraitColumn: {
+        alignItems: 'center',
+    },
+    completedPopupCombinedLeft: {
+        flex: 1.2,
+        alignItems: 'center',
+        paddingRight: 16,
+    },
+    completedPopupCombinedRight: {
+        flex: 1,
+        paddingLeft: 16,
+        justifyContent: 'center',
+    },
+    completedPopupCombinedTop: {
+        width: '100%',
+        alignItems: 'center',
+        paddingBottom: 16,
+    },
+    completedPopupCombinedBottom: {
+        width: '100%',
+        paddingTop: 16,
+        justifyContent: 'center',
+    },
+    completedPopupDividerVerticalLandscape: {
+        width: 1,
+        height: '80%',
+        backgroundColor: 'rgba(255, 255, 255, 0.1)',
+    },
+    completedPopupDividerHorizontalPortrait: {
+        width: '100%',
+        height: 1,
+        backgroundColor: 'rgba(255, 255, 255, 0.1)',
+    },
+    completedPopupIconCircleCompact: {
+        width: 40,
+        height: 40,
+        borderRadius: 20,
+        backgroundColor: 'rgba(76, 175, 80, 0.15)',
+        borderWidth: 1.5,
+        borderColor: 'rgba(76, 175, 80, 0.4)',
+        alignItems: 'center',
+        justifyContent: 'center',
+        marginBottom: 8,
+    },
+    completedPopupTitleLandscapeCompact: {
+        fontSize: 14,
+        fontWeight: '900',
+        color: '#4CAF50',
+        letterSpacing: 2,
+        marginBottom: 2,
+        textAlign: 'center',
+    },
+    completedPopupTimerNameLandscapeCompact: {
+        fontSize: 12,
+        fontWeight: '600',
+        color: '#fff',
+        marginBottom: 8,
+        textAlign: 'center',
+        opacity: 0.8,
+    },
+    completedPopupDetailsContainerCompact: {
+        width: '100%',
+        gap: 4,
+    },
+    completedPopupDetailsContainerPortraitCompact: {
+        width: '100%',
+        flexDirection: 'row',
+        justifyContent: 'space-around',
+        gap: 12,
+    },
+    completedPopupDetailRowCompact: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 6,
+    },
+    completedPopupDetailLabelCompact: {
+        fontSize: 10,
+        fontWeight: '600',
+        color: 'rgba(255,255,255,0.4)',
+    },
+    completedPopupDetailValueCompact: {
+        fontSize: 10,
+        fontWeight: '700',
+        color: '#fff',
+    },
+    completedPopupExtendLabelLandscapeCompact: {
+        fontSize: 9,
+        fontWeight: '700',
+        color: 'rgba(255,255,255,0.3)',
+        letterSpacing: 1,
+        marginBottom: 8,
+        textAlign: 'center',
+    },
+    completedPopupExtendButtonsLandscapeCompact: {
+        flexDirection: 'row',
+        gap: 6,
+        marginBottom: 12,
+    },
+    completedPopupExtendBtnLandscapeCompact: {
+        flex: 1,
+        height: 36,
+        borderRadius: 8,
+        backgroundColor: 'rgba(0, 229, 255, 0.05)',
+        borderWidth: 1,
+        borderColor: 'rgba(0, 229, 255, 0.15)',
+        alignItems: 'center',
+        justifyContent: 'center',
+    },
+    completedPopupExtendBtnTextLandscapeCompact: {
+        fontSize: 12,
+        fontWeight: '700',
+        color: '#00E5FF',
+    },
+    completedPopupCloseBtnRedlandscape: {
+        width: '100%',
+        paddingVertical: 10,
+        borderRadius: 10,
+        backgroundColor: 'rgba(255, 80, 80, 0.08)',
+        borderWidth: 1,
+        borderColor: 'rgba(255, 80, 80, 0.2)',
+        alignItems: 'center',
+    },
+    completedPopupCloseBtnTextRedlandscape: {
+        fontSize: 11,
+        fontWeight: '800',
+        color: '#FF5050',
+        letterSpacing: 1.5,
     },
 });

@@ -28,6 +28,30 @@ const LANDSCAPE_COLOR_KEY = '@timer_app_landscape_color';
 const FILLER_COLOR_KEY = '@timer_filler_color';
 const SLIDER_BUTTON_COLOR_KEY = '@timer_slider_button_color';
 const TEXT_COLOR_KEY = '@timer_text_color';
+const PRESET_INDEX_KEY = '@timer_active_preset_index';
+const COMPLETION_SOUND_KEY = '@timer_completion_sound';
+const SOUND_REPETITION_KEY = '@timer_sound_repetition';
+
+export const LANDSCAPE_PRESETS = [
+  {
+    name: 'Deep Sea',
+    filler: '#00E5FF',
+    slider: '#00E5FF',
+    text: '#FFFFFF'
+  },
+  {
+    name: 'Lava Glow',
+    filler: '#FF9500',
+    slider: '#FF9500',
+    text: '#FFFFFF'
+  },
+  {
+    name: 'Neon Forest',
+    filler: '#34C759',
+    slider: '#34C759',
+    text: '#FFFFFF'
+  },
+];
 
 LogBox.ignoreLogs(['SafeAreaView has been deprecated']);
 
@@ -70,9 +94,15 @@ export default function App() {
   const [activeTimer, setActiveTimer] = useState<Timer | null>(null);
   const [currentScreen, setCurrentScreen] = useState<Screen>('list');
   const [completedAt, setCompletedAt] = useState('');
-  const [fillerColor, setFillerColor] = useState('#00E5FF');
-  const [sliderButtonColor, setSliderButtonColor] = useState('#00E5FF');
-  const [timerTextColor, setTimerTextColor] = useState('#FFFFFF');
+  const [completedStartTime, setCompletedStartTime] = useState('');
+  const [completedBorrowedTime, setCompletedBorrowedTime] = useState(0);
+  const [shouldPlayCompletionSound, setShouldPlayCompletionSound] = useState(true);
+  const [fillerColor, setFillerColor] = useState(LANDSCAPE_PRESETS[0].filler);
+  const [sliderButtonColor, setSliderButtonColor] = useState(LANDSCAPE_PRESETS[0].slider);
+  const [timerTextColor, setTimerTextColor] = useState(LANDSCAPE_PRESETS[0].text);
+  const [activePresetIndex, setActivePresetIndex] = useState(0);
+  const [selectedSound, setSelectedSound] = useState(0);
+  const [soundRepetition, setSoundRepetition] = useState(1);
 
   const intervalRef = useRef<NodeJS.Timeout | null>(null);
 
@@ -86,14 +116,20 @@ export default function App() {
 
   const loadAllColors = async () => {
     try {
-      const [filler, sliderBtn, text] = await Promise.all([
+      const [filler, sliderBtn, text, presetIndex, sound, repetition] = await Promise.all([
         AsyncStorage.getItem(FILLER_COLOR_KEY),
         AsyncStorage.getItem(SLIDER_BUTTON_COLOR_KEY),
         AsyncStorage.getItem(TEXT_COLOR_KEY),
+        AsyncStorage.getItem(PRESET_INDEX_KEY),
+        AsyncStorage.getItem(COMPLETION_SOUND_KEY),
+        AsyncStorage.getItem(SOUND_REPETITION_KEY),
       ]);
       if (filler) setFillerColor(filler);
       if (sliderBtn) setSliderButtonColor(sliderBtn);
       if (text) setTimerTextColor(text);
+      if (presetIndex) setActivePresetIndex(parseInt(presetIndex, 10));
+      if (sound) setSelectedSound(parseInt(sound, 10));
+      if (repetition) setSoundRepetition(parseInt(repetition, 10));
     } catch (e) {
       console.error('Failed to load color preferences:', e);
     }
@@ -120,6 +156,7 @@ export default function App() {
                 const now = new Date();
                 const timeStr = `${now.getHours().toString().padStart(2, '0')}:${now.getMinutes().toString().padStart(2, '0')}`;
                 setCompletedAt(timeStr);
+                setCompletedBorrowedTime(timer.borrowedTime || 0);
                 return { ...timer, status: 'Completed' as const, time: '00:00:00', completedPercentage: 100 };
               }
 
@@ -142,7 +179,8 @@ export default function App() {
     if (currentScreen === 'active' && activeTimer) {
       const currentTimer = timers.find(t => t.id === activeTimer.id);
       if (currentTimer?.status === 'Completed') {
-        // Timer just completed, navigate to complete screen
+        // Timer just completed naturally, navigate to complete screen with sound
+        setShouldPlayCompletionSound(true);
         setCurrentScreen('complete');
       }
     }
@@ -189,7 +227,14 @@ export default function App() {
     if (selectedTimer) {
       const updatedTimers = timers.map(t => {
         if (t.id === selectedTimer.id) {
-          return { ...t, time: t.total, status: 'Upcoming' } as Timer;
+          return {
+            ...t,
+            time: t.total,
+            status: 'Upcoming',
+            borrowedTime: 0,
+            completedPercentage: undefined,
+            savedTime: undefined
+          } as Timer;
         }
         return t;
       });
@@ -211,8 +256,16 @@ export default function App() {
     const updatedTimers = timers.map(t => {
       if (t.id === timerToToggle.id) {
         // Toggle: Running → Paused, anything else → Running
+        const isRestarting = t.status !== 'Running' && t.status !== 'Paused';
         const newStatus = isCurrentlyRunning ? 'Paused' : 'Running';
-        return { ...t, status: newStatus } as Timer;
+
+        let startInfo = {};
+        if (isRestarting && !t.startTime) {
+          const now = new Date();
+          startInfo = { startTime: `${now.getHours().toString().padStart(2, '0')}:${now.getMinutes().toString().padStart(2, '0')}` };
+        }
+
+        return { ...t, status: newStatus, ...startInfo } as Timer;
       } else if (t.status === 'Running') {
         // Pause any other running timer
         return { ...t, status: 'Paused' } as Timer;
@@ -229,10 +282,13 @@ export default function App() {
     setActiveTimer(timer);
 
     if (timer.status === 'Completed') {
-      // If completed, go directly to TaskComplete screen
+      // If completed, go directly to TaskComplete screen WITHOUT sound
       const now = new Date();
       const timeStr = `${now.getHours().toString().padStart(2, '0')}:${now.getMinutes().toString().padStart(2, '0')}`;
       setCompletedAt(timeStr);
+      setCompletedStartTime(timer.startTime || '--:--');
+      setCompletedBorrowedTime(timer.borrowedTime || 0);
+      setShouldPlayCompletionSound(false); // Don't play sound for already-completed timers
       setCurrentScreen('complete');
     } else if (timer.status === 'Paused') {
       // If paused, go to ActiveTimer but DON'T auto-start
@@ -241,7 +297,9 @@ export default function App() {
       // For Upcoming timers, start them and go to ActiveTimer
       const updatedTimers = timers.map(t => {
         if (t.id === timer.id) {
-          return { ...t, status: 'Running' } as Timer;
+          const now = new Date();
+          const startTime = `${now.getHours().toString().padStart(2, '0')}:${now.getMinutes().toString().padStart(2, '0')}`;
+          return { ...t, status: 'Running', startTime } as Timer;
         } else if (t.status === 'Running') {
           return { ...t, status: 'Paused' } as Timer;
         }
@@ -281,29 +339,41 @@ export default function App() {
     let completedPct = 100; // Default to 100% if naturally completed
 
     if (currentTimer && activeTimer) {
-      const currentSeconds = timeToSeconds(currentTimer.time);
-      const totalSeconds = timeToSeconds(activeTimer.total);
-      if (totalSeconds > 0) {
-        // Calculate how much was completed (elapsed / total)
-        const elapsed = totalSeconds - currentSeconds;
-        completedPct = Math.round((elapsed / totalSeconds) * 100);
+      const currentRemainingSeconds = timeToSeconds(currentTimer.time);
+      const originalTotalSeconds = timeToSeconds(activeTimer.total);
+      const borrowedSeconds = currentTimer.borrowedTime || 0;
+      const totalAllocatedSeconds = originalTotalSeconds + borrowedSeconds;
+
+      if (totalAllocatedSeconds > 0) {
+        // Calculate how much was completed (elapsed / totalAllocated)
+        const elapsed = totalAllocatedSeconds - currentRemainingSeconds;
+        completedPct = Math.round((elapsed / totalAllocatedSeconds) * 100);
       }
+
+      // Store the remaining time as "saved"
+      const savedSecs = currentRemainingSeconds;
+
+      // Update global state for success screen
+      setCompletedBorrowedTime(borrowedSeconds);
+      setCompletedStartTime(currentTimer.startTime || '--:--');
+
+      // Mark timer as completed
+      const updatedTimers = timers.map(t => {
+        if (activeTimer && t.id === activeTimer.id) {
+          return {
+            ...t,
+            status: 'Completed',
+            time: '00:00:00',
+            completedPercentage: completedPct,
+            savedTime: savedSecs
+          } as Timer;
+        }
+        return t;
+      });
+      setTimers(updatedTimers);
+      saveTimers(updatedTimers);
     }
 
-    // Mark timer as completed with the completion percentage
-    const updatedTimers = timers.map(t => {
-      if (activeTimer && t.id === activeTimer.id) {
-        return {
-          ...t,
-          status: 'Completed',
-          time: '00:00:00',
-          completedPercentage: completedPct
-        } as Timer;
-      }
-      return t;
-    });
-    setTimers(updatedTimers);
-    saveTimers(updatedTimers);
     setCurrentScreen('complete');
   };
 
@@ -312,11 +382,19 @@ export default function App() {
     if (activeTimer) {
       const updatedTimers = timers.map(t => {
         if (t.id === activeTimer.id) {
-          return { ...t, time: t.total, status: 'Running' } as Timer;
+          return {
+            ...t,
+            time: t.total,
+            status: 'Running',
+            borrowedTime: 0,
+            completedPercentage: undefined,
+            savedTime: undefined
+          } as Timer;
         }
         return { ...t, status: t.status === 'Running' ? 'Paused' : t.status } as Timer;
       });
       setTimers(updatedTimers);
+      saveTimers(updatedTimers);
     }
     setCurrentScreen('active');
   };
@@ -327,15 +405,106 @@ export default function App() {
     setCurrentScreen('list');
   };
 
+  const handlePresetChange = async (index: number) => {
+    const preset = LANDSCAPE_PRESETS[index];
+    if (preset) {
+      setActivePresetIndex(index);
+      setFillerColor(preset.filler);
+      setSliderButtonColor(preset.slider);
+      setTimerTextColor(preset.text);
+
+      try {
+        await Promise.all([
+          AsyncStorage.setItem(PRESET_INDEX_KEY, index.toString()),
+          AsyncStorage.setItem(FILLER_COLOR_KEY, preset.filler),
+          AsyncStorage.setItem(SLIDER_BUTTON_COLOR_KEY, preset.slider),
+          AsyncStorage.setItem(TEXT_COLOR_KEY, preset.text),
+        ]);
+      } catch (e) {
+        console.error('Failed to save preset colors:', e);
+      }
+    }
+  };
+
+  const handleBorrowTime = async (seconds: number) => {
+    if (activeTimer) {
+      const updatedTimers = timers.map(t => {
+        if (t.id === activeTimer.id) {
+          const currentSeconds = timeToSeconds(t.time);
+          const newSeconds = currentSeconds + seconds;
+          const totalBorrowed = (t.borrowedTime || 0) + seconds;
+          return {
+            ...t,
+            time: secondsToTime(newSeconds),
+            borrowedTime: totalBorrowed
+          } as Timer;
+        }
+        return t;
+      });
+      setTimers(updatedTimers);
+      await saveTimers(updatedTimers);
+    }
+  };
+
+  const handleBorrowFromComplete = async (seconds: number) => {
+    if (activeTimer) {
+      const updatedTimers = timers.map(t => {
+        if (t.id === activeTimer.id) {
+          const totalBorrowed = (t.borrowedTime || 0) + seconds;
+          return {
+            ...t,
+            time: secondsToTime(seconds),
+            status: 'Running',
+            borrowedTime: totalBorrowed,
+            completedPercentage: undefined,
+            savedTime: undefined
+          } as Timer;
+        }
+        return t;
+      });
+      setTimers(updatedTimers);
+      await saveTimers(updatedTimers);
+      setCurrentScreen('active');
+    }
+  };
+
+  // Handle borrow time from TimerList popup (when timer completes in-list)
+  const handleBorrowTimeFromList = async (timer: Timer, seconds: number) => {
+    const updatedTimers = timers.map(t => {
+      if (t.id === timer.id) {
+        const totalBorrowed = (t.borrowedTime || 0) + seconds;
+        return {
+          ...t,
+          time: secondsToTime(seconds),
+          status: 'Running',
+          borrowedTime: totalBorrowed,
+          completedPercentage: undefined,
+          savedTime: undefined
+        } as Timer;
+      }
+      return t;
+    });
+    setTimers(updatedTimers);
+    await saveTimers(updatedTimers);
+  };
+
   if (!fontsLoaded) {
     return null;
   }
 
   // Get current active timer data
   const currentActiveTimer = activeTimer ? timers.find(t => t.id === activeTimer.id) : null;
-  const progress = currentActiveTimer && activeTimer
-    ? Math.round((1 - timeToSeconds(currentActiveTimer.time) / timeToSeconds(activeTimer.total)) * 100)
+
+  // Calculate progress relative to total (original + borrowed)
+  const originalTotalSecs = currentActiveTimer ? timeToSeconds(currentActiveTimer.total) : 0;
+  const borrowedSecs = currentActiveTimer?.borrowedTime || 0;
+  const totalAllocatedSecs = originalTotalSecs + borrowedSecs;
+  const currentRemainingSecs = currentActiveTimer ? timeToSeconds(currentActiveTimer.time) : 0;
+
+  const progress = totalAllocatedSecs > 0
+    ? Math.round((1 - currentRemainingSecs / totalAllocatedSecs) * 100)
     : 0;
+
 
   const renderScreen = () => {
     switch (currentScreen) {
@@ -351,6 +520,7 @@ export default function App() {
             onPlayPause={() => activeTimer && handlePlayPause(activeTimer)}
             onCancel={handleCancel}
             onComplete={handleComplete}
+            onBorrowTime={handleBorrowTime}
             fillerColor={fillerColor}
             sliderButtonColor={sliderButtonColor}
             timerTextColor={timerTextColor}
@@ -367,6 +537,12 @@ export default function App() {
             onFillerColorChange={setFillerColor}
             onSliderButtonColorChange={setSliderButtonColor}
             onTimerTextColorChange={setTimerTextColor}
+            activePresetIndex={activePresetIndex}
+            onPresetChange={handlePresetChange}
+            selectedSound={selectedSound}
+            soundRepetition={soundRepetition}
+            onSoundChange={setSelectedSound}
+            onRepetitionChange={setSoundRepetition}
           />
         );
 
@@ -374,8 +550,14 @@ export default function App() {
         return (
           <TaskComplete
             completedAt={completedAt}
+            startTime={completedStartTime}
+            borrowedTime={completedBorrowedTime}
             onRestart={handleRestart}
             onDone={handleDone}
+            onBorrowTime={handleBorrowFromComplete}
+            selectedSound={selectedSound}
+            soundRepetition={soundRepetition}
+            shouldPlaySound={shouldPlayCompletionSound}
           />
         );
 
@@ -391,6 +573,9 @@ export default function App() {
             onStartTimer={handleStartTimer}
             onPlayPause={handlePlayPause}
             onSettings={() => setCurrentScreen('settings')}
+            onBorrowTime={handleBorrowTimeFromList}
+            selectedSound={selectedSound}
+            soundRepetition={soundRepetition}
           />
         );
     }

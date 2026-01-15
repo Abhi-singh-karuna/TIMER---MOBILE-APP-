@@ -28,6 +28,7 @@ interface ActiveTimerProps {
     onPlayPause: () => void;
     onCancel: () => void;
     onComplete: () => void;
+    onBorrowTime: (seconds: number) => void;
     fillerColor?: string;
     sliderButtonColor?: string;
     timerTextColor?: string;
@@ -43,6 +44,7 @@ export default function ActiveTimer({
     onPlayPause,
     onCancel,
     onComplete,
+    onBorrowTime,
     fillerColor = '#00E5FF',
     sliderButtonColor = '#00E5FF',
     timerTextColor = '#FFFFFF'
@@ -234,6 +236,34 @@ export default function ActiveTimer({
         outputRange: [1, 0.8, 1],
     });
 
+    const renderBorrowTime = (isLandscape: boolean, colorTheme: 'white' | 'black' = 'white') => {
+        const isBlack = colorTheme === 'black';
+        const textColor = isBlack ? 'rgba(0,0,0,0.4)' : 'rgba(255,255,255,0.4)';
+        const btnBg = isBlack ? 'rgba(0,0,0,0.05)' : 'rgba(255,255,255,0.05)';
+        const btnBorder = isBlack ? 'rgba(0,0,0,0.1)' : 'rgba(255,255,255,0.1)';
+
+        return (
+            <View style={[styles.borrowContainer, isLandscape && styles.borrowContainerLandscape]}>
+                <Text style={[styles.borrowLabel, { color: textColor }]}>BORROW TIME</Text>
+                <View style={[styles.borrowButtons, isLandscape && styles.borrowButtonsLandscape]}>
+                    {[1, 5, 10].map((mins) => (
+                        <TouchableOpacity
+                            key={mins}
+                            style={[
+                                styles.borrowBtn,
+                                { backgroundColor: btnBg, borderColor: btnBorder }
+                            ]}
+                            onPress={() => onBorrowTime(mins * 60)}
+                            activeOpacity={0.7}
+                        >
+                            <Text style={[styles.borrowBtnText, { color: timerTextColor }]}>+{mins}m</Text>
+                        </TouchableOpacity>
+                    ))}
+                </View>
+            </View>
+        );
+    };
+
     const renderLandscapeContent = (colorTheme: 'white' | 'black') => {
         const isBlack = colorTheme === 'black';
         const textColor = isBlack ? '#000' : '#fff';
@@ -285,6 +315,9 @@ export default function ActiveTimer({
                         {hours}:{minutes}:{seconds}
                     </Text>
                 </View>
+
+                {/* Time Borrow Section for Landscape - Top Right Corner */}
+                {renderBorrowTime(true, colorTheme)}
             </View>
         );
     };
@@ -292,58 +325,89 @@ export default function ActiveTimer({
     const renderPortraitContent = () => {
         return (
             <View style={styles.mainContent} pointerEvents="box-none">
+                {/* Immersive Timer Section */}
                 <View style={styles.timerSection}>
-                    <View style={styles.timerCard}>
-                        <View style={styles.waterContainer}>
-                            <Animated.View style={[styles.waterFill, { height: waterHeight }]}>
-                                <LinearGradient
-                                    colors={['rgba(0, 229, 255, 0.4)', 'rgba(0, 180, 220, 0.6)', 'rgba(0, 140, 180, 0.8)']}
-                                    style={StyleSheet.absoluteFill}
-                                />
-                                <Animated.View style={[styles.waveLayer1, { transform: [{ translateX: waveTranslateX }, { scaleX: waveScale }] }]} />
-                                <Animated.View style={[styles.waveLayer2, { transform: [{ translateX: wave2TranslateX }] }]} />
-                                <Animated.View style={[styles.waveLayer3, { transform: [{ translateX: wave3TranslateX }, { scaleY: wave3ScaleY }] }]} />
-                            </Animated.View>
+                    {/* Floating Glow Layer */}
+                    <View style={styles.floatingGlow} />
+
+                    <View style={styles.vesselWrapper}>
+                        {/* The Living Water Pill */}
+                        <View style={styles.vesselContainer}>
+                            <View style={styles.waterContainer}>
+                                <Animated.View style={[styles.waterFill, { height: waterHeight }]}>
+                                    <LinearGradient
+                                        colors={['rgba(0, 229, 255, 0.45)', 'rgba(0, 150, 220, 0.65)', 'rgba(0, 80, 120, 0.85)']}
+                                        style={StyleSheet.absoluteFill}
+                                    />
+                                    <Animated.View style={[styles.waveLayer1, { transform: [{ translateX: waveTranslateX }, { scaleX: waveScale }] }]} />
+                                    <Animated.View style={[styles.waveLayer2, { transform: [{ translateX: wave2TranslateX }] }]} />
+                                    <Animated.View style={[styles.waveLayer3, { transform: [{ translateX: wave3TranslateX }, { scaleY: wave3ScaleY }] }]} />
+                                </Animated.View>
+                            </View>
+
+                            {/* Inner Shine Effect */}
+                            <LinearGradient
+                                colors={['rgba(255,255,255,0.1)', 'transparent', 'rgba(0,0,0,0.3)']}
+                                style={styles.vesselShine}
+                            />
                         </View>
-                        <LinearGradient colors={['rgba(0,0,0,0.5)', 'rgba(0,0,0,0.2)', 'transparent']} style={styles.cardInset} />
-                        <View style={styles.timeDisplay}>
-                            <Text style={styles.timeText}>
-                                <Text style={styles.timeWhite}>{hours}</Text>
-                                <Text style={styles.timeCyan}>:</Text>
-                                <Text style={styles.timeWhite}>{minutes}</Text>
-                                <Text style={styles.timeCyan}>:</Text>
-                                <Text style={styles.timeCyanText}>{seconds}</Text>
+
+                        {/* Centered Timer Content */}
+                        <View style={styles.timeDisplayPortrait}>
+                            <Text style={styles.timeTextPortrait}>
+                                <Text style={styles.timeUnitPortrait}>{hours}</Text>
+                                <Text style={styles.timeSepPortrait}>:</Text>
+                                <Text style={styles.timeUnitPortrait}>{minutes}</Text>
+                                <Text style={styles.timeSepPortrait}>:</Text>
+                                <Text style={styles.timeSecPortrait}>{seconds}</Text>
                             </Text>
-                            <View style={styles.timeLabels}>
-                                <Text style={styles.timeLabel}>HRS</Text>
-                                <Text style={styles.timeLabelSpacer} />
-                                <Text style={styles.timeLabel}>MIN</Text>
-                                <Text style={styles.timeLabelSpacer} />
-                                <Text style={styles.timeLabel}>SEC</Text>
+                            <View style={styles.timeLabelsPortrait}>
+                                <Text style={styles.timeLabelSmall}>HOURS</Text>
+                                <Text style={styles.timeLabelSpacerSmall} />
+                                <Text style={styles.timeLabelSmall}>MINUTES</Text>
+                                <Text style={styles.timeLabelSpacerSmall} />
+                                <Text style={styles.timeLabelSmall}>SECONDS</Text>
                             </View>
                         </View>
-                        <View style={styles.progressBadge}>
-                            <Text style={styles.progressBadgeText}>{progress}%</Text>
-                        </View>
+                    </View>
+
+                    {/* Simple Progress Pill */}
+                    <View style={styles.progressPillPortrait}>
+                        <View style={[styles.progressPillFill, { width: `${progress}%` }]} />
+                        <Text style={styles.progressPillText}>{progress}% COMPLETE</Text>
                     </View>
                 </View>
 
-                <View style={styles.controlsSection}>
-                    <View style={styles.controlsContainer}>
-                        <View style={styles.controlButton}>
-                            <TouchableOpacity style={[styles.circleButton, isRunning && styles.circleButtonActive]} onPress={onPlayPause} activeOpacity={0.7}>
-                                <MaterialIcons name={isRunning ? 'pause' : 'play-arrow'} size={28} color={isRunning ? '#00E5FF' : '#fff'} />
+                {/* Controls Section with Glass Finish */}
+                <View style={styles.controlsSectionPortrait}>
+                    {/* Borrow Time integrated more cleanly */}
+                    <View style={styles.borrowSectionPortrait}>
+                        <View style={styles.borrowDivider} />
+                        {renderBorrowTime(false)}
+                        <View style={styles.borrowDivider} />
+                    </View>
+
+                    <View style={styles.mainControlsRow}>
+                        <View style={styles.controlBtnWrapper}>
+                            <TouchableOpacity
+                                style={[styles.actionButton, isRunning && styles.actionButtonActive]}
+                                onPress={onPlayPause}
+                                activeOpacity={0.8}
+                            >
+                                <MaterialIcons name={isRunning ? 'pause' : 'play-arrow'} size={32} color={isRunning ? '#00E5FF' : '#fff'} />
                             </TouchableOpacity>
-                            <Text style={styles.controlLabel}>{isRunning ? 'PAUSE' : 'PLAY'}</Text>
+                            <Text style={styles.actionBtnLabel}>{isRunning ? 'PAUSE' : 'START'}</Text>
                         </View>
-                        <View style={styles.controlButton}>
-                            <TouchableOpacity style={styles.circleButton} onPress={onCancel} activeOpacity={0.7}>
-                                <MaterialIcons name="close" size={28} color="#fff" />
+
+                        <View style={styles.controlBtnWrapper}>
+                            <TouchableOpacity style={styles.actionButton} onPress={onCancel} activeOpacity={0.8}>
+                                <MaterialIcons name="close" size={28} color="rgba(255,255,255,0.8)" />
                             </TouchableOpacity>
-                            <Text style={styles.controlLabel}>CANCEL</Text>
+                            <Text style={styles.actionBtnLabel}>CANCEL</Text>
                         </View>
                     </View>
-                    <View style={styles.slideContainer}>
+
+                    <View style={styles.slideAreaPortrait}>
                         <SlideToComplete onComplete={onComplete} />
                     </View>
                 </View>
@@ -359,13 +423,6 @@ export default function ActiveTimer({
             locations={[0, 0.6, 1]}
             style={styles.container}
         >
-            {/* Cyan wave at bottom - Hidden in landscape */}
-            {!isLandscape && (
-                <View style={[styles.waveContainer, { height: height * 0.25 }]}>
-                    <View style={[styles.wave, { height: height * 0.3 }]} />
-                </View>
-            )}
-
             {/* Landscape Overlays - Moved outside SafeAreaView for true fullscreen */}
             {isLandscape && (
                 <Animated.View
@@ -520,29 +577,306 @@ const styles = StyleSheet.create({
         color: 'rgba(255,255,255,0.6)',
     },
 
-    timerCard: {
+    // ========== PORTRAIT STYLES REDESIGN ==========
+    mainContent: {
         flex: 1,
-        marginHorizontal: 32,
-        marginTop: 32,
-        marginBottom: 24,
-        borderRadius: 40,
-        backgroundColor: 'rgba(10, 30, 40, 0.9)',
-        borderWidth: 2,
-        borderColor: 'rgba(0, 229, 255, 0.2)',
+        paddingHorizontal: 24,
+    },
+
+    timerSection: {
+        flex: 1.8,
+        justifyContent: 'center',
+        alignItems: 'center',
+        paddingVertical: 20,
+    },
+
+    floatingGlow: {
+        position: 'absolute',
+        width: 300,
+        height: 300,
+        borderRadius: 150,
+        backgroundColor: 'rgba(0, 229, 255, 0.04)',
+        zIndex: -1,
+    },
+
+    vesselWrapper: {
+        width: 260,
+        height: 320,
+        justifyContent: 'center',
+        alignItems: 'center',
+        position: 'relative',
+    },
+
+    vesselContainer: {
+        ...StyleSheet.absoluteFillObject,
+        borderRadius: 140,
+        backgroundColor: 'rgba(15, 30, 45, 0.4)',
+        borderWidth: 1.5,
+        borderColor: 'rgba(255, 255, 255, 0.08)',
         overflow: 'hidden',
+    },
+
+    vesselShine: {
+        ...StyleSheet.absoluteFillObject,
+        borderRadius: 140,
+    },
+
+    timeDisplayPortrait: {
+        alignItems: 'center',
+        zIndex: 10,
+    },
+
+    timeTextPortrait: {
+        fontSize: 72,
+        fontWeight: '800',
+        color: '#fff',
+        letterSpacing: -2,
+        fontVariant: ['tabular-nums'],
+    },
+
+    timeUnitPortrait: {
+        color: '#fff',
+    },
+
+    timeSepPortrait: {
+        color: 'rgba(0, 229, 255, 0.3)',
+        fontSize: 56,
+        marginHorizontal: -4,
+    },
+
+    timeSecPortrait: {
+        color: '#00E5FF',
+    },
+
+    timeLabelsPortrait: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        marginTop: 4,
+    },
+
+    timeLabelSmall: {
+        fontSize: 9,
+        fontWeight: '800',
+        color: 'rgba(255, 255, 255, 0.4)',
+        letterSpacing: 1.5,
+        width: 50,
+        textAlign: 'center',
+    },
+
+    timeLabelSpacerSmall: {
+        width: 12,
+    },
+
+    progressPillPortrait: {
+        marginTop: 32,
+        width: 180,
+        height: 32,
+        borderRadius: 16,
+        backgroundColor: 'rgba(255, 255, 255, 0.05)',
+        borderWidth: 1,
+        borderColor: 'rgba(255, 255, 255, 0.1)',
+        overflow: 'hidden',
+        justifyContent: 'center',
+        alignItems: 'center',
+    },
+
+    progressPillFill: {
+        position: 'absolute',
+        left: 0,
+        top: 0,
+        bottom: 0,
+        backgroundColor: 'rgba(0, 229, 255, 0.15)',
+    },
+
+    progressPillText: {
+        fontSize: 10,
+        fontWeight: '800',
+        color: '#00E5FF',
+        letterSpacing: 1.5,
+    },
+
+    controlsSectionPortrait: {
+        flex: 1.4,
+        width: '100%',
+        paddingBottom: 10,
+    },
+
+    borrowSectionPortrait: {
+        marginBottom: 16,
+    },
+
+    borrowDivider: {
+        height: 1,
+        backgroundColor: 'rgba(255, 255, 255, 0.05)',
+        width: '100%',
+        marginVertical: 4,
+    },
+
+    mainControlsRow: {
+        flexDirection: 'row',
+        justifyContent: 'center',
+        gap: 40,
+        marginBottom: 24,
+    },
+
+    controlBtnWrapper: {
+        alignItems: 'center',
+        gap: 10,
+    },
+
+    actionButton: {
+        width: 68,
+        height: 68,
+        borderRadius: 34,
+        backgroundColor: 'rgba(255, 255, 255, 0.06)',
+        borderWidth: 1,
+        borderColor: 'rgba(255, 255, 255, 0.15)',
         justifyContent: 'center',
         alignItems: 'center',
         ...Platform.select({
             ios: {
-                shadowColor: '#00E5FF',
+                shadowColor: '#000',
                 shadowOpacity: 0.3,
-                shadowRadius: 20,
-                shadowOffset: { width: 0, height: 10 },
+                shadowRadius: 10,
+                shadowOffset: { width: 0, height: 4 },
             },
         }),
     },
 
-    // Water fill effect styles
+    actionButtonActive: {
+        backgroundColor: 'rgba(0, 229, 255, 0.08)',
+        borderColor: 'rgba(0, 229, 255, 0.4)',
+    },
+
+    actionBtnLabel: {
+        fontSize: 10,
+        fontWeight: '800',
+        color: 'rgba(255, 255, 255, 0.4)',
+        letterSpacing: 2,
+    },
+
+    slideAreaPortrait: {
+        width: '100%',
+        paddingBottom: 10,
+    },
+
+    // ========== LANDSCAPE LAYOUT STYLES ==========
+    landscapeWrapper: {
+        flex: 1,
+        flexDirection: 'row',
+    },
+
+    landscapeControlsContainer: {
+        position: 'absolute',
+        bottom: 40,
+        left: 125,
+        flexDirection: 'row',
+        alignItems: 'center',
+    },
+
+    landscapePlayBtn: {
+        width: 80,
+        height: 80,
+        borderRadius: 40,
+        justifyContent: 'center',
+        alignItems: 'center',
+        marginRight: 20,
+        borderWidth: 1,
+    },
+
+    landscapeCancelBtn: {
+        width: 56,
+        height: 56,
+        borderRadius: 28,
+        justifyContent: 'center',
+        alignItems: 'center',
+    },
+
+    landscapeTimerContainer: {
+        position: 'absolute',
+        bottom: 20,
+        right: 30,
+        alignItems: 'flex-start',
+        justifyContent: 'center',
+        width: 320,
+    },
+
+    landscapeTimerLabel: {
+        fontSize: 18,
+        fontWeight: '700',
+        color: 'rgba(255,255,255,0.4)',
+        letterSpacing: 2,
+        marginBottom: -10,
+    },
+
+    landscapeTimeText: {
+        fontSize: 180,
+        fontWeight: '700',
+        color: '#fff',
+        letterSpacing: -6,
+        lineHeight: 180,
+    },
+
+    landscapeSlideContainer: {
+        position: 'absolute',
+        top: 40,
+        bottom: 40,
+        left: 50,
+        width: 64,
+    },
+
+    landscapeProgressFiller: {
+        position: 'absolute',
+        top: 0,
+        bottom: 0,
+        left: 0,
+    },
+
+    // ========== SHARED COMPONENTS ==========
+    borrowContainer: {
+        marginTop: 20,
+        alignItems: 'center',
+        width: '100%',
+    },
+
+    borrowContainerLandscape: {
+        position: 'absolute',
+        top: 40,
+        right: 30,
+        alignItems: 'flex-end',
+    },
+
+    borrowLabel: {
+        fontSize: 10,
+        fontWeight: '700',
+        letterSpacing: 2,
+        marginBottom: 12,
+    },
+
+    borrowButtons: {
+        flexDirection: 'row',
+        justifyContent: 'center',
+        gap: 12,
+    },
+
+    borrowButtonsLandscape: {
+        justifyContent: 'flex-end',
+    },
+
+    borrowBtn: {
+        paddingHorizontal: 16,
+        paddingVertical: 10,
+        borderRadius: 12,
+        borderWidth: 1,
+        minWidth: 70,
+        alignItems: 'center',
+    },
+
+    borrowBtnText: {
+        fontSize: 14,
+        fontWeight: '700',
+    },
+
     waterContainer: {
         position: 'absolute',
         bottom: 0,
@@ -560,7 +894,6 @@ const styles = StyleSheet.create({
         overflow: 'hidden',
     },
 
-    // Wave layer 1 - Main curved wave
     waveLayer1: {
         position: 'absolute',
         top: -15,
@@ -568,13 +901,10 @@ const styles = StyleSheet.create({
         right: -40,
         height: 30,
         backgroundColor: 'rgba(0, 229, 255, 0.4)',
-        borderTopLeftRadius: 100,
-        borderTopRightRadius: 150,
-        borderBottomLeftRadius: 80,
-        borderBottomRightRadius: 120,
+        borderTopLeftRadius: 120,
+        borderTopRightRadius: 180,
     },
 
-    // Wave layer 2 - Secondary wave (opposite curvature)
     waveLayer2: {
         position: 'absolute',
         top: -8,
@@ -582,275 +912,18 @@ const styles = StyleSheet.create({
         right: -30,
         height: 22,
         backgroundColor: 'rgba(0, 200, 240, 0.35)',
-        borderTopLeftRadius: 120,
-        borderTopRightRadius: 80,
-        borderBottomLeftRadius: 100,
-        borderBottomRightRadius: 60,
+        borderTopLeftRadius: 140,
+        borderTopRightRadius: 100,
     },
 
-    // Wave layer 3 - Top foam/crest (lighter, smaller)
     waveLayer3: {
         position: 'absolute',
         top: -4,
         left: -20,
         right: -20,
         height: 12,
-        backgroundColor: 'rgba(255, 255, 255, 0.25)',
-        borderTopLeftRadius: 60,
-        borderTopRightRadius: 100,
-        borderBottomLeftRadius: 40,
-        borderBottomRightRadius: 80,
-    },
-
-    bubble: {
-        position: 'absolute',
-        backgroundColor: 'rgba(255, 255, 255, 0.5)',
-        borderRadius: 50,
-    },
-
-    bubble1: {
-        width: 8,
-        height: 8,
-        bottom: 20,
-        left: '20%',
-    },
-
-    bubble2: {
-        width: 12,
-        height: 12,
-        bottom: 30,
-        right: '25%',
-    },
-
-    bubble3: {
-        width: 6,
-        height: 6,
-        bottom: 15,
-        left: '50%',
-    },
-
-    bubble4: {
-        width: 10,
-        height: 10,
-        bottom: 25,
-        left: '35%',
-    },
-
-    bubble5: {
-        width: 7,
-        height: 7,
-        bottom: 10,
-        right: '40%',
-    },
-
-    cardInset: {
-        position: 'absolute',
-        top: 0, left: 0, right: 0,
-        height: 80,
-        zIndex: 2,
-    },
-
-    timeDisplay: {
-        alignItems: 'center',
-        zIndex: 10,
-    },
-
-    timeText: {
-        fontSize: 64,
-        fontWeight: '200',
-    },
-
-    timeWhite: {
-        color: '#fff',
-    },
-
-    timeCyan: {
-        color: 'rgba(0, 229, 255, 0.4)',
-    },
-
-    timeCyanText: {
-        color: '#00E5FF',
-        fontWeight: '500', // Making seconds pop more
-    },
-
-    timeLabels: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        marginTop: 8,
-        gap: 4,
-    },
-
-    timeLabel: {
-        fontSize: 10,
-        fontWeight: '600',
-        letterSpacing: 1,
-        color: 'rgba(255, 255, 255, 0.4)',
-        width: 36,
-        textAlign: 'center',
-    },
-
-    timeLabelSpacer: {
-        width: 20,
-    },
-
-    progressBadge: {
-        position: 'absolute',
-        bottom: 20,
-        paddingHorizontal: 16,
-        paddingVertical: 8,
-        borderRadius: 20,
-        backgroundColor: 'rgba(0, 229, 255, 0.2)',
-        borderWidth: 1,
-        borderColor: 'rgba(0, 229, 255, 0.3)',
-    },
-
-    progressBadgeText: {
-        fontSize: 12,
-        fontWeight: '800',
-        color: '#00E5FF',
-        letterSpacing: 2,
-    },
-
-    progressBadgeLandscape: {
-        backgroundColor: 'transparent',
-        borderWidth: 0,
-        bottom: 40,
-    },
-
-    controlsContainer: {
-        flexDirection: 'row',
-        justifyContent: 'center',
-        marginBottom: 24,
-    },
-
-    controlButton: {
-        alignItems: 'center',
-        marginHorizontal: 24,
-    },
-
-    circleButton: {
-        width: 64,
-        height: 64,
-        borderRadius: 32,
-        backgroundColor: 'rgba(20, 40, 50, 0.9)',
-        alignItems: 'center',
-        justifyContent: 'center',
-        borderWidth: 1,
-        borderColor: 'rgba(255,255,255,0.1)',
-        marginBottom: 8,
-    },
-
-    circleButtonActive: {
-        backgroundColor: 'rgba(0, 229, 255, 0.15)',
-        borderColor: 'rgba(0, 229, 255, 0.3)',
-    },
-
-    controlLabel: {
-        fontSize: 11,
-        fontWeight: '600',
-        letterSpacing: 1.5,
-        color: 'rgba(255,255,255,0.5)',
-    },
-
-    slideContainer: {
-        paddingHorizontal: 32,
-        paddingBottom: 16,
-    },
-
-    // Main Layout Containers
-    mainContent: {
-        flex: 1,
-        flexDirection: 'column',
-    },
-
-    mainContentLandscape: {
-        flex: 1,
-    },
-
-    timerSection: {
-        flex: 1,
-        justifyContent: 'center',
-    },
-
-    controlsSection: {
-        width: '100%',
-    },
-
-    landscapeWrapper: {
-        flex: 1,
-        flexDirection: 'row',
-    },
-
-    landscapeControlsContainer: {
-        position: 'absolute',
-        bottom: 40,
-        left: 125, // Shifted 5px right from 120
-        flexDirection: 'row',
-        alignItems: 'center',
-    },
-
-    landscapePlayBtn: {
-        width: 80,
-        height: 80,
-        borderRadius: 40,
-        justifyContent: 'center',
-        alignItems: 'center',
-        marginRight: 20,
-        borderWidth: 1,
-    },
-
-    landscapePlayBtnActive: {
-        backgroundColor: '#00E5FF',
-        borderColor: '#00E5FF',
-    },
-
-    landscapeCancelBtn: {
-        width: 56,
-        height: 56,
-        borderRadius: 28,
-        justifyContent: 'center',
-        alignItems: 'center',
-    },
-
-    landscapeTimerContainer: {
-        position: 'absolute',
-        bottom: 20, // Anchored to bottom-right corner per reference image
-        right: 30,
-        alignItems: 'flex-start', // Keeps text left-aligned for stability
-        justifyContent: 'center',
-        width: 320, // Give it enough fixed space
-        // 
-    },
-
-    landscapeTimerLabel: {
-        fontSize: 18,
-        fontWeight: '700',
-        color: 'rgba(255,255,255,0.4)',
-        letterSpacing: 2,
-        marginBottom: -10,
-    },
-
-    landscapeTimeText: {
-        fontSize: 180,
-        fontWeight: '700',
-        color: '#fff',
-        letterSpacing: -6,
-        lineHeight: 180,
-        textAlign: 'left', // Critical for stability when digits change
-    },
-
-    landscapeSlideContainer: {
-        position: 'absolute',
-        top: 40,
-        bottom: 40,
-        left: 50, // Shifted 2px right as requested
-        width: 64, // Vertical track width
-    },
-
-    landscapeProgressFiller: {
-        position: 'absolute',
-        top: 0,
-        bottom: 0,
-        left: 0,
+        backgroundColor: 'rgba(255, 255, 255, 0.2)',
+        borderTopLeftRadius: 80,
+        borderTopRightRadius: 120,
     },
 });
