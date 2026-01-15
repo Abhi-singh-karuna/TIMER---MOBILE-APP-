@@ -9,4 +9,8 @@ export interface Timer {
   borrowedTime?: number;        // Total seconds borrowed during this session
   savedTime?: number; // Time remaining when completed (in seconds)
   startTime?: string; // Time when the timer was first started (HH:MM)
+  startedTimestamp?: number;  // Unix timestamp when timer started running (for background tracking)
+  remainingSecondsAtStart?: number; // Seconds remaining when timer was started/resumed (for accurate background calculation)
+  pausedAt?: number;          // Unix timestamp when timer was paused
+  notificationId?: string;    // ID of scheduled notification for timer completion
 }

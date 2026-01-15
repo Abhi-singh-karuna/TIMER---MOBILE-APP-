@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { LogBox } from 'react-native';
+import { LogBox, AppState, AppStateStatus } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { useFonts } from 'expo-font';
@@ -23,6 +23,12 @@ import DeleteModal from './src/components/DeleteModal';
 import { Timer } from './src/constants/data';
 import { loadTimers, saveTimers } from './src/utils/storage';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import {
+  requestNotificationPermissions,
+  scheduleTimerNotification,
+  cancelTimerNotification,
+  calculateRemainingTime,
+} from './src/utils/backgroundTimer';
 
 const LANDSCAPE_COLOR_KEY = '@timer_app_landscape_color';
 const FILLER_COLOR_KEY = '@timer_filler_color';
@@ -105,13 +111,70 @@ export default function App() {
   const [soundRepetition, setSoundRepetition] = useState(1);
 
   const intervalRef = useRef<NodeJS.Timeout | null>(null);
+  const appState = useRef(AppState.currentState);
 
   useEffect(() => {
     initializeTimers();
     loadAllColors();
+    requestNotificationPermissions();
     return () => {
       if (intervalRef.current) clearInterval(intervalRef.current);
     };
+  }, []);
+
+  // AppState listener - recalculate timer when returning from background
+  useEffect(() => {
+    const handleAppStateChange = (nextAppState: AppStateStatus) => {
+      if (
+        appState.current.match(/inactive|background/) &&
+        nextAppState === 'active'
+      ) {
+        // App has come to the foreground - recalculate running timers
+        setTimers(prevTimers => {
+          return prevTimers.map(timer => {
+            if (timer.status === 'Running' && timer.startedTimestamp && timer.remainingSecondsAtStart !== undefined) {
+              // Calculate how many seconds have elapsed since startedTimestamp
+              const elapsedMs = Date.now() - timer.startedTimestamp;
+              const elapsedSeconds = Math.floor(elapsedMs / 1000);
+
+              // Use the stored remaining seconds and subtract elapsed time
+              const remainingSeconds = timer.remainingSecondsAtStart - elapsedSeconds;
+
+              if (remainingSeconds <= 0) {
+                // Timer completed while in background
+                const now = new Date();
+                const timeStr = `${now.getHours().toString().padStart(2, '0')}:${now.getMinutes().toString().padStart(2, '0')}`;
+                setCompletedAt(timeStr);
+                setCompletedBorrowedTime(timer.borrowedTime || 0);
+                return {
+                  ...timer,
+                  status: 'Completed' as const,
+                  time: '00:00:00',
+                  completedPercentage: 100,
+                  startedTimestamp: undefined,
+                  remainingSecondsAtStart: undefined,
+                  notificationId: undefined,
+                };
+              }
+
+              // Update time based on actual elapsed time and reset tracking for next background
+              return {
+                ...timer,
+                time: secondsToTime(remainingSeconds),
+                startedTimestamp: Date.now(),
+                remainingSecondsAtStart: remainingSeconds,
+              };
+            }
+            return timer;
+          });
+        });
+      }
+
+      appState.current = nextAppState;
+    };
+
+    const subscription = AppState.addEventListener('change', handleAppStateChange);
+    return () => subscription.remove();
   }, []);
 
   const loadAllColors = async () => {
@@ -252,6 +315,28 @@ export default function App() {
     if (!currentTimer || currentTimer.status === 'Completed') return;
 
     const isCurrentlyRunning = currentTimer.status === 'Running';
+    const currentSeconds = timeToSeconds(currentTimer.time);
+
+    let newNotificationId: string | null = null;
+
+    // Schedule or cancel notification based on new state
+    if (isCurrentlyRunning) {
+      // Pausing - cancel notification
+      await cancelTimerNotification(currentTimer.notificationId);
+    } else {
+      // Starting - schedule notification for timer completion
+      newNotificationId = await scheduleTimerNotification(
+        currentTimer.id,
+        currentSeconds,
+        currentTimer.title
+      );
+
+      // Also cancel any running timer's notification
+      const runningTimer = timers.find(t => t.status === 'Running' && t.id !== currentTimer.id);
+      if (runningTimer?.notificationId) {
+        await cancelTimerNotification(runningTimer.notificationId);
+      }
+    }
 
     const updatedTimers = timers.map(t => {
       if (t.id === timerToToggle.id) {
@@ -259,16 +344,27 @@ export default function App() {
         const isRestarting = t.status !== 'Running' && t.status !== 'Paused';
         const newStatus = isCurrentlyRunning ? 'Paused' : 'Running';
 
-        let startInfo = {};
+        let startInfo: Partial<Timer> = {};
         if (isRestarting && !t.startTime) {
           const now = new Date();
           startInfo = { startTime: `${now.getHours().toString().padStart(2, '0')}:${now.getMinutes().toString().padStart(2, '0')}` };
         }
 
+        // Track timestamp for background time calculation
+        if (!isCurrentlyRunning) {
+          startInfo.startedTimestamp = Date.now();
+          startInfo.remainingSecondsAtStart = timeToSeconds(t.time);
+          startInfo.notificationId = newNotificationId || undefined;
+        } else {
+          startInfo.startedTimestamp = undefined;
+          startInfo.remainingSecondsAtStart = undefined;
+          startInfo.notificationId = undefined;
+        }
+
         return { ...t, status: newStatus, ...startInfo } as Timer;
       } else if (t.status === 'Running') {
         // Pause any other running timer
-        return { ...t, status: 'Paused' } as Timer;
+        return { ...t, status: 'Paused', startedTimestamp: undefined, remainingSecondsAtStart: undefined, notificationId: undefined } as Timer;
       }
       return t;
     });
@@ -278,7 +374,7 @@ export default function App() {
   };
 
   // Open timer screen when clicking on a card
-  const handleStartTimer = (timer: Timer) => {
+  const handleStartTimer = async (timer: Timer) => {
     setActiveTimer(timer);
 
     if (timer.status === 'Completed') {
@@ -295,47 +391,81 @@ export default function App() {
       setCurrentScreen('active');
     } else {
       // For Upcoming timers, start them and go to ActiveTimer
+      const currentSeconds = timeToSeconds(timer.time);
+
+      // Schedule notification for timer completion
+      const notificationId = await scheduleTimerNotification(
+        timer.id,
+        currentSeconds,
+        timer.title
+      );
+
+      // Cancel any other running timer's notification
+      const runningTimer = timers.find(t => t.status === 'Running');
+      if (runningTimer?.notificationId) {
+        await cancelTimerNotification(runningTimer.notificationId);
+      }
+
       const updatedTimers = timers.map(t => {
         if (t.id === timer.id) {
           const now = new Date();
           const startTime = `${now.getHours().toString().padStart(2, '0')}:${now.getMinutes().toString().padStart(2, '0')}`;
-          return { ...t, status: 'Running', startTime } as Timer;
+          return {
+            ...t,
+            status: 'Running',
+            startTime,
+            startedTimestamp: Date.now(),
+            remainingSecondsAtStart: currentSeconds,
+            notificationId: notificationId || undefined,
+          } as Timer;
         } else if (t.status === 'Running') {
-          return { ...t, status: 'Paused' } as Timer;
+          return { ...t, status: 'Paused', startedTimestamp: undefined, remainingSecondsAtStart: undefined, notificationId: undefined } as Timer;
         }
         return t;
       });
       setTimers(updatedTimers);
+      await saveTimers(updatedTimers);
       setCurrentScreen('active');
     }
   };
 
   // Handle pause from active timer screen
-  const handlePause = () => {
+  const handlePause = async () => {
+    const runningTimer = timers.find(t => t.status === 'Running');
+    if (runningTimer?.notificationId) {
+      await cancelTimerNotification(runningTimer.notificationId);
+    }
+
     const updatedTimers = timers.map(t => {
       if (t.status === 'Running') {
-        return { ...t, status: 'Paused' } as Timer;
+        return { ...t, status: 'Paused', startedTimestamp: undefined, remainingSecondsAtStart: undefined, notificationId: undefined } as Timer;
       }
       return t;
     });
     setTimers(updatedTimers);
+    await saveTimers(updatedTimers);
   };
 
   // Handle cancel from active timer screen
-  const handleCancel = () => {
-    handlePause();
+  const handleCancel = async () => {
+    await handlePause();
     setActiveTimer(null);
     setCurrentScreen('list');
   };
 
   // Handle complete from active timer screen
-  const handleComplete = () => {
+  const handleComplete = async () => {
+    // Cancel the scheduled notification since we're completing early
+    const currentTimer = activeTimer ? timers.find(t => t.id === activeTimer.id) : null;
+    if (currentTimer?.notificationId) {
+      await cancelTimerNotification(currentTimer.notificationId);
+    }
+
     const now = new Date();
     const time = `${now.getHours().toString().padStart(2, '0')}:${now.getMinutes().toString().padStart(2, '0')}`;
     setCompletedAt(time);
 
     // Calculate completion percentage at the time of force-complete
-    const currentTimer = activeTimer ? timers.find(t => t.id === activeTimer.id) : null;
     let completedPct = 100; // Default to 100% if naturally completed
 
     if (currentTimer && activeTimer) {
@@ -365,7 +495,9 @@ export default function App() {
             status: 'Completed',
             time: '00:00:00',
             completedPercentage: completedPct,
-            savedTime: savedSecs
+            savedTime: savedSecs,
+            startedTimestamp: undefined,
+            notificationId: undefined,
           } as Timer;
         }
         return t;
@@ -378,8 +510,17 @@ export default function App() {
   };
 
   // Handle restart from complete screen
-  const handleRestart = () => {
+  const handleRestart = async () => {
     if (activeTimer) {
+      const totalSeconds = timeToSeconds(activeTimer.total);
+
+      // Schedule notification for when timer completes
+      const notificationId = await scheduleTimerNotification(
+        activeTimer.id,
+        totalSeconds,
+        activeTimer.title
+      );
+
       const updatedTimers = timers.map(t => {
         if (t.id === activeTimer.id) {
           return {
@@ -388,10 +529,19 @@ export default function App() {
             status: 'Running',
             borrowedTime: 0,
             completedPercentage: undefined,
-            savedTime: undefined
+            savedTime: undefined,
+            startedTimestamp: Date.now(),
+            remainingSecondsAtStart: totalSeconds,
+            notificationId: notificationId || undefined,
           } as Timer;
         }
-        return { ...t, status: t.status === 'Running' ? 'Paused' : t.status } as Timer;
+        return {
+          ...t,
+          status: t.status === 'Running' ? 'Paused' : t.status,
+          startedTimestamp: t.status === 'Running' ? undefined : t.startedTimestamp,
+          remainingSecondsAtStart: t.status === 'Running' ? undefined : t.remainingSecondsAtStart,
+          notificationId: t.status === 'Running' ? undefined : t.notificationId,
+        } as Timer;
       });
       setTimers(updatedTimers);
       saveTimers(updatedTimers);
