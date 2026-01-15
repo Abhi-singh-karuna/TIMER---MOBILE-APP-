@@ -29,10 +29,11 @@ const parseTimeToSeconds = (timeStr: string): number => {
     return parts[0] * 60 + parts[1];
 };
 
-// Calculate completion percentage
-const getCompletionPercentage = (currentTime: string, totalTime: string): number => {
+// Calculate completion percentage with borrowed time awareness
+const getCompletionPercentage = (currentTime: string, totalTime: string, borrowedSeconds: number = 0): number => {
     const current = parseTimeToSeconds(currentTime);
-    const total = parseTimeToSeconds(totalTime);
+    const originalTotal = parseTimeToSeconds(totalTime);
+    const total = originalTotal + borrowedSeconds;
     if (total === 0) return 0;
     const elapsed = total - current;
     return Math.min(100, Math.max(0, (elapsed / total) * 100));
@@ -44,6 +45,34 @@ const formatTotalTime = (totalSeconds: number): string => {
     const minutes = Math.floor((totalSeconds % 3600) / 60);
     const seconds = totalSeconds % 60;
     return `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
+};
+
+// Format borrowed time for display (e.g. +30 min or 1 hr 20 min)
+const formatBorrowedTime = (seconds: number): string => {
+    if (seconds <= 0) return '';
+    const h = Math.floor(seconds / 3600);
+    const m = Math.floor((seconds % 3600) / 60);
+    if (h > 0) {
+        return m > 0 ? `${h} hr ${m} min` : `${h} hr`;
+    }
+    return `+${m} min`;
+};
+
+// Format saved time (e.g. Saved 2 min or Saved 1 hr)
+const formatSavedTime = (seconds: number): string => {
+    if (seconds <= 0) return '';
+    const h = Math.floor(seconds / 3600);
+    const m = Math.floor((seconds % 3600) / 60);
+    if (h > 0) {
+        return m > 0 ? `Saved ${h}h ${m}m` : `Saved ${h}h`;
+    }
+    return `Saved ${m} min`;
+};
+
+// Format as 00:00:00 with borrowed time included
+const getExpandedTotal = (total: string, borrowedSecs: number): string => {
+    const originalSecs = parseTimeToSeconds(total);
+    return formatTotalTime(originalSecs + borrowedSecs);
 };
 
 const { width, height } = Dimensions.get('window');
@@ -97,6 +126,12 @@ export default function TimerList({
     const remainingHours = Math.floor(timeRemainingSeconds / 3600);
     const remainingMinutes = Math.floor((timeRemainingSeconds % 3600) / 60);
     const remainingSeconds = timeRemainingSeconds % 60;
+
+    // Calculate total borrowed time
+    const totalBorrowedSeconds = timers.reduce((acc, timer) => acc + (timer.borrowedTime || 0), 0);
+    const borrowedHours = Math.floor(totalBorrowedSeconds / 3600);
+    const borrowedMinutes = Math.floor((totalBorrowedSeconds % 3600) / 60);
+    const borrowedSeconds = totalBorrowedSeconds % 60;
 
     // Render timer cards - for landscape, render in pairs for 2-column grid
     const renderTimerCards = () => {
@@ -345,8 +380,22 @@ export default function TimerList({
                                 <MaterialIcons name="analytics" size={32} color="#00E5FF" />
                                 <Text style={styles.modalTitle}>Detailed Reports</Text>
                             </View>
+                            <View style={styles.reportStatsRow}>
+                                <View style={styles.reportStatItem}>
+                                    <Text style={styles.reportStatLabel}>TOTAL BORROWED</Text>
+                                    <Text style={styles.reportStatValue}>
+                                        {String(borrowedHours).padStart(2, '0')}:{String(borrowedMinutes).padStart(2, '0')}:{String(borrowedSeconds).padStart(2, '0')}
+                                    </Text>
+                                </View>
+                                <View style={styles.reportStatItem}>
+                                    <Text style={styles.reportStatLabel}>TIMERS EXTENDED</Text>
+                                    <Text style={styles.reportStatValue}>
+                                        {timers.filter(t => (t.borrowedTime || 0) > 0).length}
+                                    </Text>
+                                </View>
+                            </View>
                             <Text style={styles.modalMessage}>
-                                This is an upcoming feature you can view in an upcoming version.
+                                You can analyze your timer extensions here to improve your focus/estimation.
                             </Text>
                             <TouchableOpacity
                                 style={styles.modalCloseBtn}
@@ -390,10 +439,15 @@ function TimerCard({ timer, onLongPress, onPress, onPlayPause, isLandscape }: Ti
     const isCompleted = timer.status === 'Completed';
     const isActive = isRunning || isPaused;
 
-    // Calculate completion percentage for progress fill
+    // Calculate completion percentage for progress fill (total including borrowed)
+    const borrowedSeconds = timer.borrowedTime || 0;
     const completionPercentage = isActive && timer.total
-        ? getCompletionPercentage(timer.time, timer.total)
+        ? getCompletionPercentage(timer.time, timer.total, borrowedSeconds)
         : 0;
+
+    const originalTotalSeconds = parseTimeToSeconds(timer.total);
+    const totalSeconds = originalTotalSeconds + borrowedSeconds;
+    const originalWeight = totalSeconds > 0 ? (originalTotalSeconds / totalSeconds) : 1;
 
     // Animated value for smooth progress transition
     const animatedProgress = React.useRef(new Animated.Value(completionPercentage)).current;
@@ -428,30 +482,78 @@ function TimerCard({ timer, onLongPress, onPress, onPlayPause, isLandscape }: Ti
             {(isActive || isCompleted) && (
                 <View style={styles.progressFillContainer}>
                     {isCompleted ? (
-                        // Completed timers show the percentage at which they were completed
-                        <View
-                            style={[
-                                styles.progressFill,
-                                {
-                                    width: `${timer.completedPercentage ?? 100}%`,
-                                    backgroundColor: 'rgba(76,175,80,0.35)'
-                                }
-                            ]}
-                        />
+                        // Completed timers show three segments: Original Used, Borrowed Used, Saved
+                        <View style={styles.multiProgressWrapper}>
+                            {/* Segment 1: Original Time Used */}
+                            <View
+                                style={[
+                                    styles.progressFill,
+                                    {
+                                        width: `${Math.min(originalTotalSeconds, Math.max(0, totalSeconds - (timer.savedTime || 0))) / totalSeconds * 100}%`,
+                                        backgroundColor: 'rgba(76,175,80,0.45)' // Slightly more opaque
+                                    }
+                                ]}
+                            />
+                            {/* Segment 2: Borrowed Time Used */}
+                            {totalSeconds > originalTotalSeconds && (totalSeconds - (timer.savedTime || 0)) > originalTotalSeconds && (
+                                <View
+                                    style={[
+                                        styles.progressFill,
+                                        {
+                                            left: `${originalTotalSeconds / totalSeconds * 100}%`,
+                                            width: `${(Math.min(totalSeconds, totalSeconds - (timer.savedTime || 0)) - originalTotalSeconds) / totalSeconds * 100}%`,
+                                            backgroundColor: 'rgba(38,120,40,0.6)' // More distinct dark green
+                                        }
+                                    ]}
+                                />
+                            )}
+                            {/* Segment 3: Saved Time (Remaining) */}
+                            {(timer.savedTime || 0) > 0 && (
+                                <View
+                                    style={[
+                                        styles.progressFill,
+                                        {
+                                            left: `${Math.max(0, totalSeconds - (timer.savedTime || 0)) / totalSeconds * 100}%`,
+                                            width: `${(timer.savedTime || 0) / totalSeconds * 100}%`,
+                                            backgroundColor: 'rgba(255,255,255,0.3)' // Even brighter ghost shade
+                                        }
+                                    ]}
+                                />
+                            )}
+                        </View>
                     ) : (
-                        // Active timers show animated progress
-                        <Animated.View
-                            style={[
-                                styles.progressFill,
-                                {
-                                    width: animatedProgress.interpolate({
-                                        inputRange: [0, 100],
-                                        outputRange: ['0%', '100%'],
-                                    }),
-                                    backgroundColor: isRunning ? 'rgba(0,229,255,0.35)' : 'rgba(255,165,0,0.35)'
-                                }
-                            ]}
-                        />
+                        // Active timers show animated progress with two segments
+                        <View style={styles.multiProgressWrapper}>
+                            {/* Original Segment Fill */}
+                            <Animated.View
+                                style={[
+                                    styles.progressFill,
+                                    {
+                                        width: animatedProgress.interpolate({
+                                            inputRange: [0, originalWeight * 100, 100],
+                                            outputRange: ['0%', `${originalWeight * 100}%`, `${originalWeight * 100}%`],
+                                        }),
+                                        backgroundColor: isRunning ? 'rgba(0,229,255,0.35)' : 'rgba(255,165,0,0.35)'
+                                    }
+                                ]}
+                            />
+                            {/* Borrowed Segment Fill */}
+                            {borrowedSeconds > 0 && (
+                                <Animated.View
+                                    style={[
+                                        styles.progressFill,
+                                        {
+                                            left: `${originalWeight * 100}%`,
+                                            width: animatedProgress.interpolate({
+                                                inputRange: [0, originalWeight * 100, 100],
+                                                outputRange: ['0%', '0%', `${(1 - originalWeight) * 100}%`],
+                                            }),
+                                            backgroundColor: isRunning ? 'rgba(0,114,128,0.5)' : 'rgba(128,82,0,0.5)' // Darker shades
+                                        }
+                                    ]}
+                                />
+                            )}
+                        </View>
                     )}
                 </View>
             )}
@@ -462,11 +564,29 @@ function TimerCard({ timer, onLongPress, onPress, onPlayPause, isLandscape }: Ti
                 style={styles.cardInset}
             />
 
-            {/* Status Badge */}
-            <View style={[styles.statusBadge, { backgroundColor: statusConfig.bgColor }]}>
-                <Text style={[styles.statusText, { color: statusConfig.color }]}>
-                    {statusConfig.label}
-                </Text>
+            {/* Status & Borrow Row */}
+            <View style={styles.statusRow}>
+                <View style={[styles.statusBadge, { backgroundColor: statusConfig.bgColor }]}>
+                    <Text style={[styles.statusText, { color: statusConfig.color }]}>
+                        {statusConfig.label}
+                    </Text>
+                </View>
+                {borrowedSeconds > 0 && (
+                    <View style={styles.borrowedBadgeSmall}>
+                        <MaterialIcons name="add-alarm" size={12} color="rgba(255,255,255,0.4)" />
+                        <Text style={styles.borrowedTextSmall}>
+                            {formatBorrowedTime(borrowedSeconds)}
+                        </Text>
+                    </View>
+                )}
+                {isCompleted && (timer.savedTime || 0) > 0 && (
+                    <View style={styles.savedBadgeSmall}>
+                        <MaterialIcons name="speed" size={12} color="rgba(76,175,80,0.6)" />
+                        <Text style={styles.savedTextSmall}>
+                            {formatSavedTime(timer.savedTime || 0)}
+                        </Text>
+                    </View>
+                )}
             </View>
 
             {/* Timer Info */}
@@ -479,8 +599,8 @@ function TimerCard({ timer, onLongPress, onPress, onPlayPause, isLandscape }: Ti
                         <Text style={[styles.timerTime, isCompleted && styles.timerTimeCompleted]}>
                             {timer.time}
                         </Text>
-                        {isActive && timer.total && (
-                            <Text style={styles.timerTotal}>/{timer.total}</Text>
+                        {timer.total && (
+                            <Text style={styles.timerTotal}>/{getExpandedTotal(timer.total, borrowedSeconds)}</Text>
                         )}
                     </View>
                 </View>
@@ -801,6 +921,11 @@ const styles = StyleSheet.create({
         bottom: 0,
     },
 
+    multiProgressWrapper: {
+        flex: 1,
+        position: 'relative',
+    },
+
     progressEdge: {
         position: 'absolute',
         top: 0,
@@ -813,12 +938,52 @@ const styles = StyleSheet.create({
         shadowOffset: { width: 0, height: 0 },
     },
 
+    statusRow: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 8,
+        marginBottom: 12,
+    },
+
     statusBadge: {
         alignSelf: 'flex-start',
         paddingHorizontal: 10,
         paddingVertical: 4,
         borderRadius: 8,
-        marginBottom: 12,
+    },
+
+    borrowedBadgeSmall: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 4,
+        paddingHorizontal: 8,
+        paddingVertical: 4,
+        borderRadius: 8,
+        backgroundColor: 'rgba(255,255,255,0.05)',
+    },
+
+    borrowedTextSmall: {
+        fontSize: 10,
+        fontWeight: '600',
+        color: 'rgba(255,255,255,0.4)',
+    },
+
+    savedBadgeSmall: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 4,
+        paddingHorizontal: 8,
+        paddingVertical: 4,
+        borderRadius: 8,
+        backgroundColor: 'rgba(76,175,80,0.1)',
+        borderWidth: 0.5,
+        borderColor: 'rgba(76,175,80,0.2)',
+    },
+
+    savedTextSmall: {
+        fontSize: 10,
+        fontWeight: '600',
+        color: 'rgba(76,175,80,0.8)',
     },
 
     statusText: {
@@ -1271,24 +1436,53 @@ const styles = StyleSheet.create({
         color: '#fff',
     },
     modalMessage: {
-        fontSize: 15,
-        color: 'rgba(255,255,255,0.7)',
+        fontSize: 14,
+        color: 'rgba(255,255,255,0.5)',
         textAlign: 'center',
-        lineHeight: 22,
-        marginBottom: 32,
+        lineHeight: 20,
+        marginBottom: 24,
+    },
+    reportStatsRow: {
+        flexDirection: 'row',
+        justifyContent: 'space-between',
+        width: '100%',
+        marginBottom: 20,
+        gap: 12,
+    },
+    reportStatItem: {
+        flex: 1,
+        backgroundColor: 'rgba(255,255,255,0.05)',
+        borderRadius: 16,
+        padding: 12,
+        alignItems: 'center',
+        borderWidth: 1,
+        borderColor: 'rgba(255,255,255,0.1)',
+    },
+    reportStatLabel: {
+        fontSize: 9,
+        fontWeight: '700',
+        color: 'rgba(255,255,255,0.4)',
+        letterSpacing: 1,
+        marginBottom: 4,
+    },
+    reportStatValue: {
+        fontSize: 16,
+        fontWeight: '700',
+        color: '#00E5FF',
     },
     modalCloseBtn: {
-        paddingHorizontal: 40,
+        width: '100%',
         paddingVertical: 14,
-        borderRadius: 20,
-        backgroundColor: 'rgba(0,229,255,0.12)',
+        borderRadius: 16,
+        backgroundColor: 'rgba(0, 229, 255, 0.1)',
         borderWidth: 1,
-        borderColor: 'rgba(0,229,255,0.3)',
+        borderColor: 'rgba(0, 229, 255, 0.3)',
+        alignItems: 'center',
     },
     modalCloseBtnText: {
         fontSize: 14,
         fontWeight: '700',
         color: '#00E5FF',
-        letterSpacing: 1.2,
+        letterSpacing: 2,
     },
 });

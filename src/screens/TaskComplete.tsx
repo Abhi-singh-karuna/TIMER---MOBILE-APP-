@@ -14,11 +14,12 @@ import * as ScreenOrientation from 'expo-screen-orientation';
 
 interface TaskCompleteProps {
     completedAt: string;
+    borrowedTime?: number;
     onRestart: () => void;
     onDone: () => void;
 }
 
-export default function TaskComplete({ completedAt, onRestart, onDone }: TaskCompleteProps) {
+export default function TaskComplete({ completedAt, borrowedTime = 0, onRestart, onDone }: TaskCompleteProps) {
     const { width, height } = useWindowDimensions();
     const [isLandscape, setIsLandscape] = React.useState(false);
 
@@ -85,6 +86,14 @@ export default function TaskComplete({ completedAt, onRestart, onDone }: TaskCom
                         <Text style={[styles.subtitle, isLandscape && styles.subtitleLandscape]}>
                             FINISHED AT {completedAt}
                         </Text>
+                        {borrowedTime > 0 && (
+                            <View style={[styles.borrowedBadge, isLandscape && styles.borrowedBadgeLandscape]}>
+                                <MaterialIcons name="add-alarm" size={14} color="#00E5FF" />
+                                <Text style={styles.borrowedBadgeText}>
+                                    EXTENDED BY {Math.floor(borrowedTime / 60)}m {borrowedTime % 60}s
+                                </Text>
+                            </View>
+                        )}
                     </View>
 
                     {/* Right Section - Action Buttons */}
@@ -431,5 +440,28 @@ const styles = StyleSheet.create({
         borderRadius: 2,
         backgroundColor: '#00E5FF',
         marginBottom: 24,
+    },
+
+    // Borrowed Time Badge
+    borrowedBadge: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 6,
+        marginTop: 12,
+        paddingHorizontal: 12,
+        paddingVertical: 6,
+        borderRadius: 12,
+        backgroundColor: 'rgba(0, 229, 255, 0.08)',
+        borderWidth: 1,
+        borderColor: 'rgba(0, 229, 255, 0.2)',
+    },
+    borrowedBadgeLandscape: {
+        marginTop: 8,
+    },
+    borrowedBadgeText: {
+        fontSize: 10,
+        fontWeight: '700',
+        color: '#00E5FF',
+        letterSpacing: 1,
     },
 });

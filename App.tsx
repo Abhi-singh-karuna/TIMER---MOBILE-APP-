@@ -92,6 +92,7 @@ export default function App() {
   const [activeTimer, setActiveTimer] = useState<Timer | null>(null);
   const [currentScreen, setCurrentScreen] = useState<Screen>('list');
   const [completedAt, setCompletedAt] = useState('');
+  const [completedBorrowedTime, setCompletedBorrowedTime] = useState(0);
   const [fillerColor, setFillerColor] = useState(LANDSCAPE_PRESETS[0].filler);
   const [sliderButtonColor, setSliderButtonColor] = useState(LANDSCAPE_PRESETS[0].slider);
   const [timerTextColor, setTimerTextColor] = useState(LANDSCAPE_PRESETS[0].text);
@@ -145,6 +146,7 @@ export default function App() {
                 const now = new Date();
                 const timeStr = `${now.getHours().toString().padStart(2, '0')}:${now.getMinutes().toString().padStart(2, '0')}`;
                 setCompletedAt(timeStr);
+                setCompletedBorrowedTime(timer.borrowedTime || 0);
                 return { ...timer, status: 'Completed' as const, time: '00:00:00', completedPercentage: 100 };
               }
 
@@ -214,7 +216,14 @@ export default function App() {
     if (selectedTimer) {
       const updatedTimers = timers.map(t => {
         if (t.id === selectedTimer.id) {
-          return { ...t, time: t.total, status: 'Upcoming' } as Timer;
+          return {
+            ...t,
+            time: t.total,
+            status: 'Upcoming',
+            borrowedTime: 0,
+            completedPercentage: undefined,
+            savedTime: undefined
+          } as Timer;
         }
         return t;
       });
@@ -306,29 +315,40 @@ export default function App() {
     let completedPct = 100; // Default to 100% if naturally completed
 
     if (currentTimer && activeTimer) {
-      const currentSeconds = timeToSeconds(currentTimer.time);
-      const totalSeconds = timeToSeconds(activeTimer.total);
-      if (totalSeconds > 0) {
-        // Calculate how much was completed (elapsed / total)
-        const elapsed = totalSeconds - currentSeconds;
-        completedPct = Math.round((elapsed / totalSeconds) * 100);
+      const currentRemainingSeconds = timeToSeconds(currentTimer.time);
+      const originalTotalSeconds = timeToSeconds(activeTimer.total);
+      const borrowedSeconds = currentTimer.borrowedTime || 0;
+      const totalAllocatedSeconds = originalTotalSeconds + borrowedSeconds;
+
+      if (totalAllocatedSeconds > 0) {
+        // Calculate how much was completed (elapsed / totalAllocated)
+        const elapsed = totalAllocatedSeconds - currentRemainingSeconds;
+        completedPct = Math.round((elapsed / totalAllocatedSeconds) * 100);
       }
+
+      // Store the remaining time as "saved"
+      const savedSecs = currentRemainingSeconds;
+
+      // Update global state for success screen
+      setCompletedBorrowedTime(borrowedSeconds);
+
+      // Mark timer as completed
+      const updatedTimers = timers.map(t => {
+        if (activeTimer && t.id === activeTimer.id) {
+          return {
+            ...t,
+            status: 'Completed',
+            time: '00:00:00',
+            completedPercentage: completedPct,
+            savedTime: savedSecs
+          } as Timer;
+        }
+        return t;
+      });
+      setTimers(updatedTimers);
+      saveTimers(updatedTimers);
     }
 
-    // Mark timer as completed with the completion percentage
-    const updatedTimers = timers.map(t => {
-      if (activeTimer && t.id === activeTimer.id) {
-        return {
-          ...t,
-          status: 'Completed',
-          time: '00:00:00',
-          completedPercentage: completedPct
-        } as Timer;
-      }
-      return t;
-    });
-    setTimers(updatedTimers);
-    saveTimers(updatedTimers);
     setCurrentScreen('complete');
   };
 
@@ -337,11 +357,19 @@ export default function App() {
     if (activeTimer) {
       const updatedTimers = timers.map(t => {
         if (t.id === activeTimer.id) {
-          return { ...t, time: t.total, status: 'Running' } as Timer;
+          return {
+            ...t,
+            time: t.total,
+            status: 'Running',
+            borrowedTime: 0,
+            completedPercentage: undefined,
+            savedTime: undefined
+          } as Timer;
         }
         return { ...t, status: t.status === 'Running' ? 'Paused' : t.status } as Timer;
       });
       setTimers(updatedTimers);
+      saveTimers(updatedTimers);
     }
     setCurrentScreen('active');
   };
@@ -373,15 +401,43 @@ export default function App() {
     }
   };
 
+  const handleBorrowTime = async (seconds: number) => {
+    if (activeTimer) {
+      const updatedTimers = timers.map(t => {
+        if (t.id === activeTimer.id) {
+          const currentSeconds = timeToSeconds(t.time);
+          const newSeconds = currentSeconds + seconds;
+          const totalBorrowed = (t.borrowedTime || 0) + seconds;
+          return {
+            ...t,
+            time: secondsToTime(newSeconds),
+            borrowedTime: totalBorrowed
+          } as Timer;
+        }
+        return t;
+      });
+      setTimers(updatedTimers);
+      await saveTimers(updatedTimers);
+    }
+  };
+
   if (!fontsLoaded) {
     return null;
   }
 
   // Get current active timer data
   const currentActiveTimer = activeTimer ? timers.find(t => t.id === activeTimer.id) : null;
-  const progress = currentActiveTimer && activeTimer
-    ? Math.round((1 - timeToSeconds(currentActiveTimer.time) / timeToSeconds(activeTimer.total)) * 100)
+
+  // Calculate progress relative to total (original + borrowed)
+  const originalTotalSecs = currentActiveTimer ? timeToSeconds(currentActiveTimer.total) : 0;
+  const borrowedSecs = currentActiveTimer?.borrowedTime || 0;
+  const totalAllocatedSecs = originalTotalSecs + borrowedSecs;
+  const currentRemainingSecs = currentActiveTimer ? timeToSeconds(currentActiveTimer.time) : 0;
+
+  const progress = totalAllocatedSecs > 0
+    ? Math.round((1 - currentRemainingSecs / totalAllocatedSecs) * 100)
     : 0;
+
 
   const renderScreen = () => {
     switch (currentScreen) {
@@ -397,6 +453,7 @@ export default function App() {
             onPlayPause={() => activeTimer && handlePlayPause(activeTimer)}
             onCancel={handleCancel}
             onComplete={handleComplete}
+            onBorrowTime={handleBorrowTime}
             fillerColor={fillerColor}
             sliderButtonColor={sliderButtonColor}
             timerTextColor={timerTextColor}
@@ -422,6 +479,7 @@ export default function App() {
         return (
           <TaskComplete
             completedAt={completedAt}
+            borrowedTime={completedBorrowedTime}
             onRestart={handleRestart}
             onDone={handleDone}
           />

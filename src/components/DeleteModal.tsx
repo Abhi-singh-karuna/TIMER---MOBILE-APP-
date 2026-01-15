@@ -52,20 +52,33 @@ export default function DeleteModal({ visible, timer, onCancel, onReset, onDelet
 
                 <View style={[styles.modal, isLandscape && styles.modalLandscape]}>
                     {/* Title */}
-                    <Text style={styles.title}>Delete Timer?</Text>
+                    <Text style={styles.title}>Timer Actions</Text>
 
                     {/* Subtitle */}
-                    <Text style={styles.subtitle}>This action cannot be undone.</Text>
+                    <Text style={styles.subtitle}>Select an action for this timer.</Text>
                     <Text style={styles.timerInfo}>{timer.title.toUpperCase()} – {timer.total}</Text>
 
-                    {/* Buttons Row */}
-                    <View style={[styles.buttonRow, isLandscape && styles.buttonRowLandscape]}>
-                        <TouchableOpacity onPress={handleCancel} style={styles.cancelBtn} activeOpacity={0.7}>
-                            <Text style={styles.cancelText}>CANCEL</Text>
+                    {/* Buttons */}
+                    <View style={styles.buttonContainer}>
+                        <TouchableOpacity
+                            onPress={() => {
+                                Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+                                onReset();
+                            }}
+                            style={styles.resetBtn}
+                            activeOpacity={0.7}
+                        >
+                            <Text style={styles.resetText}>RESET TIMER</Text>
                         </TouchableOpacity>
-                        <TouchableOpacity onPress={handleDelete} style={styles.deleteBtn} activeOpacity={0.7}>
-                            <Text style={styles.deleteText}>DELETE</Text>
-                        </TouchableOpacity>
+
+                        <View style={[styles.buttonRow, isLandscape && styles.buttonRowLandscape]}>
+                            <TouchableOpacity onPress={handleCancel} style={styles.cancelBtn} activeOpacity={0.7}>
+                                <Text style={styles.cancelText}>CANCEL</Text>
+                            </TouchableOpacity>
+                            <TouchableOpacity onPress={handleDelete} style={styles.deleteBtn} activeOpacity={0.7}>
+                                <Text style={styles.deleteText}>DELETE</Text>
+                            </TouchableOpacity>
+                        </View>
                     </View>
                 </View>
             </View>
@@ -112,8 +125,13 @@ const styles = StyleSheet.create({
         paddingBottom: 20,
     },
 
+    buttonContainer: {
+        width: '100%',
+        gap: 12,
+    },
+
     buttonRowLandscape: {
-        marginTop: 10,
+        marginTop: 0,
     },
 
     title: {
@@ -143,6 +161,23 @@ const styles = StyleSheet.create({
     buttonRow: {
         flexDirection: 'row',
         gap: 12,
+    },
+
+    resetBtn: {
+        width: '100%',
+        borderRadius: 14,
+        paddingVertical: 14,
+        alignItems: 'center',
+        backgroundColor: 'rgba(0, 229, 255, 0.1)',
+        borderWidth: 1.5,
+        borderColor: 'rgba(0, 229, 255, 0.4)',
+    },
+
+    resetText: {
+        fontSize: 13,
+        fontWeight: '700',
+        color: '#00E5FF',
+        letterSpacing: 1.5,
     },
 
     cancelBtn: {

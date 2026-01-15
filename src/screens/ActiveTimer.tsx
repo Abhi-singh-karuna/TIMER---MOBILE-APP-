@@ -28,6 +28,7 @@ interface ActiveTimerProps {
     onPlayPause: () => void;
     onCancel: () => void;
     onComplete: () => void;
+    onBorrowTime: (seconds: number) => void;
     fillerColor?: string;
     sliderButtonColor?: string;
     timerTextColor?: string;
@@ -43,6 +44,7 @@ export default function ActiveTimer({
     onPlayPause,
     onCancel,
     onComplete,
+    onBorrowTime,
     fillerColor = '#00E5FF',
     sliderButtonColor = '#00E5FF',
     timerTextColor = '#FFFFFF'
@@ -234,6 +236,34 @@ export default function ActiveTimer({
         outputRange: [1, 0.8, 1],
     });
 
+    const renderBorrowTime = (isLandscape: boolean, colorTheme: 'white' | 'black' = 'white') => {
+        const isBlack = colorTheme === 'black';
+        const textColor = isBlack ? 'rgba(0,0,0,0.4)' : 'rgba(255,255,255,0.4)';
+        const btnBg = isBlack ? 'rgba(0,0,0,0.05)' : 'rgba(255,255,255,0.05)';
+        const btnBorder = isBlack ? 'rgba(0,0,0,0.1)' : 'rgba(255,255,255,0.1)';
+
+        return (
+            <View style={[styles.borrowContainer, isLandscape && styles.borrowContainerLandscape]}>
+                <Text style={[styles.borrowLabel, { color: textColor }]}>BORROW TIME</Text>
+                <View style={[styles.borrowButtons, isLandscape && styles.borrowButtonsLandscape]}>
+                    {[1, 5, 10].map((mins) => (
+                        <TouchableOpacity
+                            key={mins}
+                            style={[
+                                styles.borrowBtn,
+                                { backgroundColor: btnBg, borderColor: btnBorder }
+                            ]}
+                            onPress={() => onBorrowTime(mins * 60)}
+                            activeOpacity={0.7}
+                        >
+                            <Text style={[styles.borrowBtnText, { color: timerTextColor }]}>+{mins}m</Text>
+                        </TouchableOpacity>
+                    ))}
+                </View>
+            </View>
+        );
+    };
+
     const renderLandscapeContent = (colorTheme: 'white' | 'black') => {
         const isBlack = colorTheme === 'black';
         const textColor = isBlack ? '#000' : '#fff';
@@ -285,6 +315,9 @@ export default function ActiveTimer({
                         {hours}:{minutes}:{seconds}
                     </Text>
                 </View>
+
+                {/* Time Borrow Section for Landscape - Top Right Corner */}
+                {renderBorrowTime(true, colorTheme)}
             </View>
         );
     };
@@ -343,6 +376,10 @@ export default function ActiveTimer({
                             <Text style={styles.controlLabel}>CANCEL</Text>
                         </View>
                     </View>
+
+                    {/* Time Borrow Section for Portrait */}
+                    {renderBorrowTime(false)}
+
                     <View style={styles.slideContainer}>
                         <SlideToComplete onComplete={onComplete} />
                     </View>
@@ -852,5 +889,44 @@ const styles = StyleSheet.create({
         top: 0,
         bottom: 0,
         left: 0,
+    },
+
+    // Borrow Time Styles
+    borrowContainer: {
+        marginTop: 20,
+        alignItems: 'center',
+        width: '100%',
+    },
+    borrowContainerLandscape: {
+        position: 'absolute',
+        top: 40,
+        right: 30,
+        alignItems: 'flex-end',
+    },
+    borrowLabel: {
+        fontSize: 10,
+        fontWeight: '700',
+        letterSpacing: 2,
+        marginBottom: 12,
+    },
+    borrowButtons: {
+        flexDirection: 'row',
+        justifyContent: 'center',
+        gap: 12,
+    },
+    borrowButtonsLandscape: {
+        justifyContent: 'flex-end',
+    },
+    borrowBtn: {
+        paddingHorizontal: 16,
+        paddingVertical: 10,
+        borderRadius: 12,
+        borderWidth: 1,
+        minWidth: 70,
+        alignItems: 'center',
+    },
+    borrowBtnText: {
+        fontSize: 14,
+        fontWeight: '700',
     },
 });
