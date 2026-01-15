@@ -8,4 +8,5 @@ export interface Timer {
   completedPercentage?: number; // Percentage at which timer was completed (for force-complete tracking)
   borrowedTime?: number;        // Total seconds borrowed during this session
   savedTime?: number; // Time remaining when completed (in seconds)
+  startTime?: string; // Time when the timer was first started (HH:MM)
 }

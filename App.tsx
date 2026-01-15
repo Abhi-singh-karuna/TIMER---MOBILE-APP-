@@ -94,6 +94,7 @@ export default function App() {
   const [activeTimer, setActiveTimer] = useState<Timer | null>(null);
   const [currentScreen, setCurrentScreen] = useState<Screen>('list');
   const [completedAt, setCompletedAt] = useState('');
+  const [completedStartTime, setCompletedStartTime] = useState('');
   const [completedBorrowedTime, setCompletedBorrowedTime] = useState(0);
   const [fillerColor, setFillerColor] = useState(LANDSCAPE_PRESETS[0].filler);
   const [sliderButtonColor, setSliderButtonColor] = useState(LANDSCAPE_PRESETS[0].slider);
@@ -253,8 +254,16 @@ export default function App() {
     const updatedTimers = timers.map(t => {
       if (t.id === timerToToggle.id) {
         // Toggle: Running → Paused, anything else → Running
+        const isRestarting = t.status !== 'Running' && t.status !== 'Paused';
         const newStatus = isCurrentlyRunning ? 'Paused' : 'Running';
-        return { ...t, status: newStatus } as Timer;
+
+        let startInfo = {};
+        if (isRestarting && !t.startTime) {
+          const now = new Date();
+          startInfo = { startTime: `${now.getHours().toString().padStart(2, '0')}:${now.getMinutes().toString().padStart(2, '0')}` };
+        }
+
+        return { ...t, status: newStatus, ...startInfo } as Timer;
       } else if (t.status === 'Running') {
         // Pause any other running timer
         return { ...t, status: 'Paused' } as Timer;
@@ -283,7 +292,9 @@ export default function App() {
       // For Upcoming timers, start them and go to ActiveTimer
       const updatedTimers = timers.map(t => {
         if (t.id === timer.id) {
-          return { ...t, status: 'Running' } as Timer;
+          const now = new Date();
+          const startTime = `${now.getHours().toString().padStart(2, '0')}:${now.getMinutes().toString().padStart(2, '0')}`;
+          return { ...t, status: 'Running', startTime } as Timer;
         } else if (t.status === 'Running') {
           return { ...t, status: 'Paused' } as Timer;
         }
@@ -339,6 +350,7 @@ export default function App() {
 
       // Update global state for success screen
       setCompletedBorrowedTime(borrowedSeconds);
+      setCompletedStartTime(currentTimer.startTime || '--:--');
 
       // Mark timer as completed
       const updatedTimers = timers.map(t => {
@@ -429,6 +441,28 @@ export default function App() {
     }
   };
 
+  const handleBorrowFromComplete = async (seconds: number) => {
+    if (activeTimer) {
+      const updatedTimers = timers.map(t => {
+        if (t.id === activeTimer.id) {
+          const totalBorrowed = (t.borrowedTime || 0) + seconds;
+          return {
+            ...t,
+            time: secondsToTime(seconds),
+            status: 'Running',
+            borrowedTime: totalBorrowed,
+            completedPercentage: undefined,
+            savedTime: undefined
+          } as Timer;
+        }
+        return t;
+      });
+      setTimers(updatedTimers);
+      await saveTimers(updatedTimers);
+      setCurrentScreen('active');
+    }
+  };
+
   if (!fontsLoaded) {
     return null;
   }
@@ -491,9 +525,11 @@ export default function App() {
         return (
           <TaskComplete
             completedAt={completedAt}
+            startTime={completedStartTime}
             borrowedTime={completedBorrowedTime}
             onRestart={handleRestart}
             onDone={handleDone}
+            onBorrowTime={handleBorrowFromComplete}
             selectedSound={selectedSound}
             soundRepetition={soundRepetition}
           />

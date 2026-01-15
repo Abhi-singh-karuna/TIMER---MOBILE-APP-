@@ -18,6 +18,7 @@ export type RootStackParamList = {
     };
     TaskComplete: {
         completedAt: string;
+        startTime?: string;
     };
 };
 
@@ -75,7 +76,7 @@ export default function AppNavigator({
                             onBack={() => props.navigation.goBack()}
                             onPlayPause={() => { }}
                             onCancel={() => props.navigation.goBack()}
-                            onComplete={() => props.navigation.navigate('TaskComplete', { completedAt: '21:09' })}
+                            onComplete={() => props.navigation.navigate('TaskComplete', { completedAt: '21:09', startTime: '20:30' })}
                             onBorrowTime={() => { }}
                             fillerColor="#00E5FF"
                             sliderButtonColor="#00E5FF"
@@ -88,8 +89,10 @@ export default function AppNavigator({
                     {(props) => (
                         <TaskComplete
                             completedAt={(props.route.params as any)?.completedAt || '21:09'}
+                            startTime={(props.route.params as any)?.startTime || '20:30'}
                             onRestart={() => props.navigation.goBack()}
                             onDone={() => props.navigation.navigate('TimerList' as any)}
+                            onBorrowTime={() => { }}
                             selectedSound={0}
                             soundRepetition={1}
                         />
