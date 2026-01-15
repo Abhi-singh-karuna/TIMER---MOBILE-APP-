@@ -42,6 +42,7 @@ interface TaskCompleteProps {
     onBorrowTime: (seconds: number) => void;
     selectedSound: number;
     soundRepetition: number;
+    shouldPlaySound?: boolean;
 }
 
 export default function TaskComplete({
@@ -53,6 +54,7 @@ export default function TaskComplete({
     onBorrowTime,
     selectedSound,
     soundRepetition,
+    shouldPlaySound = true,
 }: TaskCompleteProps) {
     const { width, height } = useWindowDimensions();
     const [isLandscape, setIsLandscape] = React.useState(false);
@@ -79,8 +81,10 @@ export default function TaskComplete({
         ]).start();
     }, []);
 
-    // Play completion sound on mount
+    // Play completion sound on mount (only if shouldPlaySound is true)
     useEffect(() => {
+        if (!shouldPlaySound) return;
+
         const playSound = async () => {
             try {
                 // Configure audio mode
@@ -126,7 +130,7 @@ export default function TaskComplete({
                 soundRef.current.unloadAsync();
             }
         };
-    }, [selectedSound, soundRepetition]);
+    }, [selectedSound, soundRepetition, shouldPlaySound]);
 
     // Check orientation on mount and updates
     useEffect(() => {

@@ -43,8 +43,8 @@ const SOUND_OPTIONS = [
         name: 'Success',
         icon: 'celebration' as const,
         color: '#34C759',
-        // Using a success fanfare sound
-        uri: 'https://assets.mixkit.co/active_storage/sfx/1435/1435-preview.mp3',
+        // Using a working success sound
+        uri: 'https://assets.mixkit.co/active_storage/sfx/2568/2568-preview.mp3',
     },
     {
         id: 2,

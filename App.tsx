@@ -96,6 +96,7 @@ export default function App() {
   const [completedAt, setCompletedAt] = useState('');
   const [completedStartTime, setCompletedStartTime] = useState('');
   const [completedBorrowedTime, setCompletedBorrowedTime] = useState(0);
+  const [shouldPlayCompletionSound, setShouldPlayCompletionSound] = useState(true);
   const [fillerColor, setFillerColor] = useState(LANDSCAPE_PRESETS[0].filler);
   const [sliderButtonColor, setSliderButtonColor] = useState(LANDSCAPE_PRESETS[0].slider);
   const [timerTextColor, setTimerTextColor] = useState(LANDSCAPE_PRESETS[0].text);
@@ -178,7 +179,8 @@ export default function App() {
     if (currentScreen === 'active' && activeTimer) {
       const currentTimer = timers.find(t => t.id === activeTimer.id);
       if (currentTimer?.status === 'Completed') {
-        // Timer just completed, navigate to complete screen
+        // Timer just completed naturally, navigate to complete screen with sound
+        setShouldPlayCompletionSound(true);
         setCurrentScreen('complete');
       }
     }
@@ -280,10 +282,13 @@ export default function App() {
     setActiveTimer(timer);
 
     if (timer.status === 'Completed') {
-      // If completed, go directly to TaskComplete screen
+      // If completed, go directly to TaskComplete screen WITHOUT sound
       const now = new Date();
       const timeStr = `${now.getHours().toString().padStart(2, '0')}:${now.getMinutes().toString().padStart(2, '0')}`;
       setCompletedAt(timeStr);
+      setCompletedStartTime(timer.startTime || '--:--');
+      setCompletedBorrowedTime(timer.borrowedTime || 0);
+      setShouldPlayCompletionSound(false); // Don't play sound for already-completed timers
       setCurrentScreen('complete');
     } else if (timer.status === 'Paused') {
       // If paused, go to ActiveTimer but DON'T auto-start
@@ -463,6 +468,26 @@ export default function App() {
     }
   };
 
+  // Handle borrow time from TimerList popup (when timer completes in-list)
+  const handleBorrowTimeFromList = async (timer: Timer, seconds: number) => {
+    const updatedTimers = timers.map(t => {
+      if (t.id === timer.id) {
+        const totalBorrowed = (t.borrowedTime || 0) + seconds;
+        return {
+          ...t,
+          time: secondsToTime(seconds),
+          status: 'Running',
+          borrowedTime: totalBorrowed,
+          completedPercentage: undefined,
+          savedTime: undefined
+        } as Timer;
+      }
+      return t;
+    });
+    setTimers(updatedTimers);
+    await saveTimers(updatedTimers);
+  };
+
   if (!fontsLoaded) {
     return null;
   }
@@ -532,6 +557,7 @@ export default function App() {
             onBorrowTime={handleBorrowFromComplete}
             selectedSound={selectedSound}
             soundRepetition={soundRepetition}
+            shouldPlaySound={shouldPlayCompletionSound}
           />
         );
 
@@ -547,6 +573,9 @@ export default function App() {
             onStartTimer={handleStartTimer}
             onPlayPause={handlePlayPause}
             onSettings={() => setCurrentScreen('settings')}
+            onBorrowTime={handleBorrowTimeFromList}
+            selectedSound={selectedSound}
+            soundRepetition={soundRepetition}
           />
         );
     }
