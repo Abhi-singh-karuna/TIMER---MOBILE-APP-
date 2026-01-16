@@ -12,6 +12,7 @@ import {
     useWindowDimensions,
     Modal,
     PanResponder,
+    ActivityIndicator,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -19,14 +20,9 @@ import { BlurView } from 'expo-blur';
 import { MaterialIcons } from '@expo/vector-icons';
 import { Audio } from 'expo-av';
 import { activateKeepAwakeAsync, deactivateKeepAwake } from 'expo-keep-awake';
-import { Timer } from '../constants/data';
+import { Timer, Category, SOUND_OPTIONS } from '../constants/data';
 
-// Sound options matching SettingsScreen
-const SOUND_OPTIONS = [
-    { id: 0, name: 'Chime', uri: 'https://assets.mixkit.co/active_storage/sfx/2869/2869-preview.mp3' },
-    { id: 1, name: 'Success', uri: 'https://assets.mixkit.co/active_storage/sfx/2568/2568-preview.mp3' },
-    { id: 2, name: 'Alert', uri: 'https://assets.mixkit.co/active_storage/sfx/2870/2870-preview.mp3' },
-];
+// SOUND_OPTIONS moved to constants/data.ts
 
 // Helper function to parse time string (HH:MM:SS or MM:SS) to seconds
 const parseTimeToSeconds = (timeStr: string): number => {
@@ -92,7 +88,7 @@ const { width, height } = Dimensions.get('window');
 interface TimerListProps {
     timers: Timer[];
     onAddTimer: () => void;
-    onDeleteTimer: (timer: Timer) => void;
+    onLongPressTimer: (timer: Timer) => void;
     onStartTimer: (timer: Timer) => void;
     onPlayPause: (timer: Timer) => void;
     onSettings?: () => void;
@@ -101,12 +97,13 @@ interface TimerListProps {
     onAcknowledgeCompletion?: (timerId: number) => void;
     selectedSound?: number;
     soundRepetition?: number;
+    categories: Category[];
 }
 
 export default function TimerList({
     timers,
     onAddTimer,
-    onDeleteTimer,
+    onLongPressTimer,
     onStartTimer,
     onPlayPause,
     onSettings,
@@ -116,8 +113,13 @@ export default function TimerList({
     selectedSound = 0,
     soundRepetition = 1,
     selectedDate: propSelectedDate,
-    onDateChange
+    onDateChange,
+    categories
 }: TimerListProps & { selectedDate: Date, onDateChange: (date: Date) => void }) {
+    const [filterCategoryId, setFilterCategoryId] = useState<string>('All');
+    const [filterStatus, setFilterStatus] = useState<string>('All');
+    const [isCategoryExpanded, setIsCategoryExpanded] = useState(false);
+    const [isStatusExpanded, setIsStatusExpanded] = useState(false);
     const formatISOToTime = (isoString?: string) => {
         if (!isoString || isoString === '--:--') return '--:--';
         try {
@@ -177,12 +179,15 @@ export default function TimerList({
                 });
 
                 const playSoundOnce = async () => {
-                    const soundUri = SOUND_OPTIONS[selectedSound]?.uri;
-                    console.log('Playing sound:', soundUri);
+                    const soundOption = SOUND_OPTIONS[selectedSound];
+                    const soundUri = soundOption?.uri;
+
                     if (!soundUri) {
-                        console.error('No sound URI found for index:', selectedSound);
+                        console.log('Sound is muted or NO URI found for index:', selectedSound);
                         return;
                     }
+
+                    console.log('Playing sound:', soundUri);
 
                     const { sound } = await Audio.Sound.createAsync(
                         { uri: soundUri },
@@ -250,14 +255,20 @@ export default function TimerList({
         return `${date.getFullYear()}-${(date.getMonth() + 1).toString().padStart(2, '0')}-${date.getDate().toString().padStart(2, '0')}`;
     };
 
-    const filteredTimers = timers.filter(t => t.forDate === formatDate(propSelectedDate));
+    const dateFilteredTimers = timers.filter(t => t.forDate === formatDate(propSelectedDate));
 
-    // Calculate analytics
-    const completedCount = filteredTimers.filter(t => t.status === 'Completed').length;
-    const totalCount = filteredTimers.length;
+    const filteredTimers = dateFilteredTimers.filter(t => {
+        const matchesCategory = filterCategoryId === 'All' || t.categoryId === filterCategoryId;
+        const matchesStatus = filterStatus === 'All' || t.status === filterStatus;
+        return matchesCategory && matchesStatus;
+    });
+
+    // Calculate analytics (based on date matches only, or filtered? Let's keep analytics for the whole day)
+    const completedCount = dateFilteredTimers.filter(t => t.status === 'Completed').length;
+    const totalCount = dateFilteredTimers.length;
     const completionPercentage = totalCount > 0 ? Math.round((completedCount / totalCount) * 100) : 0;
 
-    // Calculate total time from all timers
+    // Calculate total time (for the selected filters)
     const totalTimeSeconds = filteredTimers.reduce((acc, timer) => {
         return acc + parseTimeToSeconds(timer.total);
     }, 0);
@@ -283,6 +294,9 @@ export default function TimerList({
     const borrowedHours = Math.floor(totalBorrowedSeconds / 3600);
     const borrowedMinutes = Math.floor((totalBorrowedSeconds % 3600) / 60);
     const borrowedSeconds = totalBorrowedSeconds % 60;
+
+    const isToday = formatDate(propSelectedDate) === formatDate(new Date());
+    const dateLabel = isToday ? 'TODAY' : `on ${dayName} ${dayNum}`;
     // Calendar Helpers
     const getDaysInMonth = (date: Date) => {
         const year = date.getFullYear();
@@ -472,10 +486,11 @@ export default function TimerList({
                         <TimerCard
                             key={timer.id}
                             timer={timer}
-                            onLongPress={() => onDeleteTimer(timer)}
+                            onLongPress={() => onLongPressTimer(timer)}
                             onPress={() => onStartTimer(timer)}
                             onPlayPause={() => onPlayPause(timer)}
                             isLandscape={true}
+                            categories={categories}
                         />
                     ))}
                     {pair.length === 1 && <View style={styles.cardPlaceholder} />}
@@ -502,10 +517,11 @@ export default function TimerList({
             <TimerCard
                 key={timer.id}
                 timer={timer}
-                onLongPress={() => onDeleteTimer(timer)}
+                onLongPress={() => onLongPressTimer(timer)}
                 onPress={() => onStartTimer(timer)}
                 onPlayPause={() => onPlayPause(timer)}
                 isLandscape={false}
+                categories={categories}
             />
         ));
     };
@@ -530,13 +546,15 @@ export default function TimerList({
                             {/* Single Analytics Card containing all content */}
                             <View style={styles.analyticsCardWrapper}>
                                 <ScrollView showsVerticalScrollIndicator={false} style={styles.leftPanelScroll}>
-                                    {/* Title Row with Percentage */}
-                                    <View style={styles.titleRowLandscape}>
-                                        <Text style={styles.headerTitleLandscape}>Daily{'\n'}Timers</Text>
-                                        <Text style={styles.percentBadge}>{completionPercentage}%</Text>
-                                    </View>
+                                    {/* Title Row with Percentage (Only for Today) */}
+                                    {isToday && (
+                                        <View style={styles.titleRowLandscape}>
+                                            <Text style={styles.headerTitleLandscape}>Daily{'\n'}Timers</Text>
+                                            <Text style={styles.percentBadge}>{completedCount}/{totalCount}</Text>
+                                        </View>
+                                    )}
 
-                                    {/* Date */}
+                                    {/* Date display with context labeling */}
                                     <TouchableOpacity
                                         style={styles.dateLandscapeRow}
                                         onPress={() => {
@@ -548,48 +566,119 @@ export default function TimerList({
                                         activeOpacity={0.7}
                                     >
                                         <MaterialIcons name="calendar-today" size={14} color="#00E5FF" />
-                                        <Text style={styles.dateLandscapeText}>  {dayName}, {dayNum} {monthName}</Text>
+                                        <Text style={[styles.dateLandscapeText, !isToday && { color: '#fff', fontSize: 16 }]}>
+                                            {isToday ? `  ${dayName}, ${dayNum} ${monthName}` : `  ${dateLabel} ${monthName}`}
+                                        </Text>
                                     </TouchableOpacity>
 
                                     {showCalendar ? (
                                         renderCalendar()
                                     ) : (
                                         <>
-                                            {/* Progress Section */}
-                                            <View style={styles.progressSection}>
-                                                <View style={styles.progressLabelRow}>
-                                                    <Text style={styles.progressLabelText}>PROGRESS</Text>
-                                                    <Text style={styles.progressFraction}>{completedCount} of {totalCount}</Text>
-                                                </View>
-                                                <Text style={styles.completedText}>Completed</Text>
-                                                <View style={styles.progressBarBg}>
-                                                    <View style={[styles.progressBarFill, { width: `${completionPercentage}%` }]} />
-                                                </View>
-                                            </View>
-
-                                            {/* Stats Cards Row */}
-                                            <View style={styles.statsCardsRow}>
-                                                {/* Total Duration Card */}
-                                                <View style={styles.statCard}>
-                                                    <Text style={styles.statCardLabel}>TOTAL DURATION</Text>
-                                                    <Text style={styles.statCardValue}>{String(totalHours).padStart(2, '0')}h {String(totalMinutes).padStart(2, '0')}m</Text>
-                                                </View>
-
-                                                {/* Completed Card */}
-                                                <View style={styles.statCard}>
-                                                    <Text style={styles.statCardLabel}>COMPLETED</Text>
-                                                    <Text style={styles.statCardValueLarge}>{completedCount}</Text>
+                                            {/* Compact Stats Grid */}
+                                            <View style={styles.compactStatsGrid}>
+                                                <View style={styles.compactStatRow}>
+                                                    <View style={styles.compactStatItem}>
+                                                        <Text style={styles.compactStatLabel}>TOTAL DURATION</Text>
+                                                        <Text style={styles.compactStatValue}>
+                                                            {String(totalHours).padStart(2, '0')}h {String(totalMinutes).padStart(2, '0')}m
+                                                        </Text>
+                                                    </View>
+                                                    <View style={styles.compactStatItem}>
+                                                        <Text style={styles.compactStatLabel}>REMAINING {isToday ? 'TODAY' : ''}</Text>
+                                                        <Text style={styles.compactStatValue}>
+                                                            {String(remainingHours).padStart(2, '0')}:{String(remainingMinutes).padStart(2, '0')}:{String(remainingSeconds).padStart(2, '0')}
+                                                        </Text>
+                                                    </View>
                                                 </View>
                                             </View>
 
-                                            {/* Time Remaining Card */}
-                                            <View style={styles.timeRemainingCard}>
-                                                <Text style={styles.timeRemainingLabel}>TIME REMAINING TODAY</Text>
-                                                <View style={styles.timeRemainingValueRow}>
-                                                    <Text style={styles.timeRemainingValue}>
-                                                        {String(remainingHours).padStart(2, '0')}:{String(remainingMinutes).padStart(2, '0')}:{String(remainingSeconds).padStart(2, '0')}
-                                                    </Text>
-                                                    <MaterialIcons name="bar-chart" size={16} color="#00E5FF" />
+                                            {/* Expandable Filters Section */}
+                                            <View style={styles.filtersSection}>
+                                                <Text style={styles.filterHeaderLabel}>FILTERS</Text>
+
+                                                {/* Category Filter */}
+                                                <View style={styles.expandableFilterContainer}>
+                                                    <TouchableOpacity
+                                                        style={styles.expandableHeader}
+                                                        onPress={() => setIsCategoryExpanded(!isCategoryExpanded)}
+                                                        activeOpacity={0.7}
+                                                    >
+                                                        <View style={styles.expandableHeaderLeft}>
+                                                            <MaterialIcons
+                                                                name={filterCategoryId === 'All' ? 'category' : (categories.find(c => c.id === filterCategoryId)?.icon || 'category')}
+                                                                size={16}
+                                                                color={filterCategoryId === 'All' ? 'rgba(255,255,255,0.4)' : (categories.find(c => c.id === filterCategoryId)?.color || '#00E5FF')}
+                                                            />
+                                                            <Text style={styles.expandableHeaderText}>
+                                                                {filterCategoryId === 'All' ? ' Category' : ` ${categories.find(c => c.id === filterCategoryId)?.name}`}
+                                                            </Text>
+                                                        </View>
+                                                        <MaterialIcons
+                                                            name={isCategoryExpanded ? "expand-less" : "expand-more"}
+                                                            size={20}
+                                                            color="rgba(255,255,255,0.3)"
+                                                        />
+                                                    </TouchableOpacity>
+
+                                                    {isCategoryExpanded && (
+                                                        <View style={styles.expandedContent}>
+                                                            <TouchableOpacity
+                                                                style={[styles.miniChip, filterCategoryId === 'All' && styles.miniChipActive]}
+                                                                onPress={() => setFilterCategoryId('All')}
+                                                            >
+                                                                <Text style={[styles.miniChipText, filterCategoryId === 'All' && styles.miniChipTextActive]}>All</Text>
+                                                            </TouchableOpacity>
+                                                            {categories.map(cat => (
+                                                                <TouchableOpacity
+                                                                    key={cat.id}
+                                                                    style={[
+                                                                        styles.miniChip,
+                                                                        filterCategoryId === cat.id && { backgroundColor: `${cat.color}20`, borderColor: cat.color }
+                                                                    ]}
+                                                                    onPress={() => setFilterCategoryId(cat.id)}
+                                                                >
+                                                                    <MaterialIcons name={cat.icon} size={10} color={filterCategoryId === cat.id ? cat.color : 'rgba(255,255,255,0.4)'} />
+                                                                    <Text style={[styles.miniChipText, filterCategoryId === cat.id && { color: cat.color }]}> {cat.name}</Text>
+                                                                </TouchableOpacity>
+                                                            ))}
+                                                        </View>
+                                                    )}
+                                                </View>
+
+                                                {/* Status Filter */}
+                                                <View style={styles.expandableFilterContainer}>
+                                                    <TouchableOpacity
+                                                        style={styles.expandableHeader}
+                                                        onPress={() => setIsStatusExpanded(!isStatusExpanded)}
+                                                        activeOpacity={0.7}
+                                                    >
+                                                        <View style={styles.expandableHeaderLeft}>
+                                                            <MaterialIcons name="tune" size={16} color={filterStatus === 'All' ? 'rgba(255,255,255,0.4)' : '#00E5FF'} />
+                                                            <Text style={styles.expandableHeaderText}>
+                                                                {filterStatus === 'All' ? ' Status' : ` ${filterStatus}`}
+                                                            </Text>
+                                                        </View>
+                                                        <MaterialIcons
+                                                            name={isStatusExpanded ? "expand-less" : "expand-more"}
+                                                            size={20}
+                                                            color="rgba(255,255,255,0.3)"
+                                                        />
+                                                    </TouchableOpacity>
+
+                                                    {isStatusExpanded && (
+                                                        <View style={styles.expandedContent}>
+                                                            {['All', 'Running', 'Paused', 'Upcoming', 'Completed'].map(status => (
+                                                                <TouchableOpacity
+                                                                    key={status}
+                                                                    style={[styles.miniChip, filterStatus === status && styles.miniChipActive]}
+                                                                    onPress={() => setFilterStatus(status)}
+                                                                >
+                                                                    <Text style={[styles.miniChipText, filterStatus === status && styles.miniChipTextActive]}>{status}</Text>
+                                                                </TouchableOpacity>
+                                                            ))}
+                                                        </View>
+                                                    )}
                                                 </View>
                                             </View>
                                         </>
@@ -688,7 +777,7 @@ export default function TimerList({
                                                     borderLeftColor: completionPercentage >= 75 ? '#00E5FF' : 'transparent',
                                                 }
                                             ]} />
-                                            <Text style={styles.progressPercentText}>{completionPercentage}%</Text>
+                                            <Text style={styles.progressPercentText}>{completedCount}/{totalCount}</Text>
                                         </View>
                                     </View>
 
@@ -960,6 +1049,7 @@ export default function TimerList({
                     )}
                 </TouchableOpacity>
             </Modal>
+
         </LinearGradient>
     );
 }
@@ -970,6 +1060,7 @@ interface TimerCardProps {
     onPress: () => void;
     onPlayPause: () => void;
     isLandscape: boolean;
+    categories: Category[];
 }
 
 // Status badge configuration
@@ -986,10 +1077,21 @@ const getStatusConfig = (status: Timer['status']) => {
     }
 };
 
-function TimerCard({ timer, onLongPress, onPress, onPlayPause, isLandscape }: TimerCardProps) {
-    const isRunning = timer.status === 'Running';
-    const isPaused = timer.status === 'Paused';
+function TimerCard({ timer, onLongPress, onPress, onPlayPause, isLandscape, categories }: TimerCardProps) {
     const isCompleted = timer.status === 'Completed';
+    const isRunning = timer.status === 'Running';
+
+    // Find category info
+    const category = categories.find(c => c.id === timer.categoryId);
+    const categoryColor = category?.color || '#00E5FF';
+    const categoryIcon = category?.icon || 'timer';
+
+    const getStatusColor = () => {
+        if (isCompleted) return '#4CAF50';
+        if (isRunning) return categoryColor;
+        return 'rgba(255,255,255,0.4)';
+    };
+    const isPaused = timer.status === 'Paused';
     const isActive = isRunning || isPaused;
 
     // Calculate completion percentage for progress fill (total including borrowed)
@@ -1018,7 +1120,7 @@ function TimerCard({ timer, onLongPress, onPress, onPlayPause, isLandscape }: Ti
     const statusConfig = getStatusConfig(timer.status);
 
     return (
-        <TouchableOpacity
+        <View
             style={[
                 styles.timerCard,
                 isRunning && styles.timerCardActive,
@@ -1026,14 +1128,19 @@ function TimerCard({ timer, onLongPress, onPress, onPlayPause, isLandscape }: Ti
                 isCompleted && styles.timerCardCompleted,
                 isLandscape && styles.timerCardLandscape
             ]}
-            onLongPress={onLongPress}
-            onPress={onPress}
-            activeOpacity={0.9}
-            delayLongPress={500}
         >
+            {/* Background Touchable for the whole card navigation */}
+            <TouchableOpacity
+                style={StyleSheet.absoluteFill}
+                onPress={onPress}
+                onLongPress={onLongPress}
+                activeOpacity={0.9}
+                delayLongPress={500}
+            />
+
             {/* Progress Fill - Shows completion percentage */}
             {(isActive || isCompleted) && (
-                <View style={styles.progressFillContainer}>
+                <View style={styles.progressFillContainer} pointerEvents="none">
                     {isCompleted ? (
                         // Completed timers show three segments: Original Used, Borrowed Used, Saved
                         <View style={styles.multiProgressWrapper}>
@@ -1115,72 +1222,85 @@ function TimerCard({ timer, onLongPress, onPress, onPlayPause, isLandscape }: Ti
             <LinearGradient
                 colors={['rgba(0,0,0,0.5)', 'rgba(0,0,0,0.2)', 'transparent']}
                 style={styles.cardInset}
+                pointerEvents="none"
             />
 
-            {/* Status & Borrow Row */}
-            <View style={styles.statusRow}>
-                <View style={[styles.statusBadge, { backgroundColor: statusConfig.bgColor }]}>
-                    <Text style={[styles.statusText, { color: statusConfig.color }]}>
-                        {statusConfig.label}
-                    </Text>
-                </View>
-                {borrowedSeconds > 0 && (
-                    <View style={styles.borrowedBadgeSmall}>
-                        <MaterialIcons name="add-alarm" size={12} color="rgba(255,255,255,0.4)" />
-                        <Text style={styles.borrowedTextSmall}>
-                            {formatBorrowedTime(borrowedSeconds)}
-                        </Text>
-                    </View>
-                )}
-                {isCompleted && (timer.savedTime || 0) > 0 && (
-                    <View style={styles.savedBadgeSmall}>
-                        <MaterialIcons name="speed" size={12} color="rgba(76,175,80,0.6)" />
-                        <Text style={styles.savedTextSmall}>
-                            {formatSavedTime(timer.savedTime || 0)}
-                        </Text>
-                    </View>
-                )}
-            </View>
 
-            {/* Timer Info */}
-            <View style={styles.cardContent}>
-                <View style={styles.cardLeft}>
-                    <Text style={[styles.timerTitle, isCompleted && styles.timerTitleCompleted]}>
-                        {timer.title}
-                    </Text>
+            {/* Timer Info and Actions */}
+            <View style={styles.cardContent} pointerEvents="box-none">
+                <View style={styles.cardLeft} pointerEvents="none">
+                    {/* Status Row */}
+                    <View style={styles.topStatusRow}>
+                        <View style={[styles.statusBadge, { backgroundColor: `${getStatusColor()}15` }]}>
+                            <Text style={[styles.statusText, { color: getStatusColor() }]}>
+                                {timer.status.toUpperCase()}
+                            </Text>
+                        </View>
+                        {borrowedSeconds > 0 && !isCompleted && (
+                            <View style={styles.borrowedBadgeSmall}>
+                                <MaterialIcons name="add-alarm" size={10} color="rgba(255,255,255,0.4)" />
+                                <Text style={styles.borrowedTextSmall}>
+                                    {formatBorrowedTime(borrowedSeconds)}
+                                </Text>
+                            </View>
+                        )}
+                        {isCompleted && (timer.savedTime || 0) > 0 && (
+                            <View style={styles.savedBadgeSmall}>
+                                <MaterialIcons name="speed" size={10} color="rgba(76,175,80,0.6)" />
+                                <Text style={styles.savedTextSmall}>
+                                    {formatSavedTime(timer.savedTime || 0)}
+                                </Text>
+                            </View>
+                        )}
+                    </View>
+
+                    <View style={styles.titleRow}>
+                        <Text
+                            style={[styles.timerTitle, isCompleted && styles.timerTitleCompleted]}
+                            numberOfLines={1}
+                        >
+                            {timer.title}
+                        </Text>
+                        <View style={[styles.categoryBadge, { backgroundColor: `${categoryColor}15`, borderColor: `${categoryColor}30` }]}>
+                            <MaterialIcons name={categoryIcon} size={10} color={categoryColor} />
+                            <Text style={[styles.categoryBadgeText, { color: categoryColor }]}>
+                                {category?.name.toUpperCase() || 'GENERAL'}
+                            </Text>
+                        </View>
+                    </View>
                     <View style={styles.timeRow}>
                         <Text style={[styles.timerTime, isCompleted && styles.timerTimeCompleted]}>
                             {timer.time}
                         </Text>
-                        {timer.total && (
-                            <Text style={styles.timerTotal}>/{getExpandedTotal(timer.total, borrowedSeconds)}</Text>
-                        )}
+                        <Text style={styles.timerTotal}>
+                            / {getExpandedTotal(timer.total, timer.borrowedTime || 0)}
+                        </Text>
                     </View>
                 </View>
 
-                {/* Action Button */}
                 {isCompleted ? (
-                    <View style={styles.completedIcon}>
+                    <View style={styles.completedCheckIcon}>
                         <MaterialIcons name="check-circle" size={28} color="#4CAF50" />
                     </View>
                 ) : (
                     <TouchableOpacity
-                        style={[styles.playButton, isRunning && styles.playButtonActive]}
-                        onPress={(e) => {
-                            e.stopPropagation();
-                            onPlayPause();
-                        }}
-                        activeOpacity={0.7}
+                        style={[
+                            styles.playButton,
+                            isRunning && styles.playButtonActive,
+                        ]}
+                        onPress={onPlayPause}
+                        hitSlop={{ top: 15, bottom: 15, left: 15, right: 15 }}
+                        activeOpacity={0.6}
                     >
                         <MaterialIcons
-                            name={isRunning ? 'pause' : 'play-arrow'}
-                            size={24}
-                            color={isRunning ? '#00E5FF' : '#fff'}
+                            name={isRunning ? "pause" : "play-arrow"}
+                            size={28}
+                            color={isRunning ? "#00E5FF" : "rgba(255,255,255,0.7)"}
                         />
                     </TouchableOpacity>
                 )}
             </View>
-        </TouchableOpacity>
+        </View>
     );
 }
 
@@ -1429,7 +1549,8 @@ const styles = StyleSheet.create({
     timerCard: {
         marginBottom: 16,
         borderRadius: 32,
-        padding: 20,
+        paddingHorizontal: 16,
+        paddingVertical: 24,
         backgroundColor: 'rgba(20, 35, 45, 0.5)',
         borderWidth: 1,
         borderColor: 'rgba(255,255,255,0.06)',
@@ -1491,18 +1612,19 @@ const styles = StyleSheet.create({
         shadowOffset: { width: 0, height: 0 },
     },
 
-    statusRow: {
+    topStatusRow: {
         flexDirection: 'row',
         alignItems: 'center',
-        gap: 8,
-        marginBottom: 12,
+        gap: 6,
+        marginBottom: 6,
     },
 
     statusBadge: {
         alignSelf: 'flex-start',
         paddingHorizontal: 10,
-        paddingVertical: 4,
-        borderRadius: 8,
+        paddingVertical: 3,
+        borderRadius: 99,
+        borderWidth: 1,
     },
 
     borrowedBadgeSmall: {
@@ -1540,9 +1662,9 @@ const styles = StyleSheet.create({
     },
 
     statusText: {
-        fontSize: 9,
-        fontWeight: '700',
-        letterSpacing: 1.5,
+        fontSize: 8,
+        fontFamily: 'PlusJakartaSans_800ExtraBold',
+        letterSpacing: 1,
     },
 
     cardContent: {
@@ -1556,10 +1678,10 @@ const styles = StyleSheet.create({
     },
 
     timerTitle: {
-        fontSize: 20,
-        fontWeight: '600',
+        fontSize: 14,
+        fontFamily: 'PlusJakartaSans_700Bold',
         color: '#fff',
-        marginBottom: 4,
+        marginRight: 8,
     },
 
     timerTitleCompleted: {
@@ -1572,9 +1694,10 @@ const styles = StyleSheet.create({
     },
 
     timerTime: {
-        fontSize: 28,
-        fontWeight: '300',
+        fontSize: 22,
+        fontFamily: 'PlusJakartaSans_700Bold',
         color: '#fff',
+        fontVariant: ['tabular-nums'],
     },
 
     timerTimeCompleted: {
@@ -1582,17 +1705,41 @@ const styles = StyleSheet.create({
         textDecorationLine: 'line-through',
     },
 
+    titleRow: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        marginBottom: 4,
+    },
+
+    categoryBadge: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        paddingHorizontal: 6,
+        paddingVertical: 2,
+        borderRadius: 6,
+        borderWidth: 1,
+        gap: 4,
+    },
+
+    categoryBadgeText: {
+        fontSize: 8,
+        fontFamily: 'PlusJakartaSans_800ExtraBold',
+        letterSpacing: 0.5,
+    },
+
     timerTotal: {
-        fontSize: 16,
-        fontWeight: '400',
+        fontSize: 13,
+        fontFamily: 'PlusJakartaSans_500Medium',
         color: 'rgba(255,255,255,0.4)',
         marginLeft: 4,
+        fontVariant: ['tabular-nums'],
+        letterSpacing: 0.5,
     },
 
     playButton: {
-        width: 52,
-        height: 52,
-        borderRadius: 26,
+        width: 42,
+        height: 42,
+        borderRadius: 21,
         backgroundColor: 'rgba(255,255,255,0.08)',
         alignItems: 'center',
         justifyContent: 'center',
@@ -1605,9 +1752,9 @@ const styles = StyleSheet.create({
         borderColor: 'rgba(0,229,255,0.3)',
     },
 
-    completedIcon: {
-        width: 52,
-        height: 52,
+    completedCheckIcon: {
+        width: 42,
+        height: 42,
         alignItems: 'center',
         justifyContent: 'center',
     },
@@ -1667,7 +1814,7 @@ const styles = StyleSheet.create({
 
     headerTitleLandscape: {
         fontSize: 22,
-        fontWeight: '700',
+        fontFamily: 'PlusJakartaSans_800ExtraBold',
         color: '#fff',
         lineHeight: 26,
     },
@@ -1934,7 +2081,8 @@ const styles = StyleSheet.create({
         flex: 1,
         marginBottom: 0,
         borderRadius: 16,
-        padding: 10,
+        paddingVertical: 8,
+        paddingHorizontal: 8,
         minHeight: 80,
     },
 
@@ -1956,6 +2104,113 @@ const styles = StyleSheet.create({
                 shadowOffset: { width: 0, height: 4 },
             },
         }),
+    },
+
+    compactStatsGrid: {
+        marginBottom: 16,
+    },
+
+    compactStatRow: {
+        flexDirection: 'row',
+        gap: 8,
+    },
+
+    compactStatItem: {
+        flex: 1,
+        padding: 10,
+        borderRadius: 16,
+        backgroundColor: 'rgba(255, 255, 255, 0.04)',
+        borderWidth: 1,
+        borderColor: 'rgba(255, 255, 255, 0.05)',
+    },
+
+    compactStatLabel: {
+        fontSize: 8,
+        fontWeight: '700',
+        color: 'rgba(255, 255, 255, 0.4)',
+        letterSpacing: 0.8,
+        marginBottom: 4,
+    },
+
+    compactStatValue: {
+        fontSize: 14,
+        fontWeight: '700',
+        color: '#fff',
+    },
+
+    filtersSection: {
+        marginTop: 12,
+        gap: 6,
+    },
+
+    filterHeaderLabel: {
+        fontSize: 8,
+        fontWeight: '800',
+        color: 'rgba(255, 255, 255, 0.25)',
+        letterSpacing: 1.2,
+        marginBottom: 4,
+    },
+
+    expandableFilterContainer: {
+        backgroundColor: 'rgba(255, 255, 255, 0.03)',
+        borderRadius: 12,
+        overflow: 'hidden',
+        borderWidth: 1,
+        borderColor: 'rgba(255, 255, 255, 0.05)',
+    },
+
+    expandableHeader: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        paddingHorizontal: 12,
+        paddingVertical: 10,
+    },
+
+    expandableHeaderLeft: {
+        flexDirection: 'row',
+        alignItems: 'center',
+    },
+
+    expandableHeaderText: {
+        fontSize: 11,
+        fontWeight: '600',
+        color: 'rgba(255, 255, 255, 0.6)',
+    },
+
+    expandedContent: {
+        padding: 8,
+        paddingTop: 0,
+        flexDirection: 'row',
+        flexWrap: 'wrap',
+        gap: 6,
+    },
+
+    miniChip: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        paddingHorizontal: 8,
+        paddingVertical: 4,
+        borderRadius: 6,
+        backgroundColor: 'rgba(255, 255, 255, 0.05)',
+        borderWidth: 1,
+        borderColor: 'rgba(255, 255, 255, 0.1)',
+    },
+
+    miniChipActive: {
+        backgroundColor: 'rgba(0, 229, 255, 0.15)',
+        borderColor: 'rgba(0, 229, 255, 0.4)',
+    },
+
+    miniChipText: {
+        fontSize: 9,
+        fontWeight: '600',
+        color: 'rgba(255, 255, 255, 0.5)',
+    },
+
+    miniChipTextActive: {
+        color: '#00E5FF',
+        fontWeight: '700',
     },
 
     // ========== MODAL STYLES ==========
@@ -1995,6 +2250,26 @@ const styles = StyleSheet.create({
         lineHeight: 20,
         marginBottom: 24,
     },
+    cardHeader: {
+        flexDirection: 'row',
+        justifyContent: 'space-between',
+        alignItems: 'center',
+        marginBottom: 10,
+    },
+
+    headerLeft: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 8,
+    },
+
+    categoryIconSmall: {
+        padding: 4,
+        borderRadius: 6,
+        alignItems: 'center',
+        justifyContent: 'center',
+    },
+
     reportStatsRow: {
         flexDirection: 'row',
         justifyContent: 'space-between',
@@ -2037,6 +2312,39 @@ const styles = StyleSheet.create({
         fontWeight: '700',
         color: '#00E5FF',
         letterSpacing: 2,
+    },
+
+    filterOption: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        paddingVertical: 14,
+        paddingHorizontal: 16,
+        borderRadius: 12,
+        marginBottom: 4,
+        backgroundColor: 'rgba(255, 255, 255, 0.03)',
+    },
+
+    filterOptionActive: {
+        backgroundColor: 'rgba(0, 229, 255, 0.08)',
+        borderWidth: 1,
+        borderColor: 'rgba(0, 229, 255, 0.2)',
+    },
+
+    filterOptionLeft: {
+        flexDirection: 'row',
+        alignItems: 'center',
+    },
+
+    filterOptionText: {
+        fontSize: 16,
+        color: 'rgba(255, 255, 255, 0.7)',
+        fontWeight: '500',
+    },
+
+    filterOptionTextActive: {
+        color: '#00E5FF',
+        fontWeight: '700',
     },
 
     // UNIFIED COMPACT COMPLETION POPUP STYLES
@@ -2208,7 +2516,7 @@ const styles = StyleSheet.create({
     },
     calendarTitle: {
         fontSize: 16,
-        fontWeight: '700',
+        fontFamily: 'PlusJakartaSans_700Bold',
         color: '#fff',
     },
     calendarNav: {
@@ -2270,6 +2578,7 @@ const styles = StyleSheet.create({
     todayText: {
         color: '#000',
         fontWeight: '700',
+        fontFamily: 'PlusJakartaSans_700Bold',
     },
     otherMonthText: {
         color: 'rgba(255,255,255,0.4)',

@@ -15,6 +15,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { MaterialIcons } from '@expo/vector-icons';
 import * as ScreenOrientation from 'expo-screen-orientation';
 import { Audio } from 'expo-av';
+import { Category } from '../constants/data';
 
 // Sound options matching SettingsScreen
 const SOUND_OPTIONS = [
@@ -46,6 +47,7 @@ interface TaskCompleteProps {
     selectedSound: number;
     soundRepetition: number;
     shouldPlaySound?: boolean;
+    category?: Category;
 }
 
 export default function TaskComplete({
@@ -59,6 +61,7 @@ export default function TaskComplete({
     selectedSound,
     soundRepetition,
     shouldPlaySound = true,
+    category,
 }: TaskCompleteProps) {
     const { width, height } = useWindowDimensions();
     const [isLandscape, setIsLandscape] = React.useState(false);
@@ -231,7 +234,7 @@ export default function TaskComplete({
                     {renderDetailCard('play-circle-outline', 'STARTED AT', formatISOToTime(startTime), '#00E5FF', true)}
                     {renderDetailCard('check-circle-outline', 'FINISHED AT', completedAt, '#00E5FF', true)}
                     {renderDetailCard('add-alarm', 'BORROWED', borrowedTime > 0 ? `${Math.floor(borrowedTime / 60)}m ${borrowedTime % 60}s` : 'NONE', '#FFD740', true)}
-                    {renderDetailCard('stars', 'STATUS', 'GOAL REACHED', '#4CAF50', true)}
+                    {category ? renderDetailCard(category.icon, 'CATEGORY', category.name.toUpperCase(), category.color, true) : renderDetailCard('stars', 'STATUS', 'GOAL REACHED', '#4CAF50', true)}
                 </View>
             </Animated.View>
 
@@ -263,6 +266,12 @@ export default function TaskComplete({
                     </View>
                 </View>
                 <Text style={styles.title}>Task Complete</Text>
+                {category && (
+                    <View style={[styles.categoryBadge, { backgroundColor: `${category.color}15`, borderColor: `${category.color}40` }]}>
+                        <MaterialIcons name={category.icon} size={16} color={category.color} />
+                        <Text style={[styles.categoryBadgeText, { color: category.color }]}>{category.name}</Text>
+                    </View>
+                )}
                 <View style={styles.timeInfoContainer}>
                     <Text style={styles.subtitle}>STARTED AT {formatISOToTime(startTime)}</Text>
                     <View style={styles.timeSeparator} />
@@ -427,6 +436,21 @@ const styles = StyleSheet.create({
         letterSpacing: 2,
         color: 'rgba(255,255,255,0.4)',
         textAlign: 'center',
+    },
+    categoryBadge: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        paddingHorizontal: 12,
+        paddingVertical: 6,
+        borderRadius: 12,
+        borderWidth: 1,
+        marginBottom: 12,
+        gap: 6,
+    },
+    categoryBadgeText: {
+        fontSize: 12,
+        fontWeight: '700',
+        letterSpacing: 1,
     },
     timeInfoContainer: {
         flexDirection: 'row',

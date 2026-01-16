@@ -20,10 +20,11 @@ interface DeleteModalProps {
     timer: Timer | null;
     onCancel: () => void;
     onReset: () => void;
+    onUpdate: () => void;
     onDelete: () => void;
 }
 
-export default function DeleteModal({ visible, timer, onCancel, onReset, onDelete }: DeleteModalProps) {
+export default function DeleteModal({ visible, timer, onCancel, onReset, onUpdate, onDelete }: DeleteModalProps) {
     const { width: screenWidth, height: screenHeight } = useWindowDimensions();
     const isLandscape = screenWidth > screenHeight;
     if (!timer) return null;
@@ -60,6 +61,17 @@ export default function DeleteModal({ visible, timer, onCancel, onReset, onDelet
 
                     {/* Buttons */}
                     <View style={styles.buttonContainer}>
+                        <TouchableOpacity
+                            onPress={() => {
+                                Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+                                onUpdate();
+                            }}
+                            style={styles.updateOptionBtn}
+                            activeOpacity={0.7}
+                        >
+                            <Text style={styles.updateOptionText}>UPDATE TIMER</Text>
+                        </TouchableOpacity>
+
                         <TouchableOpacity
                             onPress={() => {
                                 Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
@@ -177,6 +189,21 @@ const styles = StyleSheet.create({
         fontSize: 13,
         fontWeight: '700',
         color: '#00E5FF',
+        letterSpacing: 1.5,
+    },
+
+    updateOptionBtn: {
+        width: '100%',
+        borderRadius: 14,
+        paddingVertical: 14,
+        alignItems: 'center',
+        backgroundColor: '#00E5FF',
+    },
+
+    updateOptionText: {
+        fontSize: 13,
+        fontWeight: '800',
+        color: '#000',
         letterSpacing: 1.5,
     },
 

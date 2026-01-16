@@ -18,6 +18,7 @@ import * as ScreenOrientation from 'expo-screen-orientation';
 import { activateKeepAwakeAsync, deactivateKeepAwake } from 'expo-keep-awake';
 
 import SlideToComplete from '../components/SlideToComplete';
+import { Category } from '../constants/data';
 
 interface ActiveTimerProps {
     timerName: string;
@@ -33,6 +34,8 @@ interface ActiveTimerProps {
     fillerColor?: string;
     sliderButtonColor?: string;
     timerTextColor?: string;
+    categoryId?: string;
+    categories: Category[];
 }
 
 export default function ActiveTimer({
@@ -48,7 +51,9 @@ export default function ActiveTimer({
     onBorrowTime,
     fillerColor = '#00E5FF',
     sliderButtonColor = '#00E5FF',
-    timerTextColor = '#FFFFFF'
+    timerTextColor = '#FFFFFF',
+    categoryId,
+    categories
 }: ActiveTimerProps) {
     const { width, height } = useWindowDimensions();
     const [isLandscape, setIsLandscape] = React.useState(false);
@@ -350,11 +355,11 @@ export default function ActiveTimer({
                             <View style={styles.waterContainer}>
                                 <Animated.View style={[styles.waterFill, { height: waterHeight }]}>
                                     <LinearGradient
-                                        colors={['rgba(0, 229, 255, 0.45)', 'rgba(0, 150, 220, 0.65)', 'rgba(0, 80, 120, 0.85)']}
+                                        colors={[`${fillerColor}73`, `${fillerColor}A6`, `${fillerColor}D9`]}
                                         style={StyleSheet.absoluteFill}
                                     />
-                                    <Animated.View style={[styles.waveLayer1, { transform: [{ translateX: waveTranslateX }, { scaleX: waveScale }] }]} />
-                                    <Animated.View style={[styles.waveLayer2, { transform: [{ translateX: wave2TranslateX }] }]} />
+                                    <Animated.View style={[styles.waveLayer1, { transform: [{ translateX: waveTranslateX }, { scaleX: waveScale }], backgroundColor: `${fillerColor}66` }]} />
+                                    <Animated.View style={[styles.waveLayer2, { transform: [{ translateX: wave2TranslateX }], backgroundColor: `${fillerColor}59` }]} />
                                     <Animated.View style={[styles.waveLayer3, { transform: [{ translateX: wave3TranslateX }, { scaleY: wave3ScaleY }] }]} />
                                 </Animated.View>
                             </View>
@@ -387,8 +392,8 @@ export default function ActiveTimer({
 
                     {/* Simple Progress Pill */}
                     <View style={styles.progressPillPortrait}>
-                        <View style={[styles.progressPillFill, { width: `${progress}%` }]} />
-                        <Text style={styles.progressPillText}>{progress}% COMPLETE</Text>
+                        <View style={[styles.progressPillFill, { width: `${progress}%`, backgroundColor: `${fillerColor}25` }]} />
+                        <Text style={[styles.progressPillText, { color: fillerColor }]}>{progress}% COMPLETE</Text>
                     </View>
                 </View>
 
@@ -404,11 +409,19 @@ export default function ActiveTimer({
                     <View style={styles.mainControlsRow}>
                         <View style={styles.controlBtnWrapper}>
                             <TouchableOpacity
-                                style={[styles.actionButton, isRunning && styles.actionButtonActive]}
+                                style={[
+                                    styles.actionButton,
+                                    isRunning && styles.actionButtonActive,
+                                    isRunning && { borderColor: `${sliderButtonColor}60`, backgroundColor: `${sliderButtonColor}15` }
+                                ]}
                                 onPress={onPlayPause}
                                 activeOpacity={0.8}
                             >
-                                <MaterialIcons name={isRunning ? 'pause' : 'play-arrow'} size={32} color={isRunning ? '#00E5FF' : '#fff'} />
+                                <MaterialIcons
+                                    name={isRunning ? 'pause' : 'play-arrow'}
+                                    size={32}
+                                    color={isRunning ? sliderButtonColor : '#fff'}
+                                />
                             </TouchableOpacity>
                             <Text style={styles.actionBtnLabel}>{isRunning ? 'PAUSE' : 'START'}</Text>
                         </View>
@@ -475,9 +488,11 @@ export default function ActiveTimer({
                                     </TouchableOpacity>
                                 </View>
                                 <View style={styles.headerPill}>
-                                    <Text style={styles.timerName}>{timerName.toUpperCase()}</Text>
+                                    <View style={styles.categoryRow}>
+                                        <Text style={styles.timerName}>{timerName.toUpperCase()}</Text>
+                                    </View>
                                     <View style={styles.headerInfo}>
-                                        <Text style={styles.progressText}>{progress}%</Text>
+                                        <Text style={[styles.progressText, { color: fillerColor }]}>{progress}%</Text>
                                         <Text style={styles.dotSeparator}>•</Text>
                                         <Text style={styles.endTimeText}>{isRunning ? 'RUNNING' : 'PAUSED'}</Text>
                                     </View>
@@ -550,13 +565,19 @@ const styles = StyleSheet.create({
     },
 
     headerPill: {
-        paddingHorizontal: 24,
-        paddingVertical: 14,
+        paddingHorizontal: 20,
+        paddingVertical: 12,
         borderRadius: 24,
         backgroundColor: 'rgba(255,255,255,0.08)',
         borderWidth: 1,
         borderColor: 'rgba(255,255,255,0.1)',
         alignItems: 'center',
+    },
+
+    categoryRow: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        marginBottom: 2,
     },
 
     timerName: {

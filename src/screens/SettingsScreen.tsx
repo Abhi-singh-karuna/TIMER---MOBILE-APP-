@@ -9,12 +9,15 @@ import {
     Platform,
     Animated,
     ActivityIndicator,
+    TextInput,
+    Alert,
 } from 'react-native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import { Audio } from 'expo-av';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
 import { MaterialIcons } from '@expo/vector-icons';
-import AsyncStorage from '@react-native-async-storage/async-storage';
-import { Audio } from 'expo-av';
+import { Category, DEFAULT_CATEGORIES, CATEGORIES_KEY, SOUND_OPTIONS } from '../constants/data';
 
 const FILLER_COLOR_KEY = '@timer_filler_color';
 const SLIDER_BUTTON_COLOR_KEY = '@timer_slider_button_color';
@@ -22,38 +25,20 @@ const TEXT_COLOR_KEY = '@timer_text_color';
 const PRESET_INDEX_KEY = '@timer_active_preset_index';
 const COMPLETION_SOUND_KEY = '@timer_completion_sound';
 const SOUND_REPETITION_KEY = '@timer_sound_repetition';
+const AUTO_DELETE_PAST_KEY = '@timer_auto_delete_past';
+const ENABLE_FUTURE_TIMERS_KEY = '@timer_enable_future';
+const ENABLE_PAST_TIMERS_KEY = '@timer_enable_past';
 
 // Default colors
 const DEFAULT_FILLER_COLOR = '#00E5FF';
 const DEFAULT_SLIDER_BUTTON_COLOR = '#00E5FF';
 const DEFAULT_TEXT_COLOR = '#FFFFFF';
 
-// Sound options with URLs to royalty-free sounds
-const SOUND_OPTIONS = [
-    {
-        id: 0,
-        name: 'Chime',
-        icon: 'notifications' as const,
-        color: '#00E5FF',
-        // Using a simple chime sound
-        uri: 'https://assets.mixkit.co/active_storage/sfx/2869/2869-preview.mp3',
-    },
-    {
-        id: 1,
-        name: 'Success',
-        icon: 'celebration' as const,
-        color: '#34C759',
-        // Using a working success sound
-        uri: 'https://assets.mixkit.co/active_storage/sfx/2568/2568-preview.mp3',
-    },
-    {
-        id: 2,
-        name: 'Alert',
-        icon: 'campaign' as const,
-        color: '#FF9500',
-        // Using an alert tone
-        uri: 'https://assets.mixkit.co/active_storage/sfx/2870/2870-preview.mp3',
-    },
+// SOUND_OPTIONS moved to constants/data.ts
+
+const CATEGORY_ICONS: (keyof typeof MaterialIcons.glyphMap)[] = [
+    'category', 'work', 'fitness-center', 'menu-book', 'fastfood', 'local-hospital',
+    'home', 'laptop', 'shopping-cart', 'brush', 'code', 'sports-esports'
 ];
 
 const REPETITION_OPTIONS = [1, 2, 3, 4, 5];
@@ -72,6 +57,8 @@ interface SettingsScreenProps {
     soundRepetition: number;
     onSoundChange: (index: number) => void;
     onRepetitionChange: (count: number) => void;
+    categories: Category[];
+    onCategoriesChange: (categories: Category[]) => void;
 }
 
 const COLOR_PRESETS = [
@@ -122,11 +109,27 @@ export default function SettingsScreen({
     soundRepetition,
     onSoundChange,
     onRepetitionChange,
+    categories,
+    onCategoriesChange,
 }: SettingsScreenProps) {
     const { width, height } = useWindowDimensions();
     const isLandscape = width > height;
 
-    const previewWidth = isLandscape ? (width - 48 - 32) * 0.38 : width - 48;
+    const [activeTab, setActiveTab] = useState<'customization' | 'sound' | 'categories' | 'general' | 'about'>('customization');
+    const [editingCategory, setEditingCategory] = useState<Category | null>(null);
+    const [isAddingCategory, setIsAddingCategory] = useState(false);
+    const [newCategoryName, setNewCategoryName] = useState('');
+    const [selectedCategoryColor, setSelectedCategoryColor] = useState('#00E5FF');
+    const [selectedCategoryIcon, setSelectedCategoryIcon] = useState<keyof typeof MaterialIcons.glyphMap>('category');
+
+    // Behavior Settings State
+    const [autoDeletePast, setAutoDeletePast] = useState(false);
+    const [enableFutureTimers, setEnableFutureTimers] = useState(true);
+    const [enablePastTimers, setEnablePastTimers] = useState(true);
+
+    // Widen sidebar to 38% for a larger preview
+    const sidebarWidth = width * 0.38;
+    const previewWidth = isLandscape ? sidebarWidth - 34 : width - 48;
     const pulseAnim = useRef(new Animated.Value(1)).current;
     const scrollRef = useRef<ScrollView>(null);
     const [playingSound, setPlayingSound] = useState<number | null>(null);
@@ -145,8 +148,26 @@ export default function SettingsScreen({
         }
     }, []);
 
-    // Cleanup sound on unmount
+    // Load categories and cleanup sound on unmount
     useEffect(() => {
+        const loadSettings = async () => {
+            try {
+                const [savedAutoDelete, savedFuture, savedPast] = await Promise.all([
+                    AsyncStorage.getItem(AUTO_DELETE_PAST_KEY),
+                    AsyncStorage.getItem(ENABLE_FUTURE_TIMERS_KEY),
+                    AsyncStorage.getItem(ENABLE_PAST_TIMERS_KEY),
+                ]);
+
+                if (savedAutoDelete !== null) setAutoDeletePast(savedAutoDelete === 'true');
+                if (savedFuture !== null) setEnableFutureTimers(savedFuture === 'true');
+                if (savedPast !== null) setEnablePastTimers(savedPast === 'true');
+            } catch (err) {
+                console.error('Failed to load settings:', err);
+            }
+        };
+
+        loadSettings();
+
         return () => {
             if (soundRef.current) {
                 soundRef.current.unloadAsync();
@@ -228,6 +249,9 @@ export default function SettingsScreen({
     };
 
     const handlePreviewSound = async (soundIndex: number) => {
+        const soundOption = SOUND_OPTIONS[soundIndex];
+        if (!soundOption || !soundOption.uri) return;
+
         try {
             // Stop any currently playing sound
             if (soundRef.current) {
@@ -246,17 +270,19 @@ export default function SettingsScreen({
 
             // Load and play the sound
             const { sound } = await Audio.Sound.createAsync(
-                { uri: SOUND_OPTIONS[soundIndex].uri },
+                { uri: soundOption.uri },
                 { shouldPlay: true }
             );
             soundRef.current = sound;
 
             // Listen for playback completion
-            sound.setOnPlaybackStatusUpdate((status) => {
+            sound.setOnPlaybackStatusUpdate((status: any) => {
                 if (status.isLoaded && status.didJustFinish) {
                     setPlayingSound(null);
                     sound.unloadAsync();
-                    soundRef.current = null;
+                    if (soundRef.current === sound) {
+                        soundRef.current = null;
+                    }
                 }
             });
         } catch (error) {
@@ -274,6 +300,10 @@ export default function SettingsScreen({
                 AsyncStorage.setItem(PRESET_INDEX_KEY, '0'),
                 AsyncStorage.setItem(COMPLETION_SOUND_KEY, '0'),
                 AsyncStorage.setItem(SOUND_REPETITION_KEY, '1'),
+                AsyncStorage.setItem(CATEGORIES_KEY, JSON.stringify(DEFAULT_CATEGORIES)),
+                AsyncStorage.setItem(AUTO_DELETE_PAST_KEY, 'false'),
+                AsyncStorage.setItem(ENABLE_FUTURE_TIMERS_KEY, 'true'),
+                AsyncStorage.setItem(ENABLE_PAST_TIMERS_KEY, 'true'),
             ]);
             onFillerColorChange(DEFAULT_FILLER_COLOR);
             onSliderButtonColorChange(DEFAULT_SLIDER_BUTTON_COLOR);
@@ -281,6 +311,15 @@ export default function SettingsScreen({
             onPresetChange(0);
             onSoundChange(0);
             onRepetitionChange(1);
+            onCategoriesChange(DEFAULT_CATEGORIES);
+            setAutoDeletePast(false);
+            setEnableFutureTimers(true);
+            setEnablePastTimers(true);
+
+            // Scroll live preview back to default (index 0)
+            if (scrollRef.current) {
+                scrollRef.current.scrollTo({ x: 0, animated: true });
+            }
         } catch (e) {
             console.error('Failed to reset colors:', e);
         }
@@ -477,8 +516,10 @@ export default function SettingsScreen({
                             key={sound.id}
                             style={[
                                 styles.soundCard,
+                                isLandscape && styles.soundCardLandscape,
                                 selectedSound === sound.id && styles.soundCardSelected,
                                 selectedSound === sound.id && { borderColor: sound.color },
+                                sound.uri === null && { opacity: 0.8 },
                             ]}
                             onPress={() => handleSoundSelect(sound.id)}
                             activeOpacity={0.7}
@@ -504,20 +545,24 @@ export default function SettingsScreen({
                             </Text>
 
                             {/* Preview Button */}
-                            <TouchableOpacity
-                                style={[
-                                    styles.previewButton,
-                                    { backgroundColor: `${sound.color}20`, borderColor: sound.color }
-                                ]}
-                                onPress={() => handlePreviewSound(sound.id)}
-                                activeOpacity={0.7}
-                            >
-                                {playingSound === sound.id ? (
-                                    <ActivityIndicator size="small" color={sound.color} />
-                                ) : (
-                                    <MaterialIcons name="play-arrow" size={18} color={sound.color} />
-                                )}
-                            </TouchableOpacity>
+                            {sound.uri ? (
+                                <TouchableOpacity
+                                    style={[
+                                        styles.previewButton,
+                                        { backgroundColor: `${sound.color}20`, borderColor: sound.color }
+                                    ]}
+                                    onPress={() => handlePreviewSound(sound.id)}
+                                    activeOpacity={0.7}
+                                >
+                                    {playingSound === sound.id ? (
+                                        <ActivityIndicator size="small" color={sound.color} />
+                                    ) : (
+                                        <MaterialIcons name="play-arrow" size={18} color={sound.color} />
+                                    )}
+                                </TouchableOpacity>
+                            ) : (
+                                <View style={{ height: 36 }} />
+                            )}
 
                             {/* Selected Indicator */}
                             {selectedSound === sound.id && (
@@ -596,6 +641,18 @@ export default function SettingsScreen({
                 {renderRepetitionSection()}
             </View>
 
+            {/* Categories Section */}
+            <View style={styles.section}>
+                <Text style={styles.sectionTitle}>CATEGORIES</Text>
+                {renderCategoriesTab()}
+            </View>
+
+            {/* General Settings Section */}
+            <View style={styles.section}>
+                <Text style={styles.sectionTitle}>GENERAL SETTINGS</Text>
+                {renderGeneralTab()}
+            </View>
+
             {/* Reset to Defaults Section */}
             <View style={styles.section}>
                 <Text style={styles.sectionTitle}>DEFAULTS</Text>
@@ -616,39 +673,407 @@ export default function SettingsScreen({
         </ScrollView>
     );
 
-    // Landscape Layout - Side by side
-    const renderLandscapeLayout = () => (
-        <View style={styles.landscapeContainer}>
-            {/* Left Panel - Preview */}
-            <View style={styles.leftPanelSettings}>
-                <Text style={styles.sectionTitleLandscape}>LIVE PREVIEW</Text>
-                {renderLandscapePreview()}
+    const handleSaveCategory = async () => {
+        if (!newCategoryName.trim()) return;
 
-                {/* Reset & About below preview */}
-                <View style={styles.bottomSection}>
-                    <TouchableOpacity style={styles.resetButtonLandscape} onPress={handleResetToDefaults} activeOpacity={0.7}>
-                        <MaterialIcons name="refresh" size={18} color="#00E5FF" />
-                        <Text style={styles.resetButtonTextLandscape}>Reset Defaults</Text>
+        let updatedCategories;
+        if (editingCategory) {
+            updatedCategories = categories.map(cat =>
+                cat.id === editingCategory.id
+                    ? { ...cat, name: newCategoryName, color: selectedCategoryColor, icon: selectedCategoryIcon }
+                    : cat
+            );
+        } else {
+            const newCat: Category = {
+                id: Date.now().toString(),
+                name: newCategoryName,
+                color: selectedCategoryColor,
+                icon: selectedCategoryIcon,
+            };
+            updatedCategories = [...categories, newCat];
+        }
+
+        onCategoriesChange(updatedCategories);
+        try {
+            await AsyncStorage.setItem(CATEGORIES_KEY, JSON.stringify(updatedCategories));
+            setIsAddingCategory(false);
+            setEditingCategory(null);
+            setNewCategoryName('');
+        } catch (err) {
+            console.error('Failed to save category:', err);
+        }
+    };
+
+    const handleDeleteCategory = async (id: string) => {
+        Alert.alert(
+            "Delete Category",
+            "Are you sure you want to delete this category?",
+            [
+                { text: "Cancel", style: "cancel" },
+                {
+                    text: "Delete",
+                    style: "destructive",
+                    onPress: async () => {
+                        const updatedCategories = categories.filter(cat => cat.id !== id);
+                        onCategoriesChange(updatedCategories);
+                        try {
+                            await AsyncStorage.setItem(CATEGORIES_KEY, JSON.stringify(updatedCategories));
+                        } catch (err) {
+                            console.error('Failed to delete category:', err);
+                        }
+                    }
+                }
+            ]
+        );
+    };
+
+    const startEditCategory = (cat: Category) => {
+        setEditingCategory(cat);
+        setNewCategoryName(cat.name);
+        setSelectedCategoryColor(cat.color);
+        setSelectedCategoryIcon(cat.icon);
+        setIsAddingCategory(true);
+    };
+
+    const renderCategoriesTab = () => {
+        return (
+            <View style={styles.categoriesSection}>
+                {isLandscape && <Text style={styles.sectionTitleLandscape}>MANAGE CATEGORIES</Text>}
+                <View style={[styles.categoriesHeader, !isLandscape && { marginTop: 0 }]}>
+                    {!isLandscape && <Text style={styles.inputLabel}>MANAGE CATEGORIES</Text>}
+                    <TouchableOpacity
+                        style={styles.addCategoryBtn}
+                        onPress={() => {
+                            setEditingCategory(null);
+                            setNewCategoryName('');
+                            setSelectedCategoryColor('#00E5FF');
+                            setSelectedCategoryIcon('category');
+                            setIsAddingCategory(true);
+                        }}
+                    >
+                        <MaterialIcons name="add" size={20} color="#00E5FF" />
+                        <Text style={styles.addCategoryBtnText}>ADD NEW</Text>
                     </TouchableOpacity>
-                    <Text style={styles.versionText}>Timer App v1.0.0</Text>
+                </View>
+
+                {isAddingCategory ? (
+                    <View style={styles.categoryForm}>
+                        <View style={styles.categoryInputContainer}>
+                            <MaterialIcons name={selectedCategoryIcon} size={20} color={selectedCategoryColor} />
+                            <View style={{ flex: 1, marginLeft: 12 }}>
+                                <Text style={styles.inputLabel}>CATEGORY NAME</Text>
+                                <TextInput
+                                    style={styles.categoryInput}
+                                    value={newCategoryName}
+                                    onChangeText={setNewCategoryName}
+                                    placeholder="Enter name..."
+                                    placeholderTextColor="rgba(255,255,255,0.2)"
+                                    autoFocus
+                                />
+                            </View>
+                        </View>
+
+                        <Text style={styles.inputLabel}>SELECT ICON</Text>
+                        <View style={styles.iconsGrid}>
+                            {CATEGORY_ICONS.map(icon => (
+                                <TouchableOpacity
+                                    key={icon}
+                                    style={[
+                                        styles.iconPickerItem,
+                                        selectedCategoryIcon === icon && { backgroundColor: `${selectedCategoryColor}30`, borderColor: selectedCategoryColor }
+                                    ]}
+                                    onPress={() => setSelectedCategoryIcon(icon)}
+                                >
+                                    <MaterialIcons name={icon} size={20} color={selectedCategoryIcon === icon ? selectedCategoryColor : 'rgba(255,255,255,0.4)'} />
+                                </TouchableOpacity>
+                            ))}
+                        </View>
+
+                        <Text style={styles.inputLabel}>PICK COLOR</Text>
+                        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ paddingVertical: 8 }}>
+                            {COLOR_PRESETS.map(preset => (
+                                <TouchableOpacity
+                                    key={preset.value}
+                                    style={[
+                                        styles.catColorChip,
+                                        selectedCategoryColor === preset.value && { borderColor: '#fff' }
+                                    ]}
+                                    onPress={() => setSelectedCategoryColor(preset.value)}
+                                >
+                                    <View style={[styles.catColorInner, { backgroundColor: preset.value }]} />
+                                </TouchableOpacity>
+                            ))}
+                        </ScrollView>
+
+                        <View style={styles.categoryFormActions}>
+                            <TouchableOpacity
+                                style={styles.categoryCancelBtn}
+                                onPress={() => setIsAddingCategory(false)}
+                            >
+                                <Text style={styles.categoryCancelText}>CANCEL</Text>
+                            </TouchableOpacity>
+                            <TouchableOpacity
+                                style={styles.categorySaveBtn}
+                                onPress={handleSaveCategory}
+                            >
+                                <Text style={styles.categorySaveText}>{editingCategory ? 'UPDATE' : 'SAVE'}</Text>
+                            </TouchableOpacity>
+                        </View>
+                    </View>
+                ) : (
+                    <View style={styles.categoriesList}>
+                        {categories.map((cat, index) => (
+                            <React.Fragment key={cat.id}>
+                                <View style={styles.categoryItem}>
+                                    <View style={styles.categoryIconCircle}>
+                                        <MaterialIcons name={cat.icon} size={20} color={cat.color} />
+                                    </View>
+                                    <View style={styles.categoryInfo}>
+                                        <Text style={styles.categoryNameText}>{cat.name}</Text>
+                                        <View style={[styles.categoryColorPill, { backgroundColor: `${cat.color}15` }]}>
+                                            <View style={[styles.colorDot, { backgroundColor: cat.color }]} />
+                                            <Text style={[styles.categoryColorText, { color: cat.color }]}>{cat.color}</Text>
+                                        </View>
+                                    </View>
+                                    <View style={styles.categoryActions}>
+                                        <TouchableOpacity style={styles.actionBtn} onPress={() => startEditCategory(cat)}>
+                                            <MaterialIcons name="edit" size={18} color="rgba(255,255,255,0.4)" />
+                                        </TouchableOpacity>
+                                        <TouchableOpacity style={styles.actionBtn} onPress={() => handleDeleteCategory(cat.id)}>
+                                            <MaterialIcons name="delete" size={18} color="#FF3B30" />
+                                        </TouchableOpacity>
+                                    </View>
+                                </View>
+                                {index < categories.length - 1 && <View style={styles.sectionDivider} />}
+                            </React.Fragment>
+                        ))}
+                    </View>
+                )}
+            </View>
+        );
+    };
+
+    const toggleAutoDelete = async (val: boolean) => {
+        setAutoDeletePast(val);
+        try {
+            await AsyncStorage.setItem(AUTO_DELETE_PAST_KEY, String(val));
+        } catch (e) { console.error(e); }
+    };
+
+    const toggleFutureTimers = async (val: boolean) => {
+        setEnableFutureTimers(val);
+        try {
+            await AsyncStorage.setItem(ENABLE_FUTURE_TIMERS_KEY, String(val));
+        } catch (e) { console.error(e); }
+    };
+
+    const togglePastTimers = async (val: boolean) => {
+        setEnablePastTimers(val);
+        try {
+            await AsyncStorage.setItem(ENABLE_PAST_TIMERS_KEY, String(val));
+        } catch (e) { console.error(e); }
+    };
+
+    const renderGeneralTab = () => {
+        return (
+            <View style={styles.generalTabContainer}>
+                {isLandscape && <Text style={styles.sectionTitleLandscape}>GENERAL SETTINGS</Text>}
+
+                <View style={styles.behaviorList}>
+                    {/* Past Timers Toggle */}
+                    <View style={styles.settingRow}>
+                        <View style={styles.settingInfo}>
+                            <Text style={styles.settingLabel}>Enable Past Timers</Text>
+                            <Text style={styles.settingDescription}>Select and view timers from previous dates.</Text>
+                        </View>
+                        <TouchableOpacity
+                            onPress={() => togglePastTimers(!enablePastTimers)}
+                            style={[styles.customSwitch, enablePastTimers && styles.customSwitchActive]}
+                        >
+                            <View style={[styles.switchKnob, enablePastTimers && styles.switchKnobActive]} />
+                        </TouchableOpacity>
+                    </View>
+
+                    <View style={styles.sectionDivider} />
+
+                    {/* Future Timers Toggle */}
+                    <View style={styles.settingRow}>
+                        <View style={styles.settingInfo}>
+                            <Text style={styles.settingLabel}>Enable Future Timers</Text>
+                            <Text style={styles.settingDescription}>Allow creating and viewing timers for upcoming dates.</Text>
+                        </View>
+                        <TouchableOpacity
+                            onPress={() => toggleFutureTimers(!enableFutureTimers)}
+                            style={[styles.customSwitch, enableFutureTimers && styles.customSwitchActive]}
+                        >
+                            <View style={[styles.switchKnob, enableFutureTimers && styles.switchKnobActive]} />
+                        </TouchableOpacity>
+                    </View>
+
+                    <View style={styles.sectionDivider} />
+
+                    {/* Auto Delete Toggle */}
+                    <View style={styles.settingRow}>
+                        <View style={styles.settingInfo}>
+                            <Text style={styles.settingLabel}>Auto-delete Past Timers</Text>
+                            <Text style={styles.settingDescription}>Automatically remove timers from previous days.</Text>
+                        </View>
+                        <TouchableOpacity
+                            onPress={() => toggleAutoDelete(!autoDeletePast)}
+                            style={[styles.customSwitch, autoDeletePast && styles.customSwitchActive]}
+                        >
+                            <View style={[styles.switchKnob, autoDeletePast && styles.switchKnobActive]} />
+                        </TouchableOpacity>
+                    </View>
                 </View>
             </View>
+        );
+    };
 
-            {/* Right Panel - Color Pickers & Sound Settings */}
-            <ScrollView style={styles.rightPanelSettings} contentContainerStyle={styles.rightPanelContent}>
-                <Text style={styles.sectionTitleLandscape}>CUSTOMIZE COLORS</Text>
-                {renderColorPickerRow('Filler Color', 'gradient', fillerColor, handleFillerColorSelect)}
-                {renderColorPickerRow('Slider & Button', 'touch-app', sliderButtonColor, handleSliderButtonColorSelect)}
-                {renderColorPickerRow('Timer Text', 'text-fields', timerTextColor, handleTextColorSelect)}
+    // Landscape Layout - Side by side with Sidebar
+    const renderLandscapeLayout = () => {
+        const renderSidebarButton = (id: 'customization' | 'sound' | 'categories' | 'general' | 'about', icon: keyof typeof MaterialIcons.glyphMap, label: string) => {
+            const isActive = activeTab === id;
+            return (
+                <TouchableOpacity
+                    style={[
+                        styles.sidebarButtonRow,
+                        isActive && styles.sidebarButtonRowActive
+                    ]}
+                    onPress={() => setActiveTab(id)}
+                    activeOpacity={0.7}
+                >
+                    <View style={styles.sidebarIconLabelContainer}>
+                        <MaterialIcons
+                            name={icon}
+                            size={18}
+                            color={isActive ? '#00E5FF' : 'rgba(255,255,255,0.4)'}
+                        />
+                        <Text style={[
+                            styles.sidebarButtonText,
+                            isActive ? styles.sidebarButtonTextActive : styles.sidebarButtonTextInactive
+                        ]}>
+                            {label}
+                        </Text>
+                    </View>
+                    {isActive ? (
+                        <View style={styles.activeIndicatorSmall} />
+                    ) : (
+                        <MaterialIcons name="chevron-right" size={14} color="rgba(255,255,255,0.1)" />
+                    )}
+                </TouchableOpacity>
+            );
+        };
 
-                <Text style={[styles.sectionTitleLandscape, { marginTop: 16 }]}>COMPLETION SOUND</Text>
-                {renderSoundSection()}
+        return (
+            <View style={styles.landscapeContainer}>
+                {/* Left Panel - Permanent Preview + Sidebar Buttons */}
+                <View style={[styles.leftSidebarCard, { width: '38%' }]}>
+                    <Text style={styles.sidebarSectionTitle}>LIVE PREVIEW</Text>
 
-                <Text style={[styles.sectionTitleLandscape, { marginTop: 16 }]}>SOUND REPETITION</Text>
-                {renderRepetitionSection()}
-            </ScrollView>
-        </View>
-    );
+                    <View style={styles.sidebarPreviewWrapper}>
+                        {renderLandscapePreview()}
+                    </View>
+
+                    {/* Sidebar Navigation */}
+                    <View style={styles.sidebarNavSection}>
+                        <ScrollView
+                            showsVerticalScrollIndicator={false}
+                            contentContainerStyle={styles.sidebarButtonsScroll}
+                        >
+                            <View style={styles.sidebarButtonsList}>
+                                {renderSidebarButton('customization', 'palette', 'Theme')}
+                                {renderSidebarButton('sound', 'volume-up', 'Audio')}
+                                {renderSidebarButton('categories', 'category', 'Category')}
+                                {renderSidebarButton('general', 'settings', 'General')}
+                                {renderSidebarButton('about', 'info', 'Info')}
+                            </View>
+                        </ScrollView>
+                    </View>
+
+                    {/* Small Back Button */}
+                    <TouchableOpacity
+                        style={styles.smallBackButton}
+                        onPress={onBack}
+                        activeOpacity={0.7}
+                    >
+                        <MaterialIcons name="arrow-back" size={18} color="rgba(255,255,255,0.6)" />
+                    </TouchableOpacity>
+                </View>
+
+                {/* Right Panel - Content Card */}
+                <View style={styles.rightContentCard}>
+                    <ScrollView
+                        style={styles.rightContentScroll}
+                        contentContainerStyle={styles.rightContentScrollPadding}
+                        showsVerticalScrollIndicator={false}
+                    >
+                        {activeTab === 'customization' && (
+                            <View>
+                                <Text style={styles.sectionTitleLandscape}>CUSTOMIZE COLORS</Text>
+                                {renderColorPickerRow('Filler Color', 'gradient', fillerColor, handleFillerColorSelect)}
+                                <View style={styles.sectionDivider} />
+                                {renderColorPickerRow('Button Color', 'touch-app', sliderButtonColor, handleSliderButtonColorSelect)}
+                                <View style={styles.sectionDivider} />
+                                {renderColorPickerRow('Text Color', 'text-fields', timerTextColor, handleTextColorSelect)}
+
+                                <TouchableOpacity
+                                    style={styles.landscapeResetButton}
+                                    onPress={handleResetToDefaults}
+                                    activeOpacity={0.7}
+                                >
+                                    <MaterialIcons name="refresh" size={18} color="#00E5FF" />
+                                    <Text style={styles.resetButtonText}>Reset to Defaults</Text>
+                                </TouchableOpacity>
+                            </View>
+                        )}
+
+                        {activeTab === 'sound' && (
+                            <View>
+                                <Text style={styles.sectionTitleLandscape}>COMPLETION SOUND</Text>
+                                {renderSoundSection()}
+
+                                <View style={[styles.sectionDivider, { marginVertical: 24 }]} />
+
+                                <Text style={styles.sectionTitleLandscape}>SOUND REPETITION</Text>
+                                {renderRepetitionSection()}
+                            </View>
+                        )}
+
+                        {activeTab === 'categories' && renderCategoriesTab()}
+
+                        {activeTab === 'general' && renderGeneralTab()}
+
+                        {activeTab === 'about' && (
+                            <View style={styles.aboutContainerLandscape}>
+                                <Text style={styles.sectionTitleLandscape}>ABOUT</Text>
+                                <View style={styles.aboutHeaderLandscape}>
+                                    <LinearGradient
+                                        colors={['#00E5FF', '#0095FF']}
+                                        style={styles.aboutIconContainer}
+                                    >
+                                        <MaterialIcons name="timer" size={28} color="#000" />
+                                    </LinearGradient>
+                                    <View>
+                                        <Text style={styles.aboutTextMain}>Timer App</Text>
+                                        <Text style={styles.aboutTextSub}>Version 1.0.0</Text>
+                                    </View>
+                                </View>
+                                <Text style={styles.aboutDescription}>
+                                    A high-precision timer designed for focus and productivity. Customize your experience with unique themes and alert sounds.
+                                </Text>
+                                <View style={styles.sectionDivider} />
+                                <View style={styles.aboutFooterRow}>
+                                    <Text style={styles.aboutFooterText}>Built with React Native & Expo</Text>
+                                    <Text style={styles.aboutFooterText}>© 2026</Text>
+                                </View>
+                            </View>
+                        )}
+                    </ScrollView>
+                </View>
+            </View>
+        );
+    };
 
     return (
         <LinearGradient
@@ -656,15 +1081,20 @@ export default function SettingsScreen({
             locations={[0, 0.6, 1]}
             style={styles.container}
         >
-            <SafeAreaView style={styles.safeArea}>
-                {/* Header */}
-                <View style={[styles.header, isLandscape && styles.headerLandscape]}>
-                    <TouchableOpacity style={styles.backButton} onPress={onBack} activeOpacity={0.7}>
-                        <MaterialIcons name="arrow-back-ios" size={20} color="rgba(255,255,255,0.7)" style={{ marginLeft: 6 }} />
-                    </TouchableOpacity>
-                    <Text style={styles.headerTitle}>SETTINGS</Text>
-                    <View style={styles.headerSpacer} />
-                </View>
+            <SafeAreaView
+                style={styles.safeArea}
+                edges={isLandscape ? ['left', 'right'] : ['top', 'left', 'right', 'bottom']}
+            >
+                {/* Header - Only visible in portrait */}
+                {!isLandscape && (
+                    <View style={styles.header}>
+                        <TouchableOpacity style={styles.backButton} onPress={onBack} activeOpacity={0.7}>
+                            <MaterialIcons name="arrow-back-ios" size={20} color="rgba(255,255,255,0.7)" style={{ marginLeft: 6 }} />
+                        </TouchableOpacity>
+                        <Text style={styles.headerTitle}>SETTINGS</Text>
+                        <View style={styles.headerSpacer} />
+                    </View>
+                )}
 
                 {isLandscape ? renderLandscapeLayout() : renderPortraitLayout()}
             </SafeAreaView>
@@ -746,56 +1176,183 @@ const styles = StyleSheet.create({
         marginBottom: 10,
     },
 
-    // ========== Landscape Layout ==========
     landscapeContainer: {
         flex: 1,
         flexDirection: 'row',
-        paddingHorizontal: 24,
-        gap: 32,
+        paddingVertical: 12,
+        gap: 25,
     },
 
-    leftPanelSettings: {
-        width: '38%',
-        justifyContent: 'space-between',
+    leftSidebarCard: {
+        backgroundColor: 'transparent',
+        paddingVertical: 12,
+        paddingHorizontal: 8,
+        justifyContent: 'flex-start',
     },
 
-    rightPanelSettings: {
+    sidebarSectionTitle: {
+        fontSize: 9,
+        fontWeight: '900',
+        color: 'rgba(255,255,255,0.25)',
+        letterSpacing: 2,
+        marginBottom: 8,
+        paddingLeft: 4,
+        textTransform: 'uppercase',
+    },
+
+    sidebarPreviewWrapper: {
+        alignItems: 'center',
+        justifyContent: 'center',
+        width: '100%',
+        minHeight: 140, // Ensure it doesn't collapse
+    },
+
+    sidebarNavSection: {
         flex: 1,
-        paddingLeft: 8,
+        marginTop: 10,
+        marginBottom: 50, // Added margin to avoid overlap with back button
     },
 
-    rightPanelContent: {
+    sidebarButtonsScroll: {
         paddingBottom: 20,
     },
 
-    bottomSection: {
-        marginTop: 16,
-        alignItems: 'center',
+    sidebarButtonsList: {
+        gap: 4,
     },
 
-    resetButtonLandscape: {
+    sidebarIconLabelContainer: {
         flexDirection: 'row',
         alignItems: 'center',
-        justifyContent: 'center',
-        paddingVertical: 10,
-        paddingHorizontal: 16,
-        borderRadius: 12,
-        backgroundColor: 'rgba(0, 229, 255, 0.1)',
+        gap: 12,
+    },
+
+    rightContentCard: {
+        flex: 1,
+        backgroundColor: 'rgba(255,255,255,0.03)',
+        borderRadius: 24,
+        overflow: 'hidden',
         borderWidth: 1,
-        borderColor: 'rgba(0, 229, 255, 0.3)',
-        marginBottom: 8,
+        borderColor: 'rgba(255,255,255,0.06)',
+        display: 'flex',
     },
 
-    resetButtonTextLandscape: {
-        fontSize: 12,
-        fontWeight: '600',
-        color: '#00E5FF',
-        marginLeft: 6,
+    sectionDivider: {
+        height: 1,
+        backgroundColor: 'rgba(255,255,255,0.06)',
+        marginVertical: 12,
+        width: '100%',
     },
 
-    versionText: {
+    sidebarButtonRow: {
+        width: '100%',
+        flexDirection: 'row',
+        justifyContent: 'space-between',
+        alignItems: 'center',
+        paddingVertical: 9,
+        paddingHorizontal: 12,
+        borderRadius: 12,
+        backgroundColor: 'transparent',
+    },
+
+    sidebarButtonRowActive: {
+        backgroundColor: 'rgba(0, 229, 255, 0.05)',
+    },
+
+    sidebarButtonText: {
         fontSize: 10,
+        fontWeight: '700',
+        textTransform: 'uppercase',
+        letterSpacing: 0.5,
+    },
+
+    sidebarButtonTextActive: {
+        color: '#00E5FF',
+    },
+
+    sidebarButtonTextInactive: {
+        color: 'rgba(255,255,255,0.35)',
+    },
+
+    activeIndicatorSmall: {
+        width: 5,
+        height: 5,
+        borderRadius: 2.5,
+        backgroundColor: '#00E5FF',
+        shadowColor: '#00E5FF',
+        shadowOffset: { width: 0, height: 0 },
+        shadowOpacity: 0.6,
+        shadowRadius: 3,
+    },
+
+    smallBackButton: {
+        position: 'absolute',
+        bottom: 12,
+        left: 16,
+        width: 40,
+        height: 40,
+        borderRadius: 20,
+        backgroundColor: 'rgba(255,255,255,0.05)',
+        alignItems: 'center',
+        justifyContent: 'center',
+        borderWidth: 1,
+        borderColor: 'rgba(255,255,255,0.1)',
+    },
+
+    permanentPreviewHeader: {
+        padding: 16,
+        paddingBottom: 0,
+        backgroundColor: 'rgba(0,0,0,0.2)',
+        borderBottomWidth: 1,
+        borderBottomColor: 'rgba(255,255,255,0.05)',
+    },
+
+    rightContentScroll: {
+        flex: 1,
+    },
+
+    rightContentScrollPadding: {
+        paddingHorizontal: 20,
+        paddingVertical: 16,
+    },
+
+    aboutIconContainer: {
+        width: 60,
+        height: 60,
+        borderRadius: 20,
+        alignItems: 'center',
+        justifyContent: 'center',
+        marginRight: 16,
+    },
+
+    aboutDescription: {
+        fontSize: 13,
+        color: 'rgba(255,255,255,0.5)',
+        lineHeight: 20,
+        marginBottom: 24,
+        paddingHorizontal: 4,
+    },
+
+    aboutDivider: {
+        height: 1,
+        backgroundColor: 'rgba(255,255,255,0.1)',
+        marginBottom: 16,
+    },
+
+    aboutFooterText: {
+        fontSize: 12,
         color: 'rgba(255,255,255,0.3)',
+        textAlign: 'center',
+    },
+
+    sidebarContent: {
+        flex: 1,
+    },
+
+    aboutHeader: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        marginBottom: 20,
     },
 
     // ========== Swipeable Preview Styles ==========
@@ -804,7 +1361,6 @@ const styles = StyleSheet.create({
     },
 
     phoneFrameContainerLandscape: {
-        flex: 1,
         marginBottom: 0,
     },
 
@@ -1001,8 +1557,11 @@ const styles = StyleSheet.create({
     },
 
     colorPickerCardLandscape: {
-        padding: 12,
-        marginBottom: 10,
+        backgroundColor: 'transparent',
+        borderWidth: 0,
+        padding: 0,
+        paddingHorizontal: 4,
+        marginBottom: 8,
     },
 
     colorPickerHeader: {
@@ -1099,9 +1658,15 @@ const styles = StyleSheet.create({
         borderRadius: 16,
         padding: 16,
         alignItems: 'center',
-        borderWidth: 2,
-        borderColor: 'rgba(255,255,255,0.08)',
+        borderWidth: 1.5,
+        borderColor: 'rgba(255,255,255,0.05)',
         position: 'relative',
+    },
+
+    soundCardLandscape: {
+        backgroundColor: 'rgba(255,255,255,0.04)',
+        borderColor: 'transparent',
+        padding: 12,
     },
 
     soundCardSelected: {
@@ -1109,13 +1674,13 @@ const styles = StyleSheet.create({
     },
 
     soundIconContainer: {
-        width: 48,
-        height: 48,
-        borderRadius: 24,
+        width: 42,
+        height: 42,
+        borderRadius: 21,
         backgroundColor: 'rgba(255,255,255,0.08)',
         alignItems: 'center',
         justifyContent: 'center',
-        marginBottom: 8,
+        marginBottom: 6,
     },
 
     soundName: {
@@ -1155,7 +1720,10 @@ const styles = StyleSheet.create({
     },
 
     repetitionSectionLandscape: {
-        padding: 12,
+        backgroundColor: 'transparent',
+        borderWidth: 0,
+        padding: 0,
+        paddingHorizontal: 4,
     },
 
     repetitionHeader: {
@@ -1252,5 +1820,297 @@ const styles = StyleSheet.create({
     aboutSubtext: {
         fontSize: 14,
         color: 'rgba(255,255,255,0.5)',
+    },
+
+    aboutContainerLandscape: {
+        paddingHorizontal: 4,
+    },
+
+    aboutHeaderLandscape: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        marginBottom: 16,
+        paddingTop: 4,
+    },
+
+    aboutTextMain: {
+        fontSize: 18,
+        fontWeight: '800',
+        color: '#fff',
+        letterSpacing: 0.5,
+    },
+
+    aboutTextSub: {
+        fontSize: 13,
+        color: 'rgba(255,255,255,0.4)',
+        marginTop: 2,
+    },
+
+    aboutFooterRow: {
+        flexDirection: 'row',
+        justifyContent: 'space-between',
+        alignItems: 'center',
+        marginTop: 8,
+    },
+
+    landscapeResetButton: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'center',
+        padding: 14,
+        borderRadius: 14,
+        backgroundColor: 'rgba(0, 229, 255, 0.08)',
+        borderWidth: 1,
+        borderColor: 'rgba(0, 229, 255, 0.2)',
+        marginTop: 20,
+    },
+
+    // ========== Category Management Styles ==========
+    categoriesSection: {
+        flex: 1,
+    },
+
+    categoriesHeader: {
+        flexDirection: 'row',
+        justifyContent: 'space-between',
+        alignItems: 'center',
+        marginBottom: 16,
+    },
+
+    addCategoryBtn: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        backgroundColor: 'rgba(0, 229, 255, 0.1)',
+        paddingVertical: 6,
+        paddingHorizontal: 12,
+        borderRadius: 20,
+        borderWidth: 1,
+        borderColor: 'rgba(0, 229, 255, 0.2)',
+    },
+
+    addCategoryBtnText: {
+        fontSize: 10,
+        fontWeight: '800',
+        color: '#00E5FF',
+        marginLeft: 4,
+    },
+
+    categoriesList: {
+        // Gap removed to rely on item padding for tighter spacing
+    },
+
+    categoryItem: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        paddingVertical: 8,
+        paddingHorizontal: 4,
+    },
+
+    categoryIconCircle: {
+        width: 40,
+        height: 40,
+        borderRadius: 20,
+        backgroundColor: 'rgba(255,255,255,0.05)',
+        alignItems: 'center',
+        justifyContent: 'center',
+        marginRight: 12,
+    },
+
+    categoryInfo: {
+        flex: 1,
+    },
+
+    categoryNameText: {
+        fontSize: 14,
+        fontWeight: '700',
+        color: '#fff',
+        marginBottom: 4,
+    },
+
+    categoryColorPill: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        paddingHorizontal: 8,
+        paddingVertical: 2,
+        borderRadius: 10,
+        alignSelf: 'flex-start',
+    },
+
+    colorDot: {
+        width: 6,
+        height: 6,
+        borderRadius: 3,
+        marginRight: 6,
+    },
+
+    categoryColorText: {
+        fontSize: 10,
+        fontWeight: '600',
+        fontFamily: Platform.OS === 'ios' ? 'Courier' : 'monospace',
+    },
+
+    categoryActions: {
+        flexDirection: 'row',
+        gap: 8,
+    },
+
+    actionBtn: {
+        width: 36,
+        height: 36,
+        borderRadius: 12,
+        backgroundColor: 'rgba(255,255,255,0.03)',
+        alignItems: 'center',
+        justifyContent: 'center',
+    },
+
+    categoryForm: {
+        paddingVertical: 8,
+    },
+
+    categoryInputContainer: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        marginBottom: 20,
+    },
+
+    inputLabel: {
+        fontSize: 10,
+        fontWeight: '800',
+        color: 'rgba(255,255,255,0.3)',
+        letterSpacing: 1,
+        marginBottom: 6,
+    },
+
+    categoryInput: {
+        backgroundColor: 'rgba(255,255,255,0.05)',
+        borderRadius: 12,
+        padding: 12,
+        borderWidth: 1,
+        borderColor: 'rgba(255,255,255,0.1)',
+        color: '#fff',
+        fontSize: 14,
+        fontWeight: '600',
+    },
+
+    iconsGrid: {
+        flexDirection: 'row',
+        flexWrap: 'wrap',
+        gap: 8,
+        marginBottom: 20,
+    },
+
+    iconPickerItem: {
+        width: 36,
+        height: 36,
+        borderRadius: 10,
+        alignItems: 'center',
+        justifyContent: 'center',
+        backgroundColor: 'rgba(255,255,255,0.05)',
+        borderWidth: 1.5,
+        borderColor: 'transparent',
+    },
+
+    catColorChip: {
+        width: 32,
+        height: 32,
+        borderRadius: 16,
+        padding: 3,
+        borderWidth: 2,
+        borderColor: 'transparent',
+        marginRight: 10,
+    },
+
+    catColorInner: {
+        flex: 1,
+        borderRadius: 13,
+    },
+
+    categoryFormActions: {
+        flexDirection: 'row',
+        justifyContent: 'flex-end',
+        gap: 12,
+        marginTop: 24,
+    },
+
+    categoryCancelBtn: {
+        paddingVertical: 10,
+        paddingHorizontal: 16,
+    },
+
+    categoryCancelText: {
+        fontSize: 12,
+        fontWeight: '700',
+        color: 'rgba(255,255,255,0.4)',
+    },
+
+    categorySaveBtn: {
+        backgroundColor: '#00E5FF',
+        paddingVertical: 10,
+        paddingHorizontal: 20,
+        borderRadius: 12,
+    },
+
+    categorySaveText: {
+        fontSize: 12,
+        fontWeight: '800',
+        color: '#000',
+    },
+
+    // ========== General/Behavior Styles ==========
+    generalTabContainer: {
+        flex: 1,
+    },
+
+    behaviorList: {
+        marginTop: 8,
+    },
+
+    settingRow: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        paddingVertical: 14,
+    },
+
+    settingInfo: {
+        flex: 1,
+        marginRight: 20,
+    },
+
+    settingLabel: {
+        fontSize: 14,
+        fontWeight: '700',
+        color: '#fff',
+        marginBottom: 2,
+    },
+
+    settingDescription: {
+        fontSize: 11,
+        color: 'rgba(255,255,255,0.4)',
+        lineHeight: 14,
+    },
+
+    customSwitch: {
+        width: 44,
+        height: 24,
+        borderRadius: 12,
+        backgroundColor: 'rgba(255,255,255,0.1)',
+        padding: 2,
+    },
+
+    customSwitchActive: {
+        backgroundColor: 'rgba(0, 229, 255, 0.2)',
+    },
+
+    switchKnob: {
+        width: 20,
+        height: 20,
+        borderRadius: 10,
+        backgroundColor: 'rgba(255,255,255,0.3)',
+    },
+
+    switchKnobActive: {
+        backgroundColor: '#00E5FF',
+        transform: [{ translateX: 20 }],
     },
 });

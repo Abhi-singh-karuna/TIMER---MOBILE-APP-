@@ -17,6 +17,7 @@ import { BlurView } from 'expo-blur';
 import { LinearGradient } from 'expo-linear-gradient';
 import * as Haptics from 'expo-haptics';
 import { MaterialIcons } from '@expo/vector-icons';
+import { Timer, Category } from '../constants/data';
 
 const DAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
@@ -27,8 +28,11 @@ const ITEM_HEIGHT = 44;
 interface AddTimerModalProps {
     visible: boolean;
     onCancel: () => void;
-    onAdd: (name: string, hours: number, minutes: number, seconds: number, date: string) => void;
+    onAdd: (name: string, hours: number, minutes: number, seconds: number, date: string, categoryId?: string) => void;
+    onUpdate?: (timerId: number, name: string, hours: number, minutes: number, seconds: number, date: string, categoryId?: string) => void;
     initialDate?: string; // YYYY-MM-DD
+    categories: Category[];
+    timerToEdit?: Timer | null;
 }
 
 const generateNumbers = (max: number) => Array.from({ length: max + 1 }, (_, i) => i);
@@ -116,7 +120,7 @@ const pickerStyles = StyleSheet.create({
     text: { fontSize: 24, fontWeight: '400', color: '#fff' },
 });
 
-export default function AddTimerModal({ visible, onCancel, onAdd, initialDate }: AddTimerModalProps) {
+export default function AddTimerModal({ visible, onCancel, onAdd, onUpdate, initialDate, categories, timerToEdit }: AddTimerModalProps) {
     const { width: screenWidth, height: screenHeight } = useWindowDimensions();
     const isLandscape = screenWidth > screenHeight;
     const [name, setName] = useState('');
@@ -124,16 +128,36 @@ export default function AddTimerModal({ visible, onCancel, onAdd, initialDate }:
     const [minutes, setMinutes] = useState(25);
     const [seconds, setSeconds] = useState(0);
     const [selectedDate, setSelectedDate] = useState(initialDate || new Date().toISOString().split('T')[0]);
+    const [selectedCategoryId, setSelectedCategoryId] = useState<string | undefined>(categories[0]?.id);
     const [showDatePicker, setShowDatePicker] = useState(false);
     const [viewDate, setViewDate] = useState(new Date(selectedDate));
 
     // Update selectedDate when initialDate changes (e.g. when opening modal from a specific day)
     useEffect(() => {
-        if (visible && initialDate) {
-            setSelectedDate(initialDate);
-            setViewDate(new Date(initialDate));
+        if (visible) {
+            if (timerToEdit) {
+                // Pre-fill form for editing
+                setName(timerToEdit.title);
+                setSelectedDate(timerToEdit.forDate || initialDate || new Date().toISOString().split('T')[0]);
+                setSelectedCategoryId(timerToEdit.categoryId || categories[0]?.id);
+
+                // Parse time HH:MM:SS
+                const parts = timerToEdit.total.split(':').map(Number);
+                if (parts.length === 3) {
+                    setHours(parts[0]);
+                    setMinutes(parts[1]);
+                    setSeconds(parts[2]);
+                }
+            } else if (initialDate) {
+                // New timer with initial date
+                setSelectedDate(initialDate);
+                setViewDate(new Date(initialDate));
+                resetForm();
+            } else {
+                resetForm();
+            }
         }
-    }, [visible, initialDate]);
+    }, [visible, initialDate, timerToEdit]);
 
     const getDaysInMonth = (year: number, month: number) => new Date(year, month + 1, 0).getDate();
     const getFirstDayOfMonth = (year: number, month: number) => new Date(year, month, 1).getDay();
@@ -235,7 +259,11 @@ export default function AddTimerModal({ visible, onCancel, onAdd, initialDate }:
     const handleAdd = () => {
         if (name.trim()) {
             Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-            onAdd(name, hours, minutes, seconds, selectedDate);
+            if (timerToEdit && onUpdate) {
+                onUpdate(timerToEdit.id, name, hours, minutes, seconds, selectedDate, selectedCategoryId);
+            } else {
+                onAdd(name, hours, minutes, seconds, selectedDate, selectedCategoryId);
+            }
             resetForm();
         } else {
             Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
@@ -253,7 +281,41 @@ export default function AddTimerModal({ visible, onCancel, onAdd, initialDate }:
         setHours(0);
         setMinutes(25);
         setSeconds(0);
+        setSelectedCategoryId(categories[0]?.id);
     };
+
+    const renderCategoryPicker = () => (
+        <View style={styles.categoryPickerContainer}>
+            <Text style={styles.label}>CATEGORY</Text>
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.categoryScroll}>
+                {categories.map((cat) => (
+                    <TouchableOpacity
+                        key={cat.id}
+                        style={[
+                            styles.categoryChip,
+                            selectedCategoryId === cat.id && { backgroundColor: `${cat.color}20`, borderColor: cat.color }
+                        ]}
+                        onPress={() => {
+                            setSelectedCategoryId(cat.id);
+                            Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                        }}
+                    >
+                        <MaterialIcons
+                            name={cat.icon}
+                            size={16}
+                            color={selectedCategoryId === cat.id ? cat.color : 'rgba(255,255,255,0.4)'}
+                        />
+                        <Text style={[
+                            styles.categoryChipText,
+                            selectedCategoryId === cat.id && { color: cat.color }
+                        ]}>
+                            {cat.name}
+                        </Text>
+                    </TouchableOpacity>
+                ))}
+            </ScrollView>
+        </View>
+    );
 
     return (
         <Modal
@@ -275,31 +337,34 @@ export default function AddTimerModal({ visible, onCancel, onAdd, initialDate }:
                                 {showDatePicker ? (
                                     renderDatePicker()
                                 ) : (
-                                    <>
-                                        <Text style={styles.title}>New Timer</Text>
-                                        <Text style={styles.subtitle}>FOCUS SESSION</Text>
+                                    <View style={[styles.leftFieldsContent, { justifyContent: 'center', flex: 1 }]}>
+                                        <View style={styles.fieldGroup}>
+                                            <Text style={styles.label}>TIMER NAME</Text>
+                                            <TextInput
+                                                style={[styles.input, styles.compactInput]}
+                                                value={name}
+                                                onChangeText={setName}
+                                                placeholder="e.g. Creative Flow"
+                                                placeholderTextColor="rgba(255,255,255,0.3)"
+                                            />
+                                        </View>
 
-                                        <Text style={styles.label}>TIMER NAME</Text>
-                                        <TextInput
-                                            style={styles.input}
-                                            value={name}
-                                            onChangeText={setName}
-                                            placeholder="e.g. Creative Flow"
-                                            placeholderTextColor="rgba(255,255,255,0.3)"
-                                        />
+                                        <View style={styles.fieldGroup}>
+                                            <Text style={styles.label}>FOR DATE</Text>
+                                            <TouchableOpacity
+                                                style={[styles.dateDisplay, styles.compactInput]}
+                                                onPress={() => {
+                                                    setShowDatePicker(true);
+                                                    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                                                }}
+                                            >
+                                                <Text style={styles.dateDisplayText}>{selectedDate}</Text>
+                                                <MaterialIcons name="event" size={16} color="#00E5FF" />
+                                            </TouchableOpacity>
+                                        </View>
 
-                                        <Text style={styles.label}>FOR DATE</Text>
-                                        <TouchableOpacity
-                                            style={styles.dateDisplay}
-                                            onPress={() => {
-                                                setShowDatePicker(true);
-                                                Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                                            }}
-                                        >
-                                            <Text style={styles.dateDisplayText}>{selectedDate}</Text>
-                                            <MaterialIcons name="event" size={16} color="#00E5FF" />
-                                        </TouchableOpacity>
-                                    </>
+                                        {renderCategoryPicker()}
+                                    </View>
                                 )}
                             </View>
 
@@ -325,7 +390,7 @@ export default function AddTimerModal({ visible, onCancel, onAdd, initialDate }:
 
                                 <View style={styles.landscapeActions}>
                                     <TouchableOpacity onPress={handleAdd} style={[styles.addBtn, { flex: 1, marginBottom: 0 }]} activeOpacity={0.7}>
-                                        <Text style={styles.addBtnText}>Add Timer</Text>
+                                        <Text style={styles.addBtnText}>{timerToEdit ? 'Update' : 'Add Timer'}</Text>
                                     </TouchableOpacity>
                                     <TouchableOpacity onPress={handleCancel} activeOpacity={0.7} style={styles.landscapeCancel}>
                                         <Text style={styles.cancelText}>Cancel</Text>
@@ -339,10 +404,6 @@ export default function AddTimerModal({ visible, onCancel, onAdd, initialDate }:
                                 renderDatePicker()
                             ) : (
                                 <>
-                                    {/* Title */}
-                                    <Text style={styles.title}>New Timer</Text>
-                                    <Text style={styles.subtitle}>FOCUS SESSION</Text>
-
                                     {/* Timer Name */}
                                     <Text style={styles.label}>TIMER NAME</Text>
                                     <TextInput
@@ -365,6 +426,8 @@ export default function AddTimerModal({ visible, onCancel, onAdd, initialDate }:
                                         <MaterialIcons name="event" size={16} color="#00E5FF" />
                                     </TouchableOpacity>
 
+                                    {renderCategoryPicker()}
+
                                     {/* Duration with Wheel Pickers */}
                                     <Text style={styles.label}>DURATION</Text>
                                     <View style={styles.pickerRow}>
@@ -386,7 +449,7 @@ export default function AddTimerModal({ visible, onCancel, onAdd, initialDate }:
 
                                     {/* Add Timer Button */}
                                     <TouchableOpacity onPress={handleAdd} style={styles.addBtn} activeOpacity={0.7}>
-                                        <Text style={styles.addBtnText}>Add Timer</Text>
+                                        <Text style={styles.addBtnText}>{timerToEdit ? 'Update' : 'Add Timer'}</Text>
                                     </TouchableOpacity>
 
                                     {/* Cancel */}
@@ -436,22 +499,33 @@ const styles = StyleSheet.create({
     modalLandscape: {
         width: '90%',
         maxWidth: 650,
-        paddingTop: 24,
-        paddingBottom: 20,
+        paddingTop: 32,
+        paddingBottom: 28,
+        justifyContent: 'center',
     },
 
     landscapeContainer: {
         flexDirection: 'row',
-        gap: 24,
+        gap: 40,
+    },
+
+    landscapeHeader: {
+        alignItems: 'center',
+        marginBottom: 10,
     },
 
     leftColumn: {
         flex: 1.2,
-        justifyContent: 'center',
+        justifyContent: 'flex-start',
+    },
+
+    leftFieldsContent: {
+        gap: 0,
     },
 
     rightColumn: {
         flex: 1,
+        justifyContent: 'center',
     },
 
     landscapeActions: {
@@ -479,7 +553,7 @@ const styles = StyleSheet.create({
         color: 'rgba(255,255,255,0.4)',
         textAlign: 'center',
         letterSpacing: 3,
-        marginBottom: 32,
+        marginBottom: 20,
     },
 
     label: {
@@ -500,6 +574,15 @@ const styles = StyleSheet.create({
         borderWidth: 1,
         borderColor: 'rgba(255,255,255,0.06)',
         marginBottom: 24,
+    },
+
+    fieldGroup: {
+        marginBottom: 14,
+    },
+
+    compactInput: {
+        paddingVertical: 12,
+        marginBottom: 0,
     },
 
     pickerRow: {
@@ -642,5 +725,28 @@ const styles = StyleSheet.create({
     },
     dayTextPortrait: {
         fontSize: 12,
+    },
+    categoryPickerContainer: {
+        marginBottom: 20,
+    },
+    categoryScroll: {
+        paddingVertical: 4,
+        gap: 8,
+    },
+    categoryChip: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        paddingHorizontal: 12,
+        paddingVertical: 8,
+        borderRadius: 12,
+        backgroundColor: 'rgba(255,255,255,0.05)',
+        borderWidth: 1,
+        borderColor: 'transparent',
+    },
+    categoryChipText: {
+        fontSize: 12,
+        fontWeight: '600',
+        color: 'rgba(255,255,255,0.4)',
+        marginLeft: 6,
     },
 });
