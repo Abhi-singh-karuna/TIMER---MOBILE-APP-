@@ -33,6 +33,7 @@ interface AddTimerModalProps {
     initialDate?: string; // YYYY-MM-DD
     categories: Category[];
     timerToEdit?: Timer | null;
+    enablePastTimers?: boolean;
 }
 
 const generateNumbers = (max: number) => Array.from({ length: max + 1 }, (_, i) => i);
@@ -120,7 +121,7 @@ const pickerStyles = StyleSheet.create({
     text: { fontSize: 24, fontWeight: '400', color: '#fff' },
 });
 
-export default function AddTimerModal({ visible, onCancel, onAdd, onUpdate, initialDate, categories, timerToEdit }: AddTimerModalProps) {
+export default function AddTimerModal({ visible, onCancel, onAdd, onUpdate, initialDate, categories, timerToEdit, enablePastTimers }: AddTimerModalProps) {
     const { width: screenWidth, height: screenHeight } = useWindowDimensions();
     const isLandscape = screenWidth > screenHeight;
     const [name, setName] = useState('');
@@ -227,7 +228,7 @@ export default function AddTimerModal({ visible, onCancel, onAdd, onUpdate, init
                                 style={styles.dayCell}
                                 disabled={!item.current}
                                 onPress={() => {
-                                    if (item.current) {
+                                    if (item.current && (!enablePastTimers || !isPast)) {
                                         setSelectedDate(dateStr);
                                         setShowDatePicker(false);
                                         Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
@@ -237,7 +238,7 @@ export default function AddTimerModal({ visible, onCancel, onAdd, onUpdate, init
                                 <View style={[
                                     styles.dayCircle,
                                     !isLandscape && styles.dayCirclePortrait,
-                                    !item.current && { opacity: 0.2 },
+                                    (!item.current || (enablePastTimers && isPast)) && { opacity: 0.2 },
                                     isToday && styles.todayCircle,
                                     isSelected && (isPast ? styles.selectedPastCircle : styles.selectedFutureCircle)
                                 ]}>

@@ -40,6 +40,8 @@ const PRESET_INDEX_KEY = '@timer_active_preset_index';
 const COMPLETION_SOUND_KEY = '@timer_completion_sound';
 const SOUND_REPETITION_KEY = '@timer_sound_repetition';
 const ACTIVE_TIMER_ID_KEY = '@timer_active_id';
+const ENABLE_FUTURE_TIMERS_KEY = '@timer_enable_future';
+const ENABLE_PAST_TIMERS_KEY = '@timer_enable_past';
 
 export const LANDSCAPE_PRESETS = [
   {
@@ -115,6 +117,7 @@ export default function App() {
   const [selectedDate, setSelectedDate] = useState(new Date());
   const [categories, setCategories] = useState<Category[]>(DEFAULT_CATEGORIES);
   const [timerToEdit, setTimerToEdit] = useState<Timer | null>(null);
+  const [enablePastTimers, setEnablePastTimers] = useState(true);
 
   const formatDate = (date: Date) => {
     return `${date.getFullYear()}-${(date.getMonth() + 1).toString().padStart(2, '0')}-${date.getDate().toString().padStart(2, '0')}`;
@@ -247,6 +250,9 @@ export default function App() {
       if (presetIndex) setActivePresetIndex(parseInt(presetIndex, 10));
       if (sound) setSelectedSound(parseInt(sound, 10));
       if (repetition) setSoundRepetition(parseInt(repetition, 10));
+
+      const savedPast = await AsyncStorage.getItem(ENABLE_PAST_TIMERS_KEY);
+      if (savedPast !== null) setEnablePastTimers(savedPast === 'true');
 
       const storedCats = await AsyncStorage.getItem(CATEGORIES_KEY);
       if (storedCats) {
@@ -818,6 +824,14 @@ export default function App() {
     }
   };
 
+
+  const togglePastTimers = async (val: boolean) => {
+    setEnablePastTimers(val);
+    try {
+      await AsyncStorage.setItem(ENABLE_PAST_TIMERS_KEY, String(val));
+    } catch (e) { console.error(e); }
+  };
+
   // Handle borrow time from TimerList popup (when timer completes in-list)
   const handleBorrowTimeFromList = async (timer: Timer, seconds: number) => {
     const scheduledId = await scheduleTimerNotification(
@@ -909,6 +923,8 @@ export default function App() {
             onRepetitionChange={setSoundRepetition}
             categories={categories}
             onCategoriesChange={setCategories}
+            enablePastTimers={enablePastTimers}
+            onPastTimersChange={togglePastTimers}
           />
         );
 
@@ -951,6 +967,7 @@ export default function App() {
             selectedDate={selectedDate}
             onDateChange={setSelectedDate}
             categories={categories}
+            enablePastTimers={enablePastTimers}
           />
         );
     }
@@ -971,6 +988,7 @@ export default function App() {
         initialDate={formatDate(selectedDate)}
         categories={categories}
         timerToEdit={timerToEdit}
+        enablePastTimers={enablePastTimers}
       />
 
       <DeleteModal

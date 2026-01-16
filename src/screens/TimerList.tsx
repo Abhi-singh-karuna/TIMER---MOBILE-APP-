@@ -97,6 +97,7 @@ interface TimerListProps {
     onAcknowledgeCompletion?: (timerId: number) => void;
     selectedSound?: number;
     soundRepetition?: number;
+    enablePastTimers: boolean;
     categories: Category[];
 }
 
@@ -114,6 +115,7 @@ export default function TimerList({
     soundRepetition = 1,
     selectedDate: propSelectedDate,
     onDateChange,
+    enablePastTimers,
     categories
 }: TimerListProps & { selectedDate: Date, onDateChange: (date: Date) => void }) {
     const [filterCategoryId, setFilterCategoryId] = useState<string>('All');
@@ -296,6 +298,12 @@ export default function TimerList({
     const borrowedSeconds = totalBorrowedSeconds % 60;
 
     const isToday = formatDate(propSelectedDate) === formatDate(new Date());
+    const todayObj = new Date();
+    todayObj.setHours(0, 0, 0, 0);
+    const selectedDateObj = new Date(propSelectedDate);
+    selectedDateObj.setHours(0, 0, 0, 0);
+    const isPast = selectedDateObj < todayObj;
+    const isReadOnly = isPast && enablePastTimers;
     const dateLabel = isToday ? 'TODAY' : `on ${dayName} ${dayNum}`;
     // Calendar Helpers
     const getDaysInMonth = (date: Date) => {
@@ -486,11 +494,12 @@ export default function TimerList({
                         <TimerCard
                             key={timer.id}
                             timer={timer}
-                            onLongPress={() => onLongPressTimer(timer)}
+                            onLongPress={() => !isReadOnly && onLongPressTimer(timer)}
                             onPress={() => onStartTimer(timer)}
-                            onPlayPause={() => onPlayPause(timer)}
+                            onPlayPause={() => !isReadOnly && onPlayPause(timer)}
                             isLandscape={true}
                             categories={categories}
+                            isReadOnly={isReadOnly}
                         />
                     ))}
                     {pair.length === 1 && <View style={styles.cardPlaceholder} />}
@@ -517,11 +526,12 @@ export default function TimerList({
             <TimerCard
                 key={timer.id}
                 timer={timer}
-                onLongPress={() => onLongPressTimer(timer)}
+                onLongPress={() => !isReadOnly && onLongPressTimer(timer)}
                 onPress={() => onStartTimer(timer)}
-                onPlayPause={() => onPlayPause(timer)}
+                onPlayPause={() => !isReadOnly && onPlayPause(timer)}
                 isLandscape={false}
                 categories={categories}
+                isReadOnly={isReadOnly}
             />
         ));
     };
@@ -555,21 +565,37 @@ export default function TimerList({
                                     )}
 
                                     {/* Date display with context labeling */}
-                                    <TouchableOpacity
-                                        style={styles.dateLandscapeRow}
-                                        onPress={() => {
-                                            if (!showCalendar) {
-                                                setViewDate(new Date());
-                                            }
-                                            setShowCalendar(!showCalendar);
-                                        }}
-                                        activeOpacity={0.7}
-                                    >
-                                        <MaterialIcons name="calendar-today" size={14} color="#00E5FF" />
-                                        <Text style={[styles.dateLandscapeText, !isToday && { color: '#fff', fontSize: 16 }]}>
-                                            {isToday ? `  ${dayName}, ${dayNum} ${monthName}` : `  ${dateLabel} ${monthName}`}
-                                        </Text>
-                                    </TouchableOpacity>
+                                    <View style={styles.dateControlRowLandscape}>
+                                        <TouchableOpacity
+                                            style={styles.dateLandscapeRow}
+                                            onPress={() => {
+                                                if (!showCalendar) {
+                                                    setViewDate(new Date());
+                                                }
+                                                setShowCalendar(!showCalendar);
+                                            }}
+                                            activeOpacity={0.7}
+                                        >
+                                            <MaterialIcons name="calendar-today" size={14} color="#00E5FF" />
+                                            <Text style={[styles.dateLandscapeText, !isToday && { color: '#fff', fontSize: 16 }]}>
+                                                {isToday ? `  ${dayName}, ${dayNum} ${monthName}` : `  ${dateLabel} ${monthName}`}
+                                            </Text>
+                                        </TouchableOpacity>
+
+                                        {/* Today Navigation Button */}
+                                        <TouchableOpacity
+                                            style={[styles.todayNavBtn, isToday && styles.todayNavBtnActive]}
+                                            onPress={() => {
+                                                const today = new Date();
+                                                onDateChange(today);
+                                                setViewDate(today);
+                                            }}
+                                            activeOpacity={0.7}
+                                        >
+                                            <MaterialIcons name="today" size={12} color={isToday ? "#4CAF50" : "rgba(255,255,255,0.4)"} />
+                                            <Text style={[styles.todayNavText, isToday && styles.todayNavTextActive]}>TODAY</Text>
+                                        </TouchableOpacity>
+                                    </View>
 
                                     {showCalendar ? (
                                         renderCalendar()
@@ -734,26 +760,42 @@ export default function TimerList({
                             !isLandscape && showCalendar && { paddingBottom: 8 }
                         ]}>
                             {/* Date Selector Row for Portrait */}
-                            <TouchableOpacity
-                                style={styles.datePortraitRow}
-                                onPress={() => {
-                                    if (!showCalendar) {
-                                        setViewDate(new Date());
-                                    }
-                                    setShowCalendar(!showCalendar);
-                                }}
-                                activeOpacity={0.7}
-                            >
-                                <View style={styles.datePortraitLeft}>
-                                    <MaterialIcons name="calendar-today" size={16} color="#00E5FF" />
-                                    <Text style={styles.datePortraitText}>  {dayName}, {dayNum} {monthName}</Text>
-                                </View>
-                                <MaterialIcons
-                                    name={showCalendar ? "keyboard-arrow-up" : "keyboard-arrow-down"}
-                                    size={20}
-                                    color="rgba(255,255,255,0.5)"
-                                />
-                            </TouchableOpacity>
+                            <View style={styles.dateControlRowPortrait}>
+                                <TouchableOpacity
+                                    style={styles.datePortraitRow}
+                                    onPress={() => {
+                                        if (!showCalendar) {
+                                            setViewDate(new Date());
+                                        }
+                                        setShowCalendar(!showCalendar);
+                                    }}
+                                    activeOpacity={0.7}
+                                >
+                                    <View style={styles.datePortraitLeft}>
+                                        <MaterialIcons name="calendar-today" size={16} color="#00E5FF" />
+                                        <Text style={styles.datePortraitText}>  {dayName}, {dayNum} {monthName}</Text>
+                                    </View>
+                                    <MaterialIcons
+                                        name={showCalendar ? "keyboard-arrow-up" : "keyboard-arrow-down"}
+                                        size={20}
+                                        color="rgba(255,255,255,0.5)"
+                                    />
+                                </TouchableOpacity>
+
+                                {/* Today Navigation Button (Portrait) */}
+                                <TouchableOpacity
+                                    style={[styles.todayNavBtnPortrait, isToday && styles.todayNavBtnActive]}
+                                    onPress={() => {
+                                        const today = new Date();
+                                        onDateChange(today);
+                                        setViewDate(today);
+                                    }}
+                                    activeOpacity={0.7}
+                                >
+                                    <MaterialIcons name="today" size={12} color={isToday ? "#4CAF50" : "rgba(255,255,255,0.4)"} />
+                                    <Text style={[styles.todayNavText, isToday && styles.todayNavTextActive]}>TODAY</Text>
+                                </TouchableOpacity>
+                            </View>
 
                             {showCalendar ? (
                                 <View style={styles.portraitCalendarContainer}>
@@ -1061,6 +1103,7 @@ interface TimerCardProps {
     onPlayPause: () => void;
     isLandscape: boolean;
     categories: Category[];
+    isReadOnly?: boolean;
 }
 
 // Status badge configuration
@@ -1077,7 +1120,7 @@ const getStatusConfig = (status: Timer['status']) => {
     }
 };
 
-function TimerCard({ timer, onLongPress, onPress, onPlayPause, isLandscape, categories }: TimerCardProps) {
+function TimerCard({ timer, onLongPress, onPress, onPlayPause, isLandscape, categories, isReadOnly }: TimerCardProps) {
     const isCompleted = timer.status === 'Completed';
     const isRunning = timer.status === 'Running';
 
@@ -1132,10 +1175,11 @@ function TimerCard({ timer, onLongPress, onPress, onPlayPause, isLandscape, cate
             {/* Background Touchable for the whole card navigation */}
             <TouchableOpacity
                 style={StyleSheet.absoluteFill}
-                onPress={onPress}
+                onPress={isReadOnly ? undefined : onPress}
                 onLongPress={onLongPress}
-                activeOpacity={0.9}
+                activeOpacity={isReadOnly ? 1 : 0.9}
                 delayLongPress={500}
+                disabled={isReadOnly && isCompleted} // Still allow viewing completed timers
             />
 
             {/* Progress Fill - Shows completion percentage */}
@@ -1278,6 +1322,12 @@ function TimerCard({ timer, onLongPress, onPress, onPlayPause, isLandscape, cate
                     </View>
                 </View>
 
+                {isReadOnly && !isCompleted && (
+                    <View style={styles.readOnlyIcon}>
+                        <MaterialIcons name="lock" size={20} color="rgba(255,255,255,0.3)" />
+                    </View>
+                )}
+
                 {isCompleted ? (
                     <View style={styles.completedCheckIcon}>
                         <MaterialIcons name="check-circle" size={28} color="#4CAF50" />
@@ -1288,9 +1338,10 @@ function TimerCard({ timer, onLongPress, onPress, onPlayPause, isLandscape, cate
                             styles.playButton,
                             isRunning && styles.playButtonActive,
                         ]}
-                        onPress={onPlayPause}
+                        onPress={isReadOnly ? undefined : onPlayPause}
                         hitSlop={{ top: 15, bottom: 15, left: 15, right: 15 }}
-                        activeOpacity={0.6}
+                        activeOpacity={isReadOnly ? 1 : 0.6}
+                        disabled={isReadOnly}
                     >
                         <MaterialIcons
                             name={isRunning ? "pause" : "play-arrow"}
@@ -1827,8 +1878,7 @@ const styles = StyleSheet.create({
 
     dateLandscapeRow: {
         flexDirection: 'row',
-        alignItems: 'flex-start',
-        marginBottom: 16,
+        alignItems: 'center',
     },
 
     dateLandscapeText: {
@@ -2602,14 +2652,11 @@ const styles = StyleSheet.create({
         fontWeight: '800',
     },
     datePortraitRow: {
+        flex: 1,
         flexDirection: 'row',
         alignItems: 'center',
         justifyContent: 'space-between',
-        paddingHorizontal: 4,
-        paddingBottom: 16,
-        marginBottom: 16,
-        borderBottomWidth: 1,
-        borderBottomColor: 'rgba(255,255,255,0.05)',
+        paddingRight: 8,
     },
     datePortraitLeft: {
         flexDirection: 'row',
@@ -2667,5 +2714,63 @@ const styles = StyleSheet.create({
         paddingVertical: 12,
         paddingHorizontal: 20,
         borderRadius: 28,
+    },
+    readOnlyIcon: {
+        position: 'absolute',
+        right: 50,
+        top: '50%',
+        marginTop: -10,
+        opacity: 0.6,
+    },
+    todayNavBtn: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        paddingHorizontal: 8,
+        paddingVertical: 3,
+        borderRadius: 6,
+        backgroundColor: 'rgba(255,255,255,0.04)',
+        borderWidth: 1,
+        borderColor: 'rgba(255,255,255,0.08)',
+    },
+    todayNavBtnPortrait: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        paddingHorizontal: 10,
+        paddingVertical: 3,
+        borderRadius: 6,
+        backgroundColor: 'rgba(255,255,255,0.04)',
+        marginLeft: 10,
+        borderWidth: 1,
+        borderColor: 'rgba(255,255,255,0.08)',
+    },
+    todayNavBtnActive: {
+        backgroundColor: 'rgba(76, 175, 80, 0.08)',
+        borderColor: 'rgba(76, 175, 80, 0.2)',
+    },
+    todayNavText: {
+        fontSize: 9,
+        fontWeight: '800',
+        color: 'rgba(255,255,255,0.3)',
+        marginLeft: 3,
+        letterSpacing: 0.5,
+    },
+    todayNavTextActive: {
+        color: '#4CAF50',
+    },
+    dateControlRowLandscape: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        marginBottom: 16,
+    },
+    dateControlRowPortrait: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        width: '100%',
+        paddingBottom: 12,
+        marginBottom: 16,
+        borderBottomWidth: 1,
+        borderBottomColor: 'rgba(255,255,255,0.05)',
     },
 });

@@ -25,7 +25,6 @@ const TEXT_COLOR_KEY = '@timer_text_color';
 const PRESET_INDEX_KEY = '@timer_active_preset_index';
 const COMPLETION_SOUND_KEY = '@timer_completion_sound';
 const SOUND_REPETITION_KEY = '@timer_sound_repetition';
-const AUTO_DELETE_PAST_KEY = '@timer_auto_delete_past';
 const ENABLE_FUTURE_TIMERS_KEY = '@timer_enable_future';
 const ENABLE_PAST_TIMERS_KEY = '@timer_enable_past';
 
@@ -33,8 +32,6 @@ const ENABLE_PAST_TIMERS_KEY = '@timer_enable_past';
 const DEFAULT_FILLER_COLOR = '#00E5FF';
 const DEFAULT_SLIDER_BUTTON_COLOR = '#00E5FF';
 const DEFAULT_TEXT_COLOR = '#FFFFFF';
-
-// SOUND_OPTIONS moved to constants/data.ts
 
 const CATEGORY_ICONS: (keyof typeof MaterialIcons.glyphMap)[] = [
     'category', 'work', 'fitness-center', 'menu-book', 'fastfood', 'local-hospital',
@@ -59,6 +56,8 @@ interface SettingsScreenProps {
     onRepetitionChange: (count: number) => void;
     categories: Category[];
     onCategoriesChange: (categories: Category[]) => void;
+    enablePastTimers: boolean;
+    onPastTimersChange: (val: boolean) => void;
 }
 
 const COLOR_PRESETS = [
@@ -111,6 +110,8 @@ export default function SettingsScreen({
     onRepetitionChange,
     categories,
     onCategoriesChange,
+    enablePastTimers,
+    onPastTimersChange,
 }: SettingsScreenProps) {
     const { width, height } = useWindowDimensions();
     const isLandscape = width > height;
@@ -121,11 +122,6 @@ export default function SettingsScreen({
     const [newCategoryName, setNewCategoryName] = useState('');
     const [selectedCategoryColor, setSelectedCategoryColor] = useState('#00E5FF');
     const [selectedCategoryIcon, setSelectedCategoryIcon] = useState<keyof typeof MaterialIcons.glyphMap>('category');
-
-    // Behavior Settings State
-    const [autoDeletePast, setAutoDeletePast] = useState(false);
-    const [enableFutureTimers, setEnableFutureTimers] = useState(true);
-    const [enablePastTimers, setEnablePastTimers] = useState(true);
 
     // Widen sidebar to 38% for a larger preview
     const sidebarWidth = width * 0.38;
@@ -138,7 +134,6 @@ export default function SettingsScreen({
     // Initial scroll to active preset
     useEffect(() => {
         if (scrollRef.current) {
-            // Small delay to ensure layout is ready
             setTimeout(() => {
                 scrollRef.current?.scrollTo({
                     x: activePresetIndex * previewWidth,
@@ -148,26 +143,8 @@ export default function SettingsScreen({
         }
     }, []);
 
-    // Load categories and cleanup sound on unmount
+    // Cleanup sound on unmount
     useEffect(() => {
-        const loadSettings = async () => {
-            try {
-                const [savedAutoDelete, savedFuture, savedPast] = await Promise.all([
-                    AsyncStorage.getItem(AUTO_DELETE_PAST_KEY),
-                    AsyncStorage.getItem(ENABLE_FUTURE_TIMERS_KEY),
-                    AsyncStorage.getItem(ENABLE_PAST_TIMERS_KEY),
-                ]);
-
-                if (savedAutoDelete !== null) setAutoDeletePast(savedAutoDelete === 'true');
-                if (savedFuture !== null) setEnableFutureTimers(savedFuture === 'true');
-                if (savedPast !== null) setEnablePastTimers(savedPast === 'true');
-            } catch (err) {
-                console.error('Failed to load settings:', err);
-            }
-        };
-
-        loadSettings();
-
         return () => {
             if (soundRef.current) {
                 soundRef.current.unloadAsync();
@@ -178,26 +155,15 @@ export default function SettingsScreen({
     const triggerPulse = () => {
         pulseAnim.setValue(1);
         Animated.sequence([
-            Animated.timing(pulseAnim, {
-                toValue: 1.05,
-                duration: 100,
-                useNativeDriver: true,
-            }),
-            Animated.timing(pulseAnim, {
-                toValue: 1,
-                duration: 150,
-                useNativeDriver: true,
-            }),
+            Animated.timing(pulseAnim, { toValue: 1.05, duration: 100, useNativeDriver: true }),
+            Animated.timing(pulseAnim, { toValue: 1, duration: 150, useNativeDriver: true }),
         ]).start();
     };
 
     const handleScroll = (event: any) => {
         const slideSize = event.nativeEvent.layoutMeasurement.width;
         const currentOffset = event.nativeEvent.contentOffset.x;
-
-        // Detect preset change when > 50% of the next slide is visible
         const index = Math.round(currentOffset / slideSize);
-
         if (index !== activePresetIndex && index >= 0 && index < LANDSCAPE_PRESETS.length) {
             onPresetChange(index);
             triggerPulse();
@@ -207,25 +173,19 @@ export default function SettingsScreen({
     const handleFillerColorSelect = (color: string) => {
         onFillerColorChange(color);
         triggerPulse();
-        AsyncStorage.setItem(FILLER_COLOR_KEY, color).catch(err =>
-            console.error('Failed to save filler color:', err)
-        );
+        AsyncStorage.setItem(FILLER_COLOR_KEY, color).catch(err => console.error(err));
     };
 
     const handleSliderButtonColorSelect = (color: string) => {
         onSliderButtonColorChange(color);
         triggerPulse();
-        AsyncStorage.setItem(SLIDER_BUTTON_COLOR_KEY, color).catch(err =>
-            console.error('Failed to save slider/button color:', err)
-        );
+        AsyncStorage.setItem(SLIDER_BUTTON_COLOR_KEY, color).catch(err => console.error(err));
     };
 
     const handleTextColorSelect = (color: string) => {
         onTimerTextColorChange(color);
         triggerPulse();
-        AsyncStorage.setItem(TEXT_COLOR_KEY, color).catch(err =>
-            console.error('Failed to save text color:', err)
-        );
+        AsyncStorage.setItem(TEXT_COLOR_KEY, color).catch(err => console.error(err));
     };
 
     const handleSoundSelect = async (soundIndex: number) => {
@@ -233,9 +193,7 @@ export default function SettingsScreen({
         triggerPulse();
         try {
             await AsyncStorage.setItem(COMPLETION_SOUND_KEY, soundIndex.toString());
-        } catch (err) {
-            console.error('Failed to save sound selection:', err);
-        }
+        } catch (err) { console.error(err); }
     };
 
     const handleRepetitionSelect = async (count: number) => {
@@ -243,46 +201,27 @@ export default function SettingsScreen({
         triggerPulse();
         try {
             await AsyncStorage.setItem(SOUND_REPETITION_KEY, count.toString());
-        } catch (err) {
-            console.error('Failed to save repetition count:', err);
-        }
+        } catch (err) { console.error(err); }
     };
 
     const handlePreviewSound = async (soundIndex: number) => {
         const soundOption = SOUND_OPTIONS[soundIndex];
         if (!soundOption || !soundOption.uri) return;
-
         try {
-            // Stop any currently playing sound
             if (soundRef.current) {
                 await soundRef.current.stopAsync();
                 await soundRef.current.unloadAsync();
                 soundRef.current = null;
             }
-
             setPlayingSound(soundIndex);
-
-            // Configure audio mode
-            await Audio.setAudioModeAsync({
-                playsInSilentModeIOS: true,
-                staysActiveInBackground: false,
-            });
-
-            // Load and play the sound
-            const { sound } = await Audio.Sound.createAsync(
-                { uri: soundOption.uri },
-                { shouldPlay: true }
-            );
+            await Audio.setAudioModeAsync({ playsInSilentModeIOS: true, staysActiveInBackground: false });
+            const { sound } = await Audio.Sound.createAsync({ uri: soundOption.uri }, { shouldPlay: true });
             soundRef.current = sound;
-
-            // Listen for playback completion
             sound.setOnPlaybackStatusUpdate((status: any) => {
                 if (status.isLoaded && status.didJustFinish) {
                     setPlayingSound(null);
                     sound.unloadAsync();
-                    if (soundRef.current === sound) {
-                        soundRef.current = null;
-                    }
+                    if (soundRef.current === sound) soundRef.current = null;
                 }
             });
         } catch (error) {
@@ -301,8 +240,6 @@ export default function SettingsScreen({
                 AsyncStorage.setItem(COMPLETION_SOUND_KEY, '0'),
                 AsyncStorage.setItem(SOUND_REPETITION_KEY, '1'),
                 AsyncStorage.setItem(CATEGORIES_KEY, JSON.stringify(DEFAULT_CATEGORIES)),
-                AsyncStorage.setItem(AUTO_DELETE_PAST_KEY, 'false'),
-                AsyncStorage.setItem(ENABLE_FUTURE_TIMERS_KEY, 'true'),
                 AsyncStorage.setItem(ENABLE_PAST_TIMERS_KEY, 'true'),
             ]);
             onFillerColorChange(DEFAULT_FILLER_COLOR);
@@ -312,419 +249,163 @@ export default function SettingsScreen({
             onSoundChange(0);
             onRepetitionChange(1);
             onCategoriesChange(DEFAULT_CATEGORIES);
-            setAutoDeletePast(false);
-            setEnableFutureTimers(true);
-            setEnablePastTimers(true);
+            onPastTimersChange(true);
 
-            // Scroll live preview back to default (index 0)
             if (scrollRef.current) {
                 scrollRef.current.scrollTo({ x: 0, animated: true });
             }
-        } catch (e) {
-            console.error('Failed to reset colors:', e);
-        }
+        } catch (e) { console.error('Failed to reset defaults:', e); }
     };
 
-    // Render the landscape preview component
-    const renderLandscapePreview = () => {
-        return (
-            <Animated.View
-                style={[
-                    styles.phoneFrameContainer,
-                    isLandscape && styles.phoneFrameContainerLandscape,
-                    { transform: [{ scale: pulseAnim }] }
-                ]}
-            >
-                {/* Phone Frame Mockup */}
-                <View style={[styles.phoneFrame, { width: previewWidth + 12 }]}>
-                    <View style={styles.phoneInternalFrame}>
-                        <ScrollView
-                            ref={scrollRef}
-                            horizontal
-                            pagingEnabled
-                            snapToInterval={previewWidth}
-                            decelerationRate="fast"
-                            showsHorizontalScrollIndicator={false}
-                            onScroll={handleScroll}
-                            style={styles.previewScroll}
-                            scrollEventThrottle={16}
-                        >
-                            {LANDSCAPE_PRESETS.map((preset, index) => (
-                                <View key={index} style={[styles.previewCard, { width: previewWidth }]}>
-                                    <View style={styles.landscapePreview}>
-                                        {/* Dynamic Glow Effect */}
-                                        <Animated.View
-                                            style={[
-                                                styles.previewGlow,
-                                                {
-                                                    backgroundColor: activePresetIndex === index ? fillerColor : preset.filler,
-                                                    shadowColor: activePresetIndex === index ? fillerColor : preset.filler,
-                                                    opacity: activePresetIndex === index ? 0.3 : 0.15,
-                                                }
-                                            ]}
-                                        />
-
-                                        {/* Progress Filler */}
-                                        <View
-                                            style={[
-                                                styles.previewFiller,
-                                                { backgroundColor: activePresetIndex === index ? fillerColor : preset.filler }
-                                            ]}
-                                        />
-
-                                        {/* Glossy Overlay */}
-                                        <LinearGradient
-                                            colors={['rgba(255,255,255,0.08)', 'transparent', 'transparent']}
-                                            style={StyleSheet.absoluteFill}
-                                            pointerEvents="none"
-                                        />
-
-                                        {/* Left side - Slider and buttons */}
-                                        <View style={styles.previewLeftSection}>
-                                            <View style={styles.previewSliderTrack}>
-                                                <View
-                                                    style={[
-                                                        styles.previewSliderHandle,
-                                                        { backgroundColor: activePresetIndex === index ? sliderButtonColor : preset.slider }
-                                                    ]}
-                                                >
-                                                    <MaterialIcons name="keyboard-double-arrow-down" size={14} color="#000" />
-                                                </View>
-                                                <Text
-                                                    style={[
-                                                        styles.previewSliderText,
-                                                        { color: activePresetIndex === index ? sliderButtonColor : preset.slider }
-                                                    ]}
-                                                >
-                                                    SLIDE
-                                                </Text>
+    const renderLandscapePreview = () => (
+        <Animated.View style={[styles.phoneFrameContainer, isLandscape && styles.phoneFrameContainerLandscape, { transform: [{ scale: pulseAnim }] }]}>
+            <View style={[styles.phoneFrame, { width: previewWidth + 12 }]}>
+                <View style={styles.phoneInternalFrame}>
+                    <ScrollView
+                        ref={scrollRef}
+                        horizontal
+                        pagingEnabled
+                        snapToInterval={previewWidth}
+                        decelerationRate="fast"
+                        showsHorizontalScrollIndicator={false}
+                        onScroll={handleScroll}
+                        style={styles.previewScroll}
+                        scrollEventThrottle={16}
+                    >
+                        {LANDSCAPE_PRESETS.map((preset, index) => (
+                            <View key={index} style={[styles.previewCard, { width: previewWidth }]}>
+                                <View style={styles.landscapePreview}>
+                                    <Animated.View style={[styles.previewGlow, { backgroundColor: activePresetIndex === index ? fillerColor : preset.filler, shadowColor: activePresetIndex === index ? fillerColor : preset.filler, opacity: activePresetIndex === index ? 0.3 : 0.15 }]} />
+                                    <View style={[styles.previewFiller, { backgroundColor: activePresetIndex === index ? fillerColor : preset.filler }]} />
+                                    <LinearGradient colors={['rgba(255,255,255,0.08)', 'transparent', 'transparent']} style={StyleSheet.absoluteFill} pointerEvents="none" />
+                                    <View style={styles.previewLeftSection}>
+                                        <View style={styles.previewSliderTrack}>
+                                            <View style={[styles.previewSliderHandle, { backgroundColor: activePresetIndex === index ? sliderButtonColor : preset.slider }]}>
+                                                <MaterialIcons name="keyboard-double-arrow-down" size={14} color="#000" />
                                             </View>
-
-                                            <View
-                                                style={[
-                                                    styles.previewPlayButton,
-                                                    { backgroundColor: activePresetIndex === index ? sliderButtonColor : preset.slider }
-                                                ]}
-                                            >
+                                            <Text style={[styles.previewSliderText, { color: activePresetIndex === index ? sliderButtonColor : preset.slider }]}>SLIDE</Text>
+                                        </View>
+                                        <View style={{ marginRight: 10 }}>
+                                            <View style={[styles.previewPlayButton, { backgroundColor: activePresetIndex === index ? sliderButtonColor : preset.slider }]}>
                                                 <MaterialIcons name="pause" size={22} color="#000" />
                                             </View>
-
-                                            <View style={styles.previewCancelButton}>
-                                                <MaterialIcons name="close" size={16} color="#fff" />
+                                        </View>
+                                        <View style={styles.previewCancelButton}>
+                                            <MaterialIcons name="close" size={16} color="#fff" />
+                                        </View>
+                                    </View>
+                                    <View style={styles.previewTimerSection}>
+                                        <View style={styles.previewLabelContainer}>
+                                            <View style={[styles.labelPill, { backgroundColor: activePresetIndex === index ? fillerColor : preset.filler }]}>
+                                                <Text style={styles.previewTimerLabelAlt}>{preset.name.toUpperCase()}</Text>
                                             </View>
                                         </View>
-
-                                        {/* Right side - Timer display */}
-                                        <View style={styles.previewTimerSection}>
-                                            <View style={styles.previewLabelContainer}>
-                                                <View style={[styles.labelPill, { backgroundColor: activePresetIndex === index ? fillerColor : preset.filler }]}>
-                                                    <Text style={styles.previewTimerLabelAlt}>{preset.name.toUpperCase()}</Text>
-                                                </View>
-                                            </View>
-                                            <View style={styles.previewTimerRow}>
-                                                <Text
-                                                    style={[
-                                                        styles.previewTimerText,
-                                                        { color: activePresetIndex === index ? timerTextColor : preset.text },
-                                                        isLandscape && styles.previewTimerTextLandscape
-                                                    ]}
-                                                >
-                                                    00:05:30
-                                                </Text>
-                                            </View>
+                                        <View style={styles.previewTimerRow}>
+                                            <Text style={[styles.previewTimerText, { color: activePresetIndex === index ? timerTextColor : preset.text }, isLandscape && styles.previewTimerTextLandscape]}>00:05:30</Text>
                                         </View>
                                     </View>
                                 </View>
-                            ))}
-                        </ScrollView>
-                    </View>
-                </View>
-
-                {/* Pagination Dots */}
-                <View style={styles.pagination}>
-                    {LANDSCAPE_PRESETS.map((_, i) => (
-                        <View
-                            key={i}
-                            style={[
-                                styles.dot,
-                                activePresetIndex === i && {
-                                    backgroundColor: LANDSCAPE_PRESETS[i].filler,
-                                    width: 10,
-                                    height: 10,
-                                    opacity: 1
-                                }
-                            ]}
-                        />
-                    ))}
-                </View>
-            </Animated.View>
-        );
-    };
-
-    // Render a color picker row (compact for landscape)
-    const renderColorPickerRow = (
-        title: string,
-        icon: keyof typeof MaterialIcons.glyphMap,
-        currentColor: string,
-        onSelect: (color: string) => void
-    ) => {
-        return (
-            <View style={[styles.colorPickerCard, isLandscape && styles.colorPickerCardLandscape]}>
-                <View style={styles.colorPickerHeader}>
-                    <View style={styles.colorPickerTitleRow}>
-                        <MaterialIcons name={icon} size={18} color={currentColor} />
-                        <Text style={[styles.colorPickerTitle, isLandscape && styles.colorPickerTitleLandscape]}>{title}</Text>
-                    </View>
-                    <View style={[styles.currentColorBadge, { backgroundColor: currentColor }]} />
-                </View>
-                <ScrollView
-                    horizontal
-                    showsHorizontalScrollIndicator={false}
-                    contentContainerStyle={styles.colorScrollerContent}
-                    decelerationRate="fast"
-                >
-                    {COLOR_PRESETS.map((preset) => (
-                        <TouchableOpacity
-                            key={preset.value}
-                            style={[
-                                styles.colorChip,
-                                currentColor === preset.value && styles.colorChipSelected,
-                                { borderColor: currentColor === preset.value ? preset.value : 'transparent' }
-                            ]}
-                            onPress={() => onSelect(preset.value)}
-                            activeOpacity={0.7}
-                        >
-                            <View style={[styles.colorChipSwatch, { backgroundColor: preset.value }]}>
-                                {currentColor === preset.value && (
-                                    <MaterialIcons name="check" size={14} color={preset.value === '#FFFFFF' ? '#000' : '#fff'} />
-                                )}
                             </View>
-                        </TouchableOpacity>
-                    ))}
-                </ScrollView>
-            </View>
-        );
-    };
-
-    // Render sound selection section
-    const renderSoundSection = () => {
-        return (
-            <View style={[styles.soundSection, isLandscape && styles.soundSectionLandscape]}>
-                <View style={styles.soundOptionsRow}>
-                    {SOUND_OPTIONS.map((sound) => (
-                        <TouchableOpacity
-                            key={sound.id}
-                            style={[
-                                styles.soundCard,
-                                isLandscape && styles.soundCardLandscape,
-                                selectedSound === sound.id && styles.soundCardSelected,
-                                selectedSound === sound.id && { borderColor: sound.color },
-                                sound.uri === null && { opacity: 0.8 },
-                            ]}
-                            onPress={() => handleSoundSelect(sound.id)}
-                            activeOpacity={0.7}
-                        >
-                            {/* Sound Icon */}
-                            <View style={[
-                                styles.soundIconContainer,
-                                selectedSound === sound.id && { backgroundColor: `${sound.color}20` }
-                            ]}>
-                                <MaterialIcons
-                                    name={sound.icon}
-                                    size={24}
-                                    color={selectedSound === sound.id ? sound.color : 'rgba(255,255,255,0.5)'}
-                                />
-                            </View>
-
-                            {/* Sound Name */}
-                            <Text style={[
-                                styles.soundName,
-                                selectedSound === sound.id && { color: sound.color }
-                            ]}>
-                                {sound.name}
-                            </Text>
-
-                            {/* Preview Button */}
-                            {sound.uri ? (
-                                <TouchableOpacity
-                                    style={[
-                                        styles.previewButton,
-                                        { backgroundColor: `${sound.color}20`, borderColor: sound.color }
-                                    ]}
-                                    onPress={() => handlePreviewSound(sound.id)}
-                                    activeOpacity={0.7}
-                                >
-                                    {playingSound === sound.id ? (
-                                        <ActivityIndicator size="small" color={sound.color} />
-                                    ) : (
-                                        <MaterialIcons name="play-arrow" size={18} color={sound.color} />
-                                    )}
-                                </TouchableOpacity>
-                            ) : (
-                                <View style={{ height: 36 }} />
-                            )}
-
-                            {/* Selected Indicator */}
-                            {selectedSound === sound.id && (
-                                <View style={[styles.selectedIndicator, { backgroundColor: sound.color }]}>
-                                    <MaterialIcons name="check" size={12} color="#000" />
-                                </View>
-                            )}
-                        </TouchableOpacity>
-                    ))}
+                        ))}
+                    </ScrollView>
                 </View>
+            </View >
+            <View style={styles.pagination}>
+                {LANDSCAPE_PRESETS.map((_, i) => (
+                    <View key={i} style={[styles.dot, activePresetIndex === i && { backgroundColor: LANDSCAPE_PRESETS[i].filler, width: 10, height: 10, opacity: 1 }]} />
+                ))}
             </View>
-        );
-    };
+        </Animated.View >
+    );
 
-    // Render repetition section
-    const renderRepetitionSection = () => {
-        return (
-            <View style={[styles.repetitionSection, isLandscape && styles.repetitionSectionLandscape]}>
-                <View style={styles.repetitionHeader}>
-                    <View style={styles.repetitionTitleRow}>
-                        <MaterialIcons name="repeat" size={18} color="#00E5FF" />
-                        <Text style={styles.repetitionTitle}>Repeat Count</Text>
-                    </View>
-                    <Text style={styles.repetitionValue}>{soundRepetition}x</Text>
+    const renderColorPickerRow = (title: string, icon: keyof typeof MaterialIcons.glyphMap, currentColor: string, onSelect: (color: string) => void) => (
+        <View style={[styles.colorPickerCard, isLandscape && styles.colorPickerCardLandscape]}>
+            <View style={styles.colorPickerHeader}>
+                <View style={styles.colorPickerTitleRow}>
+                    <MaterialIcons name={icon} size={18} color={currentColor} />
+                    <Text style={[styles.colorPickerTitle, isLandscape && styles.colorPickerTitleLandscape]}>{title}</Text>
                 </View>
-                <View style={styles.repetitionOptionsRow}>
-                    {REPETITION_OPTIONS.map((count) => (
-                        <TouchableOpacity
-                            key={count}
-                            style={[
-                                styles.repetitionPill,
-                                soundRepetition === count && styles.repetitionPillSelected,
-                            ]}
-                            onPress={() => handleRepetitionSelect(count)}
-                            activeOpacity={0.7}
-                        >
-                            <Text style={[
-                                styles.repetitionPillText,
-                                soundRepetition === count && styles.repetitionPillTextSelected,
-                            ]}>
-                                {count}x
-                            </Text>
-                        </TouchableOpacity>
-                    ))}
-                </View>
+                <View style={[styles.currentColorBadge, { backgroundColor: currentColor }]} />
             </View>
-        );
-    };
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.colorScrollerContent}>
+                {COLOR_PRESETS.map((preset) => (
+                    <TouchableOpacity key={preset.value} style={[styles.colorChip, currentColor === preset.value && styles.colorChipSelected, { borderColor: currentColor === preset.value ? preset.value : 'transparent' }]} onPress={() => onSelect(preset.value)} activeOpacity={0.7}>
+                        <View style={[styles.colorChipSwatch, { backgroundColor: preset.value }]}>
+                            {currentColor === preset.value && <MaterialIcons name="check" size={14} color={preset.value === '#FFFFFF' ? '#000' : '#fff'} />}
+                        </View>
+                    </TouchableOpacity>
+                ))}
+            </ScrollView>
+        </View>
+    );
 
-    // Portrait Layout
-    const renderPortraitLayout = () => (
-        <ScrollView style={styles.content} contentContainerStyle={styles.scrollContent}>
-            {/* Landscape Preview Section */}
-            <View style={styles.section}>
-                <Text style={styles.sectionTitle}>LANDSCAPE PREVIEW</Text>
-                {renderLandscapePreview()}
+    const renderSoundSection = () => (
+        <View style={[styles.soundSection, isLandscape && styles.soundSectionLandscape]}>
+            <View style={styles.soundOptionsRow}>
+                {SOUND_OPTIONS.map((sound) => (
+                    <TouchableOpacity key={sound.id} style={[styles.soundCard, isLandscape && styles.soundCardLandscape, selectedSound === sound.id && styles.soundCardSelected, selectedSound === sound.id && { borderColor: sound.color }, sound.uri === null && { opacity: 0.8 }]} onPress={() => handleSoundSelect(sound.id)} activeOpacity={0.7}>
+                        <View style={[styles.soundIconContainer, selectedSound === sound.id && { backgroundColor: `${sound.color}20` }]}>
+                            <MaterialIcons name={sound.icon} size={24} color={selectedSound === sound.id ? sound.color : 'rgba(255,255,255,0.5)'} />
+                        </View>
+                        <Text style={[styles.soundName, selectedSound === sound.id && { color: sound.color }]}>{sound.name}</Text>
+                        {sound.uri ? (
+                            <TouchableOpacity style={[styles.previewButton, { backgroundColor: `${sound.color}20`, borderColor: sound.color }]} onPress={() => handlePreviewSound(sound.id)} activeOpacity={0.7}>
+                                {playingSound === sound.id ? <ActivityIndicator size="small" color={sound.color} /> : <MaterialIcons name="play-arrow" size={18} color={sound.color} />}
+                            </TouchableOpacity>
+                        ) : <View style={{ height: 36 }} />}
+                        {selectedSound === sound.id && (
+                            <View style={[styles.selectedIndicator, { backgroundColor: sound.color }]}><MaterialIcons name="check" size={12} color="#000" /></View>
+                        )}
+                    </TouchableOpacity>
+                ))}
             </View>
+        </View>
+    );
 
-            {/* Color Pickers Section */}
-            <View style={styles.section}>
-                <Text style={styles.sectionTitle}>CUSTOMIZE COLORS</Text>
-                {renderColorPickerRow('Filler Color', 'gradient', fillerColor, handleFillerColorSelect)}
-                {renderColorPickerRow('Slider & Button', 'touch-app', sliderButtonColor, handleSliderButtonColorSelect)}
-                {renderColorPickerRow('Timer Text', 'text-fields', timerTextColor, handleTextColorSelect)}
+    const renderRepetitionSection = () => (
+        <View style={[styles.repetitionSection, isLandscape && styles.repetitionSectionLandscape]}>
+            <View style={styles.repetitionHeader}>
+                <View style={styles.repetitionTitleRow}><MaterialIcons name="repeat" size={18} color="#00E5FF" /><Text style={styles.repetitionTitle}>Repeat Count</Text></View>
+                <Text style={styles.repetitionValue}>{soundRepetition}x</Text>
             </View>
-
-            {/* Completion Sound Section */}
-            <View style={styles.section}>
-                <Text style={styles.sectionTitle}>COMPLETION SOUND</Text>
-                {renderSoundSection()}
+            <View style={styles.repetitionOptionsRow}>
+                {REPETITION_OPTIONS.map((count) => (
+                    <TouchableOpacity key={count} style={[styles.repetitionPill, soundRepetition === count && styles.repetitionPillSelected]} onPress={() => handleRepetitionSelect(count)} activeOpacity={0.7}>
+                        <Text style={[styles.repetitionPillText, soundRepetition === count && styles.repetitionPillTextSelected]}>{count}x</Text>
+                    </TouchableOpacity>
+                ))}
             </View>
-
-            {/* Sound Repetition Section */}
-            <View style={styles.section}>
-                <Text style={styles.sectionTitle}>SOUND REPETITION</Text>
-                {renderRepetitionSection()}
-            </View>
-
-            {/* Categories Section */}
-            <View style={styles.section}>
-                <Text style={styles.sectionTitle}>CATEGORIES</Text>
-                {renderCategoriesTab()}
-            </View>
-
-            {/* General Settings Section */}
-            <View style={styles.section}>
-                <Text style={styles.sectionTitle}>GENERAL SETTINGS</Text>
-                {renderGeneralTab()}
-            </View>
-
-            {/* Reset to Defaults Section */}
-            <View style={styles.section}>
-                <Text style={styles.sectionTitle}>DEFAULTS</Text>
-                <TouchableOpacity style={styles.resetButton} onPress={handleResetToDefaults} activeOpacity={0.7}>
-                    <MaterialIcons name="refresh" size={20} color="#00E5FF" />
-                    <Text style={styles.resetButtonText}>Reset All to Defaults</Text>
-                </TouchableOpacity>
-            </View>
-
-            {/* About Section */}
-            <View style={styles.section}>
-                <Text style={styles.sectionTitle}>ABOUT</Text>
-                <View style={styles.aboutCard}>
-                    <Text style={styles.aboutText}>Timer App v1.0.0</Text>
-                    <Text style={styles.aboutSubtext}>Built with React Native & Expo</Text>
-                </View>
-            </View>
-        </ScrollView>
+        </View>
     );
 
     const handleSaveCategory = async () => {
         if (!newCategoryName.trim()) return;
-
         let updatedCategories;
         if (editingCategory) {
-            updatedCategories = categories.map(cat =>
-                cat.id === editingCategory.id
-                    ? { ...cat, name: newCategoryName, color: selectedCategoryColor, icon: selectedCategoryIcon }
-                    : cat
-            );
+            updatedCategories = categories.map(cat => cat.id === editingCategory.id ? { ...cat, name: newCategoryName, color: selectedCategoryColor, icon: selectedCategoryIcon } : cat);
         } else {
-            const newCat: Category = {
-                id: Date.now().toString(),
-                name: newCategoryName,
-                color: selectedCategoryColor,
-                icon: selectedCategoryIcon,
-            };
-            updatedCategories = [...categories, newCat];
+            updatedCategories = [...categories, { id: Date.now().toString(), name: newCategoryName, color: selectedCategoryColor, icon: selectedCategoryIcon }];
         }
-
         onCategoriesChange(updatedCategories);
         try {
             await AsyncStorage.setItem(CATEGORIES_KEY, JSON.stringify(updatedCategories));
             setIsAddingCategory(false);
             setEditingCategory(null);
             setNewCategoryName('');
-        } catch (err) {
-            console.error('Failed to save category:', err);
-        }
+        } catch (err) { console.error(err); }
     };
 
-    const handleDeleteCategory = async (id: string) => {
-        Alert.alert(
-            "Delete Category",
-            "Are you sure you want to delete this category?",
-            [
-                { text: "Cancel", style: "cancel" },
-                {
-                    text: "Delete",
-                    style: "destructive",
-                    onPress: async () => {
-                        const updatedCategories = categories.filter(cat => cat.id !== id);
-                        onCategoriesChange(updatedCategories);
-                        try {
-                            await AsyncStorage.setItem(CATEGORIES_KEY, JSON.stringify(updatedCategories));
-                        } catch (err) {
-                            console.error('Failed to delete category:', err);
-                        }
-                    }
+    const handleDeleteCategory = (id: string) => {
+        Alert.alert("Delete Category", "Are you sure you want to delete this category?", [
+            { text: "Cancel", style: "cancel" },
+            {
+                text: "Delete", style: "destructive", onPress: async () => {
+                    const updatedCategories = categories.filter(cat => cat.id !== id);
+                    onCategoriesChange(updatedCategories);
+                    try { await AsyncStorage.setItem(CATEGORIES_KEY, JSON.stringify(updatedCategories)); } catch (err) { console.error(err); }
                 }
-            ]
-        );
+            }
+        ]);
     };
 
     const startEditCategory = (cat: Category) => {
@@ -735,200 +416,109 @@ export default function SettingsScreen({
         setIsAddingCategory(true);
     };
 
-    const renderCategoriesTab = () => {
-        return (
-            <View style={styles.categoriesSection}>
-                {isLandscape && <Text style={styles.sectionTitleLandscape}>MANAGE CATEGORIES</Text>}
-                <View style={[styles.categoriesHeader, !isLandscape && { marginTop: 0 }]}>
-                    {!isLandscape && <Text style={styles.inputLabel}>MANAGE CATEGORIES</Text>}
-                    <TouchableOpacity
-                        style={styles.addCategoryBtn}
-                        onPress={() => {
-                            setEditingCategory(null);
-                            setNewCategoryName('');
-                            setSelectedCategoryColor('#00E5FF');
-                            setSelectedCategoryIcon('category');
-                            setIsAddingCategory(true);
-                        }}
-                    >
-                        <MaterialIcons name="add" size={20} color="#00E5FF" />
-                        <Text style={styles.addCategoryBtnText}>ADD NEW</Text>
-                    </TouchableOpacity>
-                </View>
-
-                {isAddingCategory ? (
-                    <View style={styles.categoryForm}>
-                        <View style={styles.categoryInputContainer}>
-                            <MaterialIcons name={selectedCategoryIcon} size={20} color={selectedCategoryColor} />
-                            <View style={{ flex: 1, marginLeft: 12 }}>
-                                <Text style={styles.inputLabel}>CATEGORY NAME</Text>
-                                <TextInput
-                                    style={styles.categoryInput}
-                                    value={newCategoryName}
-                                    onChangeText={setNewCategoryName}
-                                    placeholder="Enter name..."
-                                    placeholderTextColor="rgba(255,255,255,0.2)"
-                                    autoFocus
-                                />
-                            </View>
-                        </View>
-
-                        <Text style={styles.inputLabel}>SELECT ICON</Text>
-                        <View style={styles.iconsGrid}>
-                            {CATEGORY_ICONS.map(icon => (
-                                <TouchableOpacity
-                                    key={icon}
-                                    style={[
-                                        styles.iconPickerItem,
-                                        selectedCategoryIcon === icon && { backgroundColor: `${selectedCategoryColor}30`, borderColor: selectedCategoryColor }
-                                    ]}
-                                    onPress={() => setSelectedCategoryIcon(icon)}
-                                >
-                                    <MaterialIcons name={icon} size={20} color={selectedCategoryIcon === icon ? selectedCategoryColor : 'rgba(255,255,255,0.4)'} />
-                                </TouchableOpacity>
-                            ))}
-                        </View>
-
-                        <Text style={styles.inputLabel}>PICK COLOR</Text>
-                        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ paddingVertical: 8 }}>
-                            {COLOR_PRESETS.map(preset => (
-                                <TouchableOpacity
-                                    key={preset.value}
-                                    style={[
-                                        styles.catColorChip,
-                                        selectedCategoryColor === preset.value && { borderColor: '#fff' }
-                                    ]}
-                                    onPress={() => setSelectedCategoryColor(preset.value)}
-                                >
-                                    <View style={[styles.catColorInner, { backgroundColor: preset.value }]} />
-                                </TouchableOpacity>
-                            ))}
-                        </ScrollView>
-
-                        <View style={styles.categoryFormActions}>
-                            <TouchableOpacity
-                                style={styles.categoryCancelBtn}
-                                onPress={() => setIsAddingCategory(false)}
-                            >
-                                <Text style={styles.categoryCancelText}>CANCEL</Text>
-                            </TouchableOpacity>
-                            <TouchableOpacity
-                                style={styles.categorySaveBtn}
-                                onPress={handleSaveCategory}
-                            >
-                                <Text style={styles.categorySaveText}>{editingCategory ? 'UPDATE' : 'SAVE'}</Text>
-                            </TouchableOpacity>
+    const renderCategoriesTab = () => (
+        <View style={styles.categoriesSection}>
+            {isLandscape && <Text style={styles.sectionTitleLandscape}>MANAGE CATEGORIES</Text>}
+            <View style={[styles.categoriesHeader, !isLandscape && { marginTop: 0 }]}>
+                {!isLandscape && <Text style={styles.inputLabel}>MANAGE CATEGORIES</Text>}
+                <TouchableOpacity style={styles.addCategoryBtn} onPress={() => { setEditingCategory(null); setNewCategoryName(''); setSelectedCategoryColor('#00E5FF'); setSelectedCategoryIcon('category'); setIsAddingCategory(true); }}>
+                    <MaterialIcons name="add" size={20} color="#00E5FF" /><Text style={styles.addCategoryBtnText}>ADD NEW</Text>
+                </TouchableOpacity>
+            </View>
+            {isAddingCategory ? (
+                <View style={styles.categoryForm}>
+                    <View style={styles.categoryInputContainer}>
+                        <MaterialIcons name={selectedCategoryIcon} size={20} color={selectedCategoryColor} />
+                        <View style={{ flex: 1, marginLeft: 12 }}>
+                            <Text style={styles.inputLabel}>CATEGORY NAME</Text>
+                            <TextInput style={styles.categoryInput} value={newCategoryName} onChangeText={setNewCategoryName} placeholder="Enter name..." placeholderTextColor="rgba(255,255,255,0.2)" autoFocus />
                         </View>
                     </View>
-                ) : (
-                    <View style={styles.categoriesList}>
-                        {categories.map((cat, index) => (
-                            <React.Fragment key={cat.id}>
-                                <View style={styles.categoryItem}>
-                                    <View style={styles.categoryIconCircle}>
-                                        <MaterialIcons name={cat.icon} size={20} color={cat.color} />
-                                    </View>
-                                    <View style={styles.categoryInfo}>
-                                        <Text style={styles.categoryNameText}>{cat.name}</Text>
-                                        <View style={[styles.categoryColorPill, { backgroundColor: `${cat.color}15` }]}>
-                                            <View style={[styles.colorDot, { backgroundColor: cat.color }]} />
-                                            <Text style={[styles.categoryColorText, { color: cat.color }]}>{cat.color}</Text>
-                                        </View>
-                                    </View>
-                                    <View style={styles.categoryActions}>
-                                        <TouchableOpacity style={styles.actionBtn} onPress={() => startEditCategory(cat)}>
-                                            <MaterialIcons name="edit" size={18} color="rgba(255,255,255,0.4)" />
-                                        </TouchableOpacity>
-                                        <TouchableOpacity style={styles.actionBtn} onPress={() => handleDeleteCategory(cat.id)}>
-                                            <MaterialIcons name="delete" size={18} color="#FF3B30" />
-                                        </TouchableOpacity>
-                                    </View>
-                                </View>
-                                {index < categories.length - 1 && <View style={styles.sectionDivider} />}
-                            </React.Fragment>
+                    <Text style={styles.inputLabel}>SELECT ICON</Text>
+                    <View style={styles.iconsGrid}>
+                        {CATEGORY_ICONS.map(icon => (
+                            <TouchableOpacity key={icon} style={[styles.iconPickerItem, selectedCategoryIcon === icon && { backgroundColor: `${selectedCategoryColor}30`, borderColor: selectedCategoryColor }]} onPress={() => setSelectedCategoryIcon(icon)}>
+                                <MaterialIcons name={icon} size={20} color={selectedCategoryIcon === icon ? selectedCategoryColor : 'rgba(255,255,255,0.4)'} />
+                            </TouchableOpacity>
                         ))}
                     </View>
-                )}
-            </View>
-        );
-    };
-
-    const toggleAutoDelete = async (val: boolean) => {
-        setAutoDeletePast(val);
-        try {
-            await AsyncStorage.setItem(AUTO_DELETE_PAST_KEY, String(val));
-        } catch (e) { console.error(e); }
-    };
-
-    const toggleFutureTimers = async (val: boolean) => {
-        setEnableFutureTimers(val);
-        try {
-            await AsyncStorage.setItem(ENABLE_FUTURE_TIMERS_KEY, String(val));
-        } catch (e) { console.error(e); }
-    };
-
-    const togglePastTimers = async (val: boolean) => {
-        setEnablePastTimers(val);
-        try {
-            await AsyncStorage.setItem(ENABLE_PAST_TIMERS_KEY, String(val));
-        } catch (e) { console.error(e); }
-    };
-
-    const renderGeneralTab = () => {
-        return (
-            <View style={styles.generalTabContainer}>
-                {isLandscape && <Text style={styles.sectionTitleLandscape}>GENERAL SETTINGS</Text>}
-
-                <View style={styles.behaviorList}>
-                    {/* Past Timers Toggle */}
-                    <View style={styles.settingRow}>
-                        <View style={styles.settingInfo}>
-                            <Text style={styles.settingLabel}>Enable Past Timers</Text>
-                            <Text style={styles.settingDescription}>Select and view timers from previous dates.</Text>
-                        </View>
-                        <TouchableOpacity
-                            onPress={() => togglePastTimers(!enablePastTimers)}
-                            style={[styles.customSwitch, enablePastTimers && styles.customSwitchActive]}
-                        >
-                            <View style={[styles.switchKnob, enablePastTimers && styles.switchKnobActive]} />
-                        </TouchableOpacity>
-                    </View>
-
-                    <View style={styles.sectionDivider} />
-
-                    {/* Future Timers Toggle */}
-                    <View style={styles.settingRow}>
-                        <View style={styles.settingInfo}>
-                            <Text style={styles.settingLabel}>Enable Future Timers</Text>
-                            <Text style={styles.settingDescription}>Allow creating and viewing timers for upcoming dates.</Text>
-                        </View>
-                        <TouchableOpacity
-                            onPress={() => toggleFutureTimers(!enableFutureTimers)}
-                            style={[styles.customSwitch, enableFutureTimers && styles.customSwitchActive]}
-                        >
-                            <View style={[styles.switchKnob, enableFutureTimers && styles.switchKnobActive]} />
-                        </TouchableOpacity>
-                    </View>
-
-                    <View style={styles.sectionDivider} />
-
-                    {/* Auto Delete Toggle */}
-                    <View style={styles.settingRow}>
-                        <View style={styles.settingInfo}>
-                            <Text style={styles.settingLabel}>Auto-delete Past Timers</Text>
-                            <Text style={styles.settingDescription}>Automatically remove timers from previous days.</Text>
-                        </View>
-                        <TouchableOpacity
-                            onPress={() => toggleAutoDelete(!autoDeletePast)}
-                            style={[styles.customSwitch, autoDeletePast && styles.customSwitchActive]}
-                        >
-                            <View style={[styles.switchKnob, autoDeletePast && styles.switchKnobActive]} />
-                        </TouchableOpacity>
+                    <Text style={styles.inputLabel}>PICK COLOR</Text>
+                    <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ paddingVertical: 8 }}>
+                        {COLOR_PRESETS.map(preset => (
+                            <TouchableOpacity key={preset.value} style={[styles.catColorChip, selectedCategoryColor === preset.value && { borderColor: '#fff' }]} onPress={() => setSelectedCategoryColor(preset.value)}>
+                                <View style={[styles.catColorInner, { backgroundColor: preset.value }]} />
+                            </TouchableOpacity>
+                        ))}
+                    </ScrollView>
+                    <View style={styles.categoryFormActions}>
+                        <TouchableOpacity style={styles.categoryCancelBtn} onPress={() => setIsAddingCategory(false)}><Text style={styles.categoryCancelText}>CANCEL</Text></TouchableOpacity>
+                        <TouchableOpacity style={styles.categorySaveBtn} onPress={handleSaveCategory}><Text style={styles.categorySaveText}>{editingCategory ? 'UPDATE' : 'SAVE'}</Text></TouchableOpacity>
                     </View>
                 </View>
+            ) : (
+                <View style={styles.categoriesList}>
+                    {categories.map((cat, index) => (
+                        <React.Fragment key={cat.id}>
+                            <View style={styles.categoryItem}>
+                                <View style={styles.categoryIconCircle}><MaterialIcons name={cat.icon} size={20} color={cat.color} /></View>
+                                <View style={styles.categoryInfo}>
+                                    <Text style={styles.categoryNameText}>{cat.name}</Text>
+                                    <View style={[styles.categoryColorPill, { backgroundColor: `${cat.color}15` }]}>
+                                        <View style={[styles.colorDot, { backgroundColor: cat.color }]} /><Text style={[styles.categoryColorText, { color: cat.color }]}>{cat.color}</Text>
+                                    </View>
+                                </View>
+                                <View style={styles.categoryActions}>
+                                    <TouchableOpacity style={styles.actionBtn} onPress={() => startEditCategory(cat)}><MaterialIcons name="edit" size={18} color="rgba(255,255,255,0.4)" /></TouchableOpacity>
+                                    <TouchableOpacity style={styles.actionBtn} onPress={() => handleDeleteCategory(cat.id)}><MaterialIcons name="delete" size={18} color="#FF3B30" /></TouchableOpacity>
+                                </View>
+                            </View>
+                            {index < categories.length - 1 && <View style={styles.sectionDivider} />}
+                        </React.Fragment>
+                    ))}
+                </View>
+            )}
+        </View>
+    );
+
+    const renderGeneralTab = () => (
+        <View style={styles.generalTabContainer}>
+            {isLandscape && <Text style={styles.sectionTitleLandscape}>GENERAL SETTINGS</Text>}
+            <View style={styles.behaviorList}>
+                <View style={styles.settingRow}>
+                    <View style={styles.settingInfo}>
+                        <Text style={styles.settingLabel}>Disable Past Timers</Text>
+                        <Text style={styles.settingDescription}>Restrict interactions and prevent edits on previous dates.</Text>
+                    </View>
+                    <TouchableOpacity onPress={() => onPastTimersChange(!enablePastTimers)} style={[styles.customSwitch, enablePastTimers && styles.customSwitchActive]}>
+                        <View style={[styles.switchKnob, enablePastTimers && styles.switchKnobActive]} />
+                    </TouchableOpacity>
+                </View>
             </View>
-        );
-    };
+        </View>
+    );
+
+    const renderPortraitLayout = () => (
+        <ScrollView style={styles.content} contentContainerStyle={styles.scrollContent}>
+            <View style={styles.section}><Text style={styles.sectionTitle}>LANDSCAPE PREVIEW</Text>{renderLandscapePreview()}</View>
+            <View style={styles.section}><Text style={styles.sectionTitle}>CUSTOMIZE COLORS</Text>
+                {renderColorPickerRow('Filler Color', 'gradient', fillerColor, handleFillerColorSelect)}
+                {renderColorPickerRow('Slider & Button', 'touch-app', sliderButtonColor, handleSliderButtonColorSelect)}
+                {renderColorPickerRow('Timer Text', 'text-fields', timerTextColor, handleTextColorSelect)}
+            </View>
+            <View style={styles.section}><Text style={styles.sectionTitle}>COMPLETION SOUND</Text>{renderSoundSection()}</View>
+            <View style={styles.section}><Text style={styles.sectionTitle}>SOUND REPETITION</Text>{renderRepetitionSection()}</View>
+            <View style={styles.section}><Text style={styles.sectionTitle}>CATEGORIES</Text>{renderCategoriesTab()}</View>
+            <View style={styles.section}><Text style={styles.sectionTitle}>GENERAL SETTINGS</Text>{renderGeneralTab()}</View>
+            <View style={styles.section}><Text style={styles.sectionTitle}>DEFAULTS</Text>
+                <TouchableOpacity style={styles.resetButton} onPress={handleResetToDefaults} activeOpacity={0.7}>
+                    <MaterialIcons name="refresh" size={20} color="#00E5FF" /><Text style={styles.resetButtonText}>Reset All to Defaults</Text>
+                </TouchableOpacity>
+            </View>
+            <View style={styles.section}><Text style={styles.sectionTitle}>ABOUT</Text>
+                <View style={styles.aboutCard}><Text style={styles.aboutText}>Timer App v1.0.0</Text><Text style={styles.aboutSubtext}>Built with React Native & Expo</Text></View>
+            </View>
+        </ScrollView>
+    );
 
     // Landscape Layout - Side by side with Sidebar
     const renderLandscapeLayout = () => {
@@ -936,6 +526,7 @@ export default function SettingsScreen({
             const isActive = activeTab === id;
             return (
                 <TouchableOpacity
+                    key={id}
                     style={[
                         styles.sidebarButtonRow,
                         isActive && styles.sidebarButtonRowActive
@@ -2106,7 +1697,7 @@ const styles = StyleSheet.create({
         width: 20,
         height: 20,
         borderRadius: 10,
-        backgroundColor: 'rgba(255,255,255,0.3)',
+        backgroundColor: 'rgba(255,255,255,1)',
     },
 
     switchKnobActive: {
