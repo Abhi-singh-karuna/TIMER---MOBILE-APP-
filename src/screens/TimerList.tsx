@@ -113,6 +113,19 @@ export default function TimerList({
     selectedSound = 0,
     soundRepetition = 1
 }: TimerListProps) {
+    const formatISOToTime = (isoString?: string) => {
+        if (!isoString || isoString === '--:--') return '--:--';
+        try {
+            const date = new Date(isoString);
+            if (isNaN(date.getTime())) return isoString;
+            const hours = date.getHours().toString().padStart(2, '0');
+            const minutes = date.getMinutes().toString().padStart(2, '0');
+            return `${hours}:${minutes}`;
+        } catch (e) {
+            return isoString;
+        }
+    };
+
     const { width: screenWidth, height: screenHeight } = useWindowDimensions();
     const isLandscape = screenWidth > screenHeight;
     const [showReportPopup, setShowReportPopup] = useState(false);
@@ -570,7 +583,7 @@ export default function TimerList({
                                                 <MaterialIcons name="play-circle-outline" size={12} color="#00E5FF" />
                                                 <Text style={styles.completedPopupDetailLabelCompact}>Started</Text>
                                                 <Text style={styles.completedPopupDetailValueCompact}>
-                                                    {completedPopupTimer?.startTime || '--:--'}
+                                                    {formatISOToTime(completedPopupTimer?.startTime)}
                                                 </Text>
                                             </View>
                                             <View style={styles.completedPopupDetailRowCompact}>
@@ -648,7 +661,7 @@ export default function TimerList({
                                                 <MaterialIcons name="play-circle-outline" size={14} color="#00E5FF" />
                                                 <Text style={styles.completedPopupDetailLabelCompact}>Started</Text>
                                                 <Text style={styles.completedPopupDetailValueCompact}>
-                                                    {completedPopupTimer?.startTime || '--:--'}
+                                                    {formatISOToTime(completedPopupTimer?.startTime)}
                                                 </Text>
                                             </View>
                                             <View style={styles.completedPopupDetailRowCompact}>

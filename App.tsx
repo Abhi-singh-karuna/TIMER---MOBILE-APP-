@@ -144,6 +144,7 @@ export default function App() {
           const timeStr = `${now.getHours().toString().padStart(2, '0')}:${now.getMinutes().toString().padStart(2, '0')}`;
           setCompletedAt(timeStr);
           setCompletedBorrowedTime(timer.borrowedTime || 0);
+          setCompletedStartTime(timer.startTime || '--:--');
 
           if (activeTimerRef.current && activeTimerRef.current.id === timer.id) {
             activeTimerFinished = true;
@@ -265,6 +266,7 @@ export default function App() {
                 const timeStr = `${now.getHours().toString().padStart(2, '0')}:${now.getMinutes().toString().padStart(2, '0')}`;
                 setCompletedAt(timeStr);
                 setCompletedBorrowedTime(timer.borrowedTime || 0);
+                setCompletedStartTime(timer.startTime || '--:--');
                 return { ...timer, status: 'Completed' as const, time: '00:00:00', completedPercentage: 100, isAcknowledged: false };
               }
 
