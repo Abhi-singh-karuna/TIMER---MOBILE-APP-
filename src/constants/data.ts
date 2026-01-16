@@ -13,4 +13,5 @@ export interface Timer {
   remainingSecondsAtStart?: number; // Seconds remaining when timer was started/resumed (for accurate background calculation)
   pausedAt?: number;          // Unix timestamp when timer was paused
   notificationId?: string;    // ID of scheduled notification for timer completion
+  isAcknowledged?: boolean;    // Whether the completion has been acknowledged by the UI
 }

@@ -7,6 +7,8 @@ import {
     Platform,
     useWindowDimensions,
     Animated,
+    AppState,
+    AppStateStatus,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -40,6 +42,7 @@ interface TaskCompleteProps {
     onRestart: () => void;
     onDone: () => void;
     onBorrowTime: (seconds: number) => void;
+    onAcknowledgeCompletion?: () => void;
     selectedSound: number;
     soundRepetition: number;
     shouldPlaySound?: boolean;
@@ -52,6 +55,7 @@ export default function TaskComplete({
     onRestart,
     onDone,
     onBorrowTime,
+    onAcknowledgeCompletion,
     selectedSound,
     soundRepetition,
     shouldPlaySound = true,
@@ -79,6 +83,11 @@ export default function TaskComplete({
                 useNativeDriver: true,
             }),
         ]).start();
+
+        // Acknowledge completion on mount
+        if (onAcknowledgeCompletion) {
+            onAcknowledgeCompletion();
+        }
     }, []);
 
     // Play completion sound on mount (only if shouldPlaySound is true)
@@ -125,7 +134,17 @@ export default function TaskComplete({
 
         playSound();
 
+        // Re-play sound when app comes to foreground
+        const handleAppStateChange = (nextAppState: AppStateStatus) => {
+            if (nextAppState === 'active' && shouldPlaySound) {
+                playSound();
+            }
+        };
+
+        const subscription = AppState.addEventListener('change', handleAppStateChange);
+
         return () => {
+            subscription.remove();
             if (soundRef.current) {
                 soundRef.current.unloadAsync();
             }

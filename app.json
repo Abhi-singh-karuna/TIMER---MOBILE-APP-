@@ -17,8 +17,7 @@
       "bundleIdentifier": "com.abhisheksingh.timerapp",
       "infoPlist": {
         "UIBackgroundModes": [
-          "fetch",
-          "remote-notification"
+          "fetch"
         ]
       }
     },
@@ -34,7 +33,8 @@
       ]
     },
     "plugins": [
-      "expo-notifications"
+      "expo-notifications",
+      "expo-asset"
     ],
     "web": {
       "favicon": "./assets/favicon.png"

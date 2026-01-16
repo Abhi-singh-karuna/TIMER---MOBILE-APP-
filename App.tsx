@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { LogBox, AppState, AppStateStatus } from 'react-native';
+import * as Notifications from 'expo-notifications';
 import { StatusBar } from 'expo-status-bar';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { useFonts } from 'expo-font';
@@ -37,6 +38,7 @@ const TEXT_COLOR_KEY = '@timer_text_color';
 const PRESET_INDEX_KEY = '@timer_active_preset_index';
 const COMPLETION_SOUND_KEY = '@timer_completion_sound';
 const SOUND_REPETITION_KEY = '@timer_sound_repetition';
+const ACTIVE_TIMER_ID_KEY = '@timer_active_id';
 
 export const LANDSCAPE_PRESETS = [
   {
@@ -123,6 +125,60 @@ export default function App() {
   }, []);
 
   // AppState listener - recalculate timer when returning from background
+  const activeTimerRef = useRef<Timer | null>(activeTimer);
+  useEffect(() => {
+    activeTimerRef.current = activeTimer;
+  }, [activeTimer]);
+
+  const syncTimersWithElapsedTime = (prevTimers: Timer[]) => {
+    let activeTimerFinished = false;
+
+    const updated = prevTimers.map(timer => {
+      if (timer.status === 'Running' && timer.startedTimestamp && timer.remainingSecondsAtStart !== undefined) {
+        const elapsedMs = Date.now() - timer.startedTimestamp;
+        const elapsedSeconds = Math.floor(elapsedMs / 1000);
+        const remainingSeconds = timer.remainingSecondsAtStart - elapsedSeconds;
+
+        if (remainingSeconds <= 0) {
+          const now = new Date();
+          const timeStr = `${now.getHours().toString().padStart(2, '0')}:${now.getMinutes().toString().padStart(2, '0')}`;
+          setCompletedAt(timeStr);
+          setCompletedBorrowedTime(timer.borrowedTime || 0);
+
+          if (activeTimerRef.current && activeTimerRef.current.id === timer.id) {
+            activeTimerFinished = true;
+          }
+
+          return {
+            ...timer,
+            status: 'Completed' as const,
+            time: '00:00:00',
+            completedPercentage: 100,
+            startedTimestamp: undefined,
+            remainingSecondsAtStart: undefined,
+            notificationId: undefined,
+            isAcknowledged: false,
+          };
+        }
+
+        return {
+          ...timer,
+          time: secondsToTime(remainingSeconds),
+          startedTimestamp: Date.now(),
+          remainingSecondsAtStart: remainingSeconds,
+        };
+      }
+      return timer;
+    });
+
+    if (activeTimerFinished) {
+      setShouldPlayCompletionSound(true);
+      setCurrentScreen('complete');
+    }
+
+    return updated;
+  };
+
   useEffect(() => {
     const handleAppStateChange = (nextAppState: AppStateStatus) => {
       if (
@@ -131,42 +187,9 @@ export default function App() {
       ) {
         // App has come to the foreground - recalculate running timers
         setTimers(prevTimers => {
-          return prevTimers.map(timer => {
-            if (timer.status === 'Running' && timer.startedTimestamp && timer.remainingSecondsAtStart !== undefined) {
-              // Calculate how many seconds have elapsed since startedTimestamp
-              const elapsedMs = Date.now() - timer.startedTimestamp;
-              const elapsedSeconds = Math.floor(elapsedMs / 1000);
-
-              // Use the stored remaining seconds and subtract elapsed time
-              const remainingSeconds = timer.remainingSecondsAtStart - elapsedSeconds;
-
-              if (remainingSeconds <= 0) {
-                // Timer completed while in background
-                const now = new Date();
-                const timeStr = `${now.getHours().toString().padStart(2, '0')}:${now.getMinutes().toString().padStart(2, '0')}`;
-                setCompletedAt(timeStr);
-                setCompletedBorrowedTime(timer.borrowedTime || 0);
-                return {
-                  ...timer,
-                  status: 'Completed' as const,
-                  time: '00:00:00',
-                  completedPercentage: 100,
-                  startedTimestamp: undefined,
-                  remainingSecondsAtStart: undefined,
-                  notificationId: undefined,
-                };
-              }
-
-              // Update time based on actual elapsed time and reset tracking for next background
-              return {
-                ...timer,
-                time: secondsToTime(remainingSeconds),
-                startedTimestamp: Date.now(),
-                remainingSecondsAtStart: remainingSeconds,
-              };
-            }
-            return timer;
-          });
+          const updated = syncTimersWithElapsedTime(prevTimers);
+          saveTimers(updated);
+          return updated;
         });
       }
 
@@ -176,6 +199,27 @@ export default function App() {
     const subscription = AppState.addEventListener('change', handleAppStateChange);
     return () => subscription.remove();
   }, []);
+
+  // Handle notification tap
+  useEffect(() => {
+    const subscription = Notifications.addNotificationResponseReceivedListener(response => {
+      const data = response.notification.request.content.data;
+      if (data && data.timerId) {
+        const timer = timers.find(t => t.id === data.timerId);
+        if (timer) {
+          setActiveTimer(timer);
+          if (timer.status === 'Completed') {
+            setShouldPlayCompletionSound(false); // User tapped notification, manual navigation
+            setCurrentScreen('complete');
+          } else {
+            setCurrentScreen('active');
+          }
+        }
+      }
+    });
+
+    return () => subscription.remove();
+  }, [timers]);
 
   const loadAllColors = async () => {
     try {
@@ -220,7 +264,7 @@ export default function App() {
                 const timeStr = `${now.getHours().toString().padStart(2, '0')}:${now.getMinutes().toString().padStart(2, '0')}`;
                 setCompletedAt(timeStr);
                 setCompletedBorrowedTime(timer.borrowedTime || 0);
-                return { ...timer, status: 'Completed' as const, time: '00:00:00', completedPercentage: 100 };
+                return { ...timer, status: 'Completed' as const, time: '00:00:00', completedPercentage: 100, isAcknowledged: false };
               }
 
               const newTime = secondsToTime(currentSeconds - 1);
@@ -249,9 +293,51 @@ export default function App() {
     }
   }, [timers, activeTimer, currentScreen]);
 
+  const handleAcknowledgeCompletion = async (timerId: number) => {
+    setTimers(prevTimers => {
+      const updatedTimers = prevTimers.map(t =>
+        t.id === timerId ? { ...t, isAcknowledged: true } : t
+      );
+      saveTimers(updatedTimers);
+      return updatedTimers;
+    });
+  };
+
+  const updateActiveTimer = async (timer: Timer | null) => {
+    setActiveTimer(timer);
+    if (timer) {
+      await AsyncStorage.setItem(ACTIVE_TIMER_ID_KEY, timer.id.toString());
+    } else {
+      await AsyncStorage.removeItem(ACTIVE_TIMER_ID_KEY);
+    }
+  };
+
   const initializeTimers = async () => {
     const stored = await loadTimers();
-    setTimers(stored);
+    // Cold start - check if any timer should have completed while app was closed
+    const synced = syncTimersWithElapsedTime(stored);
+
+    // Restore active timer if it was saved
+    const activeIdStr = await AsyncStorage.getItem(ACTIVE_TIMER_ID_KEY);
+    if (activeIdStr) {
+      const activeId = parseInt(activeIdStr, 10);
+      const restoredActive = synced.find(t => t.id === activeId);
+      if (restoredActive) {
+        setActiveTimer(restoredActive);
+        if (restoredActive.status === 'Completed' && restoredActive.isAcknowledged === false) {
+          // If the previously active timer is now finished but not acknowledged, show completion screen
+          setShouldPlayCompletionSound(true);
+          setCurrentScreen('complete');
+        } else if (restoredActive.status === 'Running' || restoredActive.status === 'Paused') {
+          setCurrentScreen('active');
+        }
+      }
+    }
+
+    setTimers(synced);
+    if (synced !== stored) {
+      await saveTimers(synced);
+    }
   };
 
   const handleAddTimer = async (name: string, hours: number, minutes: number, seconds: number) => {
@@ -280,6 +366,12 @@ export default function App() {
       const newTimers = timers.filter(t => t.id !== selectedTimer.id);
       setTimers(newTimers);
       await saveTimers(newTimers);
+
+      // If we deleted the active timer, clear it
+      if (activeTimer && activeTimer.id === selectedTimer.id) {
+        await updateActiveTimer(null);
+        setCurrentScreen('list');
+      }
     }
     setDeleteModalVisible(false);
     setSelectedTimer(null);
@@ -371,11 +463,19 @@ export default function App() {
 
     setTimers(updatedTimers);
     await saveTimers(updatedTimers);
+
+    // Persist active timer if we just started one
+    if (!isCurrentlyRunning) {
+      const startedTimer = updatedTimers.find(t => t.id === timerToToggle.id);
+      if (startedTimer) {
+        await updateActiveTimer(startedTimer);
+      }
+    }
   };
 
   // Open timer screen when clicking on a card
   const handleStartTimer = async (timer: Timer) => {
-    setActiveTimer(timer);
+    await updateActiveTimer(timer);
 
     if (timer.status === 'Completed') {
       // If completed, go directly to TaskComplete screen WITHOUT sound
@@ -498,6 +598,7 @@ export default function App() {
             savedTime: savedSecs,
             startedTimestamp: undefined,
             notificationId: undefined,
+            isAcknowledged: true, // Already on complete screen, so acknowledged
           } as Timer;
         }
         return t;
@@ -551,7 +652,7 @@ export default function App() {
 
   // Handle done from complete screen
   const handleDone = async () => {
-    setActiveTimer(null);
+    await updateActiveTimer(null);
     setCurrentScreen('list');
   };
 
@@ -708,6 +809,7 @@ export default function App() {
             selectedSound={selectedSound}
             soundRepetition={soundRepetition}
             shouldPlaySound={shouldPlayCompletionSound}
+            onAcknowledgeCompletion={() => activeTimer && handleAcknowledgeCompletion(activeTimer.id)}
           />
         );
 
@@ -726,6 +828,7 @@ export default function App() {
             onBorrowTime={handleBorrowTimeFromList}
             selectedSound={selectedSound}
             soundRepetition={soundRepetition}
+            onAcknowledgeCompletion={handleAcknowledgeCompletion}
           />
         );
     }

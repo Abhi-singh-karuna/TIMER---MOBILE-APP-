@@ -1,61 +1,126 @@
-# Local iOS Build & Setup Guide
+# Comprehensive iOS Build Guide: Debug vs. Release
 
-This guide documents the steps taken to build the **TIMER_APP** locally on a Mac using Xcode and how to maintain it for free using AltStore.
+This guide covers two distinct workflows for the **TIMER_APP**: **Debug Mode** (for development) and **Release Mode** (for production/sideloading).
 
-## 1. Prerequisites
-- **Mac with Xcode installed** (from App Store).
-- **CocoaPods**: Install via `sudo gem install cocoapods`.
-- **Node.js & npm**: Installed on your system.
-- **Apple ID**: For code signing.
+## 1. Quick Comparison
 
-## 2. Project Configuration
-Ensure your `app.json` has a unique `bundleIdentifier`:
-```json
-"ios": {
-  "bundleIdentifier": "com.abhisheksingh.timerapp",
-  "supportsTablet": true
-}
-```
-
-## 3. Generating Native Files
-Run the following command to generate the `ios` directory:
-```bash
-npx expo prebuild --platform ios
-```
-*This command also installs the necessary CocoaPods dependencies.*
-
-## 4. Opening in Xcode
-Always open the `.xcworkspace` file, not the `.xcodeproj`:
-```bash
-open ios/TIMERAPP.xcworkspace
-```
-
-## 5. Xcode Signing & Capabilities
-1. Select the **TIMERAPP** project in the left sidebar.
-2. Select the **TIMERAPP** target.
-3. Go to the **Signing & Capabilities** tab.
-4. Select your **Development Team**.
-5. Ensure the **Bundle Identifier** matches your `app.json`.
-
-## 6. Building and Installing
-- **Simulator**: Select a simulator from the top menu and press **Play (▶)**.
-- **Physical Device**: Connect your iPhone, select it from the menu, and press **Play (▶)**.
-  - *Note: If using a physical device with a free account, the build will expire in 7 days.*
-
-## 7. Generating an `.ipa` for AltStore
-To create a file you can sideload:
-1. Select **Any iOS Device (arm64)** from the device list at the top.
-2. Go to **Product > Archive**.
-3. In the Organizer window, click **Distribute App**.
-4. Select **Development** and follow the prompts to **Export**.
-
-## 8. Permanent Access (AltStore)
-To bypass the 7-day limit without paying $99/year:
-1. Install **AltServer** on your Mac.
-2. Install **AltStore** on your iPhone.
-3. Enable **Wi-Fi Sync** in Finder/iTunes for your iPhone.
-4. Sideload your `.ipa` file using AltStore on your phone.
-5. AltStore will automatically refresh the app whenever you are on the same Wi-Fi as your Mac.
+| Feature | Debug Mode (Development) | Release Mode (Production) |
+| :--- | :--- | :--- |
+| **JS Loading** | Loaded live from Metro server | Bundled into the app binary |
+| **Performance** | Slower (overhead for debugging) | Optimized and fast |
+| **Live Reload** | Enabled (instant UI updates) | Disabled |
+| **Usage** | Simulator or testing while coding | Sideloading via AltStore |
 
 ---
-**Note**: Your local data (AsyncStorage) is preserved during updates or refreshes via both Xcode and AltStore.
+
+## 2. Prerequisites
+- **Mac with Xcode installed**.
+- **CocoaPods**: `sudo gem install cocoapods`.
+- **Node.js & npm**: Installed.
+- **Apple ID**: Logged into Xcode (**Settings > Accounts**).
+
+---
+
+## 3. COMMON SETUP (Required for both)
+Run these commands first to prepare the environment:
+```bash
+# 1. Install JS dependencies
+npm install
+
+# 2. Fix/Align Expo versions
+npx expo install --check
+
+# 3. Generate the 'ios' directory
+npx expo prebuild --platform ios
+```
+
+---
+
+## 4. DEVELOPMENT (Debug Mode)
+Use this mode while building features or debugging.
+
+1. **Start Development Server**:
+   ```bash
+   npx expo start --clear
+   ```
+2. **Run on Simulator/Device**:
+   - In a new terminal: `npx expo run:ios`
+   - *Alternative*: Open `ios/TIMERAPP.xcworkspace` in Xcode, ensure the scheme is **Debug**, and press **Play (▶)**.
+
+---
+
+## 5. DISTRIBUTION (Release Mode)
+Use this mode to create a standalone app for sideloading via AltStore.
+
+### Step A: Generate the Standalone JS Bundle
+This command compiles your code and assets into a single static file.
+```bash
+npx react-native bundle \
+--platform ios \
+--dev false \
+--entry-file index.js \
+--bundle-output ios/main.jsbundle \
+--assets-dest ios
+```
+
+### Step B: Xcode Configuration
+1. **Open Workspace**: `open ios/TIMERAPP.xcworkspace`.
+2. **Set Scheme to Release**:
+   - **Product > Scheme > Edit Scheme...**.
+   - Select **Run** (left) > Set **Build Configuration** to **Release**.
+3. **Add the JS Bundle to Xcode**:
+   - Right-click the **TIMERAPP** folder in Xcode sidebar.
+   - Select **Add Files to "TIMERAPP"...**.
+   - Choose `ios/main.jsbundle`.
+   - **CRITICAL**: Check "Create folder references" and ensure "TIMERAPP" target is checked.
+
+### Step C: Archive and Export
+1. Select **Any iOS Device (arm64)** from the device menu at the top.
+2. Go to **Product > Archive**.
+3. In the Organizer window, click **Distribute App**.
+4. Choose **Development** and follow the prompts to **Export** your `.ipa` file.
+
+---
+
+## 6. Sideloading via AltStore
+1. Ensure **AltServer** is running on your Mac.
+2. Connect your iPhone to the same Wi-Fi.
+3. Open **AltStore** on your phone > Tap **+** > Select your `.ipa` file.
+4. AltStore will install the app and manage the 7-day refresh automatically.
+
+---
+## 7. Troubleshooting: "Build input file cannot be found"
+If you see errors related to missing files in `node_modules/expo/node_modules/expo-keep-awake/...`, it means Xcode has stale references to nested dependencies.
+
+### The Fix: Deep Clean
+Run these commands in order to reset your environment:
+```bash
+# 1. Clear caches and build folders
+rm -rf node_modules
+rm -rf ios/build
+rm -rf ~/Library/Developer/Xcode/DerivedData
+
+# 2. Reinstall JS dependencies
+npm install
+
+# 3. Synchronize Native Modules
+npx expo prebuild --platform ios
+cd ios && pod install --repo-update
+```
+
+---
+## 8. Common Errors: Provisioning & Capabilities
+
+### Error: "Personal development teams do not support Push Notifications"
+If you are using a free Apple Developer account (Personal Team), you must remove the **Push Notifications** capability, as it is only for paid developer accounts. Local timer notifications will still work without it.
+
+**The Fix:**
+1. Open `ios/TIMERAPP.xcworkspace` in Xcode.
+2. Select the **TIMERAPP** project in the left sidebar.
+3. Go to the **Signing & Capabilities** tab.
+4. Find **Push Notifications** and click the **x** icon to delete it.
+5. Find **Background Modes** and **uncheck** "Remote notifications" if it is checked.
+6. Try building again.
+
+---
+**Tip**: Always use **Debug Mode** for coding and **Release Mode** only when you want to test the final, polished app on your device without being connected to the computer.
