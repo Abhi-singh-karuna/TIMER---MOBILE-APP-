@@ -7,6 +7,8 @@ import {
     Platform,
     useWindowDimensions,
     Animated,
+    AppState,
+    AppStateStatus,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -40,6 +42,7 @@ interface TaskCompleteProps {
     onRestart: () => void;
     onDone: () => void;
     onBorrowTime: (seconds: number) => void;
+    onAcknowledgeCompletion?: () => void;
     selectedSound: number;
     soundRepetition: number;
     shouldPlaySound?: boolean;
@@ -52,6 +55,7 @@ export default function TaskComplete({
     onRestart,
     onDone,
     onBorrowTime,
+    onAcknowledgeCompletion,
     selectedSound,
     soundRepetition,
     shouldPlaySound = true,
@@ -79,6 +83,11 @@ export default function TaskComplete({
                 useNativeDriver: true,
             }),
         ]).start();
+
+        // Acknowledge completion on mount
+        if (onAcknowledgeCompletion) {
+            onAcknowledgeCompletion();
+        }
     }, []);
 
     // Play completion sound on mount (only if shouldPlaySound is true)
@@ -125,7 +134,17 @@ export default function TaskComplete({
 
         playSound();
 
+        // Re-play sound when app comes to foreground
+        const handleAppStateChange = (nextAppState: AppStateStatus) => {
+            if (nextAppState === 'active' && shouldPlaySound) {
+                playSound();
+            }
+        };
+
+        const subscription = AppState.addEventListener('change', handleAppStateChange);
+
         return () => {
+            subscription.remove();
             if (soundRef.current) {
                 soundRef.current.unloadAsync();
             }
@@ -155,6 +174,19 @@ export default function TaskComplete({
             ScreenOrientation.removeOrientationChangeListener(subscription);
         };
     }, []);
+
+    const formatISOToTime = (isoString?: string) => {
+        if (!isoString || isoString === '--:--') return '--:--';
+        try {
+            const date = new Date(isoString);
+            if (isNaN(date.getTime())) return isoString;
+            const hours = date.getHours().toString().padStart(2, '0');
+            const minutes = date.getMinutes().toString().padStart(2, '0');
+            return `${hours}:${minutes}`;
+        } catch (e) {
+            return isoString;
+        }
+    };
 
     const renderDetailCard = (icon: string, label: string, value: string, color: string, isLandscape: boolean = false) => (
         <View style={[styles.detailCard, isLandscape && styles.detailCardLandscape]}>
@@ -196,7 +228,7 @@ export default function TaskComplete({
                 <Text style={styles.summaryTitle}>SESSION SUMMARY</Text>
 
                 <View style={styles.detailsGrid}>
-                    {renderDetailCard('play-circle-outline', 'STARTED AT', startTime, '#00E5FF', true)}
+                    {renderDetailCard('play-circle-outline', 'STARTED AT', formatISOToTime(startTime), '#00E5FF', true)}
                     {renderDetailCard('check-circle-outline', 'FINISHED AT', completedAt, '#00E5FF', true)}
                     {renderDetailCard('add-alarm', 'BORROWED', borrowedTime > 0 ? `${Math.floor(borrowedTime / 60)}m ${borrowedTime % 60}s` : 'NONE', '#FFD740', true)}
                     {renderDetailCard('stars', 'STATUS', 'GOAL REACHED', '#4CAF50', true)}
@@ -231,7 +263,11 @@ export default function TaskComplete({
                     </View>
                 </View>
                 <Text style={styles.title}>Task Complete</Text>
-                <Text style={styles.subtitle}>FINISHED AT {completedAt}</Text>
+                <View style={styles.timeInfoContainer}>
+                    <Text style={styles.subtitle}>STARTED AT {formatISOToTime(startTime)}</Text>
+                    <View style={styles.timeSeparator} />
+                    <Text style={styles.subtitle}>FINISHED AT {completedAt}</Text>
+                </View>
             </View>
 
             {/* Action Buttons & Borrow Section */}
@@ -391,6 +427,18 @@ const styles = StyleSheet.create({
         letterSpacing: 2,
         color: 'rgba(255,255,255,0.4)',
         textAlign: 'center',
+    },
+    timeInfoContainer: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'center',
+        gap: 12,
+        marginTop: 4,
+    },
+    timeSeparator: {
+        width: 1,
+        height: 12,
+        backgroundColor: 'rgba(255,255,255,0.2)',
     },
     borrowedBadge: {
         flexDirection: 'row',

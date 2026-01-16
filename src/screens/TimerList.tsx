@@ -17,6 +17,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { BlurView } from 'expo-blur';
 import { MaterialIcons } from '@expo/vector-icons';
 import { Audio } from 'expo-av';
+import { activateKeepAwakeAsync, deactivateKeepAwake } from 'expo-keep-awake';
 import { Timer } from '../constants/data';
 
 // Sound options matching SettingsScreen
@@ -94,6 +95,7 @@ interface TimerListProps {
     onSettings?: () => void;
     onTimerCompleted?: (timer: Timer) => void;
     onBorrowTime?: (timer: Timer, seconds: number) => void;
+    onAcknowledgeCompletion?: (timerId: number) => void;
     selectedSound?: number;
     soundRepetition?: number;
 }
@@ -107,9 +109,23 @@ export default function TimerList({
     onSettings,
     onTimerCompleted,
     onBorrowTime,
+    onAcknowledgeCompletion,
     selectedSound = 0,
     soundRepetition = 1
 }: TimerListProps) {
+    const formatISOToTime = (isoString?: string) => {
+        if (!isoString || isoString === '--:--') return '--:--';
+        try {
+            const date = new Date(isoString);
+            if (isNaN(date.getTime())) return isoString;
+            const hours = date.getHours().toString().padStart(2, '0');
+            const minutes = date.getMinutes().toString().padStart(2, '0');
+            return `${hours}:${minutes}`;
+        } catch (e) {
+            return isoString;
+        }
+    };
+
     const { width: screenWidth, height: screenHeight } = useWindowDimensions();
     const isLandscape = screenWidth > screenHeight;
     const [showReportPopup, setShowReportPopup] = useState(false);
@@ -117,6 +133,20 @@ export default function TimerList({
     const prevTimersRef = React.useRef<Timer[]>([]);
     const soundRef = useRef<Audio.Sound | null>(null);
     const playCountRef = useRef(0);
+
+    // Keep screen awake while any timer is running
+    useEffect(() => {
+        const isAnyTimerRunning = timers.some(t => t.status === 'Running');
+        if (isAnyTimerRunning) {
+            activateKeepAwakeAsync();
+        } else {
+            deactivateKeepAwake();
+        }
+
+        return () => {
+            deactivateKeepAwake();
+        };
+    }, [timers]);
 
     // Play completion sound when popup shows
     useEffect(() => {
@@ -180,12 +210,21 @@ export default function TimerList({
 
     // Detect when a timer completes and show popup
     React.useEffect(() => {
-        // Check if any timer just transitioned to Completed status
+        // Check if any timer just transitioned to Completed status OR is Completed but not yet acknowledged
         for (const timer of timers) {
             const prevTimer = prevTimersRef.current.find(t => t.id === timer.id);
-            if (prevTimer && prevTimer.status === 'Running' && timer.status === 'Completed') {
-                // Timer just completed - show popup
+            const justCompleted = prevTimer && prevTimer.status === 'Running' && timer.status === 'Completed';
+            const completedButNotAcknowledged = timer.status === 'Completed' && timer.isAcknowledged === false;
+
+            if (justCompleted || completedButNotAcknowledged) {
+                // Timer just completed or was found in a "new" completed state - show popup
                 setCompletedPopupTimer(timer);
+
+                // Acknowledge immediately so it doesn't trigger again on re-render
+                if (onAcknowledgeCompletion) {
+                    onAcknowledgeCompletion(timer.id);
+                }
+
                 if (onTimerCompleted) {
                     onTimerCompleted(timer);
                 }
@@ -194,7 +233,7 @@ export default function TimerList({
         }
         // Update ref for next comparison
         prevTimersRef.current = [...timers];
-    }, [timers, onTimerCompleted]);
+    }, [timers, onTimerCompleted, onAcknowledgeCompletion]);
 
     // Calculate analytics
     const completedCount = timers.filter(t => t.status === 'Completed').length;
@@ -544,7 +583,7 @@ export default function TimerList({
                                                 <MaterialIcons name="play-circle-outline" size={12} color="#00E5FF" />
                                                 <Text style={styles.completedPopupDetailLabelCompact}>Started</Text>
                                                 <Text style={styles.completedPopupDetailValueCompact}>
-                                                    {completedPopupTimer?.startTime || '--:--'}
+                                                    {formatISOToTime(completedPopupTimer?.startTime)}
                                                 </Text>
                                             </View>
                                             <View style={styles.completedPopupDetailRowCompact}>
@@ -622,7 +661,7 @@ export default function TimerList({
                                                 <MaterialIcons name="play-circle-outline" size={14} color="#00E5FF" />
                                                 <Text style={styles.completedPopupDetailLabelCompact}>Started</Text>
                                                 <Text style={styles.completedPopupDetailValueCompact}>
-                                                    {completedPopupTimer?.startTime || '--:--'}
+                                                    {formatISOToTime(completedPopupTimer?.startTime)}
                                                 </Text>
                                             </View>
                                             <View style={styles.completedPopupDetailRowCompact}>

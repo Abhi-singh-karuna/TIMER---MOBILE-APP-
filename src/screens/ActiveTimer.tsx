@@ -15,6 +15,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
 import { MaterialIcons } from '@expo/vector-icons';
 import * as ScreenOrientation from 'expo-screen-orientation';
+import { activateKeepAwakeAsync, deactivateKeepAwake } from 'expo-keep-awake';
 
 import SlideToComplete from '../components/SlideToComplete';
 
@@ -57,6 +58,19 @@ export default function ActiveTimer({
     const wavePhase = useRef(new Animated.Value(0)).current;
 
     const orientationAnim = useRef(new Animated.Value(1)).current;
+
+    // Keep screen awake while timer is running
+    useEffect(() => {
+        if (isRunning) {
+            activateKeepAwakeAsync();
+        } else {
+            deactivateKeepAwake();
+        }
+
+        return () => {
+            deactivateKeepAwake();
+        };
+    }, [isRunning]);
 
     // Handle orientation changes and animations
     useEffect(() => {
