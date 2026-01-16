@@ -17,4 +17,5 @@ export interface Timer {
   createdAt: string;           // ISO string of when timer was created
   updatedAt: string;           // ISO string of last update
   borrowedTimeList: number[];  // List of seconds borrowed
+  forDate: string;             // YYYY-MM-DD format
 }

@@ -111,6 +111,11 @@ export default function App() {
   const [activePresetIndex, setActivePresetIndex] = useState(0);
   const [selectedSound, setSelectedSound] = useState(0);
   const [soundRepetition, setSoundRepetition] = useState(1);
+  const [selectedDate, setSelectedDate] = useState(new Date());
+
+  const formatDate = (date: Date) => {
+    return `${date.getFullYear()}-${(date.getMonth() + 1).toString().padStart(2, '0')}-${date.getDate().toString().padStart(2, '0')}`;
+  };
 
   const intervalRef = useRef<NodeJS.Timeout | null>(null);
   const appState = useRef(AppState.currentState);
@@ -310,6 +315,10 @@ export default function App() {
     setActiveTimer(timer);
     if (timer) {
       await AsyncStorage.setItem(ACTIVE_TIMER_ID_KEY, timer.id.toString());
+      // When opening an active timer, ensure we view its date
+      if (timer.forDate) {
+        setSelectedDate(new Date(timer.forDate));
+      }
     } else {
       await AsyncStorage.removeItem(ACTIVE_TIMER_ID_KEY);
     }
@@ -343,7 +352,7 @@ export default function App() {
     }
   };
 
-  const handleAddTimer = async (name: string, hours: number, minutes: number, seconds: number) => {
+  const handleAddTimer = async (name: string, hours: number, minutes: number, seconds: number, date: string) => {
     const timeStr = `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
     const now = new Date().toISOString();
     const newTimer: Timer = {
@@ -356,6 +365,7 @@ export default function App() {
       createdAt: now,
       updatedAt: now,
       borrowedTimeList: [],
+      forDate: date,
     };
     const newTimers = [...timers, newTimer];
     setTimers(newTimers);
@@ -884,6 +894,8 @@ export default function App() {
             selectedSound={selectedSound}
             soundRepetition={soundRepetition}
             onAcknowledgeCompletion={handleAcknowledgeCompletion}
+            selectedDate={selectedDate}
+            onDateChange={setSelectedDate}
           />
         );
     }
@@ -897,6 +909,7 @@ export default function App() {
         visible={addModalVisible}
         onCancel={() => setAddModalVisible(false)}
         onAdd={handleAddTimer}
+        initialDate={formatDate(selectedDate)}
       />
 
       <DeleteModal

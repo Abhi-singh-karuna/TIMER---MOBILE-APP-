@@ -11,6 +11,7 @@ import {
     Easing,
     useWindowDimensions,
     Modal,
+    PanResponder,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -57,6 +58,8 @@ const formatTotalTime = (totalSeconds: number): string => {
 };
 
 // Format borrowed time for display (e.g. +30 min or 1 hr 20 min)
+const DAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 const formatBorrowedTime = (seconds: number): string => {
     if (seconds <= 0) return '';
     const h = Math.floor(seconds / 3600);
@@ -111,8 +114,10 @@ export default function TimerList({
     onBorrowTime,
     onAcknowledgeCompletion,
     selectedSound = 0,
-    soundRepetition = 1
-}: TimerListProps) {
+    soundRepetition = 1,
+    selectedDate: propSelectedDate,
+    onDateChange
+}: TimerListProps & { selectedDate: Date, onDateChange: (date: Date) => void }) {
     const formatISOToTime = (isoString?: string) => {
         if (!isoString || isoString === '--:--') return '--:--';
         try {
@@ -129,6 +134,11 @@ export default function TimerList({
     const { width: screenWidth, height: screenHeight } = useWindowDimensions();
     const isLandscape = screenWidth > screenHeight;
     const [showReportPopup, setShowReportPopup] = useState(false);
+    const [showCalendar, setShowCalendar] = useState(false);
+    const [viewDate, setViewDate] = useState(new Date());
+    const [internalSelectedDate, setInternalSelectedDate] = useState(propSelectedDate);
+    const slideAnim = useRef(new Animated.Value(0)).current;
+    const fadeAnim = useRef(new Animated.Value(1)).current;
     const [completedPopupTimer, setCompletedPopupTimer] = useState<Timer | null>(null);
     const prevTimersRef = React.useRef<Timer[]>([]);
     const soundRef = useRef<Audio.Sound | null>(null);
@@ -235,29 +245,33 @@ export default function TimerList({
         prevTimersRef.current = [...timers];
     }, [timers, onTimerCompleted, onAcknowledgeCompletion]);
 
+    // Filter timers by selected date
+    const formatDate = (date: Date) => {
+        return `${date.getFullYear()}-${(date.getMonth() + 1).toString().padStart(2, '0')}-${date.getDate().toString().padStart(2, '0')}`;
+    };
+
+    const filteredTimers = timers.filter(t => t.forDate === formatDate(propSelectedDate));
+
     // Calculate analytics
-    const completedCount = timers.filter(t => t.status === 'Completed').length;
-    const totalCount = timers.length;
+    const completedCount = filteredTimers.filter(t => t.status === 'Completed').length;
+    const totalCount = filteredTimers.length;
     const completionPercentage = totalCount > 0 ? Math.round((completedCount / totalCount) * 100) : 0;
 
     // Calculate total time from all timers
-    const totalTimeSeconds = timers.reduce((acc, timer) => {
+    const totalTimeSeconds = filteredTimers.reduce((acc, timer) => {
         return acc + parseTimeToSeconds(timer.total);
     }, 0);
     const totalHours = Math.floor(totalTimeSeconds / 3600);
     const totalMinutes = Math.floor((totalTimeSeconds % 3600) / 60);
     const totalTimeFormatted = formatTotalTime(totalTimeSeconds);
 
-    // Get current date
-    const now = new Date();
-    const days = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
-    const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-    const dayName = days[now.getDay()].toUpperCase();
-    const dayNum = now.getDate();
-    const monthName = months[now.getMonth()].toUpperCase();
+    // Get current date derived from selected date
+    const dayName = DAYS[propSelectedDate.getDay()].toUpperCase();
+    const dayNum = propSelectedDate.getDate();
+    const monthName = MONTHS[propSelectedDate.getMonth()].toUpperCase();
 
     // Calculate time remaining (sum of current times for non-completed timers)
-    const timeRemainingSeconds = timers
+    const timeRemainingSeconds = filteredTimers
         .filter(t => t.status !== 'Completed')
         .reduce((acc, timer) => acc + parseTimeToSeconds(timer.time), 0);
     const remainingHours = Math.floor(timeRemainingSeconds / 3600);
@@ -265,18 +279,192 @@ export default function TimerList({
     const remainingSeconds = timeRemainingSeconds % 60;
 
     // Calculate total borrowed time
-    const totalBorrowedSeconds = timers.reduce((acc, timer) => acc + (timer.borrowedTime || 0), 0);
+    const totalBorrowedSeconds = filteredTimers.reduce((acc, timer) => acc + (timer.borrowedTime || 0), 0);
     const borrowedHours = Math.floor(totalBorrowedSeconds / 3600);
     const borrowedMinutes = Math.floor((totalBorrowedSeconds % 3600) / 60);
     const borrowedSeconds = totalBorrowedSeconds % 60;
+    // Calendar Helpers
+    const getDaysInMonth = (date: Date) => {
+        const year = date.getFullYear();
+        const month = date.getMonth();
+        const days = new Date(year, month + 1, 0).getDate();
+        const firstDay = new Date(year, month, 1).getDay();
+        return { days, firstDay };
+    };
+
+    const changeMonth = (offset: number) => {
+        Animated.parallel([
+            Animated.timing(fadeAnim, {
+                toValue: 0,
+                duration: 150,
+                useNativeDriver: true,
+            }),
+            Animated.timing(slideAnim, {
+                toValue: offset > 0 ? -20 : 20,
+                duration: 150,
+                useNativeDriver: true,
+            })
+        ]).start(() => {
+            const newDate = new Date(viewDate.getFullYear(), viewDate.getMonth() + offset, 1);
+            setViewDate(newDate);
+            slideAnim.setValue(offset > 0 ? 20 : -20);
+            Animated.parallel([
+                Animated.timing(fadeAnim, {
+                    toValue: 1,
+                    duration: 150,
+                    useNativeDriver: true,
+                }),
+                Animated.timing(slideAnim, {
+                    toValue: 0,
+                    duration: 150,
+                    useNativeDriver: true,
+                })
+            ]).start();
+        });
+    };
+
+    const panResponder = useRef(
+        PanResponder.create({
+            onStartShouldSetPanResponder: () => true,
+            onMoveShouldSetPanResponder: (_, gestureState) => Math.abs(gestureState.dx) > 20,
+            onPanResponderRelease: (evt, gestureState) => {
+                if (gestureState.dx > 40) {
+                    changeMonth(-1);
+                } else if (gestureState.dx < -40) {
+                    changeMonth(1);
+                }
+            },
+        })
+    ).current;
+
+    const renderCalendar = () => {
+        const { days, firstDay } = getDaysInMonth(viewDate);
+        const calendarDays = [];
+        const prevMonthDays = new Date(viewDate.getFullYear(), viewDate.getMonth(), 0).getDate();
+
+        // Fill empty days from previous month
+        for (let i = 0; i < firstDay; i++) {
+            calendarDays.push({ day: prevMonthDays - firstDay + i + 1, currentMonth: false });
+        }
+        // Fill days of current month
+        for (let i = 1; i <= days; i++) {
+            calendarDays.push({ day: i, currentMonth: true });
+        }
+        // Fill remaining days for 6-row grid (42 cells)
+        const totalCells = 42;
+        const remainingCells = totalCells - calendarDays.length;
+        for (let i = 1; i <= remainingCells; i++) {
+            calendarDays.push({ day: i, currentMonth: false });
+        }
+
+        const weekDays = ['S', 'M', 'T', 'W', 'T', 'F', 'S'];
+
+        return (
+            <View style={styles.calendarContainer} {...panResponder.panHandlers}>
+                {/* Calendar Header */}
+                <View style={styles.calendarHeader}>
+                    {!isLandscape && (
+                        <TouchableOpacity
+                            onPress={() => setShowCalendar(false)}
+                            style={styles.calendarBackBtn}
+                        >
+                            <MaterialIcons name="chevron-left" size={24} color="#fff" />
+                        </TouchableOpacity>
+                    )}
+                    <Text style={[styles.calendarTitle, !isLandscape && styles.calendarTitlePortrait]}>
+                        {MONTHS[viewDate.getMonth()]} {viewDate.getFullYear()}
+                    </Text>
+                    <View style={styles.calendarNav}>
+                        <TouchableOpacity onPress={() => changeMonth(-1)} style={styles.calNavBtn}>
+                            <MaterialIcons name="keyboard-arrow-left" size={isLandscape ? 20 : 24} color="rgba(255,255,255,0.7)" />
+                        </TouchableOpacity>
+                        <TouchableOpacity onPress={() => changeMonth(1)} style={styles.calNavBtn}>
+                            <MaterialIcons name="keyboard-arrow-right" size={isLandscape ? 20 : 24} color="rgba(255,255,255,0.7)" />
+                        </TouchableOpacity>
+                    </View>
+                </View>
+
+                {/* Weekday Names */}
+                <View style={styles.weekDaysRow}>
+                    {weekDays.map((d, i) => (
+                        <Text key={i} style={styles.weekDayText}>{d}</Text>
+                    ))}
+                </View>
+
+                {/* Calendar Days Grid */}
+                <Animated.View style={[
+                    styles.daysGrid,
+                    {
+                        opacity: fadeAnim,
+                        transform: [{ translateX: slideAnim }]
+                    }
+                ]}>
+                    {calendarDays.map((item, index) => {
+                        const isToday = item.currentMonth &&
+                            item.day === new Date().getDate() &&
+                            viewDate.getMonth() === new Date().getMonth() &&
+                            viewDate.getFullYear() === new Date().getFullYear();
+
+                        const isSelected = item.currentMonth &&
+                            item.day === propSelectedDate.getDate() &&
+                            viewDate.getMonth() === propSelectedDate.getMonth() &&
+                            viewDate.getFullYear() === propSelectedDate.getFullYear();
+
+                        const today = new Date();
+                        today.setHours(0, 0, 0, 0);
+                        const selectedDateObj = new Date(propSelectedDate);
+                        selectedDateObj.setHours(0, 0, 0, 0);
+                        const isPastSelection = isSelected && selectedDateObj < today;
+
+                        return (
+                            <TouchableOpacity
+                                key={index}
+                                style={styles.dayCell}
+                                onPress={() => {
+                                    if (item.currentMonth) {
+                                        const newSelected = new Date(viewDate.getFullYear(), viewDate.getMonth(), item.day);
+                                        onDateChange(newSelected);
+                                        setInternalSelectedDate(newSelected);
+                                    }
+                                }}
+                            >
+                                <View style={[
+                                    styles.dayCircle,
+                                    !isLandscape && styles.dayCirclePortrait,
+                                    isToday && styles.todayCircle,
+                                    isSelected && (isPastSelection ? styles.selectedPastDayCircle : styles.selectedDayCircle),
+                                    !item.currentMonth && styles.otherMonthDay
+                                ]}>
+                                    <Text style={[
+                                        styles.dayText,
+                                        !isLandscape && styles.dayTextPortrait,
+                                        isToday && styles.todayText,
+                                        isSelected && (isPastSelection ? styles.selectedPastDayText : styles.selectedDayText),
+                                        !item.currentMonth && styles.otherMonthText
+                                    ]}>
+                                        {item.day}
+                                    </Text>
+                                </View>
+                            </TouchableOpacity>
+                        );
+                    })}
+                </Animated.View>
+            </View>
+        );
+    };
+
+    // Analytics helper: get completion percentage for a timer list
+    const getOverallCompletionPercentage = () => {
+        return totalCount > 0 ? Math.round((completedCount / totalCount) * 100) : 0;
+    };
 
     // Render timer cards - for landscape, render in pairs for 2-column grid
     const renderTimerCards = () => {
         if (isLandscape) {
             // Create pairs for 2-column grid
             const pairs: Timer[][] = [];
-            for (let i = 0; i < timers.length; i += 2) {
-                pairs.push(timers.slice(i, i + 2));
+            for (let i = 0; i < filteredTimers.length; i += 2) {
+                pairs.push(filteredTimers.slice(i, i + 2));
             }
             return pairs.map((pair, index) => (
                 <View key={index} style={styles.cardRow}>
@@ -295,7 +483,22 @@ export default function TimerList({
             ));
         }
 
-        return timers.map((timer) => (
+        if (filteredTimers.length === 0) {
+            return (
+                <View style={styles.emptyContainer}>
+                    <MaterialIcons name="timer-off" size={60} color="rgba(255,255,255,0.05)" />
+                    <Text style={styles.emptyText}>No timers For this date</Text>
+                    <TouchableOpacity
+                        style={styles.emptyAddBtn}
+                        onPress={onAddTimer}
+                    >
+                        <Text style={styles.emptyAddText}>Add Your First Timer</Text>
+                    </TouchableOpacity>
+                </View>
+            );
+        }
+
+        return filteredTimers.map((timer) => (
             <TimerCard
                 key={timer.id}
                 timer={timer}
@@ -334,48 +537,63 @@ export default function TimerList({
                                     </View>
 
                                     {/* Date */}
-                                    <View style={styles.dateLandscapeRow}>
-                                        <MaterialIcons name="calendar-today" size={14} color="rgba(255,255,255,0.5)" />
+                                    <TouchableOpacity
+                                        style={styles.dateLandscapeRow}
+                                        onPress={() => {
+                                            if (!showCalendar) {
+                                                setViewDate(new Date());
+                                            }
+                                            setShowCalendar(!showCalendar);
+                                        }}
+                                        activeOpacity={0.7}
+                                    >
+                                        <MaterialIcons name="calendar-today" size={14} color="#00E5FF" />
                                         <Text style={styles.dateLandscapeText}>  {dayName}, {dayNum} {monthName}</Text>
-                                    </View>
+                                    </TouchableOpacity>
 
-                                    {/* Progress Section */}
-                                    <View style={styles.progressSection}>
-                                        <View style={styles.progressLabelRow}>
-                                            <Text style={styles.progressLabelText}>PROGRESS</Text>
-                                            <Text style={styles.progressFraction}>{completedCount} of {totalCount}</Text>
-                                        </View>
-                                        <Text style={styles.completedText}>Completed</Text>
-                                        <View style={styles.progressBarBg}>
-                                            <View style={[styles.progressBarFill, { width: `${completionPercentage}%` }]} />
-                                        </View>
-                                    </View>
+                                    {showCalendar ? (
+                                        renderCalendar()
+                                    ) : (
+                                        <>
+                                            {/* Progress Section */}
+                                            <View style={styles.progressSection}>
+                                                <View style={styles.progressLabelRow}>
+                                                    <Text style={styles.progressLabelText}>PROGRESS</Text>
+                                                    <Text style={styles.progressFraction}>{completedCount} of {totalCount}</Text>
+                                                </View>
+                                                <Text style={styles.completedText}>Completed</Text>
+                                                <View style={styles.progressBarBg}>
+                                                    <View style={[styles.progressBarFill, { width: `${completionPercentage}%` }]} />
+                                                </View>
+                                            </View>
 
-                                    {/* Stats Cards Row */}
-                                    <View style={styles.statsCardsRow}>
-                                        {/* Total Duration Card */}
-                                        <View style={styles.statCard}>
-                                            <Text style={styles.statCardLabel}>TOTAL DURATION</Text>
-                                            <Text style={styles.statCardValue}>{String(totalHours).padStart(2, '0')}h {String(totalMinutes).padStart(2, '0')}m</Text>
-                                        </View>
+                                            {/* Stats Cards Row */}
+                                            <View style={styles.statsCardsRow}>
+                                                {/* Total Duration Card */}
+                                                <View style={styles.statCard}>
+                                                    <Text style={styles.statCardLabel}>TOTAL DURATION</Text>
+                                                    <Text style={styles.statCardValue}>{String(totalHours).padStart(2, '0')}h {String(totalMinutes).padStart(2, '0')}m</Text>
+                                                </View>
 
-                                        {/* Completed Card */}
-                                        <View style={styles.statCard}>
-                                            <Text style={styles.statCardLabel}>COMPLETED</Text>
-                                            <Text style={styles.statCardValueLarge}>{completedCount}</Text>
-                                        </View>
-                                    </View>
+                                                {/* Completed Card */}
+                                                <View style={styles.statCard}>
+                                                    <Text style={styles.statCardLabel}>COMPLETED</Text>
+                                                    <Text style={styles.statCardValueLarge}>{completedCount}</Text>
+                                                </View>
+                                            </View>
 
-                                    {/* Time Remaining Card */}
-                                    <View style={styles.timeRemainingCard}>
-                                        <Text style={styles.timeRemainingLabel}>TIME REMAINING TODAY</Text>
-                                        <View style={styles.timeRemainingValueRow}>
-                                            <Text style={styles.timeRemainingValue}>
-                                                {String(remainingHours).padStart(2, '0')}:{String(remainingMinutes).padStart(2, '0')}:{String(remainingSeconds).padStart(2, '0')}
-                                            </Text>
-                                            <MaterialIcons name="bar-chart" size={16} color="#00E5FF" />
-                                        </View>
-                                    </View>
+                                            {/* Time Remaining Card */}
+                                            <View style={styles.timeRemainingCard}>
+                                                <Text style={styles.timeRemainingLabel}>TIME REMAINING TODAY</Text>
+                                                <View style={styles.timeRemainingValueRow}>
+                                                    <Text style={styles.timeRemainingValue}>
+                                                        {String(remainingHours).padStart(2, '0')}:{String(remainingMinutes).padStart(2, '0')}:{String(remainingSeconds).padStart(2, '0')}
+                                                    </Text>
+                                                    <MaterialIcons name="bar-chart" size={16} color="#00E5FF" />
+                                                </View>
+                                            </View>
+                                        </>
+                                    )}
                                 </ScrollView>
 
                                 {/* Footer Row: Settings icon & Detailed Reports */}
@@ -421,43 +639,75 @@ export default function TimerList({
                     // PORTRAIT LAYOUT
                     <>
                         {/* HEADER with Analytics - Matching Reference Design */}
-                        <View style={styles.headerCard}>
-                            {/* Analytics Row - Progress circle left, stats right */}
-                            <View style={styles.analyticsRow}>
-                                {/* Left Side - Large Progress Circle */}
-                                <View style={styles.progressCircleContainer}>
-                                    <View style={styles.progressCircleBg}>
-                                        {/* Background ring */}
-                                        <View style={styles.progressCircleTrack} />
-                                        {/* Foreground arc - simplified visual */}
-                                        <View style={[
-                                            styles.progressCircleArc,
-                                            {
-                                                borderTopColor: '#00E5FF',
-                                                borderRightColor: completionPercentage >= 25 ? '#00E5FF' : 'transparent',
-                                                borderBottomColor: completionPercentage >= 50 ? '#00E5FF' : 'transparent',
-                                                borderLeftColor: completionPercentage >= 75 ? '#00E5FF' : 'transparent',
-                                            }
-                                        ]} />
-                                        <Text style={styles.progressPercentText}>{completionPercentage}%</Text>
-                                    </View>
+                        <View style={[
+                            styles.headerCard,
+                            !isLandscape && styles.headerCardPortrait,
+                            !isLandscape && showCalendar && { paddingBottom: 8 }
+                        ]}>
+                            {/* Date Selector Row for Portrait */}
+                            <TouchableOpacity
+                                style={styles.datePortraitRow}
+                                onPress={() => {
+                                    if (!showCalendar) {
+                                        setViewDate(new Date());
+                                    }
+                                    setShowCalendar(!showCalendar);
+                                }}
+                                activeOpacity={0.7}
+                            >
+                                <View style={styles.datePortraitLeft}>
+                                    <MaterialIcons name="calendar-today" size={16} color="#00E5FF" />
+                                    <Text style={styles.datePortraitText}>  {dayName}, {dayNum} {monthName}</Text>
                                 </View>
+                                <MaterialIcons
+                                    name={showCalendar ? "keyboard-arrow-up" : "keyboard-arrow-down"}
+                                    size={20}
+                                    color="rgba(255,255,255,0.5)"
+                                />
+                            </TouchableOpacity>
 
-                                {/* Right Side - Stats */}
-                                <View style={styles.statsContainer}>
-                                    <Text style={styles.dailyProgressLabel}>DAILY PROGRESS</Text>
-                                    <View style={styles.tasksDoneRow}>
-                                        <Text style={styles.tasksDoneCount}>{completedCount}</Text>
-                                        <Text style={styles.tasksDoneOf}> of </Text>
-                                        <Text style={styles.tasksDoneTotal}>{totalCount}</Text>
-                                        <Text style={styles.completedLabel}>  Completed</Text>
+                            {showCalendar ? (
+                                <View style={styles.portraitCalendarContainer}>
+                                    {renderCalendar()}
+                                </View>
+                            ) : (
+                                /* Analytics Row - Shown when calendar is closed */
+                                <View style={styles.analyticsRow}>
+                                    {/* Left Side - Large Progress Circle */}
+                                    <View style={styles.progressCircleContainer}>
+                                        <View style={styles.progressCircleBg}>
+                                            {/* Background ring */}
+                                            <View style={styles.progressCircleTrack} />
+                                            {/* Foreground arc - simplified visual */}
+                                            <View style={[
+                                                styles.progressCircleArc,
+                                                {
+                                                    borderTopColor: '#00E5FF',
+                                                    borderRightColor: completionPercentage >= 25 ? '#00E5FF' : 'transparent',
+                                                    borderBottomColor: completionPercentage >= 50 ? '#00E5FF' : 'transparent',
+                                                    borderLeftColor: completionPercentage >= 75 ? '#00E5FF' : 'transparent',
+                                                }
+                                            ]} />
+                                            <Text style={styles.progressPercentText}>{completionPercentage}%</Text>
+                                        </View>
                                     </View>
-                                    <View style={styles.totalTimeRow}>
-                                        <MaterialIcons name="schedule" size={14} color="rgba(255,255,255,0.5)" />
-                                        <Text style={styles.totalTimeText}>  Total Duration: {String(totalHours).padStart(2, '0')}h {String(totalMinutes).padStart(2, '0')}m</Text>
+
+                                    {/* Right Side - Stats */}
+                                    <View style={styles.statsContainer}>
+                                        <Text style={styles.dailyProgressLabel}>DAILY PROGRESS</Text>
+                                        <View style={styles.tasksDoneRow}>
+                                            <Text style={styles.tasksDoneCount}>{completedCount}</Text>
+                                            <Text style={styles.tasksDoneOf}> of </Text>
+                                            <Text style={styles.tasksDoneTotal}>{totalCount}</Text>
+                                            <Text style={styles.completedLabel}>  Completed</Text>
+                                        </View>
+                                        <View style={styles.totalTimeRow}>
+                                            <MaterialIcons name="schedule" size={14} color="rgba(255,255,255,0.5)" />
+                                            <Text style={styles.totalTimeText}>  Total Duration: {String(totalHours).padStart(2, '0')}h {String(totalMinutes).padStart(2, '0')}m</Text>
+                                        </View>
                                     </View>
                                 </View>
-                            </View>
+                            )}
 
                             {/* Settings Icon */}
                             {onSettings && (
@@ -1940,5 +2190,173 @@ const styles = StyleSheet.create({
         fontWeight: '800',
         color: '#FF5050',
         letterSpacing: 1.5,
+    },
+
+    // ========== CALENDAR STYLES ==========
+    calendarContainer: {
+        marginTop: 10,
+    },
+    calendarHeader: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        marginBottom: 4,
+    },
+    calendarBackBtn: {
+        padding: 4,
+        marginLeft: -8,
+    },
+    calendarTitle: {
+        fontSize: 16,
+        fontWeight: '700',
+        color: '#fff',
+    },
+    calendarNav: {
+        flexDirection: 'row',
+        gap: 4,
+    },
+    calNavBtn: {
+        width: 32,
+        height: 32,
+        borderRadius: 16,
+        backgroundColor: 'rgba(255,255,255,0.05)',
+        alignItems: 'center',
+        justifyContent: 'center',
+    },
+    weekDaysRow: {
+        flexDirection: 'row',
+        justifyContent: 'space-between',
+        marginBottom: 2,
+        paddingHorizontal: 4,
+    },
+    weekDayText: {
+        width: 28,
+        textAlign: 'center',
+        fontSize: 10,
+        fontWeight: '700',
+        color: 'rgba(0,229,255,0.5)',
+    },
+    daysGrid: {
+        flexDirection: 'row',
+        flexWrap: 'wrap',
+        justifyContent: 'space-between',
+        paddingHorizontal: 4,
+    },
+    dayCell: {
+        width: '14.28%',
+        height: 32,
+        alignItems: 'center',
+        justifyContent: 'center',
+        marginBottom: 2,
+    },
+    dayCircle: {
+        width: 24,
+        height: 24,
+        borderRadius: 12,
+        alignItems: 'center',
+        justifyContent: 'center',
+    },
+    todayCircle: {
+        backgroundColor: '#00E5FF',
+    },
+    otherMonthDay: {
+        opacity: 0.3,
+    },
+    dayText: {
+        fontSize: 11,
+        fontWeight: '500',
+        color: 'rgba(255,255,255,0.8)',
+    },
+    todayText: {
+        color: '#000',
+        fontWeight: '700',
+    },
+    otherMonthText: {
+        color: 'rgba(255,255,255,0.4)',
+    },
+    selectedDayCircle: {
+        borderWidth: 2,
+        borderColor: '#4CAF50',
+        backgroundColor: 'transparent',
+    },
+    selectedDayText: {
+        color: '#4CAF50',
+        fontWeight: '800',
+    },
+    selectedPastDayCircle: {
+        borderWidth: 2,
+        borderColor: '#FF5050',
+        backgroundColor: 'transparent',
+    },
+    selectedPastDayText: {
+        color: '#FF5050',
+        fontWeight: '800',
+    },
+    datePortraitRow: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        paddingHorizontal: 4,
+        paddingBottom: 16,
+        marginBottom: 16,
+        borderBottomWidth: 1,
+        borderBottomColor: 'rgba(255,255,255,0.05)',
+    },
+    datePortraitLeft: {
+        flexDirection: 'row',
+        alignItems: 'center',
+    },
+    datePortraitText: {
+        color: '#fff',
+        fontSize: 15,
+        fontWeight: '600',
+    },
+    portraitCalendarContainer: {
+        marginTop: 0,
+        paddingBottom: 0,
+    },
+    dayCirclePortrait: {
+        width: 26,
+        height: 26,
+        borderRadius: 13,
+    },
+    dayTextPortrait: {
+        fontSize: 11,
+    },
+    calendarTitlePortrait: {
+        fontSize: 18,
+    },
+    emptyContainer: {
+        flex: 1,
+        alignItems: 'center',
+        justifyContent: 'center',
+        marginTop: 60,
+        paddingHorizontal: 40,
+    },
+    emptyText: {
+        color: 'rgba(255,255,255,0.3)',
+        fontSize: 16,
+        fontWeight: '500',
+        marginTop: 16,
+        textAlign: 'center',
+    },
+    emptyAddBtn: {
+        marginTop: 24,
+        paddingHorizontal: 20,
+        paddingVertical: 10,
+        borderRadius: 20,
+        backgroundColor: 'rgba(0, 229, 255, 0.1)',
+        borderWidth: 1,
+        borderColor: 'rgba(0, 229, 255, 0.3)',
+    },
+    emptyAddText: {
+        color: '#00E5FF',
+        fontSize: 14,
+        fontWeight: '600',
+    },
+    headerCardPortrait: {
+        paddingVertical: 12,
+        paddingHorizontal: 20,
+        borderRadius: 28,
     },
 });
