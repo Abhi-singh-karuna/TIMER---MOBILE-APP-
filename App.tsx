@@ -158,6 +158,7 @@ export default function App() {
             remainingSecondsAtStart: undefined,
             notificationId: undefined,
             isAcknowledged: false,
+            updatedAt: new Date().toISOString(),
           };
         }
 
@@ -296,7 +297,7 @@ export default function App() {
   const handleAcknowledgeCompletion = async (timerId: number) => {
     setTimers(prevTimers => {
       const updatedTimers = prevTimers.map(t =>
-        t.id === timerId ? { ...t, isAcknowledged: true } : t
+        t.id === timerId ? { ...t, isAcknowledged: true, updatedAt: new Date().toISOString() } : t
       );
       saveTimers(updatedTimers);
       return updatedTimers;
@@ -342,6 +343,7 @@ export default function App() {
 
   const handleAddTimer = async (name: string, hours: number, minutes: number, seconds: number) => {
     const timeStr = `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
+    const now = new Date().toISOString();
     const newTimer: Timer = {
       id: Date.now(),
       title: name,
@@ -349,6 +351,9 @@ export default function App() {
       total: timeStr,
       status: 'Upcoming',
       tier: 2,
+      createdAt: now,
+      updatedAt: now,
+      borrowedTimeList: [],
     };
     const newTimers = [...timers, newTimer];
     setTimers(newTimers);
@@ -387,8 +392,11 @@ export default function App() {
             time: t.total,
             status: 'Upcoming',
             borrowedTime: 0,
+            borrowedTimeList: [],
             completedPercentage: undefined,
-            savedTime: undefined
+            savedTime: undefined,
+            startTime: undefined,
+            updatedAt: new Date().toISOString(),
           } as Timer;
         }
         return t;
@@ -438,8 +446,7 @@ export default function App() {
 
         let startInfo: Partial<Timer> = {};
         if (isRestarting && !t.startTime) {
-          const now = new Date();
-          startInfo = { startTime: `${now.getHours().toString().padStart(2, '0')}:${now.getMinutes().toString().padStart(2, '0')}` };
+          startInfo = { startTime: new Date().toISOString() };
         }
 
         // Track timestamp for background time calculation
@@ -508,8 +515,7 @@ export default function App() {
 
       const updatedTimers = timers.map(t => {
         if (t.id === timer.id) {
-          const now = new Date();
-          const startTime = `${now.getHours().toString().padStart(2, '0')}:${now.getMinutes().toString().padStart(2, '0')}`;
+          const startTime = new Date().toISOString();
           return {
             ...t,
             status: 'Running',
@@ -631,9 +637,11 @@ export default function App() {
             borrowedTime: 0,
             completedPercentage: undefined,
             savedTime: undefined,
+            notificationId: notificationId || undefined,
             startedTimestamp: Date.now(),
             remainingSecondsAtStart: totalSeconds,
-            notificationId: notificationId || undefined,
+            startTime: new Date().toISOString(),
+            updatedAt: new Date().toISOString(),
           } as Timer;
         }
         return {
@@ -679,19 +687,40 @@ export default function App() {
 
   const handleBorrowTime = async (seconds: number) => {
     if (activeTimer) {
-      const updatedTimers = timers.map(t => {
+      let newNotificationId: string | undefined;
+
+      const updatedTimers = await Promise.all(timers.map(async (t) => {
         if (t.id === activeTimer.id) {
           const currentSeconds = timeToSeconds(t.time);
           const newSeconds = currentSeconds + seconds;
           const totalBorrowed = (t.borrowedTime || 0) + seconds;
+
+          // If timer is running, reschedule notification
+          if (t.status === 'Running') {
+            if (t.notificationId) {
+              await cancelTimerNotification(t.notificationId);
+            }
+            const scheduledId = await scheduleTimerNotification(
+              t.id,
+              newSeconds,
+              t.title
+            );
+            newNotificationId = scheduledId || undefined;
+          }
+
           return {
             ...t,
             time: secondsToTime(newSeconds),
-            borrowedTime: totalBorrowed
+            borrowedTime: totalBorrowed,
+            borrowedTimeList: [...(t.borrowedTimeList || []), seconds],
+            updatedAt: new Date().toISOString(),
+            notificationId: newNotificationId || t.notificationId,
+            remainingSecondsAtStart: t.status === 'Running' ? newSeconds : t.remainingSecondsAtStart,
+            startedTimestamp: t.status === 'Running' ? Date.now() : t.startedTimestamp,
           } as Timer;
         }
         return t;
-      });
+      }));
       setTimers(updatedTimers);
       await saveTimers(updatedTimers);
     }
@@ -699,6 +728,12 @@ export default function App() {
 
   const handleBorrowFromComplete = async (seconds: number) => {
     if (activeTimer) {
+      const scheduledId = await scheduleTimerNotification(
+        activeTimer.id,
+        seconds,
+        activeTimer.title
+      );
+
       const updatedTimers = timers.map(t => {
         if (t.id === activeTimer.id) {
           const totalBorrowed = (t.borrowedTime || 0) + seconds;
@@ -707,8 +742,14 @@ export default function App() {
             time: secondsToTime(seconds),
             status: 'Running',
             borrowedTime: totalBorrowed,
+            borrowedTimeList: [...(t.borrowedTimeList || []), seconds],
+            updatedAt: new Date().toISOString(),
             completedPercentage: undefined,
-            savedTime: undefined
+            savedTime: undefined,
+            startTime: new Date().toISOString(),
+            notificationId: scheduledId || undefined,
+            remainingSecondsAtStart: seconds,
+            startedTimestamp: Date.now(),
           } as Timer;
         }
         return t;
@@ -721,6 +762,12 @@ export default function App() {
 
   // Handle borrow time from TimerList popup (when timer completes in-list)
   const handleBorrowTimeFromList = async (timer: Timer, seconds: number) => {
+    const scheduledId = await scheduleTimerNotification(
+      timer.id,
+      seconds,
+      timer.title
+    );
+
     const updatedTimers = timers.map(t => {
       if (t.id === timer.id) {
         const totalBorrowed = (t.borrowedTime || 0) + seconds;
@@ -729,8 +776,14 @@ export default function App() {
           time: secondsToTime(seconds),
           status: 'Running',
           borrowedTime: totalBorrowed,
+          borrowedTimeList: [...(t.borrowedTimeList || []), seconds],
+          updatedAt: new Date().toISOString(),
           completedPercentage: undefined,
-          savedTime: undefined
+          savedTime: undefined,
+          startTime: new Date().toISOString(),
+          notificationId: scheduledId || undefined,
+          remainingSecondsAtStart: seconds,
+          startedTimestamp: Date.now(),
         } as Timer;
       }
       return t;
