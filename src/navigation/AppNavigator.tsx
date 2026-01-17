@@ -78,8 +78,8 @@ export default function AppNavigator({
                             onCancel={() => props.navigation.goBack()}
                             onComplete={() => props.navigation.navigate('TaskComplete', { completedAt: '21:09', startTime: '20:30' })}
                             onBorrowTime={() => { }}
-                            fillerColor="#00E5FF"
-                            sliderButtonColor="#00E5FF"
+                            fillerColor="#FFFFFF"
+                            sliderButtonColor="#FFFFFF"
                             timerTextColor="#FFFFFF"
                         />
                     )}

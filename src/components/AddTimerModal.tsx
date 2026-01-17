@@ -75,8 +75,8 @@ const WheelPicker = ({ data, value, onChange }: { data: number[]; value: number;
 
     return (
         <View style={pickerStyles.container}>
-            <LinearGradient colors={['rgba(25,35,45,1)', 'transparent']} style={pickerStyles.fadeTop} pointerEvents="none" />
-            <LinearGradient colors={['transparent', 'rgba(25,35,45,1)']} style={pickerStyles.fadeBottom} pointerEvents="none" />
+            <LinearGradient colors={['#000000', 'transparent']} style={pickerStyles.fadeTop} pointerEvents="none" />
+            <LinearGradient colors={['transparent', '#000000']} style={pickerStyles.fadeBottom} pointerEvents="none" />
             <View style={pickerStyles.highlight} />
             <ScrollView
                 ref={scrollRef}
@@ -106,7 +106,7 @@ const pickerStyles = StyleSheet.create({
         width: 70,
         borderRadius: 14,
         overflow: 'hidden',
-        backgroundColor: 'rgba(0,0,0,0.3)',
+        backgroundColor: 'rgba(30,30,30,0.4)',
     },
     highlight: {
         position: 'absolute',
@@ -115,9 +115,9 @@ const pickerStyles = StyleSheet.create({
         right: 3,
         height: ITEM_HEIGHT,
         borderRadius: 11,
-        backgroundColor: 'rgba(0,229,255,0.1)',
+        backgroundColor: 'rgba(255, 255, 255, 0.05)',
         borderWidth: 1,
-        borderColor: 'rgba(0,229,255,0.3)',
+        borderColor: 'rgba(255, 255, 255, 0.3)',
     },
     fadeTop: { position: 'absolute', top: 0, left: 0, right: 0, height: ITEM_HEIGHT * 0.7, zIndex: 5 },
     fadeBottom: { position: 'absolute', bottom: 0, left: 0, right: 0, height: ITEM_HEIGHT * 0.7, zIndex: 5 },
@@ -391,7 +391,7 @@ export default function AddTimerModal({ visible, onCancel, onAdd, onUpdate, init
                                                 }}
                                             >
                                                 <Text style={styles.dateDisplayText}>{selectedDate}</Text>
-                                                <MaterialIcons name="event" size={16} color="#00E5FF" />
+                                                <MaterialIcons name="event" size={16} color="#fff" />
                                             </TouchableOpacity>
                                         </View>
 
@@ -475,7 +475,7 @@ export default function AddTimerModal({ visible, onCancel, onAdd, onUpdate, init
                                         }}
                                     >
                                         <Text style={styles.dateDisplayText}>{selectedDate}</Text>
-                                        <MaterialIcons name="event" size={16} color="#00E5FF" />
+                                        <MaterialIcons name="event" size={16} color="#fff" />
                                     </TouchableOpacity>
 
                                     {renderCategoryPicker()}
@@ -540,13 +540,13 @@ const styles = StyleSheet.create({
     },
     dimLayer: {
         ...StyleSheet.absoluteFillObject,
-        backgroundColor: 'rgba(0,0,0,0.5)',
+        backgroundColor: 'rgba(0,0,0,0.7)',
     },
 
     modal: {
         width: SCREEN_WIDTH * 0.88,
         maxWidth: 400,
-        backgroundColor: 'rgba(25, 35, 45, 0.95)',
+        backgroundColor: '#000000',
         borderRadius: 28,
         borderWidth: 1,
         borderColor: 'rgba(255,255,255,0.08)',
@@ -630,7 +630,7 @@ const styles = StyleSheet.create({
     },
 
     input: {
-        backgroundColor: 'rgba(0,0,0,0.3)',
+        backgroundColor: 'rgba(20,20,20,0.5)',
         borderRadius: 16,
         paddingHorizontal: 18,
         paddingVertical: 16,
@@ -688,7 +688,7 @@ const styles = StyleSheet.create({
 
     colon: {
         fontSize: 28,
-        color: 'rgba(0,229,255,0.4)',
+        color: 'rgba(255, 255, 255, 0.45)',
         marginHorizontal: 10,
         marginBottom: 24,
     },
@@ -699,8 +699,7 @@ const styles = StyleSheet.create({
 
     addBtn: {
         borderRadius: 16,
-        borderWidth: 1.5,
-        borderColor: 'rgba(0,229,255,0.5)',
+        backgroundColor: '#FFFFFF',
         paddingVertical: 16,
         alignItems: 'center',
         marginBottom: 16,
@@ -708,8 +707,8 @@ const styles = StyleSheet.create({
 
     addBtnText: {
         fontSize: 17,
-        fontWeight: '600',
-        color: '#00E5FF',
+        fontWeight: '700',
+        color: '#000000',
     },
 
     cancelText: {
@@ -730,7 +729,7 @@ const styles = StyleSheet.create({
         alignItems: 'center',
     },
     dateDisplayText: {
-        color: '#00E5FF',
+        color: '#fff',
         fontSize: 14,
         fontWeight: '600',
     },
@@ -794,7 +793,7 @@ const styles = StyleSheet.create({
         fontWeight: '500',
     },
     todayCircle: {
-        backgroundColor: '#00E5FF',
+        backgroundColor: '#fff',
     },
     selectedFutureCircle: {
         borderWidth: 2,

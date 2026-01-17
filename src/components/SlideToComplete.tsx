@@ -24,7 +24,7 @@ export default function SlideToComplete({
     onComplete,
     vertical = false,
     colorTheme = 'white',
-    dynamicColor = '#00E5FF'
+    dynamicColor = '#FFFFFF'
 }: SlideToCompleteProps) {
     // Use a ref to store max slide distance so stable PanResponder can access it
     const maxSlideRef = useRef(0);
@@ -188,10 +188,12 @@ const styles = StyleSheet.create({
         width: HANDLE_SIZE,
         height: HANDLE_SIZE,
         borderRadius: HANDLE_SIZE / 2,
-        backgroundColor: '#00E5FF', // Sky blue handle to match theme
+        backgroundColor: '#FFFFFF', // White handle for high contrast
         alignItems: 'center',
         justifyContent: 'center',
-        shadowColor: "#00E5FF", // Sky blue glow
+    },
+    handleGlow: {
+        shadowColor: "#FFFFFF", // White glow
         shadowOffset: {
             width: 0,
             height: 0,
@@ -214,7 +216,7 @@ const styles = StyleSheet.create({
         top: '50%',
         width: 400, // Ensure enough width for rotation
         letterSpacing: 4,
-        color: '#00E5FF',
+        color: '#FFFFFF',
         fontWeight: '800',
         opacity: 0.4,
         marginLeft: 0,

@@ -98,7 +98,7 @@ export default function EmptyState({ onAddTimer }: EmptyStateProps) {
 
                         {/* Decorative Icon */}
                         <View style={styles.iconBoxLandscape}>
-                            <MaterialIcons name="timer-off" size={48} color="rgba(0, 229, 255, 0.2)" />
+                            <MaterialIcons name="timer-off" size={48} color="rgba(255, 255, 255, 0.2)" />
                         </View>
                     </View>
                 </View>
@@ -120,7 +120,7 @@ export default function EmptyState({ onAddTimer }: EmptyStateProps) {
                             >
                                 <View style={styles.buttonInnerGlow} />
                                 <View style={[styles.addButton, styles.addButtonLandscape]}>
-                                    <MaterialIcons name="add" size={24} color="#fff" />
+                                    <MaterialIcons name="add" size={24} color="#000" />
                                     <Text style={styles.addButtonText}>ADD TIMER</Text>
                                 </View>
                             </TouchableOpacity>
@@ -132,24 +132,16 @@ export default function EmptyState({ onAddTimer }: EmptyStateProps) {
     );
 
     return (
-        <LinearGradient
-            colors={['#080C1A', '#020305']}
-            style={styles.container}
-        >
-            {/* Soft Glow Background */}
-            <View style={styles.glowBackground}>
-                <View style={[styles.glowOrb, styles.blueOrb, isLandscape && styles.blueOrbLandscape]} />
-                <View style={[styles.glowOrb, styles.cyanOrb, isLandscape && styles.cyanOrbLandscape]} />
-            </View>
-
+        <View style={styles.container}>
             {isLandscape ? renderLandscape() : renderPortrait()}
-        </LinearGradient >
+        </View>
     );
 }
 
 const styles = StyleSheet.create({
     container: {
         flex: 1,
+        backgroundColor: '#000000',
     },
 
     glowBackground: {
@@ -251,8 +243,7 @@ const styles = StyleSheet.create({
 
     radialGlow: {
         ...StyleSheet.absoluteFillObject,
-        backgroundColor: 'rgba(0,247,255,0.04)',
-        opacity: 0.6,
+        backgroundColor: 'transparent',
     },
 
     emptyContent: {
@@ -301,20 +292,11 @@ const styles = StyleSheet.create({
         position: 'relative',
         borderRadius: 24,
         overflow: 'hidden',
-        ...Platform.select({
-            ios: {
-                shadowColor: '#00E5FF',
-                shadowOpacity: 0.4,
-                shadowRadius: 20,
-                shadowOffset: { width: 0, height: 10 },
-            },
-        }),
     },
 
     buttonInnerGlow: {
         ...StyleSheet.absoluteFillObject,
-        backgroundColor: 'rgba(0,247,255,0.08)',
-        borderRadius: 24,
+        backgroundColor: 'transparent',
     },
 
     addButton: {
@@ -324,10 +306,8 @@ const styles = StyleSheet.create({
         gap: 12,
         paddingVertical: 20,
         paddingHorizontal: 48,
-        backgroundColor: 'rgba(255,255,255,0.03)',
+        backgroundColor: '#FFFFFF',
         borderRadius: 24,
-        borderWidth: 1.5,
-        borderColor: 'rgba(255,255,255,0.3)',
     },
 
     buttonIcon: {
@@ -341,15 +321,9 @@ const styles = StyleSheet.create({
 
     addButtonText: {
         fontSize: 16,
-        fontWeight: '700',
-        color: '#fff',
+        fontWeight: '800',
+        color: '#000000',
         letterSpacing: 2,
-        ...Platform.select({
-            ios: {
-                textShadowColor: 'rgba(255,255,255,0.4)',
-                textShadowRadius: 10,
-            },
-        }),
     },
 
     // ========== LANDSCAPE STYLES ==========
@@ -395,9 +369,9 @@ const styles = StyleSheet.create({
         width: 100,
         height: 100,
         borderRadius: 32,
-        backgroundColor: 'rgba(0, 229, 255, 0.05)',
+        backgroundColor: 'rgba(255, 255, 255, 0.05)',
         borderWidth: 1,
-        borderColor: 'rgba(0, 229, 255, 0.1)',
+        borderColor: 'rgba(255, 255, 255, 0.1)',
         alignItems: 'center',
         justifyContent: 'center',
         marginTop: 20,
@@ -413,7 +387,7 @@ const styles = StyleSheet.create({
         borderRadius: 40,
         borderWidth: 1,
         borderColor: 'rgba(255,255,255,0.08)',
-        backgroundColor: 'rgba(20, 35, 45, 0.4)',
+        backgroundColor: 'rgba(15, 15, 15, 0.6)',
         overflow: 'hidden',
     },
 

@@ -10,7 +10,7 @@ export interface Category {
 }
 
 export const DEFAULT_CATEGORIES: Category[] = [
-  { id: '1', name: 'Work', icon: 'business-center', color: '#00E5FF' },
+  { id: '1', name: 'Work', icon: 'business-center', color: '#FFFFFF' },
   { id: '2', name: 'Exercise', icon: 'fitness-center', color: '#FF2D55' },
   { id: '3', name: 'Study', icon: 'menu-book', color: '#FFD700' },
 ];
@@ -43,7 +43,7 @@ export const SOUND_OPTIONS = [
     id: 0,
     name: 'Chime',
     icon: 'notifications' as const,
-    color: '#00E5FF',
+    color: '#FFFFFF',
     uri: 'https://assets.mixkit.co/active_storage/sfx/2869/2869-preview.mp3',
   },
   {
@@ -66,5 +66,51 @@ export const SOUND_OPTIONS = [
     icon: 'volume-off' as const,
     color: '#8E8E93',
     uri: null,
+  },
+];
+export const COLOR_PRESETS = [
+  { name: 'White', value: '#FFFFFF' },
+  { name: 'Light Gray', value: '#CCCCCC' },
+  { name: 'Dark Gray', value: '#444444' },
+  { name: 'Gold', value: '#FFD700' },
+  { name: 'Coral', value: '#FF6B6B' },
+  { name: 'Mint', value: '#4ECDC4' },
+  { name: 'Sky Blue', value: '#00E5FF' },
+  { name: 'Electric Pink', value: '#FF80AB' },
+  { name: 'Vibrant Orange', value: '#FF9100' },
+  { name: 'Spring Green', value: '#00E676' },
+  { name: 'Royal Purple', value: '#D1C4E9' },
+];
+
+export const LANDSCAPE_PRESETS = [
+  {
+    name: 'Monochrome',
+    filler: '#FFFFFF',
+    slider: '#FFFFFF',
+    text: '#FFFFFF'
+  },
+  {
+    name: 'Dark Knight',
+    filler: '#888888',
+    slider: '#888888',
+    text: '#FFFFFF'
+  },
+  {
+    name: 'Neon Cyan',
+    filler: '#00E5FF',
+    slider: '#00E5FF',
+    text: '#FFFFFF'
+  },
+  {
+    name: 'Midnight Gray',
+    filler: '#444444',
+    slider: '#444444',
+    text: '#FFFFFF'
+  },
+  {
+    name: 'Golden',
+    filler: '#FFD700',
+    slider: '#FFD700',
+    text: '#FFFFFF'
   },
 ];

@@ -49,8 +49,8 @@ export default function ActiveTimer({
     onCancel,
     onComplete,
     onBorrowTime,
-    fillerColor = '#00E5FF',
-    sliderButtonColor = '#00E5FF',
+    fillerColor = '#FFFFFF',
+    sliderButtonColor = '#FFFFFF',
     timerTextColor = '#FFFFFF',
     categoryId,
     categories
@@ -444,10 +444,8 @@ export default function ActiveTimer({
 
     return (
         <LinearGradient
-            colors={isLandscape
-                ? ['#000000', '#000000', '#000000']
-                : ['#080C1A', '#0a2025', '#0d3a40']}
-            locations={[0, 0.6, 1]}
+            colors={['#000000', '#000000']}
+            locations={[0, 1]}
             style={styles.container}
         >
             {/* Landscape Overlays - Moved outside SafeAreaView for true fullscreen */}
@@ -596,7 +594,7 @@ const styles = StyleSheet.create({
     progressText: {
         fontSize: 12,
         fontWeight: '600',
-        color: '#00E5FF',
+        color: '#FFFFFF',
         marginRight: 6,
     },
 
@@ -630,7 +628,7 @@ const styles = StyleSheet.create({
         width: 300,
         height: 300,
         borderRadius: 150,
-        backgroundColor: 'rgba(0, 229, 255, 0.04)',
+        backgroundColor: 'transparent',
         zIndex: -1,
     },
 
@@ -674,13 +672,13 @@ const styles = StyleSheet.create({
     },
 
     timeSepPortrait: {
-        color: 'rgba(0, 229, 255, 0.3)',
+        color: 'rgba(255, 255, 255, 0.3)',
         fontSize: 56,
         marginHorizontal: -4,
     },
 
     timeSecPortrait: {
-        color: '#00E5FF',
+        color: '#FFFFFF',
     },
 
     timeLabelsPortrait: {
@@ -720,13 +718,13 @@ const styles = StyleSheet.create({
         left: 0,
         top: 0,
         bottom: 0,
-        backgroundColor: 'rgba(0, 229, 255, 0.15)',
+        backgroundColor: 'rgba(255, 255, 255, 0.15)',
     },
 
     progressPillText: {
         fontSize: 10,
         fontWeight: '800',
-        color: '#00E5FF',
+        color: '#FFFFFF',
         letterSpacing: 1.5,
     },
 
@@ -779,8 +777,8 @@ const styles = StyleSheet.create({
     },
 
     actionButtonActive: {
-        backgroundColor: 'rgba(0, 229, 255, 0.08)',
-        borderColor: 'rgba(0, 229, 255, 0.4)',
+        backgroundColor: 'rgba(255, 255, 255, 0.08)',
+        borderColor: 'rgba(255, 255, 255, 0.4)',
     },
 
     actionBtnLabel: {
@@ -938,7 +936,7 @@ const styles = StyleSheet.create({
         left: -40,
         right: -40,
         height: 30,
-        backgroundColor: 'rgba(0, 229, 255, 0.4)',
+        backgroundColor: 'rgba(255, 255, 255, 0.4)',
         borderTopLeftRadius: 120,
         borderTopRightRadius: 180,
     },
@@ -949,7 +947,7 @@ const styles = StyleSheet.create({
         left: -30,
         right: -30,
         height: 22,
-        backgroundColor: 'rgba(0, 200, 240, 0.35)',
+        backgroundColor: 'rgba(255, 255, 255, 0.35)',
         borderTopLeftRadius: 140,
         borderTopRightRadius: 100,
     },
