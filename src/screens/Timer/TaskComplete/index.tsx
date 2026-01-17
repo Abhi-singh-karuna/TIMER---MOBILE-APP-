@@ -15,7 +15,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { MaterialIcons } from '@expo/vector-icons';
 import * as ScreenOrientation from 'expo-screen-orientation';
 import { Audio } from 'expo-av';
-import { Category } from '../constants/data';
+import { Category } from '../../../constants/data';
 
 // Sound options matching SettingsScreen
 const SOUND_OPTIONS = [

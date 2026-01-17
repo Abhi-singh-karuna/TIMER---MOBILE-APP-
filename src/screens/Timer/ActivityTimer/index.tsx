@@ -17,8 +17,8 @@ import { MaterialIcons } from '@expo/vector-icons';
 import * as ScreenOrientation from 'expo-screen-orientation';
 import { activateKeepAwakeAsync, deactivateKeepAwake } from 'expo-keep-awake';
 
-import SlideToComplete from '../components/SlideToComplete';
-import { Category } from '../constants/data';
+import SlideToComplete from '../../../components/SlideToComplete';
+import { Category } from '../../../constants/data';
 
 interface ActiveTimerProps {
     timerName: string;

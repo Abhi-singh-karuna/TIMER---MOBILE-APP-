@@ -15,14 +15,16 @@ import {
 } from '@expo-google-fonts/plus-jakarta-sans';
 import { Inter_900Black } from '@expo-google-fonts/inter';
 
-import EmptyState from './src/screens/EmptyState';
-import TimerList from './src/screens/TimerList';
-import ActiveTimer from './src/screens/ActiveTimer';
-import TaskComplete from './src/screens/TaskComplete';
-import SettingsScreen from './src/screens/SettingsScreen';
+import EmptyState from './src/screens/Timer/EmptyState';
+import TimerList from './src/screens/Timer/TimerList';
+import TaskList from './src/screens/Timer/Task';
+import ActiveTimer from './src/screens/Timer/ActivityTimer';
+import TaskComplete from './src/screens/Timer/TaskComplete';
+import SettingsScreen from './src/screens/Timer/Settings';
 import AddTimerModal from './src/components/AddTimerModal';
+import AddTaskModal from './src/components/AddTaskModal';
 import DeleteModal from './src/components/DeleteModal';
-import { Timer, Category, DEFAULT_CATEGORIES, CATEGORIES_KEY, LANDSCAPE_PRESETS } from './src/constants/data';
+import { Timer, Task, Category, DEFAULT_CATEGORIES, CATEGORIES_KEY, LANDSCAPE_PRESETS } from './src/constants/data';
 import { Alert } from 'react-native';
 import { loadTimers, saveTimers } from './src/utils/storage';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -42,7 +44,9 @@ const COMPLETION_SOUND_KEY = '@timer_completion_sound';
 const SOUND_REPETITION_KEY = '@timer_sound_repetition';
 const ACTIVE_TIMER_ID_KEY = '@timer_active_id';
 const ENABLE_FUTURE_TIMERS_KEY = '@timer_enable_future';
-const ENABLE_PAST_TIMERS_KEY = '@timer_enable_past';
+const IS_PAST_TIMERS_DISABLED_KEY = '@timer_is_past_disabled';
+const IS_PAST_TASKS_DISABLED_KEY = '@task_is_past_disabled';
+const TASKS_KEY = '@timer_app_tasks';
 
 
 
@@ -100,7 +104,14 @@ export default function App() {
   const [selectedDate, setSelectedDate] = useState(new Date());
   const [categories, setCategories] = useState<Category[]>(DEFAULT_CATEGORIES);
   const [timerToEdit, setTimerToEdit] = useState<Timer | null>(null);
-  const [enablePastTimers, setEnablePastTimers] = useState(true);
+  const [isPastTimersDisabled, setIsPastTimersDisabled] = useState(false);
+  const [isPastTasksDisabled, setIsPastTasksDisabled] = useState(false);
+  const [activeView, setActiveView] = useState<'timer' | 'task'>('timer');
+
+  // Task state
+  const [tasks, setTasks] = useState<Task[]>([]);
+  const [addTaskModalVisible, setAddTaskModalVisible] = useState(false);
+  const [taskToEdit, setTaskToEdit] = useState<Task | null>(null);
 
   const formatDate = (date: Date) => {
     return `${date.getFullYear()}-${(date.getMonth() + 1).toString().padStart(2, '0')}-${date.getDate().toString().padStart(2, '0')}`;
@@ -234,16 +245,138 @@ export default function App() {
       if (sound) setSelectedSound(parseInt(sound, 10));
       if (repetition) setSoundRepetition(parseInt(repetition, 10));
 
-      const savedPast = await AsyncStorage.getItem(ENABLE_PAST_TIMERS_KEY);
-      if (savedPast !== null) setEnablePastTimers(savedPast === 'true');
+      const savedPast = await AsyncStorage.getItem(IS_PAST_TIMERS_DISABLED_KEY);
+      if (savedPast !== null) setIsPastTimersDisabled(savedPast === 'true');
+      else setIsPastTimersDisabled(false); // Default to not disabled
+
+      const savedPastTasks = await AsyncStorage.getItem(IS_PAST_TASKS_DISABLED_KEY);
+      if (savedPastTasks !== null) setIsPastTasksDisabled(savedPastTasks === 'true');
+      else setIsPastTasksDisabled(false); // Default to not disabled
 
       const storedCats = await AsyncStorage.getItem(CATEGORIES_KEY);
       if (storedCats) {
         setCategories(JSON.parse(storedCats));
       }
+
+      // Load tasks
+      const storedTasks = await AsyncStorage.getItem(TASKS_KEY);
+      if (storedTasks) {
+        setTasks(JSON.parse(storedTasks));
+      }
     } catch (e) {
       console.error('Failed to load color preferences:', e);
     }
+  };
+
+  // Save tasks to AsyncStorage
+  const saveTasks = async (tasksToSave: Task[]) => {
+    try {
+      await AsyncStorage.setItem(TASKS_KEY, JSON.stringify(tasksToSave));
+    } catch (e) {
+      console.error('Failed to save tasks:', e);
+    }
+  };
+
+  // Handle adding a new task
+  const handleAddTask = (taskData: { title: string; description?: string; priority: Task['priority']; categoryId?: string; forDate: string; isBacklog?: boolean }) => {
+    const now = new Date().toISOString();
+    const newTask: Task = {
+      id: Date.now(),
+      title: taskData.title,
+      description: taskData.description,
+      status: 'Pending',
+      priority: taskData.priority,
+      categoryId: taskData.categoryId,
+      forDate: taskData.forDate,
+      isBacklog: taskData.isBacklog,
+      createdAt: now,
+      updatedAt: now,
+    };
+    const updatedTasks = [...tasks, newTask];
+    setTasks(updatedTasks);
+    saveTasks(updatedTasks);
+    setAddTaskModalVisible(false);
+  };
+
+  // Handle toggling task status
+  const handleToggleTask = (task: Task) => {
+    const statusFlow: Task['status'][] = ['Pending', 'In Progress', 'Completed'];
+    const currentIndex = statusFlow.indexOf(task.status);
+    const nextStatus = statusFlow[(currentIndex + 1) % statusFlow.length];
+
+    const now = new Date().toISOString();
+    const updatedTasks = tasks.map(t =>
+      t.id === task.id
+        ? {
+          ...t,
+          status: nextStatus,
+          updatedAt: now,
+          completedAt: nextStatus === 'Completed' ? now : undefined
+        }
+        : t
+    );
+    setTasks(updatedTasks);
+    saveTasks(updatedTasks);
+  };
+
+  // Handle deleting a task
+  const handleDeleteTask = (task: Task) => {
+    Alert.alert(
+      'Delete Task',
+      `Are you sure you want to delete "${task.title}"?`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Delete',
+          style: 'destructive',
+          onPress: () => {
+            const updatedTasks = tasks.filter(t => t.id !== task.id);
+            setTasks(updatedTasks);
+            saveTasks(updatedTasks);
+          },
+        },
+      ]
+    );
+  };
+
+  // Handle editing a task (opening the modal)
+  const handleEditTask = (task: Task) => {
+    setTaskToEdit(task);
+    setAddTaskModalVisible(true);
+  };
+
+  // Handle updating an existing task
+  const handleUpdateTask = (taskId: number, taskData: { title: string; description?: string; priority: Task['priority']; categoryId?: string; forDate: string; isBacklog?: boolean }) => {
+    const now = new Date().toISOString();
+    const updatedTasks = tasks.map(t =>
+      t.id === taskId
+        ? {
+          ...t,
+          ...taskData,
+          updatedAt: now,
+        }
+        : t
+    );
+    setTasks(updatedTasks);
+    saveTasks(updatedTasks);
+    setAddTaskModalVisible(false);
+    setTaskToEdit(null);
+  };
+
+  // Handle updating a task comment
+  const handleUpdateComment = (task: Task, comment: string) => {
+    const now = new Date().toISOString();
+    const updatedTasks = tasks.map(t =>
+      t.id === task.id
+        ? {
+          ...t,
+          comment: comment.trim() || undefined,
+          updatedAt: now,
+        }
+        : t
+    );
+    setTasks(updatedTasks);
+    saveTasks(updatedTasks);
   };
 
   // Timer countdown effect
@@ -807,13 +940,6 @@ export default function App() {
   };
 
 
-  const togglePastTimers = async (val: boolean) => {
-    setEnablePastTimers(val);
-    try {
-      await AsyncStorage.setItem(ENABLE_PAST_TIMERS_KEY, String(val));
-    } catch (e) { console.error(e); }
-  };
-
   // Handle borrow time from TimerList popup (when timer completes in-list)
   const handleBorrowTimeFromList = async (timer: Timer, seconds: number) => {
     const scheduledId = await scheduleTimerNotification(
@@ -905,8 +1031,16 @@ export default function App() {
             onRepetitionChange={setSoundRepetition}
             categories={categories}
             onCategoriesChange={setCategories}
-            enablePastTimers={enablePastTimers}
-            onPastTimersChange={togglePastTimers}
+            isPastTimersDisabled={isPastTimersDisabled}
+            onPastTimersDisabledChange={async (val) => {
+              setIsPastTimersDisabled(val);
+              await AsyncStorage.setItem(IS_PAST_TIMERS_DISABLED_KEY, val.toString());
+            }}
+            isPastTasksDisabled={isPastTasksDisabled}
+            onPastTasksDisabledChange={async (val) => {
+              setIsPastTasksDisabled(val);
+              await AsyncStorage.setItem(IS_PAST_TASKS_DISABLED_KEY, val.toString());
+            }}
           />
         );
 
@@ -927,9 +1061,31 @@ export default function App() {
           />
         );
 
+      case 'list':
+        if (activeView === 'task') {
+          return (
+            <TaskList
+              tasks={tasks}
+              onAddTask={() => setAddTaskModalVisible(true)}
+              onToggleTask={handleToggleTask}
+              onDeleteTask={handleDeleteTask}
+              onEditTask={handleEditTask}
+              onUpdateComment={handleUpdateComment}
+              categories={categories}
+              selectedDate={selectedDate}
+              onDateChange={setSelectedDate}
+              activeView={activeView}
+              onViewChange={setActiveView}
+              onSettings={() => setCurrentScreen('settings')}
+              isPastTasksDisabled={isPastTasksDisabled}
+            />
+          );
+        }
+
       default:
-        if (timers.length === 0) {
-          return <EmptyState onAddTimer={() => setAddModalVisible(true)} />;
+        // Show TimerList when activeView is 'timer'
+        if (timers.length === 0 && tasks.length === 0) {
+          return <EmptyState onAddTimer={() => activeView === 'timer' ? setAddModalVisible(true) : setAddTaskModalVisible(true)} />;
         }
         return (
           <TimerList
@@ -949,7 +1105,9 @@ export default function App() {
             selectedDate={selectedDate}
             onDateChange={setSelectedDate}
             categories={categories}
-            enablePastTimers={enablePastTimers}
+            isPastTimersDisabled={isPastTimersDisabled}
+            activeView={activeView}
+            onViewChange={setActiveView}
           />
         );
     }
@@ -970,7 +1128,7 @@ export default function App() {
         initialDate={formatDate(selectedDate)}
         categories={categories}
         timerToEdit={timerToEdit}
-        enablePastTimers={enablePastTimers}
+        isPastTimersDisabled={isPastTimersDisabled}
       />
 
       <DeleteModal
@@ -981,7 +1139,7 @@ export default function App() {
           setSelectedTimer(null);
         }}
         onUpdate={() => {
-          if (selectedTimer) {
+          if (isPastTimersDisabled) {
             setTimerToEdit(selectedTimer);
             setDeleteModalVisible(false);
             setAddModalVisible(true);
@@ -989,6 +1147,20 @@ export default function App() {
         }}
         onReset={handleResetTimer}
         onDelete={confirmDelete}
+      />
+
+      <AddTaskModal
+        visible={addTaskModalVisible}
+        onCancel={() => {
+          setAddTaskModalVisible(false);
+          setTaskToEdit(null);
+        }}
+        onAdd={handleAddTask}
+        onUpdate={handleUpdateTask}
+        taskToEdit={taskToEdit}
+        categories={categories}
+        initialDate={formatDate(selectedDate)}
+        isPastTasksDisabled={isPastTasksDisabled}
       />
 
       <StatusBar style="light" />

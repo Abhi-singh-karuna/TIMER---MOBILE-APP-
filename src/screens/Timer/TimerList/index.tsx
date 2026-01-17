@@ -21,7 +21,7 @@ import { BlurView } from 'expo-blur';
 import { MaterialIcons } from '@expo/vector-icons';
 import { Audio } from 'expo-av';
 import { activateKeepAwakeAsync, deactivateKeepAwake } from 'expo-keep-awake';
-import { Timer, Category, SOUND_OPTIONS } from '../constants/data';
+import { Timer, Category, SOUND_OPTIONS } from '../../../constants/data';
 
 // SOUND_OPTIONS moved to constants/data.ts
 
@@ -98,8 +98,10 @@ interface TimerListProps {
     onAcknowledgeCompletion?: (timerId: number) => void;
     selectedSound?: number;
     soundRepetition?: number;
-    enablePastTimers: boolean;
+    isPastTimersDisabled: boolean;
     categories: Category[];
+    activeView?: 'timer' | 'task';
+    onViewChange?: (view: 'timer' | 'task') => void;
 }
 
 export default function TimerList({
@@ -116,8 +118,10 @@ export default function TimerList({
     soundRepetition = 1,
     selectedDate: propSelectedDate,
     onDateChange,
-    enablePastTimers,
-    categories
+    isPastTimersDisabled,
+    categories,
+    activeView = 'timer',
+    onViewChange
 }: TimerListProps & { selectedDate: Date, onDateChange: (date: Date) => void }) {
     const [filterCategoryId, setFilterCategoryId] = useState<string>('All');
     const [filterStatus, setFilterStatus] = useState<string>('All');
@@ -305,7 +309,7 @@ export default function TimerList({
     const selectedDateObj = new Date(propSelectedDate);
     selectedDateObj.setHours(0, 0, 0, 0);
     const isPast = selectedDateObj < todayObj;
-    const isReadOnly = isPast && enablePastTimers;
+    const isReadOnly = isPast && isPastTimersDisabled;
     const dateLabel = isToday ? 'TODAY' : `on ${dayName} ${dayNum}`;
     // Calendar Helpers
     const getDaysInMonth = (date: Date) => {
@@ -586,11 +590,50 @@ export default function TimerList({
                             {/* Single Analytics Card containing all content */}
                             <View style={styles.analyticsCardWrapper}>
                                 <ScrollView showsVerticalScrollIndicator={false} style={styles.leftPanelScroll}>
-                                    {/* Title Row with Percentage (Only for Today) */}
-                                    {isToday && (
-                                        <View style={styles.titleRowLandscape}>
-                                            <Text style={styles.headerTitleLandscape}>Daily{'\n'}Timers</Text>
-                                            <Text style={styles.percentBadge}>{completedCount}/{totalCount}</Text>
+                                    {/* Toggle + Completion Count Row */}
+                                    {onViewChange && (
+                                        <View style={styles.toggleWithCountRow}>
+                                            <View style={styles.viewToggleContainer}>
+                                                <TouchableOpacity
+                                                    style={[
+                                                        styles.viewToggleBtn,
+                                                        activeView === 'timer' && styles.viewToggleBtnActive
+                                                    ]}
+                                                    onPress={() => onViewChange('timer')}
+                                                    activeOpacity={0.7}
+                                                >
+                                                    <MaterialIcons
+                                                        name="timer"
+                                                        size={14}
+                                                        color={activeView === 'timer' ? '#fff' : 'rgba(255,255,255,0.4)'}
+                                                    />
+                                                    <Text style={[
+                                                        styles.viewToggleText,
+                                                        activeView === 'timer' && styles.viewToggleTextActive
+                                                    ]}>TIMER</Text>
+                                                </TouchableOpacity>
+                                                <TouchableOpacity
+                                                    style={[
+                                                        styles.viewToggleBtn,
+                                                        activeView === 'task' && styles.viewToggleBtnActive
+                                                    ]}
+                                                    onPress={() => onViewChange('task')}
+                                                    activeOpacity={0.7}
+                                                >
+                                                    <MaterialIcons
+                                                        name="check-box"
+                                                        size={14}
+                                                        color={activeView === 'task' ? '#fff' : 'rgba(255,255,255,0.4)'}
+                                                    />
+                                                    <Text style={[
+                                                        styles.viewToggleText,
+                                                        activeView === 'task' && styles.viewToggleTextActive
+                                                    ]}>TASK</Text>
+                                                </TouchableOpacity>
+                                            </View>
+                                            <View style={styles.completionCountBadge}>
+                                                <Text style={styles.completionCountText}>{completedCount}/{totalCount}</Text>
+                                            </View>
                                         </View>
                                     )}
 
@@ -1142,7 +1185,7 @@ export default function TimerList({
                 </TouchableOpacity>
             </Modal>
 
-        </LinearGradient>
+        </LinearGradient >
     );
 }
 
@@ -2926,5 +2969,62 @@ const styles = StyleSheet.create({
         top: '50%',
         marginTop: -10,
         opacity: 0.6,
+    },
+    viewToggleContainer: {
+        flex: 1,
+        flexDirection: 'row',
+        gap: 4,
+        backgroundColor: 'rgba(255, 255, 255, 0.03)',
+        borderRadius: 10,
+        padding: 3,
+        borderWidth: 1,
+        borderColor: 'rgba(255, 255, 255, 0.06)',
+    },
+    viewToggleBtn: {
+        flex: 1,
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'center',
+        gap: 6,
+        paddingVertical: 8,
+        paddingHorizontal: 12,
+        borderRadius: 8,
+        backgroundColor: 'transparent',
+    },
+    viewToggleBtnActive: {
+        backgroundColor: 'rgba(255, 255, 255, 0.1)',
+        borderWidth: 1,
+        borderColor: 'rgba(255, 255, 255, 0.15)',
+    },
+    viewToggleText: {
+        fontSize: 10,
+        fontWeight: '700',
+        color: 'rgba(255, 255, 255, 0.4)',
+        letterSpacing: 1,
+    },
+    viewToggleTextActive: {
+        color: '#fff',
+        fontWeight: '800',
+    },
+    toggleWithCountRow: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        marginBottom: 12,
+        gap: 8,
+    },
+    completionCountBadge: {
+        backgroundColor: 'rgba(76, 175, 80, 0.15)',
+        paddingHorizontal: 10,
+        paddingVertical: 6,
+        borderRadius: 10,
+        borderWidth: 1,
+        borderColor: 'rgba(76, 175, 80, 0.25)',
+    },
+    completionCountText: {
+        fontSize: 13,
+        fontWeight: '800',
+        color: '#4CAF50',
+        letterSpacing: 0.5,
     },
 });

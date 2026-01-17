@@ -38,6 +38,21 @@ export interface Timer {
   categoryId?: string;         // Assigned category ID
 }
 
+export interface Task {
+  id: number;
+  title: string;
+  description?: string;
+  status: 'Pending' | 'In Progress' | 'Completed';
+  priority: 'Low' | 'Medium' | 'High';
+  categoryId?: string;
+  forDate: string;             // YYYY-MM-DD format
+  isBacklog?: boolean;         // Whether the task is in the backlog
+  createdAt: string;           // ISO string of when task was created
+  updatedAt: string;           // ISO string of last update
+  completedAt?: string;        // ISO string when task was completed
+  comment?: string;            // Optional user comment
+}
+
 export const SOUND_OPTIONS = [
   {
     id: 0,

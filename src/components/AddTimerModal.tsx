@@ -33,7 +33,7 @@ interface AddTimerModalProps {
     initialDate?: string; // YYYY-MM-DD
     categories: Category[];
     timerToEdit?: Timer | null;
-    enablePastTimers?: boolean;
+    isPastTimersDisabled?: boolean;
 }
 
 const generateNumbers = (max: number) => Array.from({ length: max + 1 }, (_, i) => i);
@@ -125,7 +125,7 @@ const pickerStyles = StyleSheet.create({
     text: { fontSize: 24, fontWeight: '400', color: '#fff' },
 });
 
-export default function AddTimerModal({ visible, onCancel, onAdd, onUpdate, initialDate, categories, timerToEdit, enablePastTimers }: AddTimerModalProps) {
+export default function AddTimerModal({ visible, onCancel, onAdd, onUpdate, initialDate, categories, timerToEdit, isPastTimersDisabled }: AddTimerModalProps) {
     const { width: screenWidth, height: screenHeight } = useWindowDimensions();
     const isLandscape = screenWidth > screenHeight;
     const [name, setName] = useState('');
@@ -238,7 +238,7 @@ export default function AddTimerModal({ visible, onCancel, onAdd, onUpdate, init
                                 style={styles.dayCell}
                                 disabled={!item.current}
                                 onPress={() => {
-                                    if (item.current && (enablePastTimers || !isPast)) {
+                                    if (item.current && (!isPastTimersDisabled || !isPast)) {
                                         setSelectedDate(dateStr);
                                         setShowDatePicker(false);
                                         Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
@@ -248,7 +248,7 @@ export default function AddTimerModal({ visible, onCancel, onAdd, onUpdate, init
                                 <View style={[
                                     styles.dayCircle,
                                     !isLandscape && styles.dayCirclePortrait,
-                                    (!item.current || (enablePastTimers && isPast)) && { opacity: 0.2 },
+                                    (!item.current || (isPastTimersDisabled && isPast)) && { opacity: 0.2 },
                                     isToday && styles.todayCircle,
                                     isSelected && (isPast ? styles.selectedPastCircle : styles.selectedFutureCircle)
                                 ]}>
@@ -269,7 +269,7 @@ export default function AddTimerModal({ visible, onCancel, onAdd, onUpdate, init
 
     const handleAdd = () => {
         const todayStr = new Date().toISOString().split('T')[0];
-        const isDateInvalid = selectedDate < todayStr && !enablePastTimers;
+        const isDateInvalid = selectedDate < todayStr && isPastTimersDisabled;
         const hasName = name.trim().length > 0;
         const hasTime = (hours + minutes + seconds) > 0;
 
@@ -383,7 +383,7 @@ export default function AddTimerModal({ visible, onCancel, onAdd, onUpdate, init
                                                 style={[
                                                     styles.dateDisplay,
                                                     styles.compactInput,
-                                                    (selectedDate < new Date().toISOString().split('T')[0] && !enablePastTimers) && styles.inputError
+                                                    (selectedDate < new Date().toISOString().split('T')[0] && isPastTimersDisabled) && styles.inputError
                                                 ]}
                                                 onPress={() => {
                                                     setShowDatePicker(true);
@@ -467,7 +467,7 @@ export default function AddTimerModal({ visible, onCancel, onAdd, onUpdate, init
                                         style={[
                                             styles.dateDisplay,
                                             { marginBottom: 24 },
-                                            (selectedDate < new Date().toISOString().split('T')[0] && !enablePastTimers) && styles.inputError
+                                            (selectedDate < new Date().toISOString().split('T')[0] && isPastTimersDisabled) && styles.inputError
                                         ]}
                                         onPress={() => {
                                             setShowDatePicker(true);
