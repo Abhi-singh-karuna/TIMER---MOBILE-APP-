@@ -37,7 +37,7 @@ export async function requestNotificationPermissions(): Promise<boolean> {
                 name: 'Timer Completion',
                 importance: Notifications.AndroidImportance.HIGH,
                 vibrationPattern: [0, 250, 250, 250],
-                lightColor: '#00E5FF',
+                lightColor: '#FFFFFF',
                 sound: 'default',
             });
         }

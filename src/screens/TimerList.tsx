@@ -13,6 +13,7 @@ import {
     Modal,
     PanResponder,
     ActivityIndicator,
+    LayoutAnimation,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -139,6 +140,7 @@ export default function TimerList({
     const isLandscape = screenWidth > screenHeight;
     const [showReportPopup, setShowReportPopup] = useState(false);
     const [showCalendar, setShowCalendar] = useState(false);
+    const [showFiltersPortrait, setShowFiltersPortrait] = useState(false);
     const [viewDate, setViewDate] = useState(new Date());
     const [internalSelectedDate, setInternalSelectedDate] = useState(propSelectedDate);
     const slideAnim = useRef(new Animated.Value(0)).current;
@@ -482,6 +484,53 @@ export default function TimerList({
 
     // Render timer cards - for landscape, render in pairs for 2-column grid
     const renderTimerCards = () => {
+        if (filteredTimers.length === 0) {
+            const renderPlaceholder = (key: string) => (
+                <TouchableOpacity
+                    key={key}
+                    style={[
+                        styles.placeholderCard,
+                        isLandscape && styles.timerCardLandscape
+                    ]}
+                    onPress={isReadOnly ? undefined : onAddTimer}
+                    activeOpacity={isReadOnly ? 1 : 0.7}
+                >
+                    <View style={styles.placeholderContent}>
+                        <MaterialIcons
+                            name={isReadOnly ? "history-toggle-off" : "add-task"}
+                            size={32}
+                            color="rgba(255,255,255,0.2)"
+                        />
+                        <Text style={styles.placeholderText}>
+                            {isReadOnly ? "NO HISTORY" : "NEW TIMER"}
+                        </Text>
+                    </View>
+                </TouchableOpacity>
+            );
+
+            if (isLandscape) {
+                return (
+                    <>
+                        <View style={styles.cardRow}>
+                            {renderPlaceholder('p1')}
+                            {renderPlaceholder('p2')}
+                        </View>
+                        <View style={styles.cardRow}>
+                            {renderPlaceholder('p3')}
+                            {renderPlaceholder('p4')}
+                        </View>
+                    </>
+                );
+            }
+
+            return (
+                <View style={{ gap: 16 }}>
+                    {renderPlaceholder('p1')}
+                    {renderPlaceholder('p2')}
+                </View>
+            );
+        }
+
         if (isLandscape) {
             // Create pairs for 2-column grid
             const pairs: Timer[][] = [];
@@ -507,21 +556,6 @@ export default function TimerList({
             ));
         }
 
-        if (filteredTimers.length === 0) {
-            return (
-                <View style={styles.emptyContainer}>
-                    <MaterialIcons name="timer-off" size={60} color="rgba(255,255,255,0.05)" />
-                    <Text style={styles.emptyText}>No timers For this date</Text>
-                    <TouchableOpacity
-                        style={styles.emptyAddBtn}
-                        onPress={onAddTimer}
-                    >
-                        <Text style={styles.emptyAddText}>Add Your First Timer</Text>
-                    </TouchableOpacity>
-                </View>
-            );
-        }
-
         return filteredTimers.map((timer) => (
             <TimerCard
                 key={timer.id}
@@ -538,14 +572,10 @@ export default function TimerList({
 
     return (
         <LinearGradient
-            colors={['#080C1A', '#020305']}
+            colors={['#000000', '#000000']}
             style={styles.container}
         >
-            {/* Background Glow */}
-            <View style={styles.glowBackground}>
-                <View style={[styles.glowOrb, styles.blueOrb]} />
-                <View style={[styles.glowOrb, styles.cyanOrb]} />
-            </View>
+            {/* Background Glow Removed for Pure Black Theme */}
 
             <SafeAreaView style={[styles.safeArea, isLandscape && styles.safeAreaLandscape]}>
                 {isLandscape ? (
@@ -576,7 +606,7 @@ export default function TimerList({
                                             }}
                                             activeOpacity={0.7}
                                         >
-                                            <MaterialIcons name="calendar-today" size={14} color="#00E5FF" />
+                                            <MaterialIcons name="calendar-today" size={14} color="#fff" />
                                             <Text style={[styles.dateLandscapeText, !isToday && { color: '#fff', fontSize: 16 }]}>
                                                 {isToday ? `  ${dayName}, ${dayNum} ${monthName}` : `  ${dateLabel} ${monthName}`}
                                             </Text>
@@ -634,7 +664,7 @@ export default function TimerList({
                                                             <MaterialIcons
                                                                 name={filterCategoryId === 'All' ? 'category' : (categories.find(c => c.id === filterCategoryId)?.icon || 'category')}
                                                                 size={16}
-                                                                color={filterCategoryId === 'All' ? 'rgba(255,255,255,0.4)' : (categories.find(c => c.id === filterCategoryId)?.color || '#00E5FF')}
+                                                                color={filterCategoryId === 'All' ? 'rgba(255,255,255,0.4)' : (categories.find(c => c.id === filterCategoryId)?.color || '#fff')}
                                                             />
                                                             <Text style={styles.expandableHeaderText}>
                                                                 {filterCategoryId === 'All' ? ' Category' : ` ${categories.find(c => c.id === filterCategoryId)?.name}`}
@@ -680,7 +710,7 @@ export default function TimerList({
                                                         activeOpacity={0.7}
                                                     >
                                                         <View style={styles.expandableHeaderLeft}>
-                                                            <MaterialIcons name="tune" size={16} color={filterStatus === 'All' ? 'rgba(255,255,255,0.4)' : '#00E5FF'} />
+                                                            <MaterialIcons name="tune" size={16} color={filterStatus === 'All' ? 'rgba(255,255,255,0.4)' : '#fff'} />
                                                             <Text style={styles.expandableHeaderText}>
                                                                 {filterStatus === 'All' ? ' Status' : ` ${filterStatus}`}
                                                             </Text>
@@ -746,45 +776,46 @@ export default function TimerList({
 
                             {/* Add Button */}
                             <TouchableOpacity style={styles.addButtonLandscape} onPress={onAddTimer} activeOpacity={0.8}>
-                                <MaterialIcons name="add" size={28} color="#fff" />
+                                <MaterialIcons name="add" size={28} color="#000" />
                             </TouchableOpacity>
                         </View>
                     </>
                 ) : (
                     // PORTRAIT LAYOUT
                     <>
-                        {/* HEADER with Analytics - Matching Reference Design */}
-                        <View style={[
-                            styles.headerCard,
-                            !isLandscape && styles.headerCardPortrait,
-                            !isLandscape && showCalendar && { paddingBottom: 8 }
-                        ]}>
-                            {/* Date Selector Row for Portrait */}
-                            <View style={styles.dateControlRowPortrait}>
+                        <View style={[styles.headerCardPortrait, { flex: 0, minHeight: 0 }]}>
+                            <View style={styles.headerMainRowPortrait}>
+                                {onSettings && (
+                                    <TouchableOpacity
+                                        style={styles.headerIconBtnPortrait}
+                                        onPress={onSettings}
+                                        activeOpacity={0.7}
+                                    >
+                                        <MaterialIcons name="settings" size={18} color="rgba(255,255,255,0.7)" />
+                                    </TouchableOpacity>
+                                )}
+
                                 <TouchableOpacity
-                                    style={styles.datePortraitRow}
+                                    style={styles.dateSelectorPillPortrait}
                                     onPress={() => {
-                                        if (!showCalendar) {
-                                            setViewDate(new Date());
-                                        }
+                                        if (!showCalendar) setViewDate(new Date());
                                         setShowCalendar(!showCalendar);
                                     }}
                                     activeOpacity={0.7}
                                 >
-                                    <View style={styles.datePortraitLeft}>
-                                        <MaterialIcons name="calendar-today" size={16} color="#00E5FF" />
-                                        <Text style={styles.datePortraitText}>  {dayName}, {dayNum} {monthName}</Text>
+                                    <View style={styles.datePillLeft}>
+                                        <MaterialIcons name="calendar-today" size={13} color="#fff" />
+                                        <Text style={styles.dateSelectorTextPortrait}> {dayName}, {dayNum} {monthName}</Text>
                                     </View>
                                     <MaterialIcons
                                         name={showCalendar ? "keyboard-arrow-up" : "keyboard-arrow-down"}
-                                        size={20}
-                                        color="rgba(255,255,255,0.5)"
+                                        size={16}
+                                        color="rgba(255,255,255,0.3)"
                                     />
                                 </TouchableOpacity>
 
-                                {/* Today Navigation Button (Portrait) */}
                                 <TouchableOpacity
-                                    style={[styles.todayNavBtnPortrait, isToday && styles.todayNavBtnActive]}
+                                    style={[styles.todayBtnPortrait, isToday && styles.todayBtnActivePortrait]}
                                     onPress={() => {
                                         const today = new Date();
                                         onDateChange(today);
@@ -793,65 +824,84 @@ export default function TimerList({
                                     activeOpacity={0.7}
                                 >
                                     <MaterialIcons name="today" size={12} color={isToday ? "#4CAF50" : "rgba(255,255,255,0.4)"} />
-                                    <Text style={[styles.todayNavText, isToday && styles.todayNavTextActive]}>TODAY</Text>
+                                    <Text style={[styles.todayBtnTextPortrait, isToday && styles.todayBtnTextActivePortrait]}>TODAY</Text>
+                                </TouchableOpacity>
+
+                                <TouchableOpacity
+                                    style={[
+                                        styles.headerIconBtnPortrait,
+                                        { marginLeft: 6 },
+                                        showFiltersPortrait && styles.headerIconBtnActivePortrait,
+                                        (filterCategoryId !== 'All' || filterStatus !== 'All') && { borderColor: 'rgba(255,255,255,0.3)' }
+                                    ]}
+                                    onPress={() => {
+                                        LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+                                        setShowFiltersPortrait(!showFiltersPortrait);
+                                    }}
+                                    activeOpacity={0.7}
+                                >
+                                    <MaterialIcons
+                                        name="filter-alt"
+                                        size={18}
+                                        color={showFiltersPortrait ? "#fff" : (filterCategoryId !== 'All' || filterStatus !== 'All' ? "#fff" : "rgba(255,255,255,0.7)")}
+                                    />
                                 </TouchableOpacity>
                             </View>
 
-                            {showCalendar ? (
-                                <View style={styles.portraitCalendarContainer}>
-                                    {renderCalendar()}
-                                </View>
-                            ) : (
-                                /* Analytics Row - Shown when calendar is closed */
-                                <View style={styles.analyticsRow}>
-                                    {/* Left Side - Large Progress Circle */}
-                                    <View style={styles.progressCircleContainer}>
-                                        <View style={styles.progressCircleBg}>
-                                            {/* Background ring */}
-                                            <View style={styles.progressCircleTrack} />
-                                            {/* Foreground arc - simplified visual */}
-                                            <View style={[
-                                                styles.progressCircleArc,
-                                                {
-                                                    borderTopColor: '#00E5FF',
-                                                    borderRightColor: completionPercentage >= 25 ? '#00E5FF' : 'transparent',
-                                                    borderBottomColor: completionPercentage >= 50 ? '#00E5FF' : 'transparent',
-                                                    borderLeftColor: completionPercentage >= 75 ? '#00E5FF' : 'transparent',
-                                                }
-                                            ]} />
-                                            <Text style={styles.progressPercentText}>{completedCount}/{totalCount}</Text>
-                                        </View>
-                                    </View>
+                            {showFiltersPortrait && (
+                                <View style={styles.portraitFiltersContainer}>
+                                    <ScrollView
+                                        horizontal
+                                        showsHorizontalScrollIndicator={false}
+                                        contentContainerStyle={styles.portraitFiltersScroll}
+                                        style={{ flexGrow: 0 }}
+                                    >
+                                        <TouchableOpacity
+                                            style={[styles.miniChip, filterCategoryId === 'All' && styles.miniChipActive]}
+                                            onPress={() => setFilterCategoryId('All')}
+                                        >
+                                            <Text style={[styles.miniChipText, filterCategoryId === 'All' && styles.miniChipTextActive]}>All Cal</Text>
+                                        </TouchableOpacity>
+                                        {categories.map(cat => (
+                                            <TouchableOpacity
+                                                key={cat.id}
+                                                style={[
+                                                    styles.miniChip,
+                                                    filterCategoryId === cat.id && { backgroundColor: `${cat.color}20`, borderColor: cat.color }
+                                                ]}
+                                                onPress={() => setFilterCategoryId(cat.id)}
+                                            >
+                                                <MaterialIcons name={cat.icon} size={10} color={filterCategoryId === cat.id ? cat.color : 'rgba(255,255,255,0.4)'} />
+                                                <Text style={[styles.miniChipText, filterCategoryId === cat.id && { color: cat.color }]}> {cat.name}</Text>
+                                            </TouchableOpacity>
+                                        ))}
 
-                                    {/* Right Side - Stats */}
-                                    <View style={styles.statsContainer}>
-                                        <Text style={styles.dailyProgressLabel}>DAILY PROGRESS</Text>
-                                        <View style={styles.tasksDoneRow}>
-                                            <Text style={styles.tasksDoneCount}>{completedCount}</Text>
-                                            <Text style={styles.tasksDoneOf}> of </Text>
-                                            <Text style={styles.tasksDoneTotal}>{totalCount}</Text>
-                                            <Text style={styles.completedLabel}>  Completed</Text>
-                                        </View>
-                                        <View style={styles.totalTimeRow}>
-                                            <MaterialIcons name="schedule" size={14} color="rgba(255,255,255,0.5)" />
-                                            <Text style={styles.totalTimeText}>  Total Duration: {String(totalHours).padStart(2, '0')}h {String(totalMinutes).padStart(2, '0')}m</Text>
-                                        </View>
-                                    </View>
+                                        <View style={styles.filterDividerPortrait} />
+
+                                        {['All', 'Running', 'Paused', 'Upcoming', 'Completed'].map(status => (
+                                            <TouchableOpacity
+                                                key={status}
+                                                style={[styles.miniChip, filterStatus === status && styles.miniChipActive]}
+                                                onPress={() => setFilterStatus(status)}
+                                            >
+                                                <Text style={[styles.miniChipText, filterStatus === status && styles.miniChipTextActive]}>{status}</Text>
+                                            </TouchableOpacity>
+                                        ))}
+                                    </ScrollView>
                                 </View>
                             )}
 
-                            {/* Settings Icon */}
-                            {onSettings && (
-                                <TouchableOpacity style={styles.settingsButton} onPress={onSettings} activeOpacity={0.7}>
-                                    <MaterialIcons name="settings" size={22} color="rgba(255,255,255,0.7)" />
-                                </TouchableOpacity>
+                            {showCalendar && (
+                                <View style={styles.portraitCalendarContainer}>
+                                    {renderCalendar()}
+                                </View>
                             )}
                         </View>
 
                         {/* Separator Line */}
                         <View style={styles.separatorContainer}>
                             <LinearGradient
-                                colors={['transparent', 'rgba(0,229,255,0.4)', 'transparent']}
+                                colors={['transparent', 'rgba(255,255,255,0.2)', 'transparent']}
                                 start={{ x: 0, y: 0.5 }}
                                 end={{ x: 1, y: 0.5 }}
                                 style={styles.separator}
@@ -869,7 +919,7 @@ export default function TimerList({
 
                         {/* Add Button */}
                         <TouchableOpacity style={styles.addButton} onPress={onAddTimer} activeOpacity={0.8}>
-                            <MaterialIcons name="add" size={28} color="#fff" />
+                            <MaterialIcons name="add" size={28} color="#000" />
                         </TouchableOpacity>
                     </>
                 )}
@@ -891,11 +941,11 @@ export default function TimerList({
                     <BlurView intensity={20} tint="dark" style={StyleSheet.absoluteFill} />
                     <View style={styles.modalContent}>
                         <LinearGradient
-                            colors={['rgba(30, 45, 60, 0.95)', 'rgba(10, 20, 30, 0.98)']}
+                            colors={['#000000', '#000000']}
                             style={styles.modalGradient}
                         >
                             <View style={styles.modalHeader}>
-                                <MaterialIcons name="analytics" size={32} color="#00E5FF" />
+                                <MaterialIcons name="analytics" size={32} color="#fff" />
                                 <Text style={styles.modalTitle}>Detailed Reports</Text>
                             </View>
                             <View style={styles.reportStatsRow}>
@@ -945,7 +995,7 @@ export default function TimerList({
                         /* LANDSCAPE: Combined compact layout */
                         <View style={styles.completedPopupCombinedLandscape}>
                             <LinearGradient
-                                colors={['rgba(20, 40, 55, 0.98)', 'rgba(10, 25, 35, 0.99)']}
+                                colors={['#000000', '#000000']}
                                 style={styles.completedPopupCombinedGradient}
                             >
                                 <View style={styles.completedPopupLandscapeRow}>
@@ -961,7 +1011,7 @@ export default function TimerList({
 
                                         <View style={styles.completedPopupDetailsContainerCompact}>
                                             <View style={styles.completedPopupDetailRowCompact}>
-                                                <MaterialIcons name="play-circle-outline" size={12} color="#00E5FF" />
+                                                <MaterialIcons name="play-circle-outline" size={12} color="#fff" />
                                                 <Text style={styles.completedPopupDetailLabelCompact}>Started</Text>
                                                 <Text style={styles.completedPopupDetailValueCompact}>
                                                     {formatISOToTime(completedPopupTimer?.startTime)}
@@ -1023,7 +1073,7 @@ export default function TimerList({
                         /* PORTRAIT: Combined compact layout (Vertical) */
                         <View style={styles.completedPopupCombinedPortrait}>
                             <LinearGradient
-                                colors={['rgba(20, 40, 55, 0.98)', 'rgba(10, 25, 35, 0.99)']}
+                                colors={['#000000', '#000000']}
                                 style={styles.completedPopupCombinedGradient}
                             >
                                 <View style={styles.completedPopupPortraitColumn}>
@@ -1039,7 +1089,7 @@ export default function TimerList({
 
                                         <View style={styles.completedPopupDetailsContainerPortraitCompact}>
                                             <View style={styles.completedPopupDetailRowCompact}>
-                                                <MaterialIcons name="play-circle-outline" size={14} color="#00E5FF" />
+                                                <MaterialIcons name="play-circle-outline" size={14} color="#fff" />
                                                 <Text style={styles.completedPopupDetailLabelCompact}>Started</Text>
                                                 <Text style={styles.completedPopupDetailValueCompact}>
                                                     {formatISOToTime(completedPopupTimer?.startTime)}
@@ -1110,7 +1160,7 @@ interface TimerCardProps {
 const getStatusConfig = (status: Timer['status']) => {
     switch (status) {
         case 'Running':
-            return { label: 'RUNNING', color: '#00E5FF', bgColor: 'rgba(0,229,255,0.15)' };
+            return { label: 'RUNNING', color: '#00E5FF', bgColor: 'rgba(0,229,255,0.1)' };
         case 'Paused':
             return { label: 'PAUSED', color: '#FFA500', bgColor: 'rgba(255,165,0,0.15)' };
         case 'Completed':
@@ -1126,12 +1176,12 @@ function TimerCard({ timer, onLongPress, onPress, onPlayPause, isLandscape, cate
 
     // Find category info
     const category = categories.find(c => c.id === timer.categoryId);
-    const categoryColor = category?.color || '#00E5FF';
+    const categoryColor = category?.color || '#fff';
     const categoryIcon = category?.icon || 'timer';
 
     const getStatusColor = () => {
         if (isCompleted) return '#4CAF50';
-        if (isRunning) return categoryColor;
+        if (isRunning) return '#00E5FF';
         return 'rgba(255,255,255,0.4)';
     };
     const isPaused = timer.status === 'Paused';
@@ -1237,7 +1287,7 @@ function TimerCard({ timer, onLongPress, onPress, onPlayPause, isLandscape, cate
                                             inputRange: [0, originalWeight * 100, 100],
                                             outputRange: ['0%', `${originalWeight * 100}%`, `${originalWeight * 100}%`],
                                         }),
-                                        backgroundColor: isRunning ? 'rgba(0,229,255,0.35)' : 'rgba(255,165,0,0.35)'
+                                        backgroundColor: isRunning ? 'rgba(0, 229, 255, 0.25)' : 'rgba(255,165,0,0.35)'
                                     }
                                 ]}
                             />
@@ -1252,7 +1302,7 @@ function TimerCard({ timer, onLongPress, onPress, onPlayPause, isLandscape, cate
                                                 inputRange: [0, originalWeight * 100, 100],
                                                 outputRange: ['0%', '0%', `${(1 - originalWeight) * 100}%`],
                                             }),
-                                            backgroundColor: isRunning ? 'rgba(0,114,128,0.5)' : 'rgba(128,82,0,0.5)' // Darker shades
+                                            backgroundColor: isRunning ? 'rgba(0, 180, 204, 0.45)' : 'rgba(128,82,0,0.5)' // Darker cyan for borrowed segment
                                         }
                                     ]}
                                 />
@@ -1346,7 +1396,7 @@ function TimerCard({ timer, onLongPress, onPress, onPlayPause, isLandscape, cate
                         <MaterialIcons
                             name={isRunning ? "pause" : "play-arrow"}
                             size={28}
-                            color={isRunning ? "#00E5FF" : "rgba(255,255,255,0.7)"}
+                            color={isRunning ? "#fff" : "rgba(255,255,255,0.7)"}
                         />
                     </TouchableOpacity>
                 )}
@@ -1372,21 +1422,21 @@ const styles = StyleSheet.create({
     },
 
     blueOrb: {
-        backgroundColor: '#1e40af',
+        backgroundColor: '#0a1d37',
         width: width * 1.5,
         height: height * 0.6,
         top: -height * 0.3,
         left: -width * 0.5,
-        opacity: 0.06,
+        opacity: 0.04,
     },
 
     cyanOrb: {
-        backgroundColor: '#00d4ff',
+        backgroundColor: '#004a5c',
         width: width * 1.2,
         height: height * 0.5,
         bottom: -height * 0.15,
         right: -width * 0.4,
-        opacity: 0.05,
+        opacity: 0.03,
     },
 
     safeArea: {
@@ -1400,16 +1450,120 @@ const styles = StyleSheet.create({
         paddingHorizontal: 24,
         borderRadius: 36,
         alignItems: 'center',
-        backgroundColor: 'rgba(20, 35, 45, 0.6)',
+        backgroundColor: 'rgba(15, 15, 15, 0.7)',
         borderWidth: 1,
         borderColor: 'rgba(255,255,255,0.08)',
         overflow: 'hidden',
     },
 
+    headerCardPortrait: {
+        marginHorizontal: 16,
+        marginTop: 10,
+        paddingVertical: 14,
+        paddingHorizontal: 16,
+        borderRadius: 24,
+        backgroundColor: 'rgba(15, 15, 15, 0.6)',
+        borderWidth: 1,
+        borderColor: 'rgba(255,255,255,0.06)',
+    },
+
+    headerMainRowPortrait: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        width: '100%',
+    },
+
+    headerIconBtnPortrait: {
+        width: 36,
+        height: 36,
+        borderRadius: 12,
+        backgroundColor: 'rgba(255,255,255,0.05)',
+        alignItems: 'center',
+        justifyContent: 'center',
+        borderWidth: 1,
+        borderColor: 'rgba(255,255,255,0.08)',
+    },
+
+    headerIconBtnActivePortrait: {
+        backgroundColor: 'rgba(255,255,255,0.1)',
+        borderColor: 'rgba(255,255,255,0.3)',
+    },
+
+    portraitFiltersContainer: {
+        marginTop: 12,
+        paddingTop: 10,
+        borderTopWidth: 1,
+        borderTopColor: 'rgba(255,255,255,0.06)',
+    },
+
+    portraitFiltersScroll: {
+        paddingRight: 10,
+        gap: 8,
+        alignItems: 'center',
+    },
+
+    filterDividerPortrait: {
+        width: 1,
+        height: 16,
+        backgroundColor: 'rgba(255,255,255,0.1)',
+        marginHorizontal: 4,
+    },
+
+    dateSelectorPillPortrait: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        backgroundColor: 'rgba(0,0,0,0.25)',
+        marginHorizontal: 6,
+        paddingHorizontal: 10,
+        paddingVertical: 8,
+        borderRadius: 12,
+        borderWidth: 1,
+        borderColor: 'rgba(255,255,255,0.05)',
+    },
+
+    datePillLeft: {
+        flexDirection: 'row',
+        alignItems: 'center',
+    },
+
+    dateSelectorTextPortrait: {
+        color: '#fff',
+        fontSize: 12,
+        fontWeight: '700',
+        letterSpacing: 0.5,
+    },
+
+    todayBtnPortrait: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        paddingHorizontal: 10,
+        paddingVertical: 8,
+        borderRadius: 12,
+        backgroundColor: 'rgba(255,255,255,0.05)',
+        borderWidth: 1,
+        borderColor: 'rgba(255,255,255,0.08)',
+    },
+
+    todayBtnActivePortrait: {
+        backgroundColor: 'rgba(76, 175, 80, 0.08)',
+        borderColor: 'rgba(76, 175, 80, 0.2)',
+    },
+
+    todayBtnTextPortrait: {
+        fontSize: 9,
+        fontWeight: '800',
+        color: 'rgba(255,255,255,0.3)',
+        marginLeft: 4,
+        letterSpacing: 0.5,
+    },
+
+    todayBtnTextActivePortrait: {
+        color: '#4CAF50',
+    },
+
     settingsButton: {
-        position: 'absolute',
-        top: 16,
-        right: 16,
         width: 40,
         height: 40,
         borderRadius: 20,
@@ -1543,7 +1697,7 @@ const styles = StyleSheet.create({
     progressPercentText: {
         fontSize: 16,
         fontWeight: '700',
-        color: '#00E5FF',
+        color: '#fff',
     },
 
     dailyProgressLabel: {
@@ -1581,7 +1735,7 @@ const styles = StyleSheet.create({
 
     separatorContainer: {
         paddingHorizontal: 40,
-        marginVertical: 20,
+        marginVertical: 10,
     },
 
     separator: {
@@ -1593,6 +1747,7 @@ const styles = StyleSheet.create({
     },
 
     scrollContent: {
+        flexGrow: 1,
         paddingHorizontal: 20,
         paddingBottom: 100,
     },
@@ -1602,24 +1757,24 @@ const styles = StyleSheet.create({
         borderRadius: 32,
         paddingHorizontal: 16,
         paddingVertical: 24,
-        backgroundColor: 'rgba(20, 35, 45, 0.5)',
+        backgroundColor: 'rgba(15, 15, 15, 0.6)',
         borderWidth: 1,
         borderColor: 'rgba(255,255,255,0.06)',
         overflow: 'hidden',
     },
 
     timerCardActive: {
-        backgroundColor: 'rgba(20, 40, 50, 0.7)',
-        borderColor: 'rgba(0,229,255,0.15)',
+        backgroundColor: 'rgba(5, 20, 25, 0.7)',
+        borderColor: 'rgba(255,255,255,0.15)',
     },
 
     timerCardPaused: {
-        backgroundColor: 'rgba(50, 40, 20, 0.6)',
+        backgroundColor: 'rgba(25, 20, 5, 0.6)',
         borderColor: 'rgba(255,165,0,0.25)',
     },
 
     timerCardCompleted: {
-        backgroundColor: 'rgba(20, 45, 35, 0.5)',
+        backgroundColor: 'rgba(5, 20, 10, 0.6)',
         borderColor: 'rgba(76,175,80,0.15)',
     },
 
@@ -1657,7 +1812,7 @@ const styles = StyleSheet.create({
         bottom: 0,
         width: 2,
         marginLeft: -1,
-        shadowColor: '#00E5FF',
+        shadowColor: '#FFFFFF',
         shadowOpacity: 0.8,
         shadowRadius: 8,
         shadowOffset: { width: 0, height: 0 },
@@ -1799,8 +1954,8 @@ const styles = StyleSheet.create({
     },
 
     playButtonActive: {
-        backgroundColor: 'rgba(0,229,255,0.15)',
-        borderColor: 'rgba(0,229,255,0.3)',
+        backgroundColor: 'rgba(255,255,255,0.15)',
+        borderColor: 'rgba(255,255,255,0.3)',
     },
 
     completedCheckIcon: {
@@ -1817,19 +1972,12 @@ const styles = StyleSheet.create({
         width: 60,
         height: 60,
         borderRadius: 30,
-        backgroundColor: 'rgba(255,255,255,0.08)',
+        backgroundColor: '#FFFFFF',
         alignItems: 'center',
         justifyContent: 'center',
         borderWidth: 1,
-        borderColor: 'rgba(255,255,255,0.15)',
-        ...Platform.select({
-            ios: {
-                shadowColor: '#00E5FF',
-                shadowOpacity: 0.3,
-                shadowRadius: 15,
-                shadowOffset: { width: 0, height: 5 },
-            },
-        }),
+        borderColor: '#FFFFFF',
+        elevation: 8,
     },
 
     // ========== LANDSCAPE STYLES ==========
@@ -1847,7 +1995,7 @@ const styles = StyleSheet.create({
         flex: 1,
         padding: 15,
         borderRadius: 24,
-        backgroundColor: 'rgba(11, 18, 22, 0.6)',
+        backgroundColor: 'rgba(10, 10, 10, 0.7)',
         borderWidth: 1,
         borderColor: 'rgba(17, 17, 17, 0.08)',
     },
@@ -1928,7 +2076,7 @@ const styles = StyleSheet.create({
     progressBarFill: {
         height: '100%',
         borderRadius: 2,
-        backgroundColor: '#00E5FF',
+        backgroundColor: '#FFFFFF',
     },
 
     statsCardsRow: {
@@ -1969,9 +2117,9 @@ const styles = StyleSheet.create({
     timeRemainingCard: {
         padding: 12,
         borderRadius: 16,
-        backgroundColor: 'rgba(0, 50, 80, 0.5)',
+        backgroundColor: 'rgba(255, 255, 255, 0.05)',
         borderWidth: 1,
-        borderColor: 'rgba(0,229,255,0.2)',
+        borderColor: 'rgba(255,255,255,0.1)',
         marginBottom: 12,
     },
 
@@ -1979,7 +2127,7 @@ const styles = StyleSheet.create({
         fontSize: 9,
         fontWeight: '600',
         letterSpacing: 0.5,
-        color: '#00E5FF',
+        color: 'rgba(255,255,255,0.7)',
         marginBottom: 6,
     },
 
@@ -2099,7 +2247,7 @@ const styles = StyleSheet.create({
     totalTimeValue: {
         fontSize: 18,
         fontWeight: '600',
-        color: '#00E5FF',
+        color: '#fff',
     },
 
     rightPanel: {
@@ -2112,6 +2260,7 @@ const styles = StyleSheet.create({
     },
 
     scrollContentLandscape: {
+        flexGrow: 1,
         paddingHorizontal: 8,
         paddingVertical: 8,
         paddingBottom: 70,
@@ -2143,17 +2292,10 @@ const styles = StyleSheet.create({
         width: 56,
         height: 56,
         borderRadius: 28,
-        backgroundColor: '#00E5FF',
+        backgroundColor: '#FFFFFF',
         alignItems: 'center',
         justifyContent: 'center',
-        ...Platform.select({
-            ios: {
-                shadowColor: '#00E5FF',
-                shadowOpacity: 0.5,
-                shadowRadius: 12,
-                shadowOffset: { width: 0, height: 4 },
-            },
-        }),
+        elevation: 8,
     },
 
     compactStatsGrid: {
@@ -2239,28 +2381,28 @@ const styles = StyleSheet.create({
     miniChip: {
         flexDirection: 'row',
         alignItems: 'center',
-        paddingHorizontal: 8,
-        paddingVertical: 4,
-        borderRadius: 6,
+        paddingHorizontal: 10,
+        paddingVertical: 6,
+        borderRadius: 10,
         backgroundColor: 'rgba(255, 255, 255, 0.05)',
         borderWidth: 1,
-        borderColor: 'rgba(255, 255, 255, 0.1)',
+        borderColor: 'rgba(255, 255, 255, 0.08)',
     },
 
     miniChipActive: {
-        backgroundColor: 'rgba(0, 229, 255, 0.15)',
-        borderColor: 'rgba(0, 229, 255, 0.4)',
+        backgroundColor: 'rgba(255, 255, 255, 0.15)',
+        borderColor: 'rgba(255, 255, 255, 0.3)',
     },
 
     miniChipText: {
-        fontSize: 9,
-        fontWeight: '600',
+        fontSize: 10,
+        fontWeight: '700',
         color: 'rgba(255, 255, 255, 0.5)',
     },
 
     miniChipTextActive: {
-        color: '#00E5FF',
-        fontWeight: '700',
+        color: '#fff',
+        fontWeight: '800',
     },
 
     // ========== MODAL STYLES ==========
@@ -2276,7 +2418,7 @@ const styles = StyleSheet.create({
         borderRadius: 32,
         overflow: 'hidden',
         borderWidth: 1,
-        borderColor: 'rgba(0,229,255,0.2)',
+        borderColor: 'rgba(255,255,255,0.1)',
     },
     modalGradient: {
         padding: 32,
@@ -2346,21 +2488,21 @@ const styles = StyleSheet.create({
     reportStatValue: {
         fontSize: 16,
         fontWeight: '700',
-        color: '#00E5FF',
+        color: '#fff',
     },
     modalCloseBtn: {
         width: '100%',
         paddingVertical: 14,
         borderRadius: 16,
-        backgroundColor: 'rgba(0, 229, 255, 0.1)',
+        backgroundColor: 'rgba(255, 255, 255, 0.08)',
         borderWidth: 1,
-        borderColor: 'rgba(0, 229, 255, 0.3)',
+        borderColor: 'rgba(255, 255, 255, 0.2)',
         alignItems: 'center',
     },
     modalCloseBtnText: {
         fontSize: 14,
         fontWeight: '700',
-        color: '#00E5FF',
+        color: '#FFFFFF',
         letterSpacing: 2,
     },
 
@@ -2376,9 +2518,9 @@ const styles = StyleSheet.create({
     },
 
     filterOptionActive: {
-        backgroundColor: 'rgba(0, 229, 255, 0.08)',
+        backgroundColor: 'rgba(255, 255, 255, 0.08)',
         borderWidth: 1,
-        borderColor: 'rgba(0, 229, 255, 0.2)',
+        borderColor: 'rgba(255, 255, 255, 0.2)',
     },
 
     filterOptionLeft: {
@@ -2393,7 +2535,7 @@ const styles = StyleSheet.create({
     },
 
     filterOptionTextActive: {
-        color: '#00E5FF',
+        color: '#FFFFFF',
         fontWeight: '700',
     },
 
@@ -2404,7 +2546,7 @@ const styles = StyleSheet.create({
         borderRadius: 24,
         overflow: 'hidden',
         borderWidth: 1,
-        borderColor: 'rgba(0, 229, 255, 0.2)',
+        borderColor: 'rgba(255, 255, 255, 0.2)',
     },
     completedPopupCombinedPortrait: {
         width: '85%',
@@ -2412,7 +2554,7 @@ const styles = StyleSheet.create({
         borderRadius: 24,
         overflow: 'hidden',
         borderWidth: 1,
-        borderColor: 'rgba(0, 229, 255, 0.2)',
+        borderColor: 'rgba(255, 255, 255, 0.2)',
     },
     completedPopupCombinedGradient: {
         padding: 16,
@@ -2523,16 +2665,16 @@ const styles = StyleSheet.create({
         flex: 1,
         height: 36,
         borderRadius: 8,
-        backgroundColor: 'rgba(0, 229, 255, 0.05)',
+        backgroundColor: 'rgba(255, 255, 255, 0.05)',
         borderWidth: 1,
-        borderColor: 'rgba(0, 229, 255, 0.15)',
+        borderColor: 'rgba(255, 255, 255, 0.15)',
         alignItems: 'center',
         justifyContent: 'center',
     },
     completedPopupExtendBtnTextLandscapeCompact: {
         fontSize: 12,
         fontWeight: '700',
-        color: '#00E5FF',
+        color: '#FFFFFF',
     },
     completedPopupCloseBtnRedlandscape: {
         width: '100%',
@@ -2592,7 +2734,7 @@ const styles = StyleSheet.create({
         textAlign: 'center',
         fontSize: 10,
         fontWeight: '700',
-        color: 'rgba(0,229,255,0.5)',
+        color: 'rgba(255,255,255,0.5)',
     },
     daysGrid: {
         flexDirection: 'row',
@@ -2615,7 +2757,7 @@ const styles = StyleSheet.create({
         justifyContent: 'center',
     },
     todayCircle: {
-        backgroundColor: '#00E5FF',
+        backgroundColor: '#FFFFFF',
     },
     otherMonthDay: {
         opacity: 0.3,
@@ -2682,45 +2824,71 @@ const styles = StyleSheet.create({
     calendarTitlePortrait: {
         fontSize: 18,
     },
+    placeholderCard: {
+        width: '100%',
+        minHeight: 120,
+        backgroundColor: 'rgba(255,255,255,0.02)',
+        borderRadius: 24,
+        borderWidth: 1.5,
+        borderStyle: 'dashed',
+        borderColor: 'rgba(255,255,255,0.08)',
+        alignItems: 'center',
+        justifyContent: 'center',
+        padding: 20,
+    },
+    placeholderContent: {
+        alignItems: 'center',
+        gap: 12,
+    },
+    placeholderText: {
+        fontSize: 12,
+        fontWeight: '900',
+        color: 'rgba(255,255,255,0.3)',
+        letterSpacing: 2,
+    },
     emptyContainer: {
         flex: 1,
         alignItems: 'center',
         justifyContent: 'center',
-        marginTop: 60,
         paddingHorizontal: 40,
+        minHeight: 250,
+    },
+    emptyContainerLandscape: {
+        flex: 1,
+        paddingHorizontal: 20,
+        flexDirection: 'column', // Changed back to column for better centering
+        justifyContent: 'center',
+        alignItems: 'center',
+        gap: 12,
+    },
+    emptyTextContainer: {
+        alignItems: 'center',
     },
     emptyText: {
         color: 'rgba(255,255,255,0.3)',
-        fontSize: 16,
+        fontSize: 15,
         fontWeight: '500',
-        marginTop: 16,
+        marginTop: 12,
         textAlign: 'center',
+        maxWidth: 280,
+    },
+    emptyTextLandscape: {
+        fontSize: 13,
+        maxWidth: 220,
     },
     emptyAddBtn: {
         marginTop: 24,
         paddingHorizontal: 20,
         paddingVertical: 10,
         borderRadius: 20,
-        backgroundColor: 'rgba(0, 229, 255, 0.1)',
+        backgroundColor: 'rgba(255, 255, 255, 0.1)',
         borderWidth: 1,
-        borderColor: 'rgba(0, 229, 255, 0.3)',
+        borderColor: 'rgba(255, 255, 255, 0.3)',
     },
     emptyAddText: {
-        color: '#00E5FF',
+        color: '#FFFFFF',
         fontSize: 14,
         fontWeight: '600',
-    },
-    headerCardPortrait: {
-        paddingVertical: 12,
-        paddingHorizontal: 20,
-        borderRadius: 28,
-    },
-    readOnlyIcon: {
-        position: 'absolute',
-        right: 50,
-        top: '50%',
-        marginTop: -10,
-        opacity: 0.6,
     },
     todayNavBtn: {
         flexDirection: 'row',
@@ -2732,16 +2900,11 @@ const styles = StyleSheet.create({
         borderWidth: 1,
         borderColor: 'rgba(255,255,255,0.08)',
     },
-    todayNavBtnPortrait: {
+    dateControlRowLandscape: {
         flexDirection: 'row',
         alignItems: 'center',
-        paddingHorizontal: 10,
-        paddingVertical: 3,
-        borderRadius: 6,
-        backgroundColor: 'rgba(255,255,255,0.04)',
-        marginLeft: 10,
-        borderWidth: 1,
-        borderColor: 'rgba(255,255,255,0.08)',
+        justifyContent: 'space-between',
+        marginBottom: 16,
     },
     todayNavBtnActive: {
         backgroundColor: 'rgba(76, 175, 80, 0.08)',
@@ -2757,20 +2920,11 @@ const styles = StyleSheet.create({
     todayNavTextActive: {
         color: '#4CAF50',
     },
-    dateControlRowLandscape: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        justifyContent: 'space-between',
-        marginBottom: 16,
-    },
-    dateControlRowPortrait: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        justifyContent: 'space-between',
-        width: '100%',
-        paddingBottom: 12,
-        marginBottom: 16,
-        borderBottomWidth: 1,
-        borderBottomColor: 'rgba(255,255,255,0.05)',
+    readOnlyIcon: {
+        position: 'absolute',
+        right: 50,
+        top: '50%',
+        marginTop: -10,
+        opacity: 0.6,
     },
 });

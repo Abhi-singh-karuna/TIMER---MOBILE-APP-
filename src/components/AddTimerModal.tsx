@@ -49,9 +49,13 @@ const WheelPicker = ({ data, value, onChange }: { data: number[]; value: number;
     useEffect(() => {
         const idx = data.indexOf(value);
         if (idx >= 0) {
-            setTimeout(() => scrollRef.current?.scrollTo({ y: idx * ITEM_HEIGHT, animated: false }), 50);
+            // Use a slightly longer timeout to ensure the modal layout is ready
+            const timer = setTimeout(() => {
+                scrollRef.current?.scrollTo({ y: idx * ITEM_HEIGHT, animated: false });
+            }, 100);
+            return () => clearTimeout(timer);
         }
-    }, []);
+    }, [value, data]);
 
     const handleScroll = useCallback((e: NativeSyntheticEvent<NativeScrollEvent>) => {
         const idx = Math.round(e.nativeEvent.contentOffset.y / ITEM_HEIGHT);
@@ -71,8 +75,8 @@ const WheelPicker = ({ data, value, onChange }: { data: number[]; value: number;
 
     return (
         <View style={pickerStyles.container}>
-            <LinearGradient colors={['rgba(25,35,45,1)', 'transparent']} style={pickerStyles.fadeTop} pointerEvents="none" />
-            <LinearGradient colors={['transparent', 'rgba(25,35,45,1)']} style={pickerStyles.fadeBottom} pointerEvents="none" />
+            <LinearGradient colors={['#000000', 'transparent']} style={pickerStyles.fadeTop} pointerEvents="none" />
+            <LinearGradient colors={['transparent', '#000000']} style={pickerStyles.fadeBottom} pointerEvents="none" />
             <View style={pickerStyles.highlight} />
             <ScrollView
                 ref={scrollRef}
@@ -102,7 +106,7 @@ const pickerStyles = StyleSheet.create({
         width: 70,
         borderRadius: 14,
         overflow: 'hidden',
-        backgroundColor: 'rgba(0,0,0,0.3)',
+        backgroundColor: 'rgba(30,30,30,0.4)',
     },
     highlight: {
         position: 'absolute',
@@ -111,9 +115,9 @@ const pickerStyles = StyleSheet.create({
         right: 3,
         height: ITEM_HEIGHT,
         borderRadius: 11,
-        backgroundColor: 'rgba(0,229,255,0.1)',
+        backgroundColor: 'rgba(255, 255, 255, 0.05)',
         borderWidth: 1,
-        borderColor: 'rgba(0,229,255,0.3)',
+        borderColor: 'rgba(255, 255, 255, 0.3)',
     },
     fadeTop: { position: 'absolute', top: 0, left: 0, right: 0, height: ITEM_HEIGHT * 0.7, zIndex: 5 },
     fadeBottom: { position: 'absolute', bottom: 0, left: 0, right: 0, height: ITEM_HEIGHT * 0.7, zIndex: 5 },
@@ -126,12 +130,14 @@ export default function AddTimerModal({ visible, onCancel, onAdd, onUpdate, init
     const isLandscape = screenWidth > screenHeight;
     const [name, setName] = useState('');
     const [hours, setHours] = useState(0);
-    const [minutes, setMinutes] = useState(25);
+    const [minutes, setMinutes] = useState(0);
     const [seconds, setSeconds] = useState(0);
     const [selectedDate, setSelectedDate] = useState(initialDate || new Date().toISOString().split('T')[0]);
     const [selectedCategoryId, setSelectedCategoryId] = useState<string | undefined>(categories[0]?.id);
     const [showDatePicker, setShowDatePicker] = useState(false);
     const [viewDate, setViewDate] = useState(new Date(selectedDate));
+    const [errorName, setErrorName] = useState(false);
+    const [errorTime, setErrorTime] = useState(false);
 
     // Update selectedDate when initialDate changes (e.g. when opening modal from a specific day)
     useEffect(() => {
@@ -142,12 +148,16 @@ export default function AddTimerModal({ visible, onCancel, onAdd, onUpdate, init
                 setSelectedDate(timerToEdit.forDate || initialDate || new Date().toISOString().split('T')[0]);
                 setSelectedCategoryId(timerToEdit.categoryId || categories[0]?.id);
 
-                // Parse time HH:MM:SS
+                // Parse time HH:MM:SS or MM:SS
                 const parts = timerToEdit.total.split(':').map(Number);
                 if (parts.length === 3) {
                     setHours(parts[0]);
                     setMinutes(parts[1]);
                     setSeconds(parts[2]);
+                } else if (parts.length === 2) {
+                    setHours(0);
+                    setMinutes(parts[0]);
+                    setSeconds(parts[1]);
                 }
             } else if (initialDate) {
                 // New timer with initial date
@@ -228,7 +238,7 @@ export default function AddTimerModal({ visible, onCancel, onAdd, onUpdate, init
                                 style={styles.dayCell}
                                 disabled={!item.current}
                                 onPress={() => {
-                                    if (item.current && (!enablePastTimers || !isPast)) {
+                                    if (item.current && (enablePastTimers || !isPast)) {
                                         setSelectedDate(dateStr);
                                         setShowDatePicker(false);
                                         Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
@@ -258,7 +268,15 @@ export default function AddTimerModal({ visible, onCancel, onAdd, onUpdate, init
     };
 
     const handleAdd = () => {
-        if (name.trim()) {
+        const todayStr = new Date().toISOString().split('T')[0];
+        const isDateInvalid = selectedDate < todayStr && !enablePastTimers;
+        const hasName = name.trim().length > 0;
+        const hasTime = (hours + minutes + seconds) > 0;
+
+        setErrorName(!hasName);
+        setErrorTime(!hasTime);
+
+        if (hasName && hasTime && !isDateInvalid) {
             Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
             if (timerToEdit && onUpdate) {
                 onUpdate(timerToEdit.id, name, hours, minutes, seconds, selectedDate, selectedCategoryId);
@@ -280,9 +298,11 @@ export default function AddTimerModal({ visible, onCancel, onAdd, onUpdate, init
     const resetForm = () => {
         setName('');
         setHours(0);
-        setMinutes(25);
+        setMinutes(0);
         setSeconds(0);
         setSelectedCategoryId(categories[0]?.id);
+        setErrorName(false);
+        setErrorTime(false);
     };
 
     const renderCategoryPicker = () => (
@@ -342,9 +362,16 @@ export default function AddTimerModal({ visible, onCancel, onAdd, onUpdate, init
                                         <View style={styles.fieldGroup}>
                                             <Text style={styles.label}>TIMER NAME</Text>
                                             <TextInput
-                                                style={[styles.input, styles.compactInput]}
+                                                style={[
+                                                    styles.input,
+                                                    styles.compactInput,
+                                                    errorName && styles.inputError
+                                                ]}
                                                 value={name}
-                                                onChangeText={setName}
+                                                onChangeText={(text) => {
+                                                    setName(text);
+                                                    if (text.trim()) setErrorName(false);
+                                                }}
                                                 placeholder="e.g. Creative Flow"
                                                 placeholderTextColor="rgba(255,255,255,0.3)"
                                             />
@@ -353,14 +380,18 @@ export default function AddTimerModal({ visible, onCancel, onAdd, onUpdate, init
                                         <View style={styles.fieldGroup}>
                                             <Text style={styles.label}>FOR DATE</Text>
                                             <TouchableOpacity
-                                                style={[styles.dateDisplay, styles.compactInput]}
+                                                style={[
+                                                    styles.dateDisplay,
+                                                    styles.compactInput,
+                                                    (selectedDate < new Date().toISOString().split('T')[0] && !enablePastTimers) && styles.inputError
+                                                ]}
                                                 onPress={() => {
                                                     setShowDatePicker(true);
                                                     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
                                                 }}
                                             >
                                                 <Text style={styles.dateDisplayText}>{selectedDate}</Text>
-                                                <MaterialIcons name="event" size={16} color="#00E5FF" />
+                                                <MaterialIcons name="event" size={16} color="#fff" />
                                             </TouchableOpacity>
                                         </View>
 
@@ -372,19 +403,32 @@ export default function AddTimerModal({ visible, onCancel, onAdd, onUpdate, init
                             {/* Right Column - Duration & Actions */}
                             <View style={styles.rightColumn}>
                                 <Text style={[styles.label, { textAlign: 'center' }]}>DURATION</Text>
-                                <View style={styles.pickerRow}>
+                                <View style={[
+                                    styles.pickerRow,
+                                    isLandscape && styles.pickerRowLandscape,
+                                    errorTime && styles.pickerRowError
+                                ]}>
                                     <View style={styles.pickerGroup}>
-                                        <WheelPicker data={HOURS} value={hours} onChange={setHours} />
+                                        <WheelPicker data={HOURS} value={hours} onChange={(v) => {
+                                            setHours(v);
+                                            setErrorTime(false);
+                                        }} />
                                         <Text style={styles.pickerLabel}>HRS</Text>
                                     </View>
-                                    <Text style={styles.colon}>:</Text>
+                                    <Text style={[styles.colon, isLandscape && styles.colonLandscape]}>:</Text>
                                     <View style={styles.pickerGroup}>
-                                        <WheelPicker data={MINUTES} value={minutes} onChange={setMinutes} />
+                                        <WheelPicker data={MINUTES} value={minutes} onChange={(v) => {
+                                            setMinutes(v);
+                                            setErrorTime(false);
+                                        }} />
                                         <Text style={styles.pickerLabel}>MIN</Text>
                                     </View>
-                                    <Text style={styles.colon}>:</Text>
+                                    <Text style={[styles.colon, isLandscape && styles.colonLandscape]}>:</Text>
                                     <View style={styles.pickerGroup}>
-                                        <WheelPicker data={SECONDS} value={seconds} onChange={setSeconds} />
+                                        <WheelPicker data={SECONDS} value={seconds} onChange={(v) => {
+                                            setSeconds(v);
+                                            setErrorTime(false);
+                                        }} />
                                         <Text style={styles.pickerLabel}>SEC</Text>
                                     </View>
                                 </View>
@@ -408,42 +452,62 @@ export default function AddTimerModal({ visible, onCancel, onAdd, onUpdate, init
                                     {/* Timer Name */}
                                     <Text style={styles.label}>TIMER NAME</Text>
                                     <TextInput
-                                        style={styles.input}
+                                        style={[styles.input, errorName && styles.inputError]}
                                         value={name}
-                                        onChangeText={setName}
+                                        onChangeText={(text) => {
+                                            setName(text);
+                                            if (text.trim()) setErrorName(false);
+                                        }}
                                         placeholder="e.g. Creative Flow"
                                         placeholderTextColor="rgba(255,255,255,0.3)"
                                     />
 
                                     <Text style={styles.label}>FOR DATE</Text>
                                     <TouchableOpacity
-                                        style={[styles.dateDisplay, { marginBottom: 24 }]}
+                                        style={[
+                                            styles.dateDisplay,
+                                            { marginBottom: 24 },
+                                            (selectedDate < new Date().toISOString().split('T')[0] && !enablePastTimers) && styles.inputError
+                                        ]}
                                         onPress={() => {
                                             setShowDatePicker(true);
                                             Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
                                         }}
                                     >
                                         <Text style={styles.dateDisplayText}>{selectedDate}</Text>
-                                        <MaterialIcons name="event" size={16} color="#00E5FF" />
+                                        <MaterialIcons name="event" size={16} color="#fff" />
                                     </TouchableOpacity>
 
                                     {renderCategoryPicker()}
 
                                     {/* Duration with Wheel Pickers */}
                                     <Text style={styles.label}>DURATION</Text>
-                                    <View style={styles.pickerRow}>
+                                    <View style={[
+                                        styles.pickerRow,
+                                        isLandscape && styles.pickerRowLandscape,
+                                        errorTime && styles.pickerRowError
+                                    ]}>
                                         <View style={styles.pickerGroup}>
-                                            <WheelPicker data={HOURS} value={hours} onChange={setHours} />
+                                            <WheelPicker data={HOURS} value={hours} onChange={(v) => {
+                                                setHours(v);
+                                                setErrorTime(false);
+                                            }} />
                                             <Text style={styles.pickerLabel}>HRS</Text>
                                         </View>
-                                        <Text style={styles.colon}>:</Text>
+                                        <Text style={[styles.colon, isLandscape && styles.colonLandscape]}>:</Text>
                                         <View style={styles.pickerGroup}>
-                                            <WheelPicker data={MINUTES} value={minutes} onChange={setMinutes} />
+                                            <WheelPicker data={MINUTES} value={minutes} onChange={(v) => {
+                                                setMinutes(v);
+                                                setErrorTime(false);
+                                            }} />
                                             <Text style={styles.pickerLabel}>MIN</Text>
                                         </View>
-                                        <Text style={styles.colon}>:</Text>
+                                        <Text style={[styles.colon, isLandscape && styles.colonLandscape]}>:</Text>
                                         <View style={styles.pickerGroup}>
-                                            <WheelPicker data={SECONDS} value={seconds} onChange={setSeconds} />
+                                            <WheelPicker data={SECONDS} value={seconds} onChange={(v) => {
+                                                setSeconds(v);
+                                                setErrorTime(false);
+                                            }} />
                                             <Text style={styles.pickerLabel}>SEC</Text>
                                         </View>
                                     </View>
@@ -476,13 +540,13 @@ const styles = StyleSheet.create({
     },
     dimLayer: {
         ...StyleSheet.absoluteFillObject,
-        backgroundColor: 'rgba(0,0,0,0.5)',
+        backgroundColor: 'rgba(0,0,0,0.7)',
     },
 
     modal: {
         width: SCREEN_WIDTH * 0.88,
         maxWidth: 400,
-        backgroundColor: 'rgba(25, 35, 45, 0.95)',
+        backgroundColor: '#000000',
         borderRadius: 28,
         borderWidth: 1,
         borderColor: 'rgba(255,255,255,0.08)',
@@ -566,7 +630,7 @@ const styles = StyleSheet.create({
     },
 
     input: {
-        backgroundColor: 'rgba(0,0,0,0.3)',
+        backgroundColor: 'rgba(20,20,20,0.5)',
         borderRadius: 16,
         paddingHorizontal: 18,
         paddingVertical: 16,
@@ -575,6 +639,10 @@ const styles = StyleSheet.create({
         borderWidth: 1,
         borderColor: 'rgba(255,255,255,0.06)',
         marginBottom: 24,
+    },
+    inputError: {
+        borderColor: '#FF5050',
+        backgroundColor: 'rgba(255, 80, 80, 0.05)',
     },
 
     fieldGroup: {
@@ -591,6 +659,19 @@ const styles = StyleSheet.create({
         alignItems: 'center',
         justifyContent: 'center',
         marginBottom: 32,
+        padding: 4,
+        borderRadius: 18,
+        borderWidth: 1,
+        borderColor: 'transparent',
+    },
+    pickerRowLandscape: {
+        marginBottom: 12,
+        paddingHorizontal: 12,
+        paddingVertical: 2,
+    },
+    pickerRowError: {
+        borderColor: '#FF5050',
+        backgroundColor: 'rgba(255, 80, 80, 0.05)',
     },
 
     pickerGroup: {
@@ -607,15 +688,18 @@ const styles = StyleSheet.create({
 
     colon: {
         fontSize: 28,
-        color: 'rgba(0,229,255,0.4)',
+        color: 'rgba(255, 255, 255, 0.45)',
         marginHorizontal: 10,
         marginBottom: 24,
+    },
+    colonLandscape: {
+        marginHorizontal: 6,
+        marginBottom: 14,
     },
 
     addBtn: {
         borderRadius: 16,
-        borderWidth: 1.5,
-        borderColor: 'rgba(0,229,255,0.5)',
+        backgroundColor: '#FFFFFF',
         paddingVertical: 16,
         alignItems: 'center',
         marginBottom: 16,
@@ -623,8 +707,8 @@ const styles = StyleSheet.create({
 
     addBtnText: {
         fontSize: 17,
-        fontWeight: '600',
-        color: '#00E5FF',
+        fontWeight: '700',
+        color: '#000000',
     },
 
     cancelText: {
@@ -645,7 +729,7 @@ const styles = StyleSheet.create({
         alignItems: 'center',
     },
     dateDisplayText: {
-        color: '#00E5FF',
+        color: '#fff',
         fontSize: 14,
         fontWeight: '600',
     },
@@ -709,7 +793,7 @@ const styles = StyleSheet.create({
         fontWeight: '500',
     },
     todayCircle: {
-        backgroundColor: '#00E5FF',
+        backgroundColor: '#fff',
     },
     selectedFutureCircle: {
         borderWidth: 2,

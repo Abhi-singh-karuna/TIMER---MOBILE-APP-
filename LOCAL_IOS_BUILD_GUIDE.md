@@ -109,7 +109,17 @@ cd ios && pod install --repo-update
 ```
 
 ---
-## 8. Common Errors: Provisioning & Capabilities
+## 8. Updating the App Logo & Branding
+If you have updated the files in the `assets/` folder (like `icon.png` or `splash-icon.png`), you must synchronize these changes with the native `ios` folder before building.
+
+Run this command to update the native icons and splash screen:
+```bash
+npx expo prebuild --platform ios
+```
+*Note: This command reads your `app.json` and `assets/` folder to regenerate the native assets in `ios/TIMERAPP/Images.xcassets`.*
+
+---
+## 9. Common Errors: Provisioning & Capabilities
 
 ### Error: "Personal development teams do not support Push Notifications"
 If you are using a free Apple Developer account (Personal Team), you must remove the **Push Notifications** capability, as it is only for paid developer accounts. Local timer notifications will still work without it.

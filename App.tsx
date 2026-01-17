@@ -13,6 +13,7 @@ import {
   PlusJakartaSans_800ExtraBold,
   PlusJakartaSans_200ExtraLight,
 } from '@expo-google-fonts/plus-jakarta-sans';
+import { Inter_900Black } from '@expo-google-fonts/inter';
 
 import EmptyState from './src/screens/EmptyState';
 import TimerList from './src/screens/TimerList';
@@ -21,7 +22,7 @@ import TaskComplete from './src/screens/TaskComplete';
 import SettingsScreen from './src/screens/SettingsScreen';
 import AddTimerModal from './src/components/AddTimerModal';
 import DeleteModal from './src/components/DeleteModal';
-import { Timer, Category, DEFAULT_CATEGORIES, CATEGORIES_KEY } from './src/constants/data';
+import { Timer, Category, DEFAULT_CATEGORIES, CATEGORIES_KEY, LANDSCAPE_PRESETS } from './src/constants/data';
 import { Alert } from 'react-native';
 import { loadTimers, saveTimers } from './src/utils/storage';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -43,26 +44,7 @@ const ACTIVE_TIMER_ID_KEY = '@timer_active_id';
 const ENABLE_FUTURE_TIMERS_KEY = '@timer_enable_future';
 const ENABLE_PAST_TIMERS_KEY = '@timer_enable_past';
 
-export const LANDSCAPE_PRESETS = [
-  {
-    name: 'Deep Sea',
-    filler: '#00E5FF',
-    slider: '#00E5FF',
-    text: '#FFFFFF'
-  },
-  {
-    name: 'Lava Glow',
-    filler: '#FF9500',
-    slider: '#FF9500',
-    text: '#FFFFFF'
-  },
-  {
-    name: 'Neon Forest',
-    filler: '#34C759',
-    slider: '#34C759',
-    text: '#FFFFFF'
-  },
-];
+
 
 LogBox.ignoreLogs(['SafeAreaView has been deprecated']);
 
@@ -96,6 +78,7 @@ export default function App() {
     PlusJakartaSans_600SemiBold,
     PlusJakartaSans_700Bold,
     PlusJakartaSans_800ExtraBold,
+    Inter_900Black,
   });
 
   const [timers, setTimers] = useState<Timer[]>([]);
@@ -618,7 +601,6 @@ export default function App() {
 
   // Handle cancel from active timer screen
   const handleCancel = async () => {
-    await handlePause();
     setActiveTimer(null);
     setCurrentScreen('list');
   };

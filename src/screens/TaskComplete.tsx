@@ -231,8 +231,8 @@ export default function TaskComplete({
                 <Text style={styles.summaryTitle}>SESSION SUMMARY</Text>
 
                 <View style={styles.detailsGrid}>
-                    {renderDetailCard('play-circle-outline', 'STARTED AT', formatISOToTime(startTime), '#00E5FF', true)}
-                    {renderDetailCard('check-circle-outline', 'FINISHED AT', completedAt, '#00E5FF', true)}
+                    {renderDetailCard('play-circle-outline', 'STARTED AT', formatISOToTime(startTime), '#FFFFFF', true)}
+                    {renderDetailCard('check-circle-outline', 'FINISHED AT', completedAt, '#FFFFFF', true)}
                     {renderDetailCard('add-alarm', 'BORROWED', borrowedTime > 0 ? `${Math.floor(borrowedTime / 60)}m ${borrowedTime % 60}s` : 'NONE', '#FFD740', true)}
                     {category ? renderDetailCard(category.icon, 'CATEGORY', category.name.toUpperCase(), category.color, true) : renderDetailCard('stars', 'STATUS', 'GOAL REACHED', '#4CAF50', true)}
                 </View>
@@ -241,14 +241,14 @@ export default function TaskComplete({
             {/* Right Panel: Actions (Spacious) */}
             <View style={styles.rightPanel}>
                 <View style={styles.headerContainerLandscape}>
-                    <MaterialIcons name="done-all" size={24} color="#00E5FF" style={styles.headerIconLandscape} />
+                    <MaterialIcons name="done-all" size={24} color="#FFFFFF" style={styles.headerIconLandscape} />
                     <Text style={styles.completionLabelLandscape}>TASK SUCCESSFUL</Text>
                 </View>
 
                 {renderBorrowSection(true)}
 
                 <TouchableOpacity style={[styles.mainActionButtonLandscape]} onPress={onDone}>
-                    <MaterialIcons name="home" size={28} color="#0a3040" />
+                    <MaterialIcons name="home" size={28} color="#000000" />
                     <Text style={styles.mainActionButtonTextLandscape}>Back to Home</Text>
                 </TouchableOpacity>
             </View>
@@ -260,9 +260,9 @@ export default function TaskComplete({
             {/* Success Section */}
             <View style={styles.successSection}>
                 <View style={styles.successCircleContainer}>
-                    <View style={styles.successCircleGlow} />
+                    {/* Circle Glow Removed */}
                     <View style={styles.successCircle}>
-                        <MaterialIcons name="check" size={56} color="#0a3040" />
+                        <MaterialIcons name="check" size={56} color="#000000" />
                     </View>
                 </View>
                 <Text style={styles.title}>Task Complete</Text>
@@ -285,7 +285,7 @@ export default function TaskComplete({
 
                 <TouchableOpacity style={[styles.actionButton, styles.doneButton]} onPress={onDone}>
                     <View style={[styles.buttonIconContainer, styles.doneIconContainer]}>
-                        <MaterialIcons name="done-all" size={28} color="#0a3040" />
+                        <MaterialIcons name="done-all" size={28} color="#000000" />
                     </View>
                     <View style={styles.buttonTextContainer}>
                         <Text style={[styles.buttonTitle, styles.doneButtonTitle]}>Done</Text>
@@ -299,18 +299,17 @@ export default function TaskComplete({
 
     return (
         <LinearGradient
-            colors={['#080C1A', '#0a3535', '#0a7070']}
-            locations={[0, 0.4, 1]}
+            colors={['#000000', '#000000']}
+            locations={[0, 1]}
             style={styles.container}
         >
-            <View style={[styles.glowOrb1, isLandscape && styles.glowOrb1Landscape]} />
-            <View style={[styles.glowOrb2, isLandscape && styles.glowOrb2Landscape]} />
+            {/* Background Glow Removed for Pure Black Theme */}
 
             <SafeAreaView style={styles.safeArea}>
                 {!isLandscape && (
                     <View style={styles.header}>
                         <View style={styles.completionBadge}>
-                            <MaterialIcons name="check-circle" size={16} color="#00E5FF" />
+                            <MaterialIcons name="check-circle" size={16} color="#000000" />
                             <Text style={styles.completionLabel}>COMPLETED</Text>
                             <Text style={styles.completionPercent}>100%</Text>
                         </View>
@@ -337,24 +336,30 @@ const styles = StyleSheet.create({
         width: 300,
         height: 300,
         borderRadius: 150,
-        backgroundColor: 'rgba(0, 229, 255, 0.15)',
+        backgroundColor: 'rgba(255, 255, 255, 0.4)',
         top: '30%',
         left: -100,
-        ...Platform.select({ ios: { shadowColor: '#00E5FF', shadowOpacity: 0.3, shadowRadius: 60 } }),
+        ...Platform.select({ ios: { shadowColor: '#FFFFFF', shadowOpacity: 0.3, shadowRadius: 60 } }),
     },
     glowOrb1Landscape: {
         top: '5%',
         left: '5%',
         width: 400,
         height: 400,
-        backgroundColor: 'rgba(0, 229, 255, 0.12)',
+        backgroundColor: 'rgba(255, 255, 255, 0.08)',
+        borderRadius: 14,
+        paddingVertical: 14,
+        paddingHorizontal: 24,
+        alignItems: 'center',
+        borderWidth: 1.5,
+        borderColor: 'rgba(255, 255, 255, 0.2)',
     },
     glowOrb2: {
         position: 'absolute',
         width: 200,
         height: 200,
         borderRadius: 100,
-        backgroundColor: 'rgba(0, 180, 255, 0.1)',
+        backgroundColor: 'rgba(255, 255, 255, 0.1)',
         bottom: '20%',
         right: -60,
     },
@@ -372,24 +377,25 @@ const styles = StyleSheet.create({
     completionBadge: {
         flexDirection: 'row',
         alignItems: 'center',
-        gap: 8,
-        paddingHorizontal: 16,
+        paddingHorizontal: 20,
         paddingVertical: 10,
         borderRadius: 20,
-        backgroundColor: 'rgba(0, 229, 255, 0.1)',
+        backgroundColor: '#FFFFFF',
         borderWidth: 1,
-        borderColor: 'rgba(0, 229, 255, 0.2)',
+        borderColor: 'rgba(255, 255, 255, 0.2)',
     },
     completionLabel: {
         fontSize: 11,
         fontWeight: '600',
         letterSpacing: 1,
-        color: 'rgba(255,255,255,0.6)',
+        color: 'rgba(0,0,0,0.6)',
+        marginLeft: 8,
     },
     completionPercent: {
         fontSize: 14,
         fontWeight: '700',
-        color: '#00E5FF',
+        color: '#000000',
+        marginLeft: 6,
     },
 
     // Portrait Layout
@@ -412,14 +418,14 @@ const styles = StyleSheet.create({
         width: 120,
         height: 120,
         borderRadius: 60,
-        backgroundColor: 'rgba(0, 229, 255, 0.3)',
-        ...Platform.select({ ios: { shadowColor: '#00E5FF', shadowOpacity: 0.8, shadowRadius: 40 } }),
+        backgroundColor: 'rgba(255, 255, 255, 0.3)',
+        ...Platform.select({ ios: { shadowColor: '#fff', shadowOpacity: 0.8, shadowRadius: 40 } }),
     },
     successCircle: {
         width: 96,
         height: 96,
         borderRadius: 48,
-        backgroundColor: '#00E5FF',
+        backgroundColor: '#FFFFFF',
         alignItems: 'center',
         justifyContent: 'center',
     },
@@ -441,9 +447,11 @@ const styles = StyleSheet.create({
         flexDirection: 'row',
         alignItems: 'center',
         paddingHorizontal: 12,
-        paddingVertical: 6,
+        paddingVertical: 5,
         borderRadius: 12,
         borderWidth: 1,
+        backgroundColor: 'rgba(255, 255, 255, 0.08)',
+        borderColor: 'rgba(255, 255, 255, 0.2)',
         marginBottom: 12,
         gap: 6,
     },
@@ -472,14 +480,14 @@ const styles = StyleSheet.create({
         paddingHorizontal: 12,
         paddingVertical: 6,
         borderRadius: 12,
-        backgroundColor: 'rgba(0, 229, 255, 0.08)',
+        backgroundColor: 'rgba(255, 255, 255, 0.08)',
         borderWidth: 1,
-        borderColor: 'rgba(0, 229, 255, 0.2)',
+        borderColor: 'rgba(255, 255, 255, 0.2)',
     },
     borrowedBadgeText: {
         fontSize: 10,
         fontWeight: '700',
-        color: '#00E5FF',
+        color: '#FFFFFF',
         letterSpacing: 1,
     },
     buttonContainer: {
@@ -496,24 +504,24 @@ const styles = StyleSheet.create({
         borderColor: 'rgba(255,255,255,0.1)',
     },
     restartButton: {
-        backgroundColor: 'rgba(0, 229, 255, 0.08)',
-        borderColor: 'rgba(0, 229, 255, 0.2)',
+        backgroundColor: 'rgba(255, 255, 255, 0.08)',
+        borderColor: 'rgba(255, 255, 255, 0.4)',
     },
     doneButton: {
-        backgroundColor: '#00E5FF',
-        borderColor: '#00E5FF',
+        backgroundColor: '#FFFFFF',
+        borderColor: '#FFFFFF',
     },
     buttonIconContainer: {
         width: 52,
         height: 52,
         borderRadius: 26,
-        backgroundColor: 'rgba(0, 229, 255, 0.15)',
+        backgroundColor: 'rgba(255, 255, 255, 0.15)',
         alignItems: 'center',
         justifyContent: 'center',
         marginRight: 16,
     },
     doneIconContainer: {
-        backgroundColor: 'rgba(0, 0, 0, 0.15)',
+        backgroundColor: 'rgba(255, 255, 255, 0.15)',
     },
     buttonTextContainer: {
         flex: 1,
@@ -531,10 +539,10 @@ const styles = StyleSheet.create({
         marginLeft: 16,
     },
     restartButtonTitle: {
-        color: '#00E5FF',
+        color: '#FFFFFF',
     },
     doneButtonTitle: {
-        color: '#0a3040',
+        color: '#000000',
     },
     buttonSubtitle: {
         fontSize: 12,
@@ -549,7 +557,7 @@ const styles = StyleSheet.create({
         width: 100,
         height: 4,
         borderRadius: 2,
-        backgroundColor: '#00E5FF',
+        backgroundColor: '#FFFFFF',
         marginBottom: 24,
     },
 
@@ -564,17 +572,17 @@ const styles = StyleSheet.create({
     },
     leftPanel: {
         width: 380,
-        backgroundColor: 'rgba(255,255,255,0.03)',
+        backgroundColor: 'rgba(15, 15, 15, 0.6)',
         borderRadius: 28,
         borderWidth: 1,
-        borderColor: 'rgba(255,255,255,0.08)',
+        borderColor: 'rgba(255, 255, 255, 0.08)',
         padding: 16,
         gap: 12,
     },
     summaryTitle: {
         fontSize: 10,
         fontWeight: '800',
-        color: 'rgba(0, 229, 255, 0.6)',
+        color: 'rgba(255, 255, 255, 0.6)',
         letterSpacing: 1.5,
         marginBottom: 6,
     },
@@ -589,7 +597,7 @@ const styles = StyleSheet.create({
         alignItems: 'center',
         gap: 12,
         padding: 14,
-        backgroundColor: 'rgba(255,255,255,0.06)',
+        backgroundColor: 'rgba(20, 20, 20, 0.6)',
         borderRadius: 20,
         borderWidth: 1.5,
         borderColor: 'rgba(255,255,255,0.1)',
@@ -609,7 +617,7 @@ const styles = StyleSheet.create({
         borderRadius: 12,
         alignItems: 'center',
         justifyContent: 'center',
-        backgroundColor: 'rgba(0, 229, 255, 0.1)',
+        backgroundColor: 'rgba(255, 255, 255, 0.1)',
     },
     detailIconBoxLandscape: {
         width: 36,
@@ -702,9 +710,9 @@ const styles = StyleSheet.create({
         flex: 1,
         height: 52,
         borderRadius: 16,
-        backgroundColor: 'rgba(0, 229, 255, 0.08)',
+        backgroundColor: 'rgba(255, 255, 255, 0.08)',
         borderWidth: 1,
-        borderColor: 'rgba(0, 229, 255, 0.2)',
+        borderColor: 'rgba(255, 255, 255, 0.2)',
         alignItems: 'center',
         justifyContent: 'center',
     },
@@ -718,14 +726,14 @@ const styles = StyleSheet.create({
     borrowBtnTextComplete: {
         fontSize: 16,
         fontWeight: '700',
-        color: '#00E5FF',
+        color: '#FFFFFF',
     },
     borrowBtnTextCompleteLandscape: {
         fontSize: 16,
-        color: '#00E5FF',
+        color: '#FFFFFF',
     },
     mainActionButtonLandscape: {
-        backgroundColor: '#00E5FF',
+        backgroundColor: '#FFFFFF',
         flexDirection: 'row',
         alignItems: 'center',
         justifyContent: 'center',
@@ -735,7 +743,7 @@ const styles = StyleSheet.create({
         marginTop: 10,
         ...Platform.select({
             ios: {
-                shadowColor: '#00E5FF',
+                shadowColor: '#FFFFFF',
                 shadowOpacity: 0.4,
                 shadowRadius: 15,
                 shadowOffset: { width: 0, height: 8 },
@@ -745,7 +753,7 @@ const styles = StyleSheet.create({
     mainActionButtonTextLandscape: {
         fontSize: 20,
         fontWeight: '900',
-        color: '#0a3040',
+        color: '#000000',
     },
     buttonContainerLandscape: {
         marginTop: 4,

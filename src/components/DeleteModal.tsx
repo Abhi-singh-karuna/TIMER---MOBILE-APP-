@@ -107,13 +107,13 @@ const styles = StyleSheet.create({
     },
     dimLayer: {
         ...StyleSheet.absoluteFillObject,
-        backgroundColor: 'rgba(0,0,0,0.5)',
+        backgroundColor: 'rgba(0,0,0,0.8)',
     },
 
     modal: {
         width: SCREEN_WIDTH * 0.85,
         maxWidth: 380,
-        backgroundColor: 'rgba(25, 35, 45, 0.95)',
+        backgroundColor: '#000000',
         borderRadius: 24,
         borderWidth: 1,
         borderColor: 'rgba(255,255,255,0.08)',
@@ -180,15 +180,15 @@ const styles = StyleSheet.create({
         borderRadius: 14,
         paddingVertical: 14,
         alignItems: 'center',
-        backgroundColor: 'rgba(0, 229, 255, 0.1)',
+        backgroundColor: 'rgba(255, 255, 255, 0.08)',
         borderWidth: 1.5,
-        borderColor: 'rgba(0, 229, 255, 0.4)',
+        borderColor: 'rgba(255, 255, 255, 0.2)',
     },
 
     resetText: {
         fontSize: 13,
         fontWeight: '700',
-        color: '#00E5FF',
+        color: '#fff',
         letterSpacing: 1.5,
     },
 
@@ -197,7 +197,7 @@ const styles = StyleSheet.create({
         borderRadius: 14,
         paddingVertical: 14,
         alignItems: 'center',
-        backgroundColor: '#00E5FF',
+        backgroundColor: '#fff',
     },
 
     updateOptionText: {

@@ -17,7 +17,7 @@ import { Audio } from 'expo-av';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
 import { MaterialIcons } from '@expo/vector-icons';
-import { Category, DEFAULT_CATEGORIES, CATEGORIES_KEY, SOUND_OPTIONS } from '../constants/data';
+import { Category, DEFAULT_CATEGORIES, CATEGORIES_KEY, SOUND_OPTIONS, LANDSCAPE_PRESETS, COLOR_PRESETS } from '../constants/data';
 
 const FILLER_COLOR_KEY = '@timer_filler_color';
 const SLIDER_BUTTON_COLOR_KEY = '@timer_slider_button_color';
@@ -29,8 +29,8 @@ const ENABLE_FUTURE_TIMERS_KEY = '@timer_enable_future';
 const ENABLE_PAST_TIMERS_KEY = '@timer_enable_past';
 
 // Default colors
-const DEFAULT_FILLER_COLOR = '#00E5FF';
-const DEFAULT_SLIDER_BUTTON_COLOR = '#00E5FF';
+const DEFAULT_FILLER_COLOR = '#FFFFFF';
+const DEFAULT_SLIDER_BUTTON_COLOR = '#FFFFFF';
 const DEFAULT_TEXT_COLOR = '#FFFFFF';
 
 const CATEGORY_ICONS: (keyof typeof MaterialIcons.glyphMap)[] = [
@@ -60,39 +60,7 @@ interface SettingsScreenProps {
     onPastTimersChange: (val: boolean) => void;
 }
 
-const COLOR_PRESETS = [
-    { name: 'Sky Blue', value: '#00E5FF' },
-    { name: 'Gold', value: '#FFD700' },
-    { name: 'Coral', value: '#FF6B6B' },
-    { name: 'Mint', value: '#4ECDC4' },
-    { name: 'Purple', value: '#9B59B6' },
-    { name: 'White', value: '#FFFFFF' },
-    { name: 'Orange', value: '#FF9500' },
-    { name: 'Pink', value: '#FF2D55' },
-    { name: 'Green', value: '#34C759' },
-    { name: 'Red', value: '#FF3B30' },
-];
 
-const LANDSCAPE_PRESETS = [
-    {
-        name: 'Deep Sea',
-        filler: '#00E5FF',
-        slider: '#00E5FF',
-        text: '#FFFFFF'
-    },
-    {
-        name: 'Lava Glow',
-        filler: '#FF9500',
-        slider: '#FF9500',
-        text: '#FFFFFF'
-    },
-    {
-        name: 'Neon Forest',
-        filler: '#34C759',
-        slider: '#34C759',
-        text: '#FFFFFF'
-    },
-];
 
 export default function SettingsScreen({
     onBack,
@@ -120,7 +88,7 @@ export default function SettingsScreen({
     const [editingCategory, setEditingCategory] = useState<Category | null>(null);
     const [isAddingCategory, setIsAddingCategory] = useState(false);
     const [newCategoryName, setNewCategoryName] = useState('');
-    const [selectedCategoryColor, setSelectedCategoryColor] = useState('#00E5FF');
+    const [selectedCategoryColor, setSelectedCategoryColor] = useState('#FFFFFF');
     const [selectedCategoryIcon, setSelectedCategoryIcon] = useState<keyof typeof MaterialIcons.glyphMap>('category');
 
     // Widen sidebar to 38% for a larger preview
@@ -237,19 +205,11 @@ export default function SettingsScreen({
                 AsyncStorage.setItem(SLIDER_BUTTON_COLOR_KEY, DEFAULT_SLIDER_BUTTON_COLOR),
                 AsyncStorage.setItem(TEXT_COLOR_KEY, DEFAULT_TEXT_COLOR),
                 AsyncStorage.setItem(PRESET_INDEX_KEY, '0'),
-                AsyncStorage.setItem(COMPLETION_SOUND_KEY, '0'),
-                AsyncStorage.setItem(SOUND_REPETITION_KEY, '1'),
-                AsyncStorage.setItem(CATEGORIES_KEY, JSON.stringify(DEFAULT_CATEGORIES)),
-                AsyncStorage.setItem(ENABLE_PAST_TIMERS_KEY, 'true'),
             ]);
             onFillerColorChange(DEFAULT_FILLER_COLOR);
             onSliderButtonColorChange(DEFAULT_SLIDER_BUTTON_COLOR);
             onTimerTextColorChange(DEFAULT_TEXT_COLOR);
             onPresetChange(0);
-            onSoundChange(0);
-            onRepetitionChange(1);
-            onCategoriesChange(DEFAULT_CATEGORIES);
-            onPastTimersChange(true);
 
             if (scrollRef.current) {
                 scrollRef.current.scrollTo({ x: 0, animated: true });
@@ -365,7 +325,7 @@ export default function SettingsScreen({
     const renderRepetitionSection = () => (
         <View style={[styles.repetitionSection, isLandscape && styles.repetitionSectionLandscape]}>
             <View style={styles.repetitionHeader}>
-                <View style={styles.repetitionTitleRow}><MaterialIcons name="repeat" size={18} color="#00E5FF" /><Text style={styles.repetitionTitle}>Repeat Count</Text></View>
+                <View style={styles.repetitionTitleRow}><MaterialIcons name="repeat" size={18} color="#FFFFFF" /><Text style={styles.repetitionTitle}>Repeat Count</Text></View>
                 <Text style={styles.repetitionValue}>{soundRepetition}x</Text>
             </View>
             <View style={styles.repetitionOptionsRow}>
@@ -418,11 +378,12 @@ export default function SettingsScreen({
 
     const renderCategoriesTab = () => (
         <View style={styles.categoriesSection}>
-            {isLandscape && <Text style={styles.sectionTitleLandscape}>MANAGE CATEGORIES</Text>}
-            <View style={[styles.categoriesHeader, !isLandscape && { marginTop: 0 }]}>
-                {!isLandscape && <Text style={styles.inputLabel}>MANAGE CATEGORIES</Text>}
-                <TouchableOpacity style={styles.addCategoryBtn} onPress={() => { setEditingCategory(null); setNewCategoryName(''); setSelectedCategoryColor('#00E5FF'); setSelectedCategoryIcon('category'); setIsAddingCategory(true); }}>
-                    <MaterialIcons name="add" size={20} color="#00E5FF" /><Text style={styles.addCategoryBtnText}>ADD NEW</Text>
+            <View style={[styles.categoriesHeader, isLandscape && { marginTop: 4, marginBottom: 12 }]}>
+                <Text style={isLandscape ? [styles.sectionTitleLandscape, { marginBottom: 0 }] : styles.inputLabel}>
+                    MANAGE CATEGORIES
+                </Text>
+                <TouchableOpacity style={styles.addCategoryBtn} onPress={() => { setEditingCategory(null); setNewCategoryName(''); setSelectedCategoryColor('#FFFFFF'); setSelectedCategoryIcon('category'); setIsAddingCategory(true); }}>
+                    <MaterialIcons name="add" size={20} color="#FFFFFF" /><Text style={styles.addCategoryBtnText}>ADD NEW</Text>
                 </TouchableOpacity>
             </View>
             {isAddingCategory ? (
@@ -511,7 +472,7 @@ export default function SettingsScreen({
             <View style={styles.section}><Text style={styles.sectionTitle}>GENERAL SETTINGS</Text>{renderGeneralTab()}</View>
             <View style={styles.section}><Text style={styles.sectionTitle}>DEFAULTS</Text>
                 <TouchableOpacity style={styles.resetButton} onPress={handleResetToDefaults} activeOpacity={0.7}>
-                    <MaterialIcons name="refresh" size={20} color="#00E5FF" /><Text style={styles.resetButtonText}>Reset All to Defaults</Text>
+                    <MaterialIcons name="refresh" size={20} color="#FFFFFF" /><Text style={styles.resetButtonText}>Reset Theme to Defaults</Text>
                 </TouchableOpacity>
             </View>
             <View style={styles.section}><Text style={styles.sectionTitle}>ABOUT</Text>
@@ -538,7 +499,7 @@ export default function SettingsScreen({
                         <MaterialIcons
                             name={icon}
                             size={18}
-                            color={isActive ? '#00E5FF' : 'rgba(255,255,255,0.4)'}
+                            color={isActive ? '#FFFFFF' : 'rgba(255,255,255,0.4)'}
                         />
                         <Text style={[
                             styles.sidebarButtonText,
@@ -613,7 +574,7 @@ export default function SettingsScreen({
                                     onPress={handleResetToDefaults}
                                     activeOpacity={0.7}
                                 >
-                                    <MaterialIcons name="refresh" size={18} color="#00E5FF" />
+                                    <MaterialIcons name="refresh" size={18} color="#FFFFFF" />
                                     <Text style={styles.resetButtonText}>Reset to Defaults</Text>
                                 </TouchableOpacity>
                             </View>
@@ -640,7 +601,7 @@ export default function SettingsScreen({
                                 <Text style={styles.sectionTitleLandscape}>ABOUT</Text>
                                 <View style={styles.aboutHeaderLandscape}>
                                     <LinearGradient
-                                        colors={['#00E5FF', '#0095FF']}
+                                        colors={['#FFFFFF', '#CCCCCC']}
                                         style={styles.aboutIconContainer}
                                     >
                                         <MaterialIcons name="timer" size={28} color="#000" />
@@ -668,8 +629,8 @@ export default function SettingsScreen({
 
     return (
         <LinearGradient
-            colors={['#080C1A', '#0a2025', '#0d3a40']}
-            locations={[0, 0.6, 1]}
+            colors={['#000000', '#000000']}
+            locations={[0, 1]}
             style={styles.container}
         >
             <SafeAreaView
@@ -847,7 +808,7 @@ const styles = StyleSheet.create({
     },
 
     sidebarButtonRowActive: {
-        backgroundColor: 'rgba(0, 229, 255, 0.05)',
+        backgroundColor: 'rgba(255, 255, 255, 0.05)',
     },
 
     sidebarButtonText: {
@@ -858,7 +819,7 @@ const styles = StyleSheet.create({
     },
 
     sidebarButtonTextActive: {
-        color: '#00E5FF',
+        color: '#FFFFFF',
     },
 
     sidebarButtonTextInactive: {
@@ -869,8 +830,8 @@ const styles = StyleSheet.create({
         width: 5,
         height: 5,
         borderRadius: 2.5,
-        backgroundColor: '#00E5FF',
-        shadowColor: '#00E5FF',
+        backgroundColor: '#FFFFFF',
+        shadowColor: '#FFFFFF',
         shadowOffset: { width: 0, height: 0 },
         shadowOpacity: 0.6,
         shadowRadius: 3,
@@ -1339,7 +1300,7 @@ const styles = StyleSheet.create({
     repetitionValue: {
         fontSize: 16,
         fontWeight: '700',
-        color: '#00E5FF',
+        color: '#FFFFFF',
     },
 
     repetitionOptionsRow: {
@@ -1360,8 +1321,8 @@ const styles = StyleSheet.create({
     },
 
     repetitionPillSelected: {
-        backgroundColor: 'rgba(0, 229, 255, 0.2)',
-        borderColor: '#00E5FF',
+        backgroundColor: 'rgba(255, 255, 255, 0.1)',
+        borderColor: 'rgba(255, 255, 255, 0.2)',
     },
 
     repetitionPillText: {
@@ -1371,7 +1332,7 @@ const styles = StyleSheet.create({
     },
 
     repetitionPillTextSelected: {
-        color: '#00E5FF',
+        color: '#FFFFFF',
     },
 
     // ========== Reset Button Styles ==========
@@ -1381,15 +1342,15 @@ const styles = StyleSheet.create({
         justifyContent: 'center',
         padding: 16,
         borderRadius: 16,
-        backgroundColor: 'rgba(0, 229, 255, 0.1)',
+        backgroundColor: 'rgba(255, 255, 255, 0.1)',
         borderWidth: 1,
-        borderColor: 'rgba(0, 229, 255, 0.3)',
+        borderColor: 'rgba(255, 255, 255, 0.3)',
     },
 
     resetButtonText: {
         fontSize: 14,
         fontWeight: '600',
-        color: '#00E5FF',
+        color: '#FFFFFF',
         marginLeft: 8,
     },
 
@@ -1450,9 +1411,9 @@ const styles = StyleSheet.create({
         justifyContent: 'center',
         padding: 14,
         borderRadius: 14,
-        backgroundColor: 'rgba(0, 229, 255, 0.08)',
+        backgroundColor: 'rgba(255, 255, 255, 0.08)',
         borderWidth: 1,
-        borderColor: 'rgba(0, 229, 255, 0.2)',
+        borderColor: 'rgba(255, 255, 255, 0.2)',
         marginTop: 20,
     },
 
@@ -1471,18 +1432,18 @@ const styles = StyleSheet.create({
     addCategoryBtn: {
         flexDirection: 'row',
         alignItems: 'center',
-        backgroundColor: 'rgba(0, 229, 255, 0.1)',
+        backgroundColor: 'rgba(255, 255, 255, 0.1)',
         paddingVertical: 6,
         paddingHorizontal: 12,
         borderRadius: 20,
         borderWidth: 1,
-        borderColor: 'rgba(0, 229, 255, 0.2)',
+        borderColor: 'rgba(255, 255, 255, 0.2)',
     },
 
     addCategoryBtnText: {
         fontSize: 10,
         fontWeight: '800',
-        color: '#00E5FF',
+        color: '#FFFFFF',
         marginLeft: 4,
     },
 
@@ -1635,7 +1596,7 @@ const styles = StyleSheet.create({
     },
 
     categorySaveBtn: {
-        backgroundColor: '#00E5FF',
+        backgroundColor: '#FFFFFF',
         paddingVertical: 10,
         paddingHorizontal: 20,
         borderRadius: 12,
@@ -1690,7 +1651,7 @@ const styles = StyleSheet.create({
     },
 
     customSwitchActive: {
-        backgroundColor: 'rgba(0, 229, 255, 0.2)',
+        backgroundColor: 'rgba(255, 255, 255, 0.2)',
     },
 
     switchKnob: {
@@ -1701,7 +1662,7 @@ const styles = StyleSheet.create({
     },
 
     switchKnobActive: {
-        backgroundColor: '#00E5FF',
+        backgroundColor: '#FFFFFF',
         transform: [{ translateX: 20 }],
     },
 });
