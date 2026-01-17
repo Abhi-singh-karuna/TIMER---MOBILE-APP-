@@ -26,6 +26,7 @@ interface Timer {
   createdAt: string;           // ISO string of creation
   updatedAt: string;           // ISO string of last update
   borrowedTimeList: number[];  // Array of seconds borrowed
+  forDate: string;             // YYYY-MM-DD
 }
 ```
 

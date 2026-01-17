@@ -21,7 +21,8 @@ import TaskComplete from './src/screens/TaskComplete';
 import SettingsScreen from './src/screens/SettingsScreen';
 import AddTimerModal from './src/components/AddTimerModal';
 import DeleteModal from './src/components/DeleteModal';
-import { Timer } from './src/constants/data';
+import { Timer, Category, DEFAULT_CATEGORIES, CATEGORIES_KEY } from './src/constants/data';
+import { Alert } from 'react-native';
 import { loadTimers, saveTimers } from './src/utils/storage';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import {
@@ -39,6 +40,8 @@ const PRESET_INDEX_KEY = '@timer_active_preset_index';
 const COMPLETION_SOUND_KEY = '@timer_completion_sound';
 const SOUND_REPETITION_KEY = '@timer_sound_repetition';
 const ACTIVE_TIMER_ID_KEY = '@timer_active_id';
+const ENABLE_FUTURE_TIMERS_KEY = '@timer_enable_future';
+const ENABLE_PAST_TIMERS_KEY = '@timer_enable_past';
 
 export const LANDSCAPE_PRESETS = [
   {
@@ -111,6 +114,14 @@ export default function App() {
   const [activePresetIndex, setActivePresetIndex] = useState(0);
   const [selectedSound, setSelectedSound] = useState(0);
   const [soundRepetition, setSoundRepetition] = useState(1);
+  const [selectedDate, setSelectedDate] = useState(new Date());
+  const [categories, setCategories] = useState<Category[]>(DEFAULT_CATEGORIES);
+  const [timerToEdit, setTimerToEdit] = useState<Timer | null>(null);
+  const [enablePastTimers, setEnablePastTimers] = useState(true);
+
+  const formatDate = (date: Date) => {
+    return `${date.getFullYear()}-${(date.getMonth() + 1).toString().padStart(2, '0')}-${date.getDate().toString().padStart(2, '0')}`;
+  };
 
   const intervalRef = useRef<NodeJS.Timeout | null>(null);
   const appState = useRef(AppState.currentState);
@@ -239,6 +250,14 @@ export default function App() {
       if (presetIndex) setActivePresetIndex(parseInt(presetIndex, 10));
       if (sound) setSelectedSound(parseInt(sound, 10));
       if (repetition) setSoundRepetition(parseInt(repetition, 10));
+
+      const savedPast = await AsyncStorage.getItem(ENABLE_PAST_TIMERS_KEY);
+      if (savedPast !== null) setEnablePastTimers(savedPast === 'true');
+
+      const storedCats = await AsyncStorage.getItem(CATEGORIES_KEY);
+      if (storedCats) {
+        setCategories(JSON.parse(storedCats));
+      }
     } catch (e) {
       console.error('Failed to load color preferences:', e);
     }
@@ -310,6 +329,10 @@ export default function App() {
     setActiveTimer(timer);
     if (timer) {
       await AsyncStorage.setItem(ACTIVE_TIMER_ID_KEY, timer.id.toString());
+      // When opening an active timer, ensure we view its date
+      if (timer.forDate) {
+        setSelectedDate(new Date(timer.forDate));
+      }
     } else {
       await AsyncStorage.removeItem(ACTIVE_TIMER_ID_KEY);
     }
@@ -331,8 +354,6 @@ export default function App() {
           // If the previously active timer is now finished but not acknowledged, show completion screen
           setShouldPlayCompletionSound(true);
           setCurrentScreen('complete');
-        } else if (restoredActive.status === 'Running' || restoredActive.status === 'Paused') {
-          setCurrentScreen('active');
         }
       }
     }
@@ -343,7 +364,7 @@ export default function App() {
     }
   };
 
-  const handleAddTimer = async (name: string, hours: number, minutes: number, seconds: number) => {
+  const handleAddTimer = async (name: string, hours: number, minutes: number, seconds: number, date: string, categoryId?: string) => {
     const timeStr = `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
     const now = new Date().toISOString();
     const newTimer: Timer = {
@@ -356,6 +377,8 @@ export default function App() {
       createdAt: now,
       updatedAt: now,
       borrowedTimeList: [],
+      forDate: date,
+      categoryId,
     };
     const newTimers = [...timers, newTimer];
     setTimers(newTimers);
@@ -363,7 +386,46 @@ export default function App() {
     setAddModalVisible(false);
   };
 
-  const handleDeleteTimer = (timer: Timer) => {
+  const handleUpdateTimer = async (timerId: number, name: string, hours: number, minutes: number, seconds: number, date: string, categoryId?: string) => {
+    const timeStr = `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
+    const now = new Date().toISOString();
+
+    const updatedTimers = timers.map(t => {
+      if (t.id === timerId) {
+        // If duration changed, we should probably reset state to Upcoming
+        const durationChanged = t.total !== timeStr;
+        return {
+          ...t,
+          title: name,
+          time: durationChanged ? timeStr : t.time,
+          total: timeStr,
+          status: durationChanged ? 'Upcoming' : t.status,
+          forDate: date,
+          categoryId: categoryId,
+          updatedAt: now,
+          // Reset session info if duration changed
+          ...(durationChanged && {
+            borrowedTime: 0,
+            borrowedTimeList: [],
+            completedPercentage: undefined,
+            savedTime: undefined,
+            startTime: undefined,
+            startedTimestamp: undefined,
+            remainingSecondsAtStart: undefined,
+            notificationId: undefined,
+          })
+        } as Timer;
+      }
+      return t;
+    });
+
+    setTimers(updatedTimers);
+    await saveTimers(updatedTimers);
+    setAddModalVisible(false);
+    setTimerToEdit(null);
+  };
+
+  const handleLongPressTimer = (timer: Timer) => {
     setSelectedTimer(timer);
     setDeleteModalVisible(true);
   };
@@ -762,6 +824,14 @@ export default function App() {
     }
   };
 
+
+  const togglePastTimers = async (val: boolean) => {
+    setEnablePastTimers(val);
+    try {
+      await AsyncStorage.setItem(ENABLE_PAST_TIMERS_KEY, String(val));
+    } catch (e) { console.error(e); }
+  };
+
   // Handle borrow time from TimerList popup (when timer completes in-list)
   const handleBorrowTimeFromList = async (timer: Timer, seconds: number) => {
     const scheduledId = await scheduleTimerNotification(
@@ -826,10 +896,12 @@ export default function App() {
             onPlayPause={() => activeTimer && handlePlayPause(activeTimer)}
             onCancel={handleCancel}
             onComplete={handleComplete}
-            onBorrowTime={handleBorrowTime}
+            onBorrowTime={(secs) => activeTimer && handleBorrowTime(secs)}
             fillerColor={fillerColor}
             sliderButtonColor={sliderButtonColor}
             timerTextColor={timerTextColor}
+            categoryId={activeTimer?.categoryId}
+            categories={categories}
           />
         );
 
@@ -849,6 +921,10 @@ export default function App() {
             soundRepetition={soundRepetition}
             onSoundChange={setSelectedSound}
             onRepetitionChange={setSoundRepetition}
+            categories={categories}
+            onCategoriesChange={setCategories}
+            enablePastTimers={enablePastTimers}
+            onPastTimersChange={togglePastTimers}
           />
         );
 
@@ -860,11 +936,12 @@ export default function App() {
             borrowedTime={completedBorrowedTime}
             onRestart={handleRestart}
             onDone={handleDone}
-            onBorrowTime={handleBorrowFromComplete}
+            onBorrowTime={(secs) => handleBorrowFromComplete(secs)}
             selectedSound={selectedSound}
             soundRepetition={soundRepetition}
             shouldPlaySound={shouldPlayCompletionSound}
             onAcknowledgeCompletion={() => activeTimer && handleAcknowledgeCompletion(activeTimer.id)}
+            category={activeTimer ? categories.find(c => c.id === activeTimer.categoryId) : undefined}
           />
         );
 
@@ -875,15 +952,22 @@ export default function App() {
         return (
           <TimerList
             timers={timers}
-            onAddTimer={() => setAddModalVisible(true)}
-            onDeleteTimer={handleDeleteTimer}
+            onAddTimer={() => {
+              setTimerToEdit(null);
+              setAddModalVisible(true);
+            }}
+            onLongPressTimer={handleLongPressTimer}
             onStartTimer={handleStartTimer}
             onPlayPause={handlePlayPause}
             onSettings={() => setCurrentScreen('settings')}
             onBorrowTime={handleBorrowTimeFromList}
+            onAcknowledgeCompletion={handleAcknowledgeCompletion}
             selectedSound={selectedSound}
             soundRepetition={soundRepetition}
-            onAcknowledgeCompletion={handleAcknowledgeCompletion}
+            selectedDate={selectedDate}
+            onDateChange={setSelectedDate}
+            categories={categories}
+            enablePastTimers={enablePastTimers}
           />
         );
     }
@@ -895,8 +979,16 @@ export default function App() {
 
       <AddTimerModal
         visible={addModalVisible}
-        onCancel={() => setAddModalVisible(false)}
+        onCancel={() => {
+          setAddModalVisible(false);
+          setTimerToEdit(null);
+        }}
         onAdd={handleAddTimer}
+        onUpdate={handleUpdateTimer}
+        initialDate={formatDate(selectedDate)}
+        categories={categories}
+        timerToEdit={timerToEdit}
+        enablePastTimers={enablePastTimers}
       />
 
       <DeleteModal
@@ -905,6 +997,13 @@ export default function App() {
         onCancel={() => {
           setDeleteModalVisible(false);
           setSelectedTimer(null);
+        }}
+        onUpdate={() => {
+          if (selectedTimer) {
+            setTimerToEdit(selectedTimer);
+            setDeleteModalVisible(false);
+            setAddModalVisible(true);
+          }
         }}
         onReset={handleResetTimer}
         onDelete={confirmDelete}
