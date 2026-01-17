@@ -833,7 +833,7 @@ const styles = StyleSheet.create({
         right: 30,
         alignItems: 'flex-start',
         justifyContent: 'center',
-        width: 320,
+        width: 420,
     },
 
     landscapeTimerLabel: {
@@ -846,10 +846,13 @@ const styles = StyleSheet.create({
 
     landscapeTimeText: {
         fontSize: 180,
-        fontWeight: '700',
+        fontFamily: 'Inter_900Black',
+        fontWeight: '900',
         color: '#fff',
-        letterSpacing: -6,
-        lineHeight: 180,
+        letterSpacing: -3,
+        lineHeight: 150,
+        fontVariant: ['tabular-nums'],
+        transform: [{ scaleY: 1.18 }],
     },
 
     landscapeSlideContainer: {

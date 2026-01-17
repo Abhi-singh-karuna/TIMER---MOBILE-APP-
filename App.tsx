@@ -13,6 +13,7 @@ import {
   PlusJakartaSans_800ExtraBold,
   PlusJakartaSans_200ExtraLight,
 } from '@expo-google-fonts/plus-jakarta-sans';
+import { Inter_900Black } from '@expo-google-fonts/inter';
 
 import EmptyState from './src/screens/EmptyState';
 import TimerList from './src/screens/TimerList';
@@ -96,6 +97,7 @@ export default function App() {
     PlusJakartaSans_600SemiBold,
     PlusJakartaSans_700Bold,
     PlusJakartaSans_800ExtraBold,
+    Inter_900Black,
   });
 
   const [timers, setTimers] = useState<Timer[]>([]);
@@ -618,7 +620,6 @@ export default function App() {
 
   // Handle cancel from active timer screen
   const handleCancel = async () => {
-    await handlePause();
     setActiveTimer(null);
     setCurrentScreen('list');
   };

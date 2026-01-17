@@ -237,19 +237,11 @@ export default function SettingsScreen({
                 AsyncStorage.setItem(SLIDER_BUTTON_COLOR_KEY, DEFAULT_SLIDER_BUTTON_COLOR),
                 AsyncStorage.setItem(TEXT_COLOR_KEY, DEFAULT_TEXT_COLOR),
                 AsyncStorage.setItem(PRESET_INDEX_KEY, '0'),
-                AsyncStorage.setItem(COMPLETION_SOUND_KEY, '0'),
-                AsyncStorage.setItem(SOUND_REPETITION_KEY, '1'),
-                AsyncStorage.setItem(CATEGORIES_KEY, JSON.stringify(DEFAULT_CATEGORIES)),
-                AsyncStorage.setItem(ENABLE_PAST_TIMERS_KEY, 'true'),
             ]);
             onFillerColorChange(DEFAULT_FILLER_COLOR);
             onSliderButtonColorChange(DEFAULT_SLIDER_BUTTON_COLOR);
             onTimerTextColorChange(DEFAULT_TEXT_COLOR);
             onPresetChange(0);
-            onSoundChange(0);
-            onRepetitionChange(1);
-            onCategoriesChange(DEFAULT_CATEGORIES);
-            onPastTimersChange(true);
 
             if (scrollRef.current) {
                 scrollRef.current.scrollTo({ x: 0, animated: true });
@@ -418,9 +410,10 @@ export default function SettingsScreen({
 
     const renderCategoriesTab = () => (
         <View style={styles.categoriesSection}>
-            {isLandscape && <Text style={styles.sectionTitleLandscape}>MANAGE CATEGORIES</Text>}
-            <View style={[styles.categoriesHeader, !isLandscape && { marginTop: 0 }]}>
-                {!isLandscape && <Text style={styles.inputLabel}>MANAGE CATEGORIES</Text>}
+            <View style={[styles.categoriesHeader, isLandscape && { marginTop: 4, marginBottom: 12 }]}>
+                <Text style={isLandscape ? [styles.sectionTitleLandscape, { marginBottom: 0 }] : styles.inputLabel}>
+                    MANAGE CATEGORIES
+                </Text>
                 <TouchableOpacity style={styles.addCategoryBtn} onPress={() => { setEditingCategory(null); setNewCategoryName(''); setSelectedCategoryColor('#00E5FF'); setSelectedCategoryIcon('category'); setIsAddingCategory(true); }}>
                     <MaterialIcons name="add" size={20} color="#00E5FF" /><Text style={styles.addCategoryBtnText}>ADD NEW</Text>
                 </TouchableOpacity>
@@ -511,7 +504,7 @@ export default function SettingsScreen({
             <View style={styles.section}><Text style={styles.sectionTitle}>GENERAL SETTINGS</Text>{renderGeneralTab()}</View>
             <View style={styles.section}><Text style={styles.sectionTitle}>DEFAULTS</Text>
                 <TouchableOpacity style={styles.resetButton} onPress={handleResetToDefaults} activeOpacity={0.7}>
-                    <MaterialIcons name="refresh" size={20} color="#00E5FF" /><Text style={styles.resetButtonText}>Reset All to Defaults</Text>
+                    <MaterialIcons name="refresh" size={20} color="#00E5FF" /><Text style={styles.resetButtonText}>Reset Theme to Defaults</Text>
                 </TouchableOpacity>
             </View>
             <View style={styles.section}><Text style={styles.sectionTitle}>ABOUT</Text>
