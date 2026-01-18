@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { LogBox, AppState, AppStateStatus } from 'react-native';
+import { LogBox, AppState, AppStateStatus, LayoutAnimation, UIManager, Platform } from 'react-native';
 import * as Notifications from 'expo-notifications';
 import { StatusBar } from 'expo-status-bar';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
@@ -24,7 +24,7 @@ import SettingsScreen from './src/screens/Timer/Settings';
 import AddTimerModal from './src/components/AddTimerModal';
 import AddTaskModal from './src/components/AddTaskModal';
 import DeleteModal from './src/components/DeleteModal';
-import { Timer, Task, Category, DEFAULT_CATEGORIES, CATEGORIES_KEY, LANDSCAPE_PRESETS } from './src/constants/data';
+import { Timer, Task, Category, QuickMessage, DEFAULT_CATEGORIES, DEFAULT_QUICK_MESSAGES, CATEGORIES_KEY, QUICK_MESSAGES_KEY, LANDSCAPE_PRESETS } from './src/constants/data';
 import { Alert } from 'react-native';
 import { loadTimers, saveTimers } from './src/utils/storage';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -106,7 +106,24 @@ export default function App() {
   const [timerToEdit, setTimerToEdit] = useState<Timer | null>(null);
   const [isPastTimersDisabled, setIsPastTimersDisabled] = useState(false);
   const [isPastTasksDisabled, setIsPastTasksDisabled] = useState(false);
-  const [activeView, setActiveView] = useState<'timer' | 'task'>('timer');
+  const [activeView, setActiveViewState] = useState<'timer' | 'task'>('timer');
+  const [quickMessages, setQuickMessages] = useState<QuickMessage[]>(DEFAULT_QUICK_MESSAGES);
+
+  // Enable LayoutAnimation on Android
+  if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
+    UIManager.setLayoutAnimationEnabledExperimental(true);
+  }
+
+  // Smooth view change with animation
+  const setActiveView = (view: 'timer' | 'task') => {
+    LayoutAnimation.configureNext({
+      duration: 250,
+      create: { type: LayoutAnimation.Types.easeInEaseOut, property: LayoutAnimation.Properties.opacity },
+      update: { type: LayoutAnimation.Types.easeInEaseOut },
+      delete: { type: LayoutAnimation.Types.easeInEaseOut, property: LayoutAnimation.Properties.opacity },
+    });
+    setActiveViewState(view);
+  };
 
   // Task state
   const [tasks, setTasks] = useState<Task[]>([]);
@@ -258,6 +275,12 @@ export default function App() {
         setCategories(JSON.parse(storedCats));
       }
 
+      // Load quick messages
+      const storedQuickMessages = await AsyncStorage.getItem(QUICK_MESSAGES_KEY);
+      if (storedQuickMessages) {
+        setQuickMessages(JSON.parse(storedQuickMessages));
+      }
+
       // Load tasks
       const storedTasks = await AsyncStorage.getItem(TASKS_KEY);
       if (storedTasks) {
@@ -311,6 +334,7 @@ export default function App() {
           ...t,
           status: nextStatus,
           updatedAt: now,
+          startedAt: (nextStatus === 'In Progress' && !t.startedAt) ? now : t.startedAt,
           completedAt: nextStatus === 'Completed' ? now : undefined
         }
         : t
@@ -363,14 +387,22 @@ export default function App() {
     setTaskToEdit(null);
   };
 
-  // Handle updating a task comment
+  // Handle updating a task comment (adding a new comment)
   const handleUpdateComment = (task: Task, comment: string) => {
+    if (!comment.trim()) return;
+
     const now = new Date().toISOString();
+    const newComment = {
+      id: Date.now(),
+      text: comment.trim(),
+      createdAt: now,
+    };
+
     const updatedTasks = tasks.map(t =>
       t.id === task.id
         ? {
           ...t,
-          comment: comment.trim() || undefined,
+          comments: [newComment, ...(t.comments || [])],
           updatedAt: now,
         }
         : t
@@ -1041,6 +1073,11 @@ export default function App() {
               setIsPastTasksDisabled(val);
               await AsyncStorage.setItem(IS_PAST_TASKS_DISABLED_KEY, val.toString());
             }}
+            quickMessages={quickMessages}
+            onQuickMessagesChange={async (messages) => {
+              setQuickMessages(messages);
+              await AsyncStorage.setItem(QUICK_MESSAGES_KEY, JSON.stringify(messages));
+            }}
           />
         );
 
@@ -1078,6 +1115,7 @@ export default function App() {
               onViewChange={setActiveView}
               onSettings={() => setCurrentScreen('settings')}
               isPastTasksDisabled={isPastTasksDisabled}
+              quickMessages={quickMessages}
             />
           );
         }

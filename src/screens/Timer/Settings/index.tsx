@@ -16,6 +16,7 @@ import AudioSection from './AudioSection';
 import CategorySection from './CategorySection';
 import GeneralSection from './GeneralSection';
 import InfoSection from './InfoSection';
+import QuickMessageSection from './QuickMessageSection';
 import { styles } from './styles';
 import {
     SettingsScreenProps,
@@ -48,11 +49,13 @@ export default function SettingsScreen({
     onPastTimersDisabledChange,
     isPastTasksDisabled,
     onPastTasksDisabledChange,
+    quickMessages,
+    onQuickMessagesChange,
 }: SettingsScreenProps) {
     const { width, height } = useWindowDimensions();
     const isLandscape = width > height;
 
-    const [activeTab, setActiveTab] = useState<'customization' | 'sound' | 'categories' | 'general' | 'about'>('customization');
+    const [activeTab, setActiveTab] = useState<'customization' | 'sound' | 'categories' | 'quickmsg' | 'general' | 'about'>('customization');
 
     // Widen sidebar to 38% for a larger preview
     const sidebarWidth = width * 0.38;
@@ -104,6 +107,14 @@ export default function SettingsScreen({
                 />
             </View>
             <View style={styles.section}>
+                <Text style={styles.sectionTitle}>QUICK MESSAGES</Text>
+                <QuickMessageSection
+                    isLandscape={false}
+                    quickMessages={quickMessages}
+                    onQuickMessagesChange={onQuickMessagesChange}
+                />
+            </View>
+            <View style={styles.section}>
                 <Text style={styles.sectionTitle}>GENERAL SETTINGS</Text>
                 <GeneralSection
                     isLandscape={false}
@@ -128,7 +139,7 @@ export default function SettingsScreen({
 
     // Landscape Layout - Side by side with Sidebar
     const renderLandscapeLayout = () => {
-        const renderSidebarButton = (id: 'customization' | 'sound' | 'categories' | 'general' | 'about', icon: keyof typeof MaterialIcons.glyphMap, label: string) => {
+        const renderSidebarButton = (id: 'customization' | 'sound' | 'categories' | 'quickmsg' | 'general' | 'about', icon: keyof typeof MaterialIcons.glyphMap, label: string) => {
             const isActive = activeTab === id;
             return (
                 <TouchableOpacity
@@ -190,6 +201,7 @@ export default function SettingsScreen({
                                 {renderSidebarButton('customization', 'palette', 'Theme')}
                                 {renderSidebarButton('sound', 'volume-up', 'Audio')}
                                 {renderSidebarButton('categories', 'category', 'Category')}
+                                {renderSidebarButton('quickmsg', 'chat', 'Quick Msg')}
                                 {renderSidebarButton('general', 'settings', 'General')}
                                 {renderSidebarButton('about', 'info', 'Info')}
                             </View>
@@ -244,6 +256,14 @@ export default function SettingsScreen({
                                 isLandscape={true}
                                 categories={categories}
                                 onCategoriesChange={onCategoriesChange}
+                            />
+                        )}
+
+                        {activeTab === 'quickmsg' && (
+                            <QuickMessageSection
+                                isLandscape={true}
+                                quickMessages={quickMessages}
+                                onQuickMessagesChange={onQuickMessagesChange}
                             />
                         )}
 

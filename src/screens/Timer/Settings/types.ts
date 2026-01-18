@@ -1,5 +1,5 @@
 import { MaterialIcons } from '@expo/vector-icons';
-import { Category } from '../../../constants/data';
+import { Category, QuickMessage } from '../../../constants/data';
 
 // Settings screen props interface
 export interface SettingsScreenProps {
@@ -22,6 +22,8 @@ export interface SettingsScreenProps {
     onPastTimersDisabledChange: (val: boolean) => void;
     isPastTasksDisabled: boolean;
     onPastTasksDisabledChange: (val: boolean) => void;
+    quickMessages: QuickMessage[];
+    onQuickMessagesChange: (messages: QuickMessage[]) => void;
 }
 
 // Theme section props
@@ -64,6 +66,13 @@ export interface GeneralSectionProps {
     onPastTasksDisabledChange: (val: boolean) => void;
 }
 
+// Quick Message section props
+export interface QuickMessageSectionProps {
+    isLandscape: boolean;
+    quickMessages: QuickMessage[];
+    onQuickMessagesChange: (messages: QuickMessage[]) => void;
+}
+
 // Info section props
 export interface InfoSectionProps {
     isLandscape: boolean;
@@ -79,6 +88,7 @@ export const SOUND_REPETITION_KEY = '@timer_sound_repetition';
 export const ENABLE_FUTURE_TIMERS_KEY = '@timer_enable_future';
 export const IS_PAST_TIMERS_DISABLED_KEY = '@timer_is_past_disabled';
 export const IS_PAST_TASKS_DISABLED_KEY = '@task_is_past_disabled';
+export const QUICK_MESSAGES_KEY = '@timer_quick_messages';
 
 // Default colors
 export const DEFAULT_FILLER_COLOR = '#FFFFFF';

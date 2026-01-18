@@ -19,8 +19,9 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
 import { BlurView } from 'expo-blur';
 import { MaterialIcons } from '@expo/vector-icons';
-import { Category, Task } from '../../../constants/data';
+import { Category, Task, QuickMessage } from '../../../constants/data';
 import TaskActionModal from '../../../components/TaskActionModal';
+import * as Haptics from 'expo-haptics';
 
 const { width, height } = Dimensions.get('window');
 
@@ -42,6 +43,7 @@ interface TaskListProps {
     onSettings?: () => void;
     isPastTasksDisabled?: boolean;
     onUpdateComment?: (task: Task, comment: string) => void;
+    quickMessages?: QuickMessage[];
 }
 
 export default function TaskList({
@@ -58,6 +60,7 @@ export default function TaskList({
     onSettings,
     isPastTasksDisabled,
     onUpdateComment,
+    quickMessages,
 }: TaskListProps) {
     const { width: screenWidth, height: screenHeight } = useWindowDimensions();
     const isLandscape = screenWidth > screenHeight;
@@ -72,6 +75,7 @@ export default function TaskList({
     const [showBacklog, setShowBacklog] = useState(false);
     const [actionModalVisible, setActionModalVisible] = useState(false);
     const [selectedActionTask, setSelectedActionTask] = useState<Task | null>(null);
+    const [expandedTaskId, setExpandedTaskId] = useState<number | null>(null);
 
     const slideAnim = useRef(new Animated.Value(0)).current;
     const fadeAnim = useRef(new Animated.Value(1)).current;
@@ -338,6 +342,13 @@ export default function TaskList({
                                 setSelectedActionTask(task);
                                 setActionModalVisible(true);
                             }}
+                            isExpanded={expandedTaskId === task.id}
+                            onExpand={() => {
+                                LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+                                setExpandedTaskId(expandedTaskId === task.id ? null : task.id);
+                            }}
+                            onUpdateComment={onUpdateComment}
+                            quickMessages={quickMessages}
                         />
                     ))}
                     {pair.length === 1 && <View style={styles.cardPlaceholder} />}
@@ -359,6 +370,13 @@ export default function TaskList({
                     setSelectedActionTask(task);
                     setActionModalVisible(true);
                 }}
+                isExpanded={expandedTaskId === task.id}
+                onExpand={() => {
+                    LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+                    setExpandedTaskId(expandedTaskId === task.id ? null : task.id);
+                }}
+                onUpdateComment={onUpdateComment}
+                quickMessages={quickMessages}
             />
         ));
     };
@@ -606,17 +624,43 @@ export default function TaskList({
 
                         {/* Right Panel - Task Grid */}
                         <View style={styles.rightPanel}>
-                            <ScrollView
-                                style={styles.scrollViewLandscape}
-                                contentContainerStyle={styles.scrollContentLandscape}
-                                showsVerticalScrollIndicator={false}
-                            >
-                                {renderTaskCards()}
-                            </ScrollView>
+                            {isLandscape && expandedTaskId ? (
+                                <View style={styles.expandedTakeoverContainer}>
+                                    <TaskCard
+                                        task={tasks.find(t => t.id === expandedTaskId)!}
+                                        onToggle={() => onToggleTask(tasks.find(t => t.id === expandedTaskId)!)}
+                                        onDelete={() => onDeleteTask(tasks.find(t => t.id === expandedTaskId)!)}
+                                        onEdit={() => onEditTask?.(tasks.find(t => t.id === expandedTaskId)!)}
+                                        isLandscape={true}
+                                        categories={categories}
+                                        isPastTasksDisabled={isPastTasksDisabled}
+                                        onOpenMenu={() => {
+                                            const t = tasks.find(tsk => tsk.id === expandedTaskId)!;
+                                            setSelectedActionTask(t);
+                                            setActionModalVisible(true);
+                                        }}
+                                        isExpanded={true}
+                                        onExpand={() => setExpandedTaskId(null)}
+                                        onUpdateComment={onUpdateComment}
+                                        quickMessages={quickMessages}
+                                        isFullView={true}
+                                    />
+                                </View>
+                            ) : (
+                                <>
+                                    <ScrollView
+                                        style={styles.scrollViewLandscape}
+                                        contentContainerStyle={styles.scrollContentLandscape}
+                                        showsVerticalScrollIndicator={false}
+                                    >
+                                        {renderTaskCards()}
+                                    </ScrollView>
 
-                            <TouchableOpacity style={styles.addButtonLandscape} onPress={onAddTask} activeOpacity={0.8}>
-                                <MaterialIcons name="add" size={28} color="#000" />
-                            </TouchableOpacity>
+                                    <TouchableOpacity style={styles.addButtonLandscape} onPress={onAddTask} activeOpacity={0.8}>
+                                        <MaterialIcons name="add" size={28} color="#000" />
+                                    </TouchableOpacity>
+                                </>
+                            )}
                         </View>
                     </>
                 ) : (
@@ -750,6 +794,7 @@ export default function TaskList({
                             style={styles.scrollView}
                             contentContainerStyle={styles.scrollContent}
                             showsVerticalScrollIndicator={false}
+                            scrollEnabled={true}
                         >
                             {renderTaskCards()}
                         </ScrollView>
@@ -790,6 +835,12 @@ interface TaskCardProps {
     isLandscape: boolean;
     categories: Category[];
     isPastTasksDisabled?: boolean;
+    onOpenMenu: () => void;
+    isExpanded: boolean;
+    onExpand: () => void;
+    onUpdateComment?: (task: Task, comment: string) => void;
+    isFullView?: boolean;
+    quickMessages?: QuickMessage[];
 }
 
 const getStatusConfig = (status: Task['status']) => {
@@ -814,7 +865,22 @@ const getPriorityConfig = (priority: Task['priority']) => {
     }
 };
 
-function TaskCard({ task, onToggle, onDelete, onEdit, isLandscape, categories, isPastTasksDisabled, onOpenMenu }: TaskCardProps & { onOpenMenu: () => void }) {
+function TaskCard({
+    task,
+    onToggle,
+    onDelete,
+    onEdit,
+    isLandscape,
+    categories,
+    isPastTasksDisabled,
+    onOpenMenu,
+    isExpanded,
+    onExpand,
+    onUpdateComment,
+    isFullView,
+    quickMessages,
+}: TaskCardProps) {
+    const [commentText, setCommentText] = useState('');
     const isCompleted = task.status === 'Completed';
     const isInProgress = task.status === 'In Progress';
 
@@ -829,20 +895,66 @@ function TaskCard({ task, onToggle, onDelete, onEdit, isLandscape, categories, i
     const statusConfig = getStatusConfig(task.status);
     const priorityConfig = getPriorityConfig(task.priority);
 
-    return (
-        <TouchableOpacity
-            style={[
-                styles.taskCard,
-                isInProgress && styles.taskCardActive,
-                isCompleted && styles.taskCardCompleted,
-                isLandscape && styles.taskCardLandscape,
-                isLocked && { opacity: 0.5 }
-            ]}
-            onPress={(isLocked || task.isBacklog) ? undefined : onToggle}
-            onLongPress={isLocked ? undefined : onOpenMenu}
-            activeOpacity={(isLocked || task.isBacklog) ? 1 : 0.7}
-            delayLongPress={400}
-        >
+    const cardStyle = [
+        styles.taskCard,
+        isInProgress && styles.taskCardActive,
+        isCompleted && styles.taskCardCompleted,
+        isLandscape && styles.taskCardLandscape,
+        isLocked && { opacity: 0.5 },
+        isExpanded && styles.taskCardExpanded,
+        isFullView && styles.taskCardFullView
+    ];
+
+    const content = (
+        <>
+            {isExpanded && !isLandscape && !isFullView && (
+                <View style={styles.portraitHeaderActions}>
+                    {!task.isBacklog && (
+                        isCompleted ? (
+                            <TouchableOpacity
+                                style={styles.completedCheckIcon}
+                                onPress={isLocked ? undefined : onToggle}
+                                activeOpacity={0.6}
+                            >
+                                <MaterialIcons name="check-circle" size={28} color="#4CAF50" />
+                            </TouchableOpacity>
+                        ) : (
+                            <TouchableOpacity
+                                style={styles.checkboxContainer}
+                                onPress={isLocked ? undefined : onToggle}
+                                activeOpacity={0.6}
+                            >
+                                <View style={[
+                                    styles.checkbox,
+                                    isInProgress && styles.checkboxActive
+                                ]}>
+                                    {isInProgress && (
+                                        <MaterialIcons name="hourglass-empty" size={16} color="#00E5FF" />
+                                    )}
+                                </View>
+                            </TouchableOpacity>
+                        )
+                    )}
+                    <TouchableOpacity
+                        style={styles.portraitCloseBtnStatic}
+                        onPress={onExpand}
+                        activeOpacity={0.7}
+                    >
+                        <MaterialIcons name="close" size={20} color="rgba(255,255,255,0.4)" />
+                    </TouchableOpacity>
+                </View>
+            )}
+
+            {isFullView && !isLandscape && (
+                <TouchableOpacity
+                    style={styles.fullViewCloseBtn}
+                    onPress={onExpand}
+                    activeOpacity={0.7}
+                >
+                    <MaterialIcons name="close" size={24} color="rgba(255,255,255,0.4)" />
+                </TouchableOpacity>
+            )}
+
             {/* Progress indicator for completed */}
             {isCompleted && (
                 <View style={styles.completedFillContainer}>
@@ -856,7 +968,11 @@ function TaskCard({ task, onToggle, onDelete, onEdit, isLandscape, categories, i
                 pointerEvents="none"
             />
 
-            <View style={styles.cardContent}>
+            <View style={[
+                styles.cardContent,
+                isFullView && isLandscape && { display: 'none' },
+                isExpanded && !isLandscape && { alignItems: 'flex-start' }
+            ]}>
                 <View style={styles.cardLeft}>
                     {/* Status Row */}
                     <View style={styles.topStatusRow}>
@@ -875,7 +991,7 @@ function TaskCard({ task, onToggle, onDelete, onEdit, isLandscape, categories, i
                     <View style={styles.titleRow}>
                         <Text
                             style={[styles.taskTitle, isCompleted && styles.taskTitleCompleted]}
-                            numberOfLines={1}
+                            numberOfLines={isExpanded ? undefined : 1}
                         >
                             {task.title}
                         </Text>
@@ -885,7 +1001,7 @@ function TaskCard({ task, onToggle, onDelete, onEdit, isLandscape, categories, i
                                 {category?.name.toUpperCase() || 'GENERAL'}
                             </Text>
                         </View>
-                        {task.comment && (
+                        {(task.comments?.length ?? 0) > 0 && !isExpanded && (
                             <View style={[styles.categoryBadge, { backgroundColor: 'rgba(255,255,255,0.05)', marginLeft: 8 }]}>
                                 <MaterialIcons name="chat" size={10} color="rgba(255,255,255,0.6)" />
                             </View>
@@ -893,19 +1009,27 @@ function TaskCard({ task, onToggle, onDelete, onEdit, isLandscape, categories, i
                     </View>
 
                     {task.description && (
-                        <Text style={styles.taskDescription} numberOfLines={1}>
+                        <Text style={[styles.taskDescription, isExpanded && styles.taskDescriptionExpanded]} numberOfLines={isExpanded ? undefined : 1}>
                             {task.description}
                         </Text>
                     )}
                 </View>
 
-                {!task.isBacklog && (
+                {!task.isBacklog && !(isExpanded && !isLandscape) && (
                     isCompleted ? (
-                        <View style={styles.completedCheckIcon}>
+                        <TouchableOpacity
+                            style={styles.completedCheckIcon}
+                            onPress={isLocked ? undefined : onToggle}
+                            activeOpacity={0.6}
+                        >
                             <MaterialIcons name="check-circle" size={28} color="#4CAF50" />
-                        </View>
+                        </TouchableOpacity>
                     ) : (
-                        <View style={styles.checkboxContainer}>
+                        <TouchableOpacity
+                            style={styles.checkboxContainer}
+                            onPress={isLocked ? undefined : onToggle}
+                            activeOpacity={0.6}
+                        >
                             <View style={[
                                 styles.checkbox,
                                 isInProgress && styles.checkboxActive
@@ -914,10 +1038,277 @@ function TaskCard({ task, onToggle, onDelete, onEdit, isLandscape, categories, i
                                     <MaterialIcons name="hourglass-empty" size={16} color="#00E5FF" />
                                 )}
                             </View>
-                        </View>
+                        </TouchableOpacity>
                     )
                 )}
             </View>
+
+            {isFullView && isLandscape ? (
+                <View style={styles.fullViewLandscapeLayout}>
+                    {/* LEFT COLUMN: TASK DETAILS */}
+                    <View style={styles.fullViewLeftCol}>
+                        <View style={styles.topStatusRow}>
+                            <View style={[styles.statusBadge, { backgroundColor: statusConfig.bgColor }]}>
+                                <Text style={[styles.statusText, { color: statusConfig.color }]}>
+                                    {statusConfig.label}
+                                </Text>
+                            </View>
+                            <View style={[styles.priorityBadge, { borderColor: `${priorityConfig.color}40` }]}>
+                                <Text style={[styles.priorityBadgeText, { color: priorityConfig.color }]}>
+                                    {task.priority.toUpperCase()}
+                                </Text>
+                            </View>
+                        </View>
+
+                        <Text style={[styles.taskTitle, { fontSize: 24, marginBottom: 8 }, isCompleted && styles.taskTitleCompleted]}>
+                            {task.title}
+                        </Text>
+
+                        <View style={[styles.categoryBadge, { backgroundColor: `${categoryColor}15`, borderColor: `${categoryColor}30`, alignSelf: 'flex-start', marginBottom: 16 }]}>
+                            <MaterialIcons name={categoryIcon} size={12} color={categoryColor} />
+                            <Text style={[styles.categoryBadgeText, { color: categoryColor, fontSize: 10 }]}>
+                                {category?.name.toUpperCase() || 'GENERAL'}
+                            </Text>
+                        </View>
+
+                        {task.description && (
+                            <ScrollView style={styles.fullViewDescScroll} showsVerticalScrollIndicator={false}>
+                                <Text style={[styles.taskDescriptionExpanded, { fontSize: 13, color: 'rgba(255,255,255,0.4)' }]}>
+                                    {task.description}
+                                </Text>
+                            </ScrollView>
+                        )}
+
+                        <View style={styles.metaDivider} />
+
+                        <View style={styles.fullViewMetaSection}>
+                            <View style={styles.metaRow}>
+                                <Text style={styles.metaLabel}>CREATED AT</Text>
+                                <Text style={styles.metaValue}>
+                                    {new Date(task.createdAt).toLocaleString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}
+                                </Text>
+                            </View>
+                            {task.startedAt && (
+                                <View style={styles.metaRow}>
+                                    <Text style={styles.metaLabel}>STARTED AT</Text>
+                                    <Text style={styles.metaValue}>
+                                        {new Date(task.startedAt).toLocaleString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}
+                                    </Text>
+                                </View>
+                            )}
+                            {task.completedAt && (
+                                <View style={styles.metaRow}>
+                                    <Text style={styles.metaLabel}>COMPLETED AT</Text>
+                                    <Text style={styles.metaValue}>
+                                        {new Date(task.completedAt).toLocaleString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}
+                                    </Text>
+                                </View>
+                            )}
+                            <View style={styles.metaRow}>
+                                <Text style={styles.metaLabel}>LAST UPDATED</Text>
+                                <Text style={styles.metaValue}>
+                                    {new Date(task.updatedAt).toLocaleString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}
+                                </Text>
+                            </View>
+                        </View>
+
+                        {/* COMPACT FOOTER (BOTTOM-LEFT) */}
+                        <View style={styles.fullViewCompactFooter}>
+                            <TouchableOpacity
+                                style={styles.fullViewBackBtnCompact}
+                                onPress={onExpand}
+                                activeOpacity={0.7}
+                            >
+                                <MaterialIcons name="close" size={20} color="#000" />
+                            </TouchableOpacity>
+
+                            {!task.isBacklog && (
+                                <TouchableOpacity
+                                    style={[styles.fullViewToggleBtnCompact, isCompleted && styles.fullViewToggleBtnCompleted]}
+                                    onPress={isLocked ? undefined : onToggle}
+                                    activeOpacity={0.7}
+                                >
+                                    <MaterialIcons
+                                        name={isCompleted ? "check" : (isInProgress ? "hourglass-empty" : "radio-button-unchecked")}
+                                        size={14}
+                                        color={isCompleted ? "#4CAF50" : (isInProgress ? "#00E5FF" : "rgba(255,255,255,0.5)")}
+                                    />
+                                    <Text style={[styles.fullViewToggleTextCompact, isCompleted && { color: '#4CAF50' }]}>
+                                        {isCompleted ? 'DONE' : (isInProgress ? 'IN PROGRESS' : 'MARK COMPLETE')}
+                                    </Text>
+                                </TouchableOpacity>
+                            )}
+                        </View>
+                    </View>
+
+                    {/* RIGHT COLUMN: COMMENTS */}
+                    <View style={styles.fullViewRightCol}>
+                        <View style={styles.fullViewRightColHeader}>
+                            <View style={styles.inlineAddComment}>
+                                <TextInput
+                                    style={styles.inlineCommentInput}
+                                    placeholder="Add a comment..."
+                                    placeholderTextColor="rgba(255,255,255,0.3)"
+                                    value={commentText}
+                                    onChangeText={setCommentText}
+                                    multiline
+                                />
+                                <TouchableOpacity
+                                    style={[styles.inlineSendBtn, !commentText.trim() && styles.inlineSendBtnDisabled]}
+                                    onPress={() => {
+                                        if (commentText.trim()) {
+                                            onUpdateComment?.(task, commentText.trim());
+                                            setCommentText('');
+                                            Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+                                        }
+                                    }}
+                                    disabled={!commentText.trim()}
+                                >
+                                    <MaterialIcons name="send" size={18} color={commentText.trim() ? "#000" : "rgba(0,0,0,0.2)"} />
+                                </TouchableOpacity>
+                            </View>
+
+                            {/* Quick Messages (Landscape) */}
+                            <ScrollView horizontal showsHorizontalScrollIndicator={false} style={[styles.quickMessagesScroll, { marginTop: 4, marginBottom: 4 }]}>
+                                {(quickMessages || []).map((msg) => (
+                                    <TouchableOpacity
+                                        key={msg.id}
+                                        style={[styles.quickMessageChip, { borderColor: `${msg.color}30` }]}
+                                        onPress={() => {
+                                            onUpdateComment?.(task, msg.text);
+                                            Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                                        }}
+                                    >
+                                        <Text style={[styles.quickMessageText, { color: msg.color }]}>{msg.text}</Text>
+                                    </TouchableOpacity>
+                                ))}
+                            </ScrollView>
+                            <View style={styles.expandedDivider} />
+                        </View>
+
+                        <View style={styles.fullViewCommentListWrapper}>
+                            {task.comments && task.comments.length > 0 ? (
+                                <ScrollView
+                                    style={styles.fullViewCommentScroll}
+                                    showsVerticalScrollIndicator={true}
+                                    nestedScrollEnabled={true}
+                                    contentContainerStyle={{ paddingBottom: 60 }}
+                                >
+                                    {task.comments.map((comment, index) => (
+                                        <View key={comment.id} style={styles.inlineCommentItem}>
+                                            <Text style={styles.inlineCommentText}>
+                                                <Text style={styles.inlineCommentTime}>
+                                                    {new Date(comment.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: true }).toLowerCase()} •{" "}
+                                                </Text>
+                                                {comment.text}
+                                            </Text>
+                                        </View>
+                                    ))}
+                                </ScrollView>
+                            ) : (
+                                <View style={styles.noCommentsContainer}>
+                                    <MaterialIcons name="chat-bubble-outline" size={32} color="rgba(255,255,255,0.1)" />
+                                    <Text style={styles.noCommentsText}>No comments yet</Text>
+                                </View>
+                            )}
+                        </View>
+                    </View>
+                </View>
+            ) : isExpanded && (
+                <View style={styles.cardExpandedContent}>
+                    <View style={styles.expandedDivider} />
+
+                    {/* Add Comment Section */}
+                    <View style={styles.inlineAddComment}>
+                        <TextInput
+                            style={styles.inlineCommentInput}
+                            placeholder="Add a comment..."
+                            placeholderTextColor="rgba(255,255,255,0.3)"
+                            value={commentText}
+                            onChangeText={setCommentText}
+                            multiline
+                        />
+                        <TouchableOpacity
+                            style={[styles.inlineSendBtn, !commentText.trim() && styles.inlineSendBtnDisabled]}
+                            onPress={() => {
+                                if (commentText.trim()) {
+                                    onUpdateComment?.(task, commentText.trim());
+                                    setCommentText('');
+                                    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+                                }
+                            }}
+                            disabled={!commentText.trim()}
+                        >
+                            <MaterialIcons name="send" size={18} color={commentText.trim() ? "#000" : "rgba(0,0,0,0.2)"} />
+                        </TouchableOpacity>
+                    </View>
+
+                    {/* Quick Messages (Portrait) */}
+                    <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.quickMessagesScroll}>
+                        {(quickMessages || []).map((msg) => (
+                            <TouchableOpacity
+                                key={msg.id}
+                                style={[styles.quickMessageChip, { borderColor: `${msg.color}30` }]}
+                                onPress={() => {
+                                    onUpdateComment?.(task, msg.text);
+                                    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                                }}
+                            >
+                                <Text style={[styles.quickMessageText, { color: msg.color }]}>{msg.text}</Text>
+                            </TouchableOpacity>
+                        ))}
+                    </ScrollView>
+
+                    {/* Comments List */}
+                    {task.comments && task.comments.length > 0 && (
+                        <ScrollView
+                            style={styles.inlineCommentsList}
+                            showsVerticalScrollIndicator={false}
+                            nestedScrollEnabled={true}
+                        >
+                            {task.comments.map((comment, index) => (
+                                <View key={comment.id} style={styles.inlineCommentItem}>
+                                    <Text style={styles.inlineCommentText}>
+                                        <Text style={styles.inlineCommentTime}>
+                                            {new Date(comment.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: true }).toLowerCase()} •{" "}
+                                        </Text>
+                                        {comment.text}
+                                    </Text>
+                                </View>
+                            ))}
+                        </ScrollView>
+                    )}
+                </View>
+            )}
+        </>
+    );
+
+    if (isFullView || isExpanded) {
+        return (
+            <View
+                style={[
+                    cardStyle,
+                    isExpanded && !isLandscape && {
+                        maxHeight: height * 0.99,
+                        minHeight: 120
+                    }
+                ]}
+            >
+                {content}
+            </View>
+        );
+    }
+
+    return (
+        <TouchableOpacity
+            key={task.id}
+            activeOpacity={(isLocked || task.isBacklog) ? 1 : 0.7}
+            onPress={(isLocked) ? undefined : onExpand}
+            onLongPress={isLocked ? undefined : onOpenMenu}
+            style={cardStyle}
+            delayLongPress={400}
+        >
+            {content}
         </TouchableOpacity>
     );
 }
@@ -930,6 +1321,7 @@ const styles = StyleSheet.create({
         flex: 1,
     },
     safeAreaLandscape: {
+        flex: 1,
         flexDirection: 'row',
     },
 
@@ -1253,7 +1645,7 @@ const styles = StyleSheet.create({
     scrollContent: {
         flexGrow: 1,
         paddingHorizontal: 20,
-        paddingBottom: 100,
+        paddingBottom: 250,
     },
 
     // Add Button
@@ -1293,6 +1685,22 @@ const styles = StyleSheet.create({
     taskCardCompleted: {
         backgroundColor: 'rgba(5, 20, 10, 0.6)',
         borderColor: 'rgba(76,175,80,0.15)',
+    },
+    taskCardExpanded: {
+        borderColor: 'rgba(255, 255, 255, 0.15)',
+        backgroundColor: 'rgba(25, 25, 25, 0.8)',
+    },
+    taskCardFullView: {
+        flex: 1,
+        marginHorizontal: 0,
+        marginBottom: 0,
+        borderRadius: 24,
+        padding: 24,
+        borderWidth: 1,
+        borderColor: 'rgba(255,255,255,0.1)',
+        backgroundColor: 'rgba(15,15,15,0.8)',
+        height: '100%',
+        overflow: 'hidden',
     },
     taskCardLandscape: {
         flex: 1,
@@ -1396,6 +1804,118 @@ const styles = StyleSheet.create({
         fontSize: 12,
         color: 'rgba(255,255,255,0.4)',
         marginTop: 2,
+    },
+    taskDescriptionExpanded: {
+        color: 'rgba(255,255,255,0.6)',
+        marginTop: 8,
+        lineHeight: 18,
+    },
+    cardExpandedContent: {
+        marginTop: 16,
+        minHeight: 230,
+        overflow: 'hidden',
+    },
+    expandedDivider: {
+        height: 1,
+        backgroundColor: 'rgba(255,255,255,0.06)',
+        marginBottom: 16,
+    },
+    inlineAddComment: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 12,
+        marginBottom: 4,
+    },
+    inlineCommentInput: {
+        flex: 1,
+        backgroundColor: 'rgba(255,255,255,0.05)',
+        borderRadius: 20,
+        paddingHorizontal: 16,
+        paddingVertical: 10,
+        color: '#fff',
+        fontSize: 14,
+        maxHeight: 80,
+        borderWidth: 1,
+        borderColor: 'rgba(255,255,255,0.08)',
+    },
+    inlineSendBtn: {
+        width: 36,
+        height: 36,
+        borderRadius: 18,
+        backgroundColor: '#fff',
+        alignItems: 'center',
+        justifyContent: 'center',
+    },
+    inlineSendBtnDisabled: {
+        backgroundColor: 'rgba(255,255,255,0.1)',
+        opacity: 0.5,
+    },
+    inlineCommentsList: {
+        backgroundColor: 'rgba(255,255,255,0.02)',
+        borderRadius: 16,
+        padding: 12,
+        borderWidth: 1,
+        borderColor: 'rgba(255,255,255,0.04)',
+        minHeight: 100,
+        maxHeight: 400,
+        flex: 1,
+    },
+    quickMessagesScroll: {
+        marginTop: 0,
+        marginBottom: 6,
+        height: 36,
+    },
+    quickMessageChip: {
+        backgroundColor: 'rgba(255,255,255,0.06)',
+        paddingHorizontal: 12,
+        paddingVertical: 6,
+        borderRadius: 12,
+        marginRight: 8,
+        borderWidth: 1,
+        borderColor: 'rgba(255,255,255,0.05)',
+        alignSelf: 'center',
+    },
+    quickMessageText: {
+        color: 'rgba(255,255,255,0.6)',
+        fontSize: 11,
+        fontWeight: '600',
+    },
+    portraitHeaderActions: {
+        position: 'absolute',
+        top: 24,
+        right: 24,
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 12,
+        zIndex: 100,
+    },
+    portraitCloseBtnStatic: {
+        width: 32,
+        height: 32,
+        borderRadius: 16,
+        backgroundColor: 'rgba(255,255,255,0.08)',
+        alignItems: 'center',
+        justifyContent: 'center',
+    },
+    inlineCommentItem: {
+        marginBottom: 4,
+        paddingVertical: 4,
+        paddingHorizontal: 8,
+    },
+    inlineCommentTime: {
+        fontSize: 10,
+        color: 'rgba(255,255,255,0.25)',
+        fontWeight: '700',
+    },
+    inlineCommentText: {
+        fontSize: 12,
+        color: 'rgba(255,255,255,0.85)',
+        lineHeight: 16,
+    },
+    inlineCommentDivider: {
+        height: 1,
+        backgroundColor: 'rgba(255,255,255,0.04)',
+        marginVertical: 10,
     },
     completedCheckIcon: {
         width: 42,
@@ -1672,5 +2192,197 @@ const styles = StyleSheet.create({
     },
     backlogHeaderBtnTextActive: {
         color: '#4CAF50',
+    },
+    expandedTakeoverContainer: {
+        flex: 1,
+        padding: 15,
+        overflow: 'hidden', // Contain child cards
+    },
+    expandedTakeoverHeader: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        marginBottom: 15,
+        paddingHorizontal: 5,
+    },
+    takeoverBackBtn: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 8,
+        backgroundColor: 'rgba(255,255,255,0.05)',
+        paddingHorizontal: 12,
+        paddingVertical: 8,
+        borderRadius: 12,
+    },
+    takeoverBackText: {
+        fontSize: 11,
+        fontWeight: '700',
+        color: 'rgba(255,255,255,0.6)',
+        letterSpacing: 1,
+    },
+    takeoverTitle: {
+        fontSize: 12,
+        fontWeight: '900',
+        color: 'rgba(255,255,255,0.3)',
+        letterSpacing: 2,
+    },
+    fullViewCloseBtn: {
+        position: 'absolute',
+        top: 20,
+        right: 20,
+        width: 44,
+        height: 44,
+        borderRadius: 22,
+        backgroundColor: 'rgba(255,255,255,0.05)',
+        alignItems: 'center',
+        justifyContent: 'center',
+        zIndex: 10,
+    },
+    fullViewLandscapeLayout: {
+        flex: 1,
+        flexDirection: 'row',
+        gap: 32,
+    },
+    fullViewLeftCol: {
+        flex: 1,
+    },
+    fullViewRightCol: {
+        flex: 1.3,
+        backgroundColor: 'rgba(255,255,255,0.02)',
+        borderRadius: 20,
+        padding: 16,
+        borderWidth: 1,
+        borderColor: 'rgba(255,255,255,0.04)',
+        overflow: 'hidden', // Contain the scroll view
+        minHeight: 0,
+    },
+    fullViewDescScroll: {
+        flex: 1,
+        marginVertical: 10,
+    },
+    fullViewCommentScroll: {
+        flex: 1,
+    },
+    fullViewToggleBtn: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 12,
+        backgroundColor: 'rgba(255,255,255,0.05)',
+        paddingHorizontal: 20,
+        paddingVertical: 14,
+        borderRadius: 16,
+        borderWidth: 1,
+        borderColor: 'rgba(255,255,255,0.08)',
+    },
+    fullViewToggleBtnCompleted: {
+        backgroundColor: 'rgba(76,175,80,0.1)',
+        borderColor: 'rgba(76,175,80,0.2)',
+    },
+    fullViewToggleText: {
+        fontSize: 14,
+        fontWeight: '700',
+        color: 'rgba(255,255,255,0.6)',
+        letterSpacing: 1,
+    },
+    noCommentsContainer: {
+        flex: 1,
+        alignItems: 'center',
+        justifyContent: 'center',
+        gap: 12,
+        opacity: 0.5,
+    },
+    noCommentsText: {
+        fontSize: 13,
+        fontWeight: '600',
+        color: 'rgba(255,255,255,0.4)',
+    },
+    fullViewFooterLandscape: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 12,
+        marginTop: 'auto',
+        paddingTop: 16,
+    },
+    fullViewBackTab: {
+        backgroundColor: 'rgba(255,255,255,0.05)',
+        width: 56,
+        height: 52,
+        borderRadius: 16,
+        alignItems: 'center',
+        justifyContent: 'center',
+        borderWidth: 1,
+        borderColor: 'rgba(255,255,255,0.08)',
+    },
+    fullViewStatusToggleWrapper: {
+        flex: 1,
+    },
+    fullViewRightColHeader: {
+        flex: 0,
+    },
+    fullViewCommentListWrapper: {
+        flex: 1,
+        marginTop: 8,
+        minHeight: 0,
+    },
+    fullViewCompactFooter: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        marginTop: 'auto', // Back to auto for bottom alignment
+        paddingTop: 16,
+        borderTopWidth: 1,
+        borderTopColor: 'rgba(255,255,255,0.06)',
+    },
+    fullViewBackBtnCompact: {
+        width: 36,
+        height: 36,
+        borderRadius: 18,
+        backgroundColor: '#FFFFFF',
+        alignItems: 'center',
+        justifyContent: 'center',
+    },
+    fullViewToggleBtnCompact: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 6,
+        backgroundColor: 'rgba(255,255,255,0.08)',
+        paddingHorizontal: 12,
+        height: 36,
+        borderRadius: 10,
+        borderWidth: 1,
+        borderColor: 'rgba(255,255,255,0.08)',
+    },
+    fullViewToggleTextCompact: {
+        fontSize: 10,
+        fontWeight: '900',
+        color: 'rgba(255,255,255,0.5)',
+        letterSpacing: 0.5,
+    },
+    fullViewMetaSection: {
+        marginTop: 16,
+        gap: 8,
+        paddingBottom: 20,
+    },
+    metaDivider: {
+        height: 1,
+        backgroundColor: 'rgba(255,255,255,0.06)',
+        marginTop: 4,
+    },
+    metaRow: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 12,
+    },
+    metaLabel: {
+        fontSize: 10,
+        fontWeight: '700',
+        color: 'rgba(255,255,255,0.3)',
+        width: 100,
+        letterSpacing: 0.5,
+    },
+    metaValue: {
+        fontSize: 11,
+        fontWeight: '600',
+        color: 'rgba(255,255,255,0.6)',
     },
 });

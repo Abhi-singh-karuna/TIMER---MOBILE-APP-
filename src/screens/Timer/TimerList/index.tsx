@@ -149,6 +149,7 @@ export default function TimerList({
     const [internalSelectedDate, setInternalSelectedDate] = useState(propSelectedDate);
     const slideAnim = useRef(new Animated.Value(0)).current;
     const fadeAnim = useRef(new Animated.Value(1)).current;
+    const toggleSlideAnim = useRef(new Animated.Value(activeView === 'task' ? 1 : 0)).current;
     const [completedPopupTimer, setCompletedPopupTimer] = useState<Timer | null>(null);
     const prevTimersRef = React.useRef<Timer[]>([]);
     const soundRef = useRef<Audio.Sound | null>(null);
@@ -594,12 +595,31 @@ export default function TimerList({
                                     {onViewChange && (
                                         <View style={styles.toggleWithCountRow}>
                                             <View style={styles.viewToggleContainer}>
-                                                <TouchableOpacity
+                                                {/* Animated Sliding Indicator */}
+                                                <Animated.View
                                                     style={[
-                                                        styles.viewToggleBtn,
-                                                        activeView === 'timer' && styles.viewToggleBtnActive
+                                                        styles.viewToggleSlider,
+                                                        {
+                                                            transform: [{
+                                                                translateX: toggleSlideAnim.interpolate({
+                                                                    inputRange: [0, 1],
+                                                                    outputRange: [0, 54] // Adjust based on button width
+                                                                })
+                                                            }]
+                                                        }
                                                     ]}
-                                                    onPress={() => onViewChange('timer')}
+                                                />
+                                                <TouchableOpacity
+                                                    style={styles.viewToggleBtn}
+                                                    onPress={() => {
+                                                        Animated.spring(toggleSlideAnim, {
+                                                            toValue: 0,
+                                                            useNativeDriver: true,
+                                                            friction: 8,
+                                                            tension: 100,
+                                                        }).start();
+                                                        onViewChange('timer');
+                                                    }}
                                                     activeOpacity={0.7}
                                                 >
                                                     <MaterialIcons
@@ -613,11 +633,16 @@ export default function TimerList({
                                                     ]}>TIMER</Text>
                                                 </TouchableOpacity>
                                                 <TouchableOpacity
-                                                    style={[
-                                                        styles.viewToggleBtn,
-                                                        activeView === 'task' && styles.viewToggleBtnActive
-                                                    ]}
-                                                    onPress={() => onViewChange('task')}
+                                                    style={styles.viewToggleBtn}
+                                                    onPress={() => {
+                                                        Animated.spring(toggleSlideAnim, {
+                                                            toValue: 1,
+                                                            useNativeDriver: true,
+                                                            friction: 8,
+                                                            tension: 100,
+                                                        }).start();
+                                                        onViewChange('task');
+                                                    }}
                                                     activeOpacity={0.7}
                                                 >
                                                     <MaterialIcons
@@ -2992,9 +3017,18 @@ const styles = StyleSheet.create({
         backgroundColor: 'transparent',
     },
     viewToggleBtnActive: {
-        backgroundColor: 'rgba(255, 255, 255, 0.1)',
+        backgroundColor: 'transparent',
         borderWidth: 1,
         borderColor: 'rgba(255, 255, 255, 0.15)',
+    },
+    viewToggleSlider: {
+        position: 'absolute',
+        top: 3,
+        left: 3,
+        width: '48%',
+        height: 32,
+        backgroundColor: 'rgba(255, 255, 255, 0.12)',
+        borderRadius: 8,
     },
     viewToggleText: {
         fontSize: 10,

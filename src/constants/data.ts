@@ -15,6 +15,21 @@ export const DEFAULT_CATEGORIES: Category[] = [
   { id: '3', name: 'Study', icon: 'menu-book', color: '#FFD700' },
 ];
 
+export interface QuickMessage {
+  id: string;
+  text: string;
+  color: string;
+}
+
+export const QUICK_MESSAGES_KEY = '@timer_quick_messages';
+
+export const DEFAULT_QUICK_MESSAGES: QuickMessage[] = [
+  { id: '1', text: 'STARTED !!', color: '#00E5FF' },
+  { id: '2', text: 'TAKE BREAK', color: '#FF9100' },
+  { id: '3', text: 'RESUME', color: '#00E676' },
+  { id: '4', text: 'DONE !', color: '#4CAF50' },
+];
+
 export interface Timer {
   id: number;
   title: string;
@@ -38,6 +53,12 @@ export interface Timer {
   categoryId?: string;         // Assigned category ID
 }
 
+export interface Comment {
+  id: number;
+  text: string;
+  createdAt: string; // ISO string
+}
+
 export interface Task {
   id: number;
   title: string;
@@ -49,8 +70,9 @@ export interface Task {
   isBacklog?: boolean;         // Whether the task is in the backlog
   createdAt: string;           // ISO string of when task was created
   updatedAt: string;           // ISO string of last update
+  startedAt?: string;          // ISO string when task was first started
   completedAt?: string;        // ISO string when task was completed
-  comment?: string;            // Optional user comment
+  comments?: Comment[];        // List of user comments
 }
 
 export const SOUND_OPTIONS = [

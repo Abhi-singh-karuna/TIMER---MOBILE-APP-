@@ -39,7 +39,7 @@ export default function TaskActionModal({
     const isLandscape = screenWidth > screenHeight;
 
     const [commentMode, setCommentMode] = useState(false);
-    const [commentText, setCommentText] = useState(task?.comment || '');
+    const [commentText, setCommentText] = useState('');
 
     if (!task) return null;
 
@@ -125,7 +125,7 @@ export default function TaskActionModal({
                                         style={styles.actionBtnSecondary}
                                         onPress={() => {
                                             setCommentMode(true);
-                                            setCommentText(task.comment || '');
+                                            setCommentText('');
                                             Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
                                         }}
                                         activeOpacity={0.7}
