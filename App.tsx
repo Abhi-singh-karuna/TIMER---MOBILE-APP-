@@ -24,7 +24,7 @@ import SettingsScreen from './src/screens/Timer/Settings';
 import AddTimerModal from './src/components/AddTimerModal';
 import AddTaskModal from './src/components/AddTaskModal';
 import DeleteModal from './src/components/DeleteModal';
-import { Timer, Task, Category, QuickMessage, DEFAULT_CATEGORIES, DEFAULT_QUICK_MESSAGES, CATEGORIES_KEY, QUICK_MESSAGES_KEY, LANDSCAPE_PRESETS } from './src/constants/data';
+import { Timer, Task, TaskStage, Category, QuickMessage, DEFAULT_CATEGORIES, DEFAULT_QUICK_MESSAGES, CATEGORIES_KEY, QUICK_MESSAGES_KEY, LANDSCAPE_PRESETS } from './src/constants/data';
 import { Alert } from 'react-native';
 import { loadTimers, saveTimers } from './src/utils/storage';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -404,6 +404,55 @@ export default function App() {
           ...t,
           comments: [newComment, ...(t.comments || [])],
           updatedAt: now,
+        }
+        : t
+    );
+    setTasks(updatedTasks);
+    saveTasks(updatedTasks);
+  };
+
+  // Handle updating stages (add, toggle, delete) with automatic status changes
+  const handleUpdateStages = (task: Task, stages: TaskStage[]) => {
+    const now = new Date().toISOString();
+    const previousStages = task.stages || [];
+
+    // Determine if this is adding a new stage
+    const isAddingStage = stages.length > previousStages.length;
+
+    // Calculate completion status
+    const completedCount = stages.filter(s => s.isCompleted).length;
+    const totalCount = stages.length;
+    const allCompleted = totalCount > 0 && completedCount === totalCount;
+    const someCompleted = completedCount > 0 && completedCount < totalCount;
+
+    // Determine new status
+    let newStatus: Task['status'] = task.status;
+
+    if (allCompleted && totalCount > 0) {
+      // All stages completed → Task is Completed
+      newStatus = 'Completed';
+    } else if (someCompleted) {
+      // Some stages completed → Task is In Progress
+      newStatus = 'In Progress';
+    } else if (isAddingStage && task.status === 'Completed') {
+      // Adding a stage to a completed task → Back to Pending
+      newStatus = 'Pending';
+    } else if (totalCount > 0 && completedCount === 0 && task.status === 'Completed') {
+      // If task was completed but now has uncompleted stages → In Progress
+      newStatus = 'In Progress';
+    }
+
+    const updatedTasks = tasks.map(t =>
+      t.id === task.id
+        ? {
+          ...t,
+          stages: stages,
+          status: newStatus,
+          updatedAt: now,
+          // Set startedAt if moving to In Progress and not already set
+          startedAt: newStatus === 'In Progress' && !t.startedAt ? now : t.startedAt,
+          // Set completedAt if becoming Completed, clear it otherwise
+          completedAt: newStatus === 'Completed' ? now : undefined,
         }
         : t
     );
@@ -1108,6 +1157,7 @@ export default function App() {
               onDeleteTask={handleDeleteTask}
               onEditTask={handleEditTask}
               onUpdateComment={handleUpdateComment}
+              onUpdateStages={handleUpdateStages}
               categories={categories}
               selectedDate={selectedDate}
               onDateChange={setSelectedDate}

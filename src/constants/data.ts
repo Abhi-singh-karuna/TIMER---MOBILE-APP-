@@ -59,6 +59,13 @@ export interface Comment {
   createdAt: string; // ISO string
 }
 
+export interface TaskStage {
+  id: number;
+  text: string;
+  isCompleted: boolean;
+  createdAt: string;
+}
+
 export interface Task {
   id: number;
   title: string;
@@ -73,6 +80,7 @@ export interface Task {
   startedAt?: string;          // ISO string when task was first started
   completedAt?: string;        // ISO string when task was completed
   comments?: Comment[];        // List of user comments
+  stages?: TaskStage[];        // List of task stages
 }
 
 export const SOUND_OPTIONS = [
