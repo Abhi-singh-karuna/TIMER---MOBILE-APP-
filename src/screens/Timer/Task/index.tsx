@@ -1,5 +1,5 @@
 import * as React from 'react';
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect, useCallback } from 'react';
 import {
     View,
     Text,
@@ -15,11 +15,14 @@ import {
     PanResponder,
     TextInput,
     LayoutAnimation,
+    UIManager,
+    Alert,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
 import { BlurView } from 'expo-blur';
 import { MaterialIcons } from '@expo/vector-icons';
+import DraggableFlatList, { RenderItemParams } from 'react-native-draggable-flatlist';
 import { Category, Task, TaskStage, QuickMessage } from '../../../constants/data';
 import TaskActionModal from '../../../components/TaskActionModal';
 import * as Haptics from 'expo-haptics';
@@ -529,7 +532,7 @@ const styles = StyleSheet.create({
     },
     cardExpandedContent: {
         marginTop: 16,
-        minHeight: 230,
+        flex: 1,
         overflow: 'hidden',
     },
     expandedDivider: {
@@ -573,29 +576,31 @@ const styles = StyleSheet.create({
         padding: 12,
         borderWidth: 1,
         borderColor: 'rgba(255,255,255,0.04)',
-        minHeight: 100,
-        maxHeight: 400,
         flex: 1,
     },
     quickMessagesScroll: {
-        marginTop: 4,
-        marginBottom: 4,
-        minHeight: 28,
+        marginTop: 6,
+        marginBottom: 6,
+        height: 36,
+        maxHeight: 36,
     },
     quickMessageChip: {
         backgroundColor: 'rgba(255,255,255,0.06)',
-        paddingHorizontal: 8,
-        paddingVertical: 2,
-        borderRadius: 18,
-        marginRight: 6,
+        paddingHorizontal: 10,
+        paddingVertical: 6,
+        borderRadius: 6,
+        marginRight: 8,
         borderWidth: 1,
+        borderColor: 'rgba(255,255,255,0.1)',
+        height: 28,
         alignItems: 'center',
         justifyContent: 'center',
     },
     quickMessageText: {
         fontSize: 9,
-        fontWeight: '700',
+        fontWeight: '800',
         textAlign: 'center',
+        letterSpacing: 0.5,
     },
     portraitHeaderActions: {
         position: 'absolute',
@@ -959,6 +964,7 @@ const styles = StyleSheet.create({
         flex: 1,
         flexDirection: 'row',
         gap: 32,
+        overflow: 'hidden',
     },
     fullViewLeftCol: {
         flex: 1,
@@ -970,8 +976,8 @@ const styles = StyleSheet.create({
         padding: 6,
         borderWidth: 1,
         borderColor: 'rgba(255,255,255,0.04)',
-        overflow: 'hidden', // Contain the scroll view
         minHeight: 0,
+        overflow: 'hidden',
     },
     fullViewDescScroll: {
         flex: 1,
@@ -979,6 +985,7 @@ const styles = StyleSheet.create({
     },
     fullViewCommentScroll: {
         flex: 1,
+        minHeight: 0,
     },
     fullViewToggleBtn: {
         flexDirection: 'row',
@@ -1039,7 +1046,8 @@ const styles = StyleSheet.create({
     fullViewCommentListWrapper: {
         flex: 1,
         marginTop: 8,
-        minHeight: 0,
+        minHeight: 0, // Critical for ScrollView in flex container
+        overflow: 'hidden',
     },
     fullViewCompactFooter: {
         flexDirection: 'row',
@@ -1123,14 +1131,6 @@ const styles = StyleSheet.create({
         gap: 8,
         marginBottom: 6,
     },
-    stageCheck: {
-        padding: 2,
-    },
-    stageText: {
-        fontSize: 12,
-        color: 'rgba(255,255,255,0.7)',
-        flex: 1,
-    },
     stageTextCompleted: {
         textDecorationLine: 'line-through',
         color: 'rgba(255,255,255,0.3)',
@@ -1174,22 +1174,65 @@ const styles = StyleSheet.create({
         flexDirection: 'row',
         alignItems: 'center',
         gap: 8,
-        marginBottom: 6,
+        marginBottom: 3,
         backgroundColor: 'transparent',
         paddingVertical: 6,
-        paddingHorizontal: 8,
-        borderRadius: 10,
+        paddingHorizontal: 6,
+        borderRadius: 8,
+        minHeight: 38,
         borderWidth: 1,
-        borderColor: 'rgba(255,255,255,0.06)',
+        borderColor: 'rgba(255,255,255,0.08)',
     },
     portraitStageText: {
-        fontSize: 14,
+        fontSize: 13,
         color: '#fff',
         flex: 1,
         fontWeight: '500',
     },
     deleteStageBtn: {
-        padding: 4,
+        padding: 6,
+        opacity: 0.4,
+    },
+    stageOrderCircle: {
+        width: 26,
+        height: 26,
+        borderRadius: 13,
+        backgroundColor: 'rgba(255,255,255,0.08)',
+        alignItems: 'center',
+        justifyContent: 'center',
+        borderWidth: 1.5,
+        borderColor: 'rgba(255,255,255,0.1)',
+    },
+    stageOrderCircleCompleted: {
+        backgroundColor: '#4CAF50',
+        borderColor: '#4CAF50',
+    },
+    stageOrderText: {
+        fontSize: 11,
+        fontWeight: '700',
+        color: 'rgba(255,255,255,0.5)',
+    },
+    stageOrderTextDragging: {
+        color: 'rgba(0,0,0,0.5)',
+    },
+    stageItemDragging: {
+        backgroundColor: 'rgba(255,255,255,0.95)',
+        borderRadius: 8,
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 4 },
+        shadowOpacity: 0.25,
+        shadowRadius: 8,
+        elevation: 10,
+        zIndex: 1000,
+    },
+    stageTextDragging: {
+        color: '#1a1a1a',
+        fontWeight: '600',
+    },
+    stageDragHandle: {
+        paddingHorizontal: 2,
+        paddingVertical: 4,
+        opacity: 0.5,
     },
     portraitAddStageRow: {
         flexDirection: 'row',
@@ -1261,20 +1304,6 @@ const styles = StyleSheet.create({
         fontWeight: '600',
         color: 'rgba(255,255,255,0.4)',
     },
-    stagePriorityLabel: {
-        backgroundColor: 'rgba(255,255,255,0.1)',
-        paddingHorizontal: 5,
-        paddingVertical: 2,
-        borderRadius: 4,
-        minWidth: 26,
-        alignItems: 'center',
-    },
-    stagePriorityText: {
-        fontSize: 7,
-        fontWeight: '900',
-        color: 'rgba(255,255,255,0.5)',
-        letterSpacing: 0.3,
-    },
 });
 interface TaskListProps {
     tasks: Task[];
@@ -1313,6 +1342,12 @@ export default function TaskList({
 }: TaskListProps) {
     const { width: screenWidth, height: screenHeight } = useWindowDimensions();
     const isLandscape = screenWidth > screenHeight;
+
+    useEffect(() => {
+        if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
+            UIManager.setLayoutAnimationEnabledExperimental(true);
+        }
+    }, []);
 
     const [filterCategoryId, setFilterCategoryId] = useState<string>('All');
     const [filterStatus, setFilterStatus] = useState<string>('All');
@@ -1904,6 +1939,8 @@ export default function TaskList({
                                         style={styles.scrollViewLandscape}
                                         contentContainerStyle={styles.scrollContentLandscape}
                                         showsVerticalScrollIndicator={false}
+                                        nestedScrollEnabled={true}
+                                        keyboardShouldPersistTaps="handled"
                                     >
                                         {renderTaskCards()}
                                     </ScrollView>
@@ -2047,6 +2084,8 @@ export default function TaskList({
                             contentContainerStyle={styles.scrollContent}
                             showsVerticalScrollIndicator={false}
                             scrollEnabled={true}
+                            nestedScrollEnabled={true}
+                            keyboardShouldPersistTaps="handled"
                         >
                             {renderTaskCards()}
                         </ScrollView>
@@ -2096,6 +2135,138 @@ interface TaskCardProps {
     quickMessages?: QuickMessage[];
 }
 
+// Draggable Stages List Props
+interface DraggableStagesListProps {
+    stages: TaskStage[];
+    onReorder: (newStages: TaskStage[]) => void;
+    onToggleStage: (stageId: number) => void;
+    onDeleteStage: (stageId: number) => void;
+}
+
+// Draggable Stages List Component
+function DraggableStagesList({ stages, onReorder, onToggleStage, onDeleteStage }: DraggableStagesListProps) {
+    const [data, setData] = useState<TaskStage[]>(stages);
+
+    useEffect(() => {
+        setData(stages);
+    }, [stages]);
+
+    const renderItem = useCallback(
+        ({ item, drag, isActive, getIndex }: RenderItemParams<TaskStage>) => {
+            const index = getIndex?.() ?? 0;
+            const orderNumber = index + 1;
+
+            return (
+                <View style={[styles.portraitStageItem, isActive && styles.stageItemDragging]}>
+                    {/* Drag handle: long-press to drag */}
+                    <TouchableOpacity
+                        style={styles.stageDragHandle}
+                        onLongPress={() => {
+                            Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
+                            drag();
+                        }}
+                        delayLongPress={180}
+                        activeOpacity={0.7}
+                    >
+                        <MaterialIcons
+                            name="drag-indicator"
+                            size={16}
+                            color={isActive ? "rgba(0,0,0,0.4)" : "rgba(255,255,255,0.3)"}
+                        />
+                    </TouchableOpacity>
+
+                    {/* Combined Order/Completion Circle */}
+                    <TouchableOpacity
+                        style={[
+                            styles.stageOrderCircle,
+                            item.isCompleted && styles.stageOrderCircleCompleted,
+                            isActive && !item.isCompleted && {
+                                backgroundColor: 'rgba(0,0,0,0.08)',
+                                borderColor: 'rgba(0,0,0,0.15)'
+                            }
+                        ]}
+                        onPress={() => {
+                            Haptics.selectionAsync();
+                            onToggleStage(item.id);
+                        }}
+                        disabled={isActive}
+                        activeOpacity={0.7}
+                    >
+                        <Text style={[
+                            styles.stageOrderText,
+                            item.isCompleted && { color: '#fff' },
+                            isActive && !item.isCompleted && styles.stageOrderTextDragging
+                        ]}>
+                            {orderNumber}
+                        </Text>
+                    </TouchableOpacity>
+
+                    {/* Stage Text */}
+                    <Text style={[
+                        styles.portraitStageText,
+                        item.isCompleted && styles.stageTextCompleted,
+                        isActive && styles.stageTextDragging
+                    ]}>
+                        {item.text}
+                    </Text>
+
+                    {/* Delete Button */}
+                    <TouchableOpacity
+                        onPress={() => {
+                            Alert.alert(
+                                'Delete Stage',
+                                `Are you sure you want to delete "${item.text}"?`,
+                                [
+                                    { text: 'Cancel', style: 'cancel' },
+                                    {
+                                        text: 'Delete',
+                                        style: 'destructive',
+                                        onPress: () => onDeleteStage(item.id)
+                                    }
+                                ]
+                            );
+                        }}
+                        style={styles.deleteStageBtn}
+                        disabled={isActive}
+                        activeOpacity={0.7}
+                    >
+                        <MaterialIcons
+                            name="delete-outline"
+                            size={16}
+                            color={isActive ? "rgba(0,0,0,0.25)" : "rgba(255,255,255,0.25)"}
+                        />
+                    </TouchableOpacity>
+                </View>
+            );
+        },
+        [onDeleteStage, onToggleStage]
+    );
+
+    return (
+        <DraggableFlatList
+            data={data}
+            keyExtractor={(item) => String(item.id)}
+            renderItem={renderItem}
+            onDragBegin={() => {
+                LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+            }}
+            onDragEnd={({ data: next }) => {
+                LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+                setData(next);
+                onReorder(next);
+                Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+            }}
+            autoscrollThreshold={80}
+            autoscrollSpeed={90}
+            activationDistance={12}
+            nestedScrollEnabled={true}
+            showsVerticalScrollIndicator={true}
+            keyboardShouldPersistTaps="handled"
+            contentContainerStyle={{ paddingBottom: 40 }}
+        />
+    );
+}
+
 const getStatusConfig = (status: Task['status']) => {
     switch (status) {
         case 'In Progress':
@@ -2136,7 +2307,7 @@ function TaskCard({
 }: TaskCardProps) {
     const [commentText, setCommentText] = useState('');
     const [stageText, setStageText] = useState('');
-    const [activeRightTab, setActiveRightTab] = useState<'comments' | 'stages'>('comments');
+    const [activeRightTab, setActiveRightTab] = useState<'comments' | 'stages'>('stages');
     const isCompleted = task.status === 'Completed';
     const isInProgress = task.status === 'In Progress';
 
@@ -2166,6 +2337,10 @@ function TaskCard({
         const updatedStages = (task.stages || []).filter(s => s.id !== stageId);
         onUpdateStages?.(task, updatedStages);
         Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    };
+
+    const handleReorderStages = (newStages: TaskStage[]) => {
+        onUpdateStages?.(task, newStages);
     };
 
     const today = new Date().toISOString().split('T')[0];
@@ -2430,15 +2605,6 @@ function TaskCard({
                         {/* Tab Toggle */}
                         <View style={styles.landscapeTabToggle}>
                             <TouchableOpacity
-                                style={[styles.landscapeTab, activeRightTab === 'comments' && styles.landscapeTabActive]}
-                                onPress={() => {
-                                    setActiveRightTab('comments');
-                                    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                                }}
-                            >
-                                <Text style={[styles.landscapeTabText, activeRightTab === 'comments' && styles.landscapeTabTextActive]}>COMMENTS</Text>
-                            </TouchableOpacity>
-                            <TouchableOpacity
                                 style={[styles.landscapeTab, activeRightTab === 'stages' && styles.landscapeTabActive]}
                                 onPress={() => {
                                     setActiveRightTab('stages');
@@ -2446,6 +2612,15 @@ function TaskCard({
                                 }}
                             >
                                 <Text style={[styles.landscapeTabText, activeRightTab === 'stages' && styles.landscapeTabTextActive]}>STAGES</Text>
+                            </TouchableOpacity>
+                            <TouchableOpacity
+                                style={[styles.landscapeTab, activeRightTab === 'comments' && styles.landscapeTabActive]}
+                                onPress={() => {
+                                    setActiveRightTab('comments');
+                                    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                                }}
+                            >
+                                <Text style={[styles.landscapeTabText, activeRightTab === 'comments' && styles.landscapeTabTextActive]}>COMMENTS</Text>
                             </TouchableOpacity>
                         </View>
 
@@ -2522,6 +2697,10 @@ function TaskCard({
                                         showsVerticalScrollIndicator={true}
                                         nestedScrollEnabled={true}
                                         keyboardShouldPersistTaps="handled"
+                                        scrollEventThrottle={16}
+                                        bounces={true}
+                                        alwaysBounceVertical={true}
+                                        overScrollMode="always"
                                         contentContainerStyle={{ paddingBottom: 60 }}
                                     >
                                         {task.comments.map((comment) => (
@@ -2543,13 +2722,8 @@ function TaskCard({
                                 )
                             ) : (
                                 (task.stages || []).length > 0 ? (
-                                    <ScrollView
-                                        style={styles.fullViewCommentScroll}
-                                        showsVerticalScrollIndicator={true}
-                                        nestedScrollEnabled={true}
-                                        keyboardShouldPersistTaps="handled"
-                                        contentContainerStyle={{ paddingBottom: 60 }}
-                                    >
+                                    <View style={{ flex: 1 }}>
+                                        {/* Progress Bar - Static (Outside ScrollView) */}
                                         <View style={[styles.metaRow, { marginBottom: 12, paddingHorizontal: 4 }]}>
                                             <Text style={[styles.metaLabel, { width: 'auto', marginRight: 12 }]}>PROGRESS</Text>
                                             <View style={styles.stagesProgressWrapper}>
@@ -2559,33 +2733,14 @@ function TaskCard({
                                                 {task.stages?.filter(s => s.isCompleted).length} / {task.stages?.length}
                                             </Text>
                                         </View>
-                                        {(task.stages || []).map((stage, index) => {
-                                            const ordinal = index === 0 ? '1ST' : (index === 1 ? '2ND' : (index === 2 ? '3RD' : `${index + 1}TH`));
-                                            return (
-                                                <View key={stage.id} style={styles.portraitStageItem}>
-                                                    <View style={styles.stagePriorityLabel}>
-                                                        <Text style={styles.stagePriorityText}>{ordinal}</Text>
-                                                    </View>
-                                                    <TouchableOpacity
-                                                        style={styles.stageCheck}
-                                                        onPress={() => handleToggleStage(stage.id)}
-                                                    >
-                                                        <MaterialIcons
-                                                            name={stage.isCompleted ? "check-box" : "check-box-outline-blank"}
-                                                            size={22}
-                                                            color={stage.isCompleted ? "#4CAF50" : "rgba(255,255,255,0.3)"}
-                                                        />
-                                                    </TouchableOpacity>
-                                                    <Text style={[styles.portraitStageText, stage.isCompleted && styles.stageTextCompleted]}>
-                                                        {stage.text}
-                                                    </Text>
-                                                    <TouchableOpacity onPress={() => handleDeleteStage(stage.id)} style={styles.deleteStageBtn}>
-                                                        <MaterialIcons name="remove-circle-outline" size={18} color="rgba(255,255,255,0.2)" />
-                                                    </TouchableOpacity>
-                                                </View>
-                                            );
-                                        })}
-                                    </ScrollView>
+                                        {/* Stages List - Draggable */}
+                                        <DraggableStagesList
+                                            stages={task.stages || []}
+                                            onReorder={handleReorderStages}
+                                            onToggleStage={handleToggleStage}
+                                            onDeleteStage={handleDeleteStage}
+                                        />
+                                    </View>
                                 ) : (
                                     <View style={styles.noStagesContainer}>
                                         <MaterialIcons name="format-list-bulleted" size={32} color="rgba(255,255,255,0.1)" />
@@ -2597,179 +2752,162 @@ function TaskCard({
                     </View>
                 </View>
             ) : isExpanded && (
-                <View style={styles.cardExpandedContent}>
-                    <View style={[styles.cardExpandedContent, { paddingHorizontal: 0 }]}>
-                        {/* Tab Toggle (Universal Header) */}
-                        <View style={[styles.landscapeTabToggle, { marginTop: 8, marginBottom: 8 }]}>
-                            <TouchableOpacity
-                                style={[styles.landscapeTab, activeRightTab === 'comments' && styles.landscapeTabActive]}
-                                onPress={() => {
-                                    setActiveRightTab('comments');
-                                    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                                }}
-                            >
-                                <Text style={[styles.landscapeTabText, activeRightTab === 'comments' && styles.landscapeTabTextActive]}>COMMENTS</Text>
-                            </TouchableOpacity>
-                            <TouchableOpacity
-                                style={[styles.landscapeTab, activeRightTab === 'stages' && styles.landscapeTabActive]}
-                                onPress={() => {
-                                    setActiveRightTab('stages');
-                                    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                                }}
-                            >
-                                <Text style={[styles.landscapeTabText, activeRightTab === 'stages' && styles.landscapeTabTextActive]}>STAGES</Text>
-                            </TouchableOpacity>
-                        </View>
+                <View style={[styles.cardExpandedContent, { paddingHorizontal: 0 }]}>
+                    {/* Tab Toggle (Universal Header) */}
+                    <View style={[styles.landscapeTabToggle, { marginTop: 8, marginBottom: 8 }]}>
+                        <TouchableOpacity
+                            style={[styles.landscapeTab, activeRightTab === 'stages' && styles.landscapeTabActive]}
+                            onPress={() => {
+                                setActiveRightTab('stages');
+                                Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                            }}
+                        >
+                            <Text style={[styles.landscapeTabText, activeRightTab === 'stages' && styles.landscapeTabTextActive]}>STAGES</Text>
+                        </TouchableOpacity>
+                        <TouchableOpacity
+                            style={[styles.landscapeTab, activeRightTab === 'comments' && styles.landscapeTabActive]}
+                            onPress={() => {
+                                setActiveRightTab('comments');
+                                Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                            }}
+                        >
+                            <Text style={[styles.landscapeTabText, activeRightTab === 'comments' && styles.landscapeTabTextActive]}>COMMENTS</Text>
+                        </TouchableOpacity>
+                    </View>
 
-                        {activeRightTab === 'stages' ? (
-                            /* Stages Section (Portrait) */
-                            <View style={{ flex: 1, paddingHorizontal: 16 }}>
-                                {/* Stage Input - same as comment input */}
-                                <View style={styles.inlineAddComment}>
-                                    <TextInput
-                                        style={styles.inlineCommentInput}
-                                        placeholder="Add a stage..."
-                                        placeholderTextColor="rgba(255,255,255,0.3)"
-                                        value={stageText}
-                                        onChangeText={setStageText}
-                                        onSubmitEditing={handleAddStage}
-                                    />
-                                    <TouchableOpacity
-                                        style={[styles.inlineSendBtn, !stageText.trim() && styles.inlineSendBtnDisabled]}
-                                        onPress={handleAddStage}
-                                        disabled={!stageText.trim()}
-                                    >
-                                        <MaterialIcons name="add" size={18} color={stageText.trim() ? "#000" : "rgba(0,0,0,0.2)"} />
-                                    </TouchableOpacity>
-                                </View>
-
-                                {/* Progress Bar */}
-                                {(task.stages || []).length > 0 && (
-                                    <View style={[styles.metaRow, { marginTop: 8, marginBottom: 8 }]}>
-                                        <Text style={[styles.metaLabel, { width: 'auto', marginRight: 8, fontSize: 9 }]}>PROGRESS</Text>
-                                        <View style={[styles.stagesProgressWrapper, { flex: 1 }]}>
-                                            <View style={[styles.stagesProgressBar, { width: `${(task.stages?.filter(s => s.isCompleted).length || 0) / (task.stages?.length || 1) * 100}%` }]} />
-                                        </View>
-                                        <Text style={[styles.sectionSubtitle, { marginLeft: 8, fontSize: 10 }]}>
-                                            {task.stages?.filter(s => s.isCompleted).length}/{task.stages?.length}
-                                        </Text>
-                                    </View>
-                                )}
-
-                                <View style={styles.expandedDivider} />
-
-                                {/* Stages List */}
-                                {(task.stages || []).length > 0 ? (
-                                    <ScrollView showsVerticalScrollIndicator={false} style={{ flex: 1 }}>
-                                        {(task.stages || []).map((stage, index) => {
-                                            const ordinal = index === 0 ? '1ST' : (index === 1 ? '2ND' : (index === 2 ? '3RD' : `${index + 1}TH`));
-                                            return (
-                                                <View key={stage.id} style={styles.portraitStageItem}>
-                                                    <View style={styles.stagePriorityLabel}>
-                                                        <Text style={styles.stagePriorityText}>{ordinal}</Text>
-                                                    </View>
-                                                    <TouchableOpacity
-                                                        style={styles.stageCheck}
-                                                        onPress={() => handleToggleStage(stage.id)}
-                                                    >
-                                                        <MaterialIcons
-                                                            name={stage.isCompleted ? "check-box" : "check-box-outline-blank"}
-                                                            size={22}
-                                                            color={stage.isCompleted ? "#4CAF50" : "rgba(255,255,255,0.3)"}
-                                                        />
-                                                    </TouchableOpacity>
-                                                    <Text style={[styles.portraitStageText, stage.isCompleted && styles.stageTextCompleted]}>
-                                                        {stage.text}
-                                                    </Text>
-                                                    <TouchableOpacity onPress={() => handleDeleteStage(stage.id)} style={styles.deleteStageBtn}>
-                                                        <MaterialIcons name="remove-circle-outline" size={18} color="rgba(255,255,255,0.2)" />
-                                                    </TouchableOpacity>
-                                                </View>
-                                            );
-                                        })}
-                                    </ScrollView>
-                                ) : (
-                                    <View style={[styles.noStagesContainer, { flex: 1 }]}>
-                                        <MaterialIcons name="format-list-bulleted" size={48} color="rgba(255,255,255,0.05)" />
-                                        <Text style={styles.noStagesText}>No stages yet</Text>
-                                    </View>
-                                )}
+                    {activeRightTab === 'stages' ? (
+                        /* Stages Section (Portrait) */
+                        <View style={{ flex: 1, paddingHorizontal: 16, overflow: 'hidden' }}>
+                            {/* Stage Input - same as comment input */}
+                            <View style={styles.inlineAddComment}>
+                                <TextInput
+                                    style={styles.inlineCommentInput}
+                                    placeholder="Add a stage..."
+                                    placeholderTextColor="rgba(255,255,255,0.3)"
+                                    value={stageText}
+                                    onChangeText={setStageText}
+                                    onSubmitEditing={handleAddStage}
+                                />
+                                <TouchableOpacity
+                                    style={[styles.inlineSendBtn, !stageText.trim() && styles.inlineSendBtnDisabled]}
+                                    onPress={handleAddStage}
+                                    disabled={!stageText.trim()}
+                                >
+                                    <MaterialIcons name="add" size={18} color={stageText.trim() ? "#000" : "rgba(0,0,0,0.2)"} />
+                                </TouchableOpacity>
                             </View>
-                        ) : (
-                            /* Comments Section (Portrait) */
-                            <View style={{ flex: 1, paddingHorizontal: 16 }}>
-                                <View style={styles.inlineAddComment}>
-                                    <TextInput
-                                        style={styles.inlineCommentInput}
-                                        placeholder="Add a comment..."
-                                        placeholderTextColor="rgba(255,255,255,0.3)"
-                                        value={commentText}
-                                        onChangeText={setCommentText}
-                                        multiline
-                                    />
-                                    <TouchableOpacity
-                                        style={[styles.inlineSendBtn, !commentText.trim() && styles.inlineSendBtnDisabled]}
-                                        onPress={() => {
-                                            if (commentText.trim()) {
-                                                onUpdateComment?.(task, commentText.trim());
-                                                setCommentText('');
-                                                Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-                                            }
-                                        }}
-                                        disabled={!commentText.trim()}
-                                    >
-                                        <MaterialIcons name="send" size={18} color={commentText.trim() ? "#000" : "rgba(0,0,0,0.2)"} />
-                                    </TouchableOpacity>
-                                </View>
 
-                                {/* Quick Messages (Portrait) */}
-                                <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.quickMessagesScroll}>
-                                    {(quickMessages || []).map((msg) => (
-                                        <TouchableOpacity
-                                            key={msg.id}
-                                            style={[styles.quickMessageChip, { borderColor: `${msg.color}30` }]}
-                                            onPress={() => {
-                                                onUpdateComment?.(task, msg.text);
-                                                Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                                            }}
-                                        >
-                                            <Text style={[styles.quickMessageText, { color: msg.color }]}>{msg.text}</Text>
-                                        </TouchableOpacity>
+                            {/* Progress Bar */}
+                            {(task.stages || []).length > 0 && (
+                                <View style={[styles.metaRow, { marginTop: 8, marginBottom: 8 }]}>
+                                    <Text style={[styles.metaLabel, { width: 'auto', marginRight: 8, fontSize: 9 }]}>PROGRESS</Text>
+                                    <View style={[styles.stagesProgressWrapper, { flex: 1 }]}>
+                                        <View style={[styles.stagesProgressBar, { width: `${(task.stages?.filter(s => s.isCompleted).length || 0) / (task.stages?.length || 1) * 100}%` }]} />
+                                    </View>
+                                    <Text style={[styles.sectionSubtitle, { marginLeft: 8, fontSize: 10 }]}>
+                                        {task.stages?.filter(s => s.isCompleted).length}/{task.stages?.length}
+                                    </Text>
+                                </View>
+                            )}
+
+                            <View style={styles.expandedDivider} />
+
+                            {/* Stages List */}
+                            {(task.stages || []).length > 0 ? (
+                                <DraggableStagesList
+                                    stages={task.stages || []}
+                                    onReorder={handleReorderStages}
+                                    onToggleStage={handleToggleStage}
+                                    onDeleteStage={handleDeleteStage}
+                                />
+                            ) : (
+                                <View style={[styles.noStagesContainer, { flex: 1 }]}>
+                                    <MaterialIcons name="format-list-bulleted" size={48} color="rgba(255,255,255,0.05)" />
+                                    <Text style={styles.noStagesText}>No stages yet</Text>
+                                </View>
+                            )}
+                        </View>
+                    ) : (
+                        /* Comments Section (Portrait) */
+                        <View style={{ flex: 1, paddingHorizontal: 16, overflow: 'hidden' }}>
+                            <View style={styles.inlineAddComment}>
+                                <TextInput
+                                    style={styles.inlineCommentInput}
+                                    placeholder="Add a comment..."
+                                    placeholderTextColor="rgba(255,255,255,0.3)"
+                                    value={commentText}
+                                    onChangeText={setCommentText}
+                                    multiline
+                                />
+                                <TouchableOpacity
+                                    style={[styles.inlineSendBtn, !commentText.trim() && styles.inlineSendBtnDisabled]}
+                                    onPress={() => {
+                                        if (commentText.trim()) {
+                                            onUpdateComment?.(task, commentText.trim());
+                                            setCommentText('');
+                                            Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+                                        }
+                                    }}
+                                    disabled={!commentText.trim()}
+                                >
+                                    <MaterialIcons name="send" size={18} color={commentText.trim() ? "#000" : "rgba(0,0,0,0.2)"} />
+                                </TouchableOpacity>
+                            </View>
+
+                            {/* Quick Messages (Portrait) */}
+                            <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.quickMessagesScroll}>
+                                {(quickMessages || []).map((msg) => (
+                                    <TouchableOpacity
+                                        key={msg.id}
+                                        style={[styles.quickMessageChip, { borderColor: `${msg.color}30` }]}
+                                        onPress={() => {
+                                            onUpdateComment?.(task, msg.text);
+                                            Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                                        }}
+                                    >
+                                        <Text style={[styles.quickMessageText, { color: msg.color }]}>{msg.text}</Text>
+                                    </TouchableOpacity>
+                                ))}
+                            </ScrollView>
+
+                            <View style={styles.expandedDivider} />
+
+                            {/* Comments List */}
+                            {task.comments && task.comments.length > 0 ? (
+                                <ScrollView
+                                    style={[styles.inlineCommentsList, { minHeight: 0, flex: 1, overflow: 'hidden' }]}
+                                    showsVerticalScrollIndicator={true}
+                                    nestedScrollEnabled={true}
+                                    keyboardShouldPersistTaps="handled"
+                                    scrollEventThrottle={16}
+                                    bounces={true}
+                                    alwaysBounceVertical={true}
+                                    overScrollMode="always"
+                                    contentContainerStyle={{ paddingBottom: 40 }}
+                                >
+                                    {task.comments.map((comment) => (
+                                        <View key={comment.id} style={styles.inlineCommentItem}>
+                                            <Text style={styles.inlineCommentText}>
+                                                <Text style={styles.inlineCommentTime}>
+                                                    {new Date(comment.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: true }).toLowerCase()} •{" "}
+                                                </Text>
+                                                {comment.text}
+                                            </Text>
+                                        </View>
                                     ))}
                                 </ScrollView>
-
-                                <View style={styles.expandedDivider} />
-
-                                {/* Comments List */}
-                                {task.comments && task.comments.length > 0 ? (
-                                    <ScrollView
-                                        style={styles.inlineCommentsList}
-                                        showsVerticalScrollIndicator={false}
-                                        nestedScrollEnabled={true}
-                                    >
-                                        {task.comments.map((comment) => (
-                                            <View key={comment.id} style={styles.inlineCommentItem}>
-                                                <Text style={styles.inlineCommentText}>
-                                                    <Text style={styles.inlineCommentTime}>
-                                                        {new Date(comment.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: true }).toLowerCase()} •{" "}
-                                                    </Text>
-                                                    {comment.text}
-                                                </Text>
-                                            </View>
-                                        ))}
-                                    </ScrollView>
-                                ) : (
-                                    <View style={[styles.noCommentsContainer, { flex: 1, marginTop: 40 }]}>
-                                        <MaterialIcons name="chat-bubble-outline" size={48} color="rgba(255,255,255,0.05)" />
-                                        <Text style={styles.noCommentsText}>No comments yet</Text>
-                                    </View>
-                                )}
-                            </View>
-                        )}
-                    </View>
+                            ) : (
+                                <View style={[styles.noCommentsContainer, { flex: 1, marginTop: 40 }]}>
+                                    <MaterialIcons name="chat-bubble-outline" size={48} color="rgba(255,255,255,0.05)" />
+                                    <Text style={styles.noCommentsText}>No comments yet</Text>
+                                </View>
+                            )}
+                        </View>
+                    )}
                 </View>
             )}
         </>
+
     );
 
     if (isFullView || isExpanded) {
@@ -2778,8 +2916,28 @@ function TaskCard({
                 style={[
                     cardStyle,
                     isExpanded && !isLandscape && {
-                        maxHeight: height * 0.99,
-                        minHeight: 120
+                        // Dynamic height based on active tab content
+                        height: (() => {
+                            if (activeRightTab === 'stages') {
+                                // Stages: min 2, max 5 visible
+                                const stageCount = task.stages?.length || 0;
+                                const visibleStages = Math.min(Math.max(stageCount, 2), 5);
+                                const stageHeight = 44;
+                                const headerSpace = 200; // tabs, input, progress bar, padding
+                                const calculatedHeight = headerSpace + (visibleStages * stageHeight);
+                                return Math.min(Math.max(calculatedHeight, 280), height * 0.75);
+                            } else {
+                                // Comments: min 5, max 12 visible
+                                const commentCount = task.comments?.length || 0;
+                                const visibleComments = Math.min(Math.max(commentCount, 5), 12);
+                                const commentHeight = 28; // each comment line ~28px
+                                const headerSpace = 180; // tabs, input, predefined messages (fixed ~60px)
+                                const calculatedHeight = headerSpace + (visibleComments * commentHeight);
+                                return Math.min(Math.max(calculatedHeight, 320), height * 0.75);
+                            }
+                        })(),
+                        maxHeight: height * 0.78,
+                        minHeight: 280,
                     }
                 ]}
             >
