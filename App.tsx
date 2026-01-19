@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { LogBox, AppState, AppStateStatus, LayoutAnimation, UIManager, Platform } from 'react-native';
+import { LogBox, AppState, AppStateStatus, LayoutAnimation, UIManager, Platform, Keyboard, TouchableWithoutFeedback, View } from 'react-native';
 import * as Notifications from 'expo-notifications';
 import { StatusBar } from 'expo-status-bar';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
@@ -1202,56 +1202,60 @@ export default function App() {
   };
 
   return (
-    <SafeAreaProvider>
-      {renderScreen()}
+    <TouchableWithoutFeedback onPress={() => Keyboard.dismiss()} accessible={false}>
+      <View style={{ flex: 1 }}>
+        <SafeAreaProvider>
+          {renderScreen()}
 
-      <AddTimerModal
-        visible={addModalVisible}
-        onCancel={() => {
-          setAddModalVisible(false);
-          setTimerToEdit(null);
-        }}
-        onAdd={handleAddTimer}
-        onUpdate={handleUpdateTimer}
-        initialDate={formatDate(selectedDate)}
-        categories={categories}
-        timerToEdit={timerToEdit}
-        isPastTimersDisabled={isPastTimersDisabled}
-      />
+          <AddTimerModal
+            visible={addModalVisible}
+            onCancel={() => {
+              setAddModalVisible(false);
+              setTimerToEdit(null);
+            }}
+            onAdd={handleAddTimer}
+            onUpdate={handleUpdateTimer}
+            initialDate={formatDate(selectedDate)}
+            categories={categories}
+            timerToEdit={timerToEdit}
+            isPastTimersDisabled={isPastTimersDisabled}
+          />
 
-      <DeleteModal
-        visible={deleteModalVisible}
-        timer={selectedTimer}
-        onCancel={() => {
-          setDeleteModalVisible(false);
-          setSelectedTimer(null);
-        }}
-        onUpdate={() => {
-          if (isPastTimersDisabled) {
-            setTimerToEdit(selectedTimer);
-            setDeleteModalVisible(false);
-            setAddModalVisible(true);
-          }
-        }}
-        onReset={handleResetTimer}
-        onDelete={confirmDelete}
-      />
+          <DeleteModal
+            visible={deleteModalVisible}
+            timer={selectedTimer}
+            onCancel={() => {
+              setDeleteModalVisible(false);
+              setSelectedTimer(null);
+            }}
+            onUpdate={() => {
+              if (isPastTimersDisabled) {
+                setTimerToEdit(selectedTimer);
+                setDeleteModalVisible(false);
+                setAddModalVisible(true);
+              }
+            }}
+            onReset={handleResetTimer}
+            onDelete={confirmDelete}
+          />
 
-      <AddTaskModal
-        visible={addTaskModalVisible}
-        onCancel={() => {
-          setAddTaskModalVisible(false);
-          setTaskToEdit(null);
-        }}
-        onAdd={handleAddTask}
-        onUpdate={handleUpdateTask}
-        taskToEdit={taskToEdit}
-        categories={categories}
-        initialDate={formatDate(selectedDate)}
-        isPastTasksDisabled={isPastTasksDisabled}
-      />
+          <AddTaskModal
+            visible={addTaskModalVisible}
+            onCancel={() => {
+              setAddTaskModalVisible(false);
+              setTaskToEdit(null);
+            }}
+            onAdd={handleAddTask}
+            onUpdate={handleUpdateTask}
+            taskToEdit={taskToEdit}
+            categories={categories}
+            initialDate={formatDate(selectedDate)}
+            isPastTasksDisabled={isPastTasksDisabled}
+          />
 
-      <StatusBar style="light" />
-    </SafeAreaProvider>
+          <StatusBar style="light" />
+        </SafeAreaProvider>
+      </View>
+    </TouchableWithoutFeedback>
   );
 }
