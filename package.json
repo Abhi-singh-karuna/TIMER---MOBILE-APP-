@@ -33,11 +33,17 @@
     "react": "19.1.0",
     "react-dom": "19.1.0",
     "react-native": "0.81.5",
+    "react-native-draggable-flatlist": "^4.0.3",
+    "react-native-gesture-handler": "~2.28.0",
     "react-native-linear-gradient": "^2.8.3",
+    "react-native-reanimated": "~4.1.1",
     "react-native-safe-area-context": "~5.6.0",
     "react-native-svg": "15.12.1",
     "react-native-web": "^0.21.0",
     "typescript": "~5.9.2"
+  },
+  "overrides": {
+    "react-native-worklets": "0.5.1"
   },
   "private": true,
   "devDependencies": {

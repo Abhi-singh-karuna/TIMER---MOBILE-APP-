@@ -3,6 +3,7 @@ import { LogBox, AppState, AppStateStatus, LayoutAnimation, UIManager, Platform,
 import * as Notifications from 'expo-notifications';
 import { StatusBar } from 'expo-status-bar';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
+import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { useFonts } from 'expo-font';
 import {
   PlusJakartaSans_300Light,
@@ -1202,10 +1203,11 @@ export default function App() {
   };
 
   return (
-    <TouchableWithoutFeedback onPress={() => Keyboard.dismiss()} accessible={false}>
-      <View style={{ flex: 1 }}>
-        <SafeAreaProvider>
-          {renderScreen()}
+    <GestureHandlerRootView style={{ flex: 1 }}>
+      <TouchableWithoutFeedback onPress={() => Keyboard.dismiss()} accessible={false}>
+        <View style={{ flex: 1 }}>
+          <SafeAreaProvider>
+            {renderScreen()}
 
           <AddTimerModal
             visible={addModalVisible}
@@ -1253,9 +1255,10 @@ export default function App() {
             isPastTasksDisabled={isPastTasksDisabled}
           />
 
-          <StatusBar style="light" />
-        </SafeAreaProvider>
-      </View>
-    </TouchableWithoutFeedback>
+            <StatusBar style="light" />
+          </SafeAreaProvider>
+        </View>
+      </TouchableWithoutFeedback>
+    </GestureHandlerRootView>
   );
 }
