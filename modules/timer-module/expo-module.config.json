@@ -1,0 +1,11 @@
+{
+    "name": "TimerModule",
+    "platforms": [
+        "apple"
+    ],
+    "apple": {
+        "modules": [
+            "TimerModule"
+        ]
+    }
+}

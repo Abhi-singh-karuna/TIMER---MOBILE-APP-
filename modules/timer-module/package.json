@@ -1,0 +1,17 @@
+{
+    "name": "timer-module",
+    "version": "1.0.0",
+    "description": "Custom Expo module for Live Activities",
+    "main": "index.js",
+    "license": "MIT",
+    "author": "Abhishek Singh",
+    "homepage": "https://github.com/abhisheksingh/timer-app",
+    "files": [
+        "index.js",
+        "ios",
+        "expo-module.config.json"
+    ],
+    "expo": {
+        "name": "TimerModule"
+    }
+}

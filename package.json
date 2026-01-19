@@ -37,13 +37,18 @@
     "react-native-safe-area-context": "~5.6.0",
     "react-native-svg": "15.12.1",
     "react-native-web": "^0.21.0",
-    "typescript": "~5.9.2"
+    "typescript": "~5.9.2",
+    "timer-module": "./modules/timer-module"
   },
   "private": true,
   "devDependencies": {
+    "@bacons/apple-targets": "^3.0.7",
+    "@expo/config-plugins": "^54.0.4",
+    "@expo/prebuild-config": "^54.0.8",
     "@react-native-community/cli": "^20.1.0",
     "@react-native/metro-config": "^0.83.1",
     "@types/react": "~19.1.10",
+    "expo-module-scripts": "^5.0.8",
     "typescript": "~5.9.2"
   }
 }

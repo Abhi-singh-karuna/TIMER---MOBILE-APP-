@@ -1,0 +1,11 @@
+{
+    "name": "TimerLiveActivity",
+    "type": "widget",
+    "bundleIdentifier": "com.abhisheksingh.timerapp.TimerLiveActivity",
+    "deploymentTarget": "16.1",
+    "entitlements": {
+        "com.apple.security.application-groups": [
+            "group.com.abhisheksingh.timerapp"
+        ]
+    }
+}

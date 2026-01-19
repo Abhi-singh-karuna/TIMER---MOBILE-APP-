@@ -18,7 +18,8 @@
       "infoPlist": {
         "UIBackgroundModes": [
           "fetch"
-        ]
+        ],
+        "NSSupportsLiveActivities": true
       }
     },
     "android": {
@@ -34,7 +35,14 @@
     },
     "plugins": [
       "expo-notifications",
-      "expo-asset"
+      "expo-asset",
+      [
+        "@bacons/apple-targets",
+        {
+          "appleTeamId": "79BA32QFAG"
+        }
+      ],
+      "./plugins/withTimerModule"
     ],
     "web": {
       "favicon": "./assets/icon.png"

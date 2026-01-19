@@ -34,6 +34,11 @@ import {
   cancelTimerNotification,
   calculateRemainingTime,
 } from './src/utils/backgroundTimer';
+import {
+  startLiveActivity,
+  updateLiveActivity,
+  stopLiveActivity,
+} from './src/utils/liveActivities';
 
 const LANDSCAPE_COLOR_KEY = '@timer_app_landscape_color';
 const FILLER_COLOR_KEY = '@timer_filler_color';
@@ -457,6 +462,8 @@ export default function App() {
       const currentTimer = timers.find(t => t.id === activeTimer.id);
       if (currentTimer?.status === 'Completed') {
         // Timer just completed naturally, navigate to complete screen with sound
+        // Update Live Activity with Completed status
+        updateLiveActivity(currentTimer);
         setShouldPlayCompletionSound(true);
         setCurrentScreen('complete');
       }
@@ -683,6 +690,21 @@ export default function App() {
     setTimers(updatedTimers);
     await saveTimers(updatedTimers);
 
+    // Sync with Live Activity
+    const toggledTimer = updatedTimers.find(t => t.id === timerToToggle.id);
+    if (toggledTimer) {
+      if (toggledTimer.status === 'Running') {
+        // If it was already paused, it's a resume. If it was anything else, it's a start.
+        if (currentTimer.status === 'Paused') {
+          updateLiveActivity(toggledTimer);
+        } else {
+          startLiveActivity(toggledTimer);
+        }
+      } else if (toggledTimer.status === 'Paused') {
+        updateLiveActivity(toggledTimer);
+      }
+    }
+
     // Persist active timer if we just started one
     if (!isCurrentlyRunning) {
       const startedTimer = updatedTimers.find(t => t.id === timerToToggle.id);
@@ -743,6 +765,10 @@ export default function App() {
       });
       setTimers(updatedTimers);
       await saveTimers(updatedTimers);
+
+      const startedTimer = updatedTimers.find(t => t.id === timer.id);
+      if (startedTimer) startLiveActivity(startedTimer);
+
       setCurrentScreen('active');
     }
   };
@@ -762,16 +788,21 @@ export default function App() {
     });
     setTimers(updatedTimers);
     await saveTimers(updatedTimers);
+
+    const pausedTimer = updatedTimers.find(t => t.status === 'Paused');
+    if (pausedTimer) updateLiveActivity(pausedTimer);
   };
 
   // Handle cancel from active timer screen
   const handleCancel = async () => {
+    stopLiveActivity();
     setActiveTimer(null);
     setCurrentScreen('list');
   };
 
   // Handle complete from active timer screen
   const handleComplete = async () => {
+    stopLiveActivity();
     // Cancel the scheduled notification since we're completing early
     const currentTimer = activeTimer ? timers.find(t => t.id === activeTimer.id) : null;
     if (currentTimer?.notificationId) {
@@ -864,13 +895,17 @@ export default function App() {
         } as Timer;
       });
       setTimers(updatedTimers);
-      saveTimers(updatedTimers);
+      await saveTimers(updatedTimers);
+
+      const restartedTimer = updatedTimers.find(t => t.id === activeTimer.id);
+      if (restartedTimer) startLiveActivity(restartedTimer);
     }
     setCurrentScreen('active');
   };
 
   // Handle done from complete screen
   const handleDone = async () => {
+    stopLiveActivity();
     await updateActiveTimer(null);
     setCurrentScreen('list');
   };
@@ -934,6 +969,9 @@ export default function App() {
       }));
       setTimers(updatedTimers);
       await saveTimers(updatedTimers);
+
+      const updatedTimer = updatedTimers.find(t => t.id === activeTimer.id);
+      if (updatedTimer) updateLiveActivity(updatedTimer);
     }
   };
 
@@ -967,6 +1005,10 @@ export default function App() {
       });
       setTimers(updatedTimers);
       await saveTimers(updatedTimers);
+
+      const borrowedTimer = updatedTimers.find(t => t.id === activeTimer.id);
+      if (borrowedTimer) startLiveActivity(borrowedTimer);
+
       setCurrentScreen('active');
     }
   };
@@ -1002,6 +1044,9 @@ export default function App() {
     });
     setTimers(updatedTimers);
     await saveTimers(updatedTimers);
+
+    const borrowedTimerFromList = updatedTimers.find(t => t.id === timer.id);
+    if (borrowedTimerFromList) startLiveActivity(borrowedTimerFromList);
   };
 
   if (!fontsLoaded) {
