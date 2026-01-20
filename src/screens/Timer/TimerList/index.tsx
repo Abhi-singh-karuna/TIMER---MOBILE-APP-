@@ -1455,16 +1455,13 @@ function TimerCard({ timer, onLongPress, onPress, onPlayPause, isLandscape, cate
                 </View>
 
                 {timer.isPinned && (
-                    <>
-                        <View style={[styles.pinBadge, isLandscape ? styles.pinBadgeLandscape : styles.pinBadgePortrait]} />
-                        <View style={[styles.pinIconContainer, isLandscape ? styles.pinIconContainerLandscape : styles.pinIconContainerPortrait]}>
-                            <MaterialIcons
-                                name="local-offer"
-                                size={8}
-                                color="#000"
-                            />
-                        </View>
-                    </>
+                    <View style={[styles.pinIconContainer, isLandscape ? styles.pinIconContainerLandscape : styles.pinIconContainerPortrait]}>
+                        <MaterialIcons
+                            name="local-offer"
+                            size={10}
+                            color="#fff"
+                        />
+                    </View>
                 )}
 
                 {isReadOnly && !isCompleted && (
@@ -1848,7 +1845,7 @@ const styles = StyleSheet.create({
     },
 
     timerCard: {
-        marginBottom: 16,
+        marginBottom: 12,
         borderRadius: 32,
         paddingHorizontal: 16,
         paddingVertical: 24,
@@ -2363,8 +2360,8 @@ const styles = StyleSheet.create({
 
     cardRow: {
         flexDirection: 'row',
-        gap: 8,
-        marginBottom: 8,
+        gap: 4,
+        marginBottom: 4,
     },
 
     cardPlaceholder: {
@@ -2500,26 +2497,6 @@ const styles = StyleSheet.create({
         fontWeight: '800',
     },
 
-    pinBadge: {
-        position: 'absolute',
-        backgroundColor: '#eee9e9ff',
-        transform: [{ rotate: '45deg' }],
-        zIndex: 8,
-    },
-
-    pinBadgePortrait: {
-        top: -30,
-        right: -70,
-        width: 100,
-        height: 48,
-    },
-
-    pinBadgeLandscape: {
-        top: -28,
-        right: -28,
-        width: 40,
-        height: 40,
-    },
 
     pinIconContainer: {
         position: 'absolute',

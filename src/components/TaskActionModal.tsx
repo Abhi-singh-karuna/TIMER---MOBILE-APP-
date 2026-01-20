@@ -28,6 +28,7 @@ interface TaskActionModalProps {
     onDelete: (task: Task) => void;
     onUpdate: (task: Task) => void;
     onAddComment: (task: Task, comment: string) => void;
+    onPin: (task: Task) => void;
 }
 
 export default function TaskActionModal({
@@ -37,6 +38,7 @@ export default function TaskActionModal({
     onDelete,
     onUpdate,
     onAddComment,
+    onPin,
 }: TaskActionModalProps) {
     const { width: screenWidth, height: screenHeight } = useWindowDimensions();
     const isLandscape = screenWidth > screenHeight;
@@ -54,6 +56,11 @@ export default function TaskActionModal({
             onClose();
             Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
         }
+    };
+
+    const handlePin = () => {
+        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+        onPin(task);
     };
 
     return (
@@ -124,6 +131,14 @@ export default function TaskActionModal({
                                                 activeOpacity={0.7}
                                             >
                                                 <Text style={styles.actionBtnTextPrimary}>UPDATE TASK</Text>
+                                            </TouchableOpacity>
+
+                                            <TouchableOpacity
+                                                style={styles.actionBtnSecondary}
+                                                onPress={handlePin}
+                                                activeOpacity={0.7}
+                                            >
+                                                <Text style={styles.actionBtnTextSecondary}>{task.isPinned ? 'UNPIN TASK' : 'PIN TASK'}</Text>
                                             </TouchableOpacity>
 
                                             <TouchableOpacity

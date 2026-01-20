@@ -461,6 +461,23 @@ export default function App() {
     saveTasks(updatedTasks);
   };
 
+  const handlePinTask = async (task: Task) => {
+    const isPinned = !task.isPinned;
+    const now = new Date().toISOString();
+    const updatedTasks = tasks.map(t =>
+      t.id === task.id
+        ? {
+          ...t,
+          isPinned,
+          pinTimestamp: isPinned ? Date.now() : null,
+          updatedAt: now,
+        }
+        : t
+    );
+    setTasks(updatedTasks);
+    await saveTasks(updatedTasks);
+  };
+
   // Timer countdown effect
   useEffect(() => {
     if (intervalRef.current) {
@@ -1159,6 +1176,7 @@ export default function App() {
               onEditTask={handleEditTask}
               onUpdateComment={handleUpdateComment}
               onUpdateStages={handleUpdateStages}
+              onPinTask={handlePinTask}
               categories={categories}
               selectedDate={selectedDate}
               onDateChange={setSelectedDate}

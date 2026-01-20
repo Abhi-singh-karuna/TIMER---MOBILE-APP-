@@ -231,8 +231,8 @@ const styles = StyleSheet.create({
     },
     cardRow: {
         flexDirection: 'row',
-        gap: 8,
-        marginBottom: 8,
+        gap: 4,
+        marginBottom: -8,
     },
     cardPlaceholder: {
         flex: 1,
@@ -366,7 +366,7 @@ const styles = StyleSheet.create({
     scrollContent: {
         flexGrow: 1,
         paddingHorizontal: 20,
-        paddingBottom: 250,
+        paddingBottom: 100,
     },
 
     // Add Button
@@ -390,7 +390,7 @@ const styles = StyleSheet.create({
 
     // Task Card
     taskCard: {
-        marginBottom: 16,
+        marginBottom: 4,
         borderRadius: 32,
         paddingHorizontal: 16,
         paddingVertical: 24,
@@ -427,7 +427,7 @@ const styles = StyleSheet.create({
         flex: 1,
         marginBottom: 0,
         borderRadius: 16,
-        paddingVertical: 8,
+        paddingVertical: 4,
         paddingHorizontal: 8,
         minHeight: 80,
     },
@@ -1305,6 +1305,19 @@ const styles = StyleSheet.create({
         fontWeight: '600',
         color: 'rgba(255,255,255,0.4)',
     },
+    pinIconContainer: {
+        position: 'absolute',
+        zIndex: 20,
+    },
+    pinIconContainerPortrait: {
+        top: 15,
+        right: 15,
+    },
+    pinIconContainerLandscape: {
+        top: 5,
+        right: 6,
+        transform: [{ rotate: '4deg' }],
+    },
 });
 interface TaskListProps {
     tasks: Task[];
@@ -1321,6 +1334,7 @@ interface TaskListProps {
     isPastTasksDisabled?: boolean;
     onUpdateComment?: (task: Task, comment: string) => void;
     onUpdateStages?: (task: Task, stages: TaskStage[]) => void;
+    onPinTask?: (task: Task) => void;
     quickMessages?: QuickMessage[];
 }
 
@@ -1339,6 +1353,7 @@ export default function TaskList({
     isPastTasksDisabled,
     onUpdateComment,
     onUpdateStages,
+    onPinTask,
     quickMessages,
 }: TaskListProps) {
     const { width: screenWidth, height: screenHeight } = useWindowDimensions();
@@ -1380,6 +1395,18 @@ export default function TaskList({
         const matchesCategory = filterCategoryId === 'All' || t.categoryId === filterCategoryId;
         const matchesStatus = filterStatus === 'All' || t.status === filterStatus;
         return matchesCategory && matchesStatus;
+    }).sort((a, b) => {
+        // 1. Pinned tasks first
+        if (a.isPinned && !b.isPinned) return -1;
+        if (!a.isPinned && b.isPinned) return 1;
+
+        // 2. Among pinned, latest pinTimestamp first
+        if (a.isPinned && b.isPinned) {
+            return (b.pinTimestamp || 0) - (a.pinTimestamp || 0);
+        }
+
+        // 3. Keep relative order for others
+        return 0;
     });
 
     // Calculate analytics
@@ -2103,6 +2130,10 @@ export default function TaskList({
                         setActionModalVisible(false);
                     }}
                     onAddComment={(t, c) => onUpdateComment?.(t, c)}
+                    onPin={(t) => {
+                        onPinTask?.(t);
+                        setActionModalVisible(false);
+                    }}
                 />
             </SafeAreaView>
         </LinearGradient >
@@ -2418,6 +2449,16 @@ function TaskCard({
                 style={styles.cardInset}
                 pointerEvents="none"
             />
+
+            {task.isPinned && (
+                <View style={[styles.pinIconContainer, isLandscape ? styles.pinIconContainerLandscape : styles.pinIconContainerPortrait]}>
+                    <MaterialIcons
+                        name="local-offer"
+                        size={10}
+                        color="#fff"
+                    />
+                </View>
+            )}
 
             <View style={[
                 styles.cardContent,

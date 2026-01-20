@@ -83,6 +83,8 @@ export interface Task {
   completedAt?: string;        // ISO string when task was completed
   comments?: Comment[];        // List of user comments
   stages?: TaskStage[];        // List of task stages
+  isPinned?: boolean;          // Whether the task is pinned
+  pinTimestamp?: number | null; // Unix timestamp when pinned
 }
 
 export const SOUND_OPTIONS = [
