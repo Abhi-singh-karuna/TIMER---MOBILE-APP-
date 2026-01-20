@@ -1202,6 +1202,26 @@ export default function App() {
     }
   };
 
+  // Handle pinning/unpinning a timer
+  const handlePinTimer = async (timer: Timer) => {
+    const isPinned = !timer.isPinned;
+    const now = new Date().toISOString();
+    const updatedTimers = timers.map(t =>
+      t.id === timer.id
+        ? {
+          ...t,
+          isPinned,
+          pinTimestamp: isPinned ? Date.now() : null,
+          updatedAt: now,
+        }
+        : t
+    );
+    setTimers(updatedTimers);
+    await saveTimers(updatedTimers);
+    setDeleteModalVisible(false);
+    setSelectedTimer(null);
+  };
+
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>
       <TouchableWithoutFeedback onPress={() => Keyboard.dismiss()} accessible={false}>
@@ -1209,51 +1229,50 @@ export default function App() {
           <SafeAreaProvider>
             {renderScreen()}
 
-          <AddTimerModal
-            visible={addModalVisible}
-            onCancel={() => {
-              setAddModalVisible(false);
-              setTimerToEdit(null);
-            }}
-            onAdd={handleAddTimer}
-            onUpdate={handleUpdateTimer}
-            initialDate={formatDate(selectedDate)}
-            categories={categories}
-            timerToEdit={timerToEdit}
-            isPastTimersDisabled={isPastTimersDisabled}
-          />
+            <AddTimerModal
+              visible={addModalVisible}
+              onCancel={() => {
+                setAddModalVisible(false);
+                setTimerToEdit(null);
+              }}
+              onAdd={handleAddTimer}
+              onUpdate={handleUpdateTimer}
+              initialDate={formatDate(selectedDate)}
+              categories={categories}
+              timerToEdit={timerToEdit}
+              isPastTimersDisabled={isPastTimersDisabled}
+            />
 
-          <DeleteModal
-            visible={deleteModalVisible}
-            timer={selectedTimer}
-            onCancel={() => {
-              setDeleteModalVisible(false);
-              setSelectedTimer(null);
-            }}
-            onUpdate={() => {
-              if (isPastTimersDisabled) {
+            <DeleteModal
+              visible={deleteModalVisible}
+              timer={selectedTimer}
+              onCancel={() => {
+                setDeleteModalVisible(false);
+                setSelectedTimer(null);
+              }}
+              onUpdate={() => {
                 setTimerToEdit(selectedTimer);
                 setDeleteModalVisible(false);
                 setAddModalVisible(true);
-              }
-            }}
-            onReset={handleResetTimer}
-            onDelete={confirmDelete}
-          />
+              }}
+              onReset={handleResetTimer}
+              onDelete={confirmDelete}
+              onPin={handlePinTimer}
+            />
 
-          <AddTaskModal
-            visible={addTaskModalVisible}
-            onCancel={() => {
-              setAddTaskModalVisible(false);
-              setTaskToEdit(null);
-            }}
-            onAdd={handleAddTask}
-            onUpdate={handleUpdateTask}
-            taskToEdit={taskToEdit}
-            categories={categories}
-            initialDate={formatDate(selectedDate)}
-            isPastTasksDisabled={isPastTasksDisabled}
-          />
+            <AddTaskModal
+              visible={addTaskModalVisible}
+              onCancel={() => {
+                setAddTaskModalVisible(false);
+                setTaskToEdit(null);
+              }}
+              onAdd={handleAddTask}
+              onUpdate={handleUpdateTask}
+              taskToEdit={taskToEdit}
+              categories={categories}
+              initialDate={formatDate(selectedDate)}
+              isPastTasksDisabled={isPastTasksDisabled}
+            />
 
             <StatusBar style="light" />
           </SafeAreaProvider>

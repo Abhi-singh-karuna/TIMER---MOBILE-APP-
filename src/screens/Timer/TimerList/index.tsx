@@ -266,11 +266,25 @@ export default function TimerList({
 
     const dateFilteredTimers = timers.filter(t => t.forDate === formatDate(propSelectedDate));
 
-    const filteredTimers = dateFilteredTimers.filter(t => {
-        const matchesCategory = filterCategoryId === 'All' || t.categoryId === filterCategoryId;
-        const matchesStatus = filterStatus === 'All' || t.status === filterStatus;
-        return matchesCategory && matchesStatus;
-    });
+    const filteredTimers = dateFilteredTimers
+        .filter(t => {
+            const matchesCategory = filterCategoryId === 'All' || t.categoryId === filterCategoryId;
+            const matchesStatus = filterStatus === 'All' || t.status === filterStatus;
+            return matchesCategory && matchesStatus;
+        })
+        .sort((a, b) => {
+            // 1. Pinned timers first
+            if (a.isPinned && !b.isPinned) return -1;
+            if (!a.isPinned && b.isPinned) return 1;
+
+            // 2. Among pinned, latest pinTimestamp first
+            if (a.isPinned && b.isPinned) {
+                return (b.pinTimestamp || 0) - (a.pinTimestamp || 0);
+            }
+
+            // 3. Normal ordering (not explicitly specified, keep current relative order or sort by ID/time)
+            return 0;
+        });
 
     // Calculate analytics (based on date matches only, or filtered? Let's keep analytics for the whole day)
     const completedCount = dateFilteredTimers.filter(t => t.status === 'Completed').length;
@@ -1440,6 +1454,19 @@ function TimerCard({ timer, onLongPress, onPress, onPlayPause, isLandscape, cate
                     </View>
                 </View>
 
+                {timer.isPinned && (
+                    <>
+                        <View style={[styles.pinBadge, isLandscape ? styles.pinBadgeLandscape : styles.pinBadgePortrait]} />
+                        <View style={[styles.pinIconContainer, isLandscape ? styles.pinIconContainerLandscape : styles.pinIconContainerPortrait]}>
+                            <MaterialIcons
+                                name="local-offer"
+                                size={8}
+                                color="#000"
+                            />
+                        </View>
+                    </>
+                )}
+
                 {isReadOnly && !isCompleted && (
                     <View style={styles.readOnlyIcon}>
                         <MaterialIcons name="lock" size={20} color="rgba(255,255,255,0.3)" />
@@ -2471,6 +2498,43 @@ const styles = StyleSheet.create({
     miniChipTextActive: {
         color: '#fff',
         fontWeight: '800',
+    },
+
+    pinBadge: {
+        position: 'absolute',
+        backgroundColor: '#eee9e9ff',
+        transform: [{ rotate: '45deg' }],
+        zIndex: 8,
+    },
+
+    pinBadgePortrait: {
+        top: -30,
+        right: -70,
+        width: 100,
+        height: 48,
+    },
+
+    pinBadgeLandscape: {
+        top: -28,
+        right: -28,
+        width: 40,
+        height: 40,
+    },
+
+    pinIconContainer: {
+        position: 'absolute',
+        zIndex: 21,
+    },
+
+    pinIconContainerPortrait: {
+        top: -10,
+        right: -5,
+    },
+
+    pinIconContainerLandscape: {
+        top: -3,
+        right: -3,
+        transform: [{ rotate: '4deg' }],
     },
 
     // ========== MODAL STYLES ==========

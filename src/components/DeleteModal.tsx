@@ -10,6 +10,7 @@ import {
     useWindowDimensions,
 } from 'react-native';
 import { BlurView } from 'expo-blur';
+import { MaterialIcons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
 import { Timer } from '../constants/data';
 
@@ -22,9 +23,10 @@ interface DeleteModalProps {
     onReset: () => void;
     onUpdate: () => void;
     onDelete: () => void;
+    onPin: (timer: Timer) => void;
 }
 
-export default function DeleteModal({ visible, timer, onCancel, onReset, onUpdate, onDelete }: DeleteModalProps) {
+export default function DeleteModal({ visible, timer, onCancel, onReset, onUpdate, onDelete, onPin }: DeleteModalProps) {
     const { width: screenWidth, height: screenHeight } = useWindowDimensions();
     const isLandscape = screenWidth > screenHeight;
     if (!timer) return null;
@@ -37,6 +39,11 @@ export default function DeleteModal({ visible, timer, onCancel, onReset, onUpdat
     const handleCancel = () => {
         Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
         onCancel();
+    };
+
+    const handlePin = () => {
+        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+        onPin(timer);
     };
 
     return (
@@ -61,6 +68,24 @@ export default function DeleteModal({ visible, timer, onCancel, onReset, onUpdat
 
                     {/* Buttons */}
                     <View style={styles.buttonContainer}>
+                        <TouchableOpacity
+                            onPress={handlePin}
+                            style={styles.pinBtn}
+                            activeOpacity={0.7}
+                        >
+                            <View style={styles.pinBtnContent}>
+                                <MaterialIcons
+                                    name={timer.isPinned ? "push-pin" : "push-pin"}
+                                    size={18}
+                                    color="#fff"
+                                    style={{ transform: [{ rotate: timer.isPinned ? '0deg' : '45deg' }] }}
+                                />
+                                <Text style={[styles.pinBtnText, timer.isPinned && { color: '#fff' }]}>
+                                    {timer.isPinned ? 'UNPIN TIMER' : 'PIN TIMER'}
+                                </Text>
+                            </View>
+                        </TouchableOpacity>
+
                         <TouchableOpacity
                             onPress={() => {
                                 Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
@@ -173,6 +198,29 @@ const styles = StyleSheet.create({
     buttonRow: {
         flexDirection: 'row',
         gap: 12,
+    },
+
+    pinBtn: {
+        width: '100%',
+        borderRadius: 14,
+        paddingVertical: 14,
+        alignItems: 'center',
+        backgroundColor: 'rgba(255, 255, 255, 0.08)',
+        borderWidth: 1.5,
+        borderColor: 'rgba(255, 255, 255, 0.2)',
+    },
+
+    pinBtnContent: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 8,
+    },
+
+    pinBtnText: {
+        fontSize: 13,
+        fontWeight: '700',
+        color: '#fff',
+        letterSpacing: 1.5,
     },
 
     resetBtn: {

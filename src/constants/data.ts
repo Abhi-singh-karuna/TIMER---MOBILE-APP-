@@ -51,6 +51,8 @@ export interface Timer {
   borrowedTimeList: number[];  // List of seconds borrowed
   forDate: string;             // YYYY-MM-DD format
   categoryId?: string;         // Assigned category ID
+  isPinned?: boolean;          // Whether the timer is pinned
+  pinTimestamp?: number | null; // Unix timestamp when pinned
 }
 
 export interface Comment {
