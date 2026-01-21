@@ -100,8 +100,8 @@ export default function CategorySection({
                     <Text style={styles.inputLabel}>PICK COLOR</Text>
                     <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ paddingVertical: 8 }}>
                         {COLOR_PRESETS.map(preset => (
-                            <TouchableOpacity key={preset.value} style={[styles.catColorChip, selectedCategoryColor === preset.value && { borderColor: '#fff' }]} onPress={() => setSelectedCategoryColor(preset.value)}>
-                                <View style={[styles.catColorInner, { backgroundColor: preset.value }]} />
+                            <TouchableOpacity key={preset.hex} style={[styles.catColorChip, selectedCategoryColor === preset.hex && { borderColor: '#fff' }]} onPress={() => setSelectedCategoryColor(preset.hex)}>
+                                <View style={[styles.catColorInner, { backgroundColor: preset.hex }]} />
                             </TouchableOpacity>
                         ))}
                     </ScrollView>

@@ -182,9 +182,9 @@ export default function ThemeSection({
             </View>
             <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.colorScrollerContent}>
                 {COLOR_PRESETS.map((preset) => (
-                    <TouchableOpacity key={preset.value} style={[styles.colorChip, currentColor === preset.value && styles.colorChipSelected, { borderColor: currentColor === preset.value ? preset.value : 'transparent' }]} onPress={() => onSelect(preset.value)} activeOpacity={0.7}>
-                        <View style={[styles.colorChipSwatch, { backgroundColor: preset.value }]}>
-                            {currentColor === preset.value && <MaterialIcons name="check" size={14} color={preset.value === '#FFFFFF' ? '#000' : '#fff'} />}
+                    <TouchableOpacity key={preset.hex} style={[styles.colorChip, currentColor === preset.hex && styles.colorChipSelected, { borderColor: currentColor === preset.hex ? preset.hex : 'transparent' }]} onPress={() => onSelect(preset.hex)} activeOpacity={0.7}>
+                        <View style={[styles.colorChipSwatch, { backgroundColor: preset.hex }]}>
+                            {currentColor === preset.hex && <MaterialIcons name="check" size={14} color={preset.hex === '#FFFFFF' ? '#000' : '#fff'} />}
                         </View>
                     </TouchableOpacity>
                 ))}
