@@ -11,6 +11,8 @@ import {
     KeyboardAvoidingView,
     Platform,
     Dimensions,
+    Keyboard,
+    TouchableWithoutFeedback,
 } from 'react-native';
 import { BlurView } from 'expo-blur';
 import { MaterialIcons } from '@expo/vector-icons';
@@ -264,242 +266,246 @@ export default function AddTaskModal({
             supportedOrientations={['portrait', 'landscape']}
             onRequestClose={handleCancel}
         >
-            <View style={styles.overlay}>
-                {Platform.OS !== 'web' && <BlurView intensity={60} tint="dark" style={StyleSheet.absoluteFill} />}
-                <View style={styles.dimLayer} />
+            <TouchableWithoutFeedback onPress={Keyboard.dismiss} accessible={false}>
+                <View style={styles.overlay}>
+                    {Platform.OS !== 'web' && <BlurView intensity={60} tint="dark" style={StyleSheet.absoluteFill} />}
+                    <View style={styles.dimLayer} />
 
-                <View style={[styles.modal, (isLandscape && !showDatePicker) ? styles.modalLandscape : styles.modalPortrait]}>
-                    <KeyboardAvoidingView
-                        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-                        style={styles.keyboardView}
-                    >
-                        {isLandscape && !showDatePicker ? (
-                            <View style={styles.landscapeContainer}>
-                                {/* Left Column - Inputs */}
-                                <View style={styles.leftColumn}>
-                                    <View style={styles.fieldGroup}>
-                                        <Text style={styles.label}>TASK TITLE</Text>
-                                        <TextInput
-                                            style={[styles.input, styles.compactInput, errorTitle && styles.inputError]}
-                                            placeholder="What do you need to do?"
-                                            placeholderTextColor="rgba(255,255,255,0.3)"
-                                            value={title}
-                                            onChangeText={(text) => {
-                                                setTitle(text);
-                                                if (text.trim()) setErrorTitle(false);
-                                            }}
-                                        />
-                                    </View>
-
-                                    <View style={[styles.fieldGroup, { flex: 1 }]}>
-                                        <Text style={styles.label}>DESCRIPTION (OPTIONAL)</Text>
-                                        <TextInput
-                                            style={[styles.input, styles.descriptionInput, styles.compactInput, { flex: 1 }]}
-                                            placeholder="Add more details..."
-                                            placeholderTextColor="rgba(255,255,255,0.3)"
-                                            value={description}
-                                            onChangeText={setDescription}
-                                            multiline
-                                            textAlignVertical="top"
-                                        />
-                                    </View>
-                                </View>
-
-                                {/* Right Column - Priority & Category & Date & Actions */}
-                                <View style={styles.rightColumn}>
-                                    <View style={styles.fieldGroup}>
-                                        <Text style={styles.label}>PRIORITY</Text>
-                                        <View style={styles.priorityRow}>
-                                            {priorities.map((p) => (
-                                                <TouchableOpacity
-                                                    key={p}
-                                                    style={[
-                                                        styles.priorityBtn,
-                                                        priority === p && {
-                                                            backgroundColor: `${getPriorityColor(p)}20`,
-                                                            borderColor: getPriorityColor(p),
-                                                        }
-                                                    ]}
-                                                    onPress={() => {
-                                                        setPriority(p);
-                                                        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                    <TouchableWithoutFeedback onPress={(e) => e.stopPropagation()}>
+                        <View style={[styles.modal, (isLandscape && !showDatePicker) ? styles.modalLandscape : styles.modalPortrait]}>
+                            <KeyboardAvoidingView
+                                behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+                                style={styles.keyboardView}
+                            >
+                                {isLandscape && !showDatePicker ? (
+                                    <View style={styles.landscapeContainer}>
+                                        {/* Left Column - Inputs */}
+                                        <View style={styles.leftColumn}>
+                                            <View style={styles.fieldGroup}>
+                                                <Text style={styles.label}>TASK TITLE</Text>
+                                                <TextInput
+                                                    style={[styles.input, styles.compactInput, errorTitle && styles.inputError]}
+                                                    placeholder="What do you need to do?"
+                                                    placeholderTextColor="rgba(255,255,255,0.3)"
+                                                    value={title}
+                                                    onChangeText={(text) => {
+                                                        setTitle(text);
+                                                        if (text.trim()) setErrorTitle(false);
                                                     }}
+                                                />
+                                            </View>
+
+                                            <View style={[styles.fieldGroup, { flex: 1 }]}>
+                                                <Text style={styles.label}>DESCRIPTION (OPTIONAL)</Text>
+                                                <TextInput
+                                                    style={[styles.input, styles.descriptionInput, styles.compactInput, { flex: 1 }]}
+                                                    placeholder="Add more details..."
+                                                    placeholderTextColor="rgba(255,255,255,0.3)"
+                                                    value={description}
+                                                    onChangeText={setDescription}
+                                                    multiline
+                                                    textAlignVertical="top"
+                                                />
+                                            </View>
+                                        </View>
+
+                                        {/* Right Column - Priority & Category & Date & Actions */}
+                                        <View style={styles.rightColumn}>
+                                            <View style={styles.fieldGroup}>
+                                                <Text style={styles.label}>PRIORITY</Text>
+                                                <View style={styles.priorityRow}>
+                                                    {priorities.map((p) => (
+                                                        <TouchableOpacity
+                                                            key={p}
+                                                            style={[
+                                                                styles.priorityBtn,
+                                                                priority === p && {
+                                                                    backgroundColor: `${getPriorityColor(p)}20`,
+                                                                    borderColor: getPriorityColor(p),
+                                                                }
+                                                            ]}
+                                                            onPress={() => {
+                                                                setPriority(p);
+                                                                Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                                                            }}
+                                                        >
+                                                            <Text style={[
+                                                                styles.priorityText,
+                                                                priority === p && { color: getPriorityColor(p) }
+                                                            ]}>{p.toUpperCase()}</Text>
+                                                        </TouchableOpacity>
+                                                    ))}
+                                                </View>
+                                            </View>
+
+                                            {renderCategoryPicker()}
+
+                                            <View style={styles.fieldGroup}>
+                                                <View style={styles.backlogRow}>
+                                                    <Text style={styles.label}>ADD TO BACKLOG</Text>
+                                                    <TouchableOpacity
+                                                        style={[styles.backlogToggle, isBacklog && styles.backlogToggleActive]}
+                                                        onPress={() => {
+                                                            setIsBacklog(!isBacklog);
+                                                            Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                                                        }}
+                                                    >
+                                                        <View style={[styles.backlogToggleCircle, isBacklog && styles.backlogToggleCircleActive]} />
+                                                    </TouchableOpacity>
+                                                </View>
+                                            </View>
+
+                                            {!isBacklog && (
+                                                <View style={styles.fieldGroup}>
+                                                    <Text style={styles.label}>FOR DATE</Text>
+                                                    <TouchableOpacity
+                                                        style={[
+                                                            styles.dateDisplay,
+                                                            styles.compactInput,
+                                                            (isPastTasksDisabled && selectedDate < new Date().toISOString().split('T')[0]) && styles.inputError
+                                                        ]}
+                                                        onPress={() => {
+                                                            setShowDatePicker(true);
+                                                            Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                                                        }}
+                                                    >
+                                                        <Text style={styles.dateDisplayText}>{selectedDate}</Text>
+                                                        <MaterialIcons name="event" size={16} color="#fff" />
+                                                    </TouchableOpacity>
+                                                </View>
+                                            )}
+
+                                            <View style={styles.landscapeActions}>
+                                                <TouchableOpacity
+                                                    style={[styles.addBtn, { flex: 1, marginBottom: 0 }]}
+                                                    onPress={handleAdd}
+                                                    activeOpacity={0.7}
                                                 >
-                                                    <Text style={[
-                                                        styles.priorityText,
-                                                        priority === p && { color: getPriorityColor(p) }
-                                                    ]}>{p.toUpperCase()}</Text>
+                                                    <Text style={styles.addBtnText}>{taskToEdit ? 'Update Task' : 'Add Task'}</Text>
                                                 </TouchableOpacity>
-                                            ))}
-                                        </View>
-                                    </View>
-
-                                    {renderCategoryPicker()}
-
-                                    <View style={styles.fieldGroup}>
-                                        <View style={styles.backlogRow}>
-                                            <Text style={styles.label}>ADD TO BACKLOG</Text>
-                                            <TouchableOpacity
-                                                style={[styles.backlogToggle, isBacklog && styles.backlogToggleActive]}
-                                                onPress={() => {
-                                                    setIsBacklog(!isBacklog);
-                                                    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                                                }}
-                                            >
-                                                <View style={[styles.backlogToggleCircle, isBacklog && styles.backlogToggleCircleActive]} />
-                                            </TouchableOpacity>
-                                        </View>
-                                    </View>
-
-                                    {!isBacklog && (
-                                        <View style={styles.fieldGroup}>
-                                            <Text style={styles.label}>FOR DATE</Text>
-                                            <TouchableOpacity
-                                                style={[
-                                                    styles.dateDisplay,
-                                                    styles.compactInput,
-                                                    (isPastTasksDisabled && selectedDate < new Date().toISOString().split('T')[0]) && styles.inputError
-                                                ]}
-                                                onPress={() => {
-                                                    setShowDatePicker(true);
-                                                    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                                                }}
-                                            >
-                                                <Text style={styles.dateDisplayText}>{selectedDate}</Text>
-                                                <MaterialIcons name="event" size={16} color="#fff" />
-                                            </TouchableOpacity>
-                                        </View>
-                                    )}
-
-                                    <View style={styles.landscapeActions}>
-                                        <TouchableOpacity
-                                            style={[styles.addBtn, { flex: 1, marginBottom: 0 }]}
-                                            onPress={handleAdd}
-                                            activeOpacity={0.7}
-                                        >
-                                            <Text style={styles.addBtnText}>{taskToEdit ? 'Update Task' : 'Add Task'}</Text>
-                                        </TouchableOpacity>
-                                        <TouchableOpacity
-                                            onPress={handleCancel}
-                                            activeOpacity={0.7}
-                                            style={styles.landscapeCancel}
-                                        >
-                                            <Text style={styles.cancelText}>Cancel</Text>
-                                        </TouchableOpacity>
-                                    </View>
-                                </View>
-                            </View>
-                        ) : (
-                            <ScrollView showsVerticalScrollIndicator={false} bounces={false}>
-                                {showDatePicker ? (
-                                    renderDatePicker()
-                                ) : (
-                                    <>
-                                        <Text style={styles.label}>TASK TITLE</Text>
-                                        <TextInput
-                                            style={[styles.input, errorTitle && styles.inputError]}
-                                            placeholder="What do you need to do?"
-                                            placeholderTextColor="rgba(255,255,255,0.3)"
-                                            value={title}
-                                            onChangeText={(text) => {
-                                                setTitle(text);
-                                                if (text.trim()) setErrorTitle(false);
-                                            }}
-                                        />
-
-                                        <Text style={styles.label}>DESCRIPTION (OPTIONAL)</Text>
-                                        <TextInput
-                                            style={[styles.input, styles.descriptionInput]}
-                                            placeholder="Add more details..."
-                                            placeholderTextColor="rgba(255,255,255,0.3)"
-                                            value={description}
-                                            onChangeText={setDescription}
-                                            multiline
-                                            numberOfLines={4}
-                                            textAlignVertical="top"
-                                        />
-
-                                        <View style={[styles.backlogRow, { marginBottom: 24 }]}>
-                                            <Text style={styles.label}>ADD TO BACKLOG</Text>
-                                            <TouchableOpacity
-                                                style={[styles.backlogToggle, isBacklog && styles.backlogToggleActive]}
-                                                onPress={() => {
-                                                    setIsBacklog(!isBacklog);
-                                                    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                                                }}
-                                            >
-                                                <View style={[styles.backlogToggleCircle, isBacklog && styles.backlogToggleCircleActive]} />
-                                            </TouchableOpacity>
-                                        </View>
-
-                                        {!isBacklog && (
-                                            <>
-                                                <Text style={styles.label}>FOR DATE</Text>
                                                 <TouchableOpacity
-                                                    style={[
-                                                        styles.dateDisplay,
-                                                        { marginBottom: 24 },
-                                                        (isPastTasksDisabled && selectedDate < new Date().toISOString().split('T')[0]) && styles.inputError
-                                                    ]}
-                                                    onPress={() => {
-                                                        setShowDatePicker(true);
-                                                        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                                                    }}
+                                                    onPress={handleCancel}
+                                                    activeOpacity={0.7}
+                                                    style={styles.landscapeCancel}
                                                 >
-                                                    <Text style={styles.dateDisplayText}>{selectedDate}</Text>
-                                                    <MaterialIcons name="event" size={16} color="#fff" />
+                                                    <Text style={styles.cancelText}>Cancel</Text>
+                                                </TouchableOpacity>
+                                            </View>
+                                        </View>
+                                    </View>
+                                ) : (
+                                    <ScrollView showsVerticalScrollIndicator={false} bounces={false}>
+                                        {showDatePicker ? (
+                                            renderDatePicker()
+                                        ) : (
+                                            <>
+                                                <Text style={styles.label}>TASK TITLE</Text>
+                                                <TextInput
+                                                    style={[styles.input, errorTitle && styles.inputError]}
+                                                    placeholder="What do you need to do?"
+                                                    placeholderTextColor="rgba(255,255,255,0.3)"
+                                                    value={title}
+                                                    onChangeText={(text) => {
+                                                        setTitle(text);
+                                                        if (text.trim()) setErrorTitle(false);
+                                                    }}
+                                                />
+
+                                                <Text style={styles.label}>DESCRIPTION (OPTIONAL)</Text>
+                                                <TextInput
+                                                    style={[styles.input, styles.descriptionInput]}
+                                                    placeholder="Add more details..."
+                                                    placeholderTextColor="rgba(255,255,255,0.3)"
+                                                    value={description}
+                                                    onChangeText={setDescription}
+                                                    multiline
+                                                    numberOfLines={4}
+                                                    textAlignVertical="top"
+                                                />
+
+                                                <View style={[styles.backlogRow, { marginBottom: 24 }]}>
+                                                    <Text style={styles.label}>ADD TO BACKLOG</Text>
+                                                    <TouchableOpacity
+                                                        style={[styles.backlogToggle, isBacklog && styles.backlogToggleActive]}
+                                                        onPress={() => {
+                                                            setIsBacklog(!isBacklog);
+                                                            Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                                                        }}
+                                                    >
+                                                        <View style={[styles.backlogToggleCircle, isBacklog && styles.backlogToggleCircleActive]} />
+                                                    </TouchableOpacity>
+                                                </View>
+
+                                                {!isBacklog && (
+                                                    <>
+                                                        <Text style={styles.label}>FOR DATE</Text>
+                                                        <TouchableOpacity
+                                                            style={[
+                                                                styles.dateDisplay,
+                                                                { marginBottom: 24 },
+                                                                (isPastTasksDisabled && selectedDate < new Date().toISOString().split('T')[0]) && styles.inputError
+                                                            ]}
+                                                            onPress={() => {
+                                                                setShowDatePicker(true);
+                                                                Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                                                            }}
+                                                        >
+                                                            <Text style={styles.dateDisplayText}>{selectedDate}</Text>
+                                                            <MaterialIcons name="event" size={16} color="#fff" />
+                                                        </TouchableOpacity>
+                                                    </>
+                                                )}
+
+                                                <Text style={styles.label}>PRIORITY</Text>
+                                                <View style={[styles.priorityRow, { marginBottom: 24 }]}>
+                                                    {priorities.map((p) => (
+                                                        <TouchableOpacity
+                                                            key={p}
+                                                            style={[
+                                                                styles.priorityBtn,
+                                                                priority === p && {
+                                                                    backgroundColor: `${getPriorityColor(p)}20`,
+                                                                    borderColor: getPriorityColor(p),
+                                                                }
+                                                            ]}
+                                                            onPress={() => {
+                                                                setPriority(p);
+                                                                Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                                                            }}
+                                                        >
+                                                            <Text style={[
+                                                                styles.priorityText,
+                                                                priority === p && { color: getPriorityColor(p) }
+                                                            ]}>{p.toUpperCase()}</Text>
+                                                        </TouchableOpacity>
+                                                    ))}
+                                                </View>
+
+                                                {renderCategoryPicker()}
+
+                                                <TouchableOpacity
+                                                    style={styles.addBtn}
+                                                    onPress={handleAdd}
+                                                    activeOpacity={0.7}
+                                                >
+                                                    <Text style={styles.addBtnText}>{taskToEdit ? 'Update Task' : 'Add Task'}</Text>
+                                                </TouchableOpacity>
+
+                                                <TouchableOpacity
+                                                    onPress={handleCancel}
+                                                    activeOpacity={0.7}
+                                                >
+                                                    <Text style={styles.cancelText}>Cancel</Text>
                                                 </TouchableOpacity>
                                             </>
                                         )}
-
-                                        <Text style={styles.label}>PRIORITY</Text>
-                                        <View style={[styles.priorityRow, { marginBottom: 24 }]}>
-                                            {priorities.map((p) => (
-                                                <TouchableOpacity
-                                                    key={p}
-                                                    style={[
-                                                        styles.priorityBtn,
-                                                        priority === p && {
-                                                            backgroundColor: `${getPriorityColor(p)}20`,
-                                                            borderColor: getPriorityColor(p),
-                                                        }
-                                                    ]}
-                                                    onPress={() => {
-                                                        setPriority(p);
-                                                        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                                                    }}
-                                                >
-                                                    <Text style={[
-                                                        styles.priorityText,
-                                                        priority === p && { color: getPriorityColor(p) }
-                                                    ]}>{p.toUpperCase()}</Text>
-                                                </TouchableOpacity>
-                                            ))}
-                                        </View>
-
-                                        {renderCategoryPicker()}
-
-                                        <TouchableOpacity
-                                            style={styles.addBtn}
-                                            onPress={handleAdd}
-                                            activeOpacity={0.7}
-                                        >
-                                            <Text style={styles.addBtnText}>{taskToEdit ? 'Update Task' : 'Add Task'}</Text>
-                                        </TouchableOpacity>
-
-                                        <TouchableOpacity
-                                            onPress={handleCancel}
-                                            activeOpacity={0.7}
-                                        >
-                                            <Text style={styles.cancelText}>Cancel</Text>
-                                        </TouchableOpacity>
-                                    </>
+                                    </ScrollView>
                                 )}
-                            </ScrollView>
-                        )}
-                    </KeyboardAvoidingView>
+                            </KeyboardAvoidingView>
+                        </View>
+                    </TouchableWithoutFeedback>
                 </View>
-            </View>
+            </TouchableWithoutFeedback>
         </Modal>
     );
 }

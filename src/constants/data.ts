@@ -51,12 +51,24 @@ export interface Timer {
   borrowedTimeList: number[];  // List of seconds borrowed
   forDate: string;             // YYYY-MM-DD format
   categoryId?: string;         // Assigned category ID
+  isPinned?: boolean;          // Whether the timer is pinned
+  pinTimestamp?: number | null; // Unix timestamp when pinned
 }
 
 export interface Comment {
   id: number;
   text: string;
   createdAt: string; // ISO string
+}
+
+export type StageStatus = 'Upcoming' | 'Process' | 'Done' | 'Undone';
+
+export interface TaskStage {
+  id: number;
+  text: string;
+  isCompleted: boolean; // Kept for backward compatibility (true = Done, false = others)
+  status: StageStatus;  // New field for 4-state tracking
+  createdAt: string;
 }
 
 export interface Task {
@@ -73,6 +85,9 @@ export interface Task {
   startedAt?: string;          // ISO string when task was first started
   completedAt?: string;        // ISO string when task was completed
   comments?: Comment[];        // List of user comments
+  stages?: TaskStage[];        // List of task stages
+  isPinned?: boolean;          // Whether the task is pinned
+  pinTimestamp?: number | null; // Unix timestamp when pinned
 }
 
 export const SOUND_OPTIONS = [

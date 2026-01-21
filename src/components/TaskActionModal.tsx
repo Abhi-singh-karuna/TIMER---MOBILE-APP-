@@ -1,4 +1,5 @@
-import React, { useState } from 'react';
+import * as React from 'react';
+import { useState } from 'react';
 import {
     View,
     Text,
@@ -10,6 +11,8 @@ import {
     Platform,
     KeyboardAvoidingView,
     useWindowDimensions,
+    Keyboard,
+    TouchableWithoutFeedback,
 } from 'react-native';
 import { BlurView } from 'expo-blur';
 import { MaterialIcons } from '@expo/vector-icons';
@@ -25,6 +28,7 @@ interface TaskActionModalProps {
     onDelete: (task: Task) => void;
     onUpdate: (task: Task) => void;
     onAddComment: (task: Task, comment: string) => void;
+    onPin: (task: Task) => void;
 }
 
 export default function TaskActionModal({
@@ -34,6 +38,7 @@ export default function TaskActionModal({
     onDelete,
     onUpdate,
     onAddComment,
+    onPin,
 }: TaskActionModalProps) {
     const { width: screenWidth, height: screenHeight } = useWindowDimensions();
     const isLandscape = screenWidth > screenHeight;
@@ -53,6 +58,11 @@ export default function TaskActionModal({
         }
     };
 
+    const handlePin = () => {
+        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+        onPin(task);
+    };
+
     return (
         <Modal
             visible={visible}
@@ -61,104 +71,116 @@ export default function TaskActionModal({
             supportedOrientations={['portrait', 'landscape']}
             onRequestClose={onClose}
         >
-            <View style={styles.overlay}>
-                {Platform.OS !== 'web' && <BlurView intensity={60} tint="dark" style={StyleSheet.absoluteFill} />}
-                <View style={styles.dimLayer} />
+            <TouchableWithoutFeedback onPress={Keyboard.dismiss} accessible={false}>
+                <View style={styles.overlay}>
+                    {Platform.OS !== 'web' && <BlurView intensity={60} tint="dark" style={StyleSheet.absoluteFill} />}
+                    <View style={styles.dimLayer} />
 
-                <KeyboardAvoidingView
-                    behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-                    style={styles.keyboardView}
-                >
-                    <View style={[
-                        styles.modal,
-                        isLandscape && !commentMode && styles.modalLandscape,
-                        commentMode && styles.modalComment
-                    ]}>
-                        {commentMode ? (
-                            <View style={styles.commentContainer}>
-                                <View style={styles.header}>
-                                    <Text style={styles.commentTitle}>ADD COMMENT</Text>
-                                    <TouchableOpacity onPress={() => {
-                                        setCommentMode(false);
-                                        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                                    }}>
-                                        <MaterialIcons name="close" size={24} color="rgba(255,255,255,0.4)" />
-                                    </TouchableOpacity>
-                                </View>
-                                <TextInput
-                                    style={styles.commentInput}
-                                    placeholder="Write your comment here..."
-                                    placeholderTextColor="rgba(255,255,255,0.3)"
-                                    value={commentText}
-                                    onChangeText={setCommentText}
-                                    multiline
-                                    autoFocus
-                                />
-                                <TouchableOpacity
-                                    style={styles.actionBtnPrimary}
-                                    onPress={handleCommentSubmit}
-                                    activeOpacity={0.7}
-                                >
-                                    <Text style={styles.actionBtnTextPrimary}>SAVE COMMENT</Text>
-                                </TouchableOpacity>
-                            </View>
-                        ) : (
-                            <View style={styles.menuContainer}>
-                                <Text style={styles.title}>Task Actions</Text>
-                                <Text style={styles.subtitle}>Select an action for this task.</Text>
-                                <Text style={styles.taskInfo}>{task.title.toUpperCase()} – {task.isBacklog ? 'BACKLOG' : task.forDate}</Text>
-
-                                <View style={styles.buttonContainer}>
-                                    <TouchableOpacity
-                                        style={styles.actionBtnPrimary}
-                                        onPress={() => {
-                                            onUpdate(task);
-                                            onClose();
-                                            Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-                                        }}
-                                        activeOpacity={0.7}
-                                    >
-                                        <Text style={styles.actionBtnTextPrimary}>UPDATE TASK</Text>
-                                    </TouchableOpacity>
-
-                                    <TouchableOpacity
-                                        style={styles.actionBtnSecondary}
-                                        onPress={() => {
-                                            setCommentMode(true);
-                                            setCommentText('');
-                                            Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-                                        }}
-                                        activeOpacity={0.7}
-                                    >
-                                        <Text style={styles.actionBtnTextSecondary}>ADD COMMENT</Text>
-                                    </TouchableOpacity>
-
-                                    <View style={[styles.bottomButtonRow, isLandscape && styles.bottomButtonRowLandscape]}>
+                    <KeyboardAvoidingView
+                        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+                        style={styles.keyboardView}
+                    >
+                        <TouchableWithoutFeedback onPress={(e) => e.stopPropagation()}>
+                            <View style={[
+                                styles.modal,
+                                isLandscape && !commentMode && styles.modalLandscape,
+                                commentMode && styles.modalComment
+                            ]}>
+                                {commentMode ? (
+                                    <View style={styles.commentContainer}>
+                                        <View style={styles.header}>
+                                            <Text style={styles.commentTitle}>ADD COMMENT</Text>
+                                            <TouchableOpacity onPress={() => {
+                                                setCommentMode(false);
+                                                Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                                            }}>
+                                                <MaterialIcons name="close" size={24} color="rgba(255,255,255,0.4)" />
+                                            </TouchableOpacity>
+                                        </View>
+                                        <TextInput
+                                            style={styles.commentInput}
+                                            placeholder="Write your comment here..."
+                                            placeholderTextColor="rgba(255,255,255,0.3)"
+                                            value={commentText}
+                                            onChangeText={setCommentText}
+                                            multiline
+                                            autoFocus
+                                        />
                                         <TouchableOpacity
-                                            onPress={onClose}
-                                            style={styles.cancelBtn}
+                                            style={styles.actionBtnPrimary}
+                                            onPress={handleCommentSubmit}
                                             activeOpacity={0.7}
                                         >
-                                            <Text style={styles.cancelText}>CANCEL</Text>
-                                        </TouchableOpacity>
-                                        <TouchableOpacity
-                                            onPress={() => {
-                                                onDelete(task);
-                                                onClose();
-                                                Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-                                            }}
-                                            style={styles.deleteBtn}
-                                            activeOpacity={0.7}
-                                        >
-                                            <Text style={styles.deleteText}>DELETE</Text>
+                                            <Text style={styles.actionBtnTextPrimary}>SAVE COMMENT</Text>
                                         </TouchableOpacity>
                                     </View>
-                                </View>
+                                ) : (
+                                    <View style={styles.menuContainer}>
+                                        <Text style={styles.title}>Task Actions</Text>
+                                        <Text style={styles.subtitle}>Select an action for this task.</Text>
+                                        <Text style={styles.taskInfo}>{task.title.toUpperCase()} – {task.isBacklog ? 'BACKLOG' : task.forDate}</Text>
+
+                                        <View style={styles.buttonContainer}>
+                                            <TouchableOpacity
+                                                style={styles.actionBtnPrimary}
+                                                onPress={() => {
+                                                    onUpdate(task);
+                                                    onClose();
+                                                    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+                                                }}
+                                                activeOpacity={0.7}
+                                            >
+                                                <Text style={styles.actionBtnTextPrimary}>UPDATE TASK</Text>
+                                            </TouchableOpacity>
+
+                                            <TouchableOpacity
+                                                style={styles.actionBtnSecondary}
+                                                onPress={handlePin}
+                                                activeOpacity={0.7}
+                                            >
+                                                <Text style={styles.actionBtnTextSecondary}>{task.isPinned ? 'UNPIN TASK' : 'PIN TASK'}</Text>
+                                            </TouchableOpacity>
+
+                                            <TouchableOpacity
+                                                style={styles.actionBtnSecondary}
+                                                onPress={() => {
+                                                    setCommentMode(true);
+                                                    setCommentText('');
+                                                    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+                                                }}
+                                                activeOpacity={0.7}
+                                            >
+                                                <Text style={styles.actionBtnTextSecondary}>ADD COMMENT</Text>
+                                            </TouchableOpacity>
+
+                                            <View style={[styles.bottomButtonRow, isLandscape && styles.bottomButtonRowLandscape]}>
+                                                <TouchableOpacity
+                                                    onPress={onClose}
+                                                    style={styles.cancelBtn}
+                                                    activeOpacity={0.7}
+                                                >
+                                                    <Text style={styles.cancelText}>CANCEL</Text>
+                                                </TouchableOpacity>
+                                                <TouchableOpacity
+                                                    onPress={() => {
+                                                        onDelete(task);
+                                                        onClose();
+                                                        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+                                                    }}
+                                                    style={styles.deleteBtn}
+                                                    activeOpacity={0.7}
+                                                >
+                                                    <Text style={styles.deleteText}>DELETE</Text>
+                                                </TouchableOpacity>
+                                            </View>
+                                        </View>
+                                    </View>
+                                )}
                             </View>
-                        )}
-                    </View>
-                </KeyboardAvoidingView>
-            </View>
+                        </TouchableWithoutFeedback>
+                    </KeyboardAvoidingView>
+                </View>
+            </TouchableWithoutFeedback>
         </Modal>
     );
 }

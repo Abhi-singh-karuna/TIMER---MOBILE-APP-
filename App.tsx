@@ -1,8 +1,9 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { LogBox, AppState, AppStateStatus, LayoutAnimation, UIManager, Platform } from 'react-native';
+import { LogBox, AppState, AppStateStatus, LayoutAnimation, UIManager, Platform, Keyboard, TouchableWithoutFeedback, View } from 'react-native';
 import * as Notifications from 'expo-notifications';
 import { StatusBar } from 'expo-status-bar';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
+import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { useFonts } from 'expo-font';
 import {
   PlusJakartaSans_300Light,
@@ -24,7 +25,7 @@ import SettingsScreen from './src/screens/Timer/Settings';
 import AddTimerModal from './src/components/AddTimerModal';
 import AddTaskModal from './src/components/AddTaskModal';
 import DeleteModal from './src/components/DeleteModal';
-import { Timer, Task, Category, QuickMessage, DEFAULT_CATEGORIES, DEFAULT_QUICK_MESSAGES, CATEGORIES_KEY, QUICK_MESSAGES_KEY, LANDSCAPE_PRESETS } from './src/constants/data';
+import { Timer, Task, TaskStage, Category, QuickMessage, DEFAULT_CATEGORIES, DEFAULT_QUICK_MESSAGES, CATEGORIES_KEY, QUICK_MESSAGES_KEY, LANDSCAPE_PRESETS } from './src/constants/data';
 import { Alert } from 'react-native';
 import { loadTimers, saveTimers } from './src/utils/storage';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -409,6 +410,72 @@ export default function App() {
     );
     setTasks(updatedTasks);
     saveTasks(updatedTasks);
+  };
+
+  // Handle updating stages (add, toggle, delete) with automatic status changes
+  const handleUpdateStages = (task: Task, stages: TaskStage[]) => {
+    const now = new Date().toISOString();
+    const previousStages = task.stages || [];
+
+    // Determine if this is adding a new stage
+    const isAddingStage = stages.length > previousStages.length;
+
+    // Calculate completion status
+    const completedCount = stages.filter(s => s.isCompleted).length;
+    const totalCount = stages.length;
+    const allCompleted = totalCount > 0 && completedCount === totalCount;
+    const someCompleted = completedCount > 0 && completedCount < totalCount;
+
+    // Determine new status
+    let newStatus: Task['status'] = task.status;
+
+    if (allCompleted && totalCount > 0) {
+      // All stages completed → Task is Completed
+      newStatus = 'Completed';
+    } else if (someCompleted) {
+      // Some stages completed → Task is In Progress
+      newStatus = 'In Progress';
+    } else if (isAddingStage && task.status === 'Completed') {
+      // Adding a stage to a completed task → Back to Pending
+      newStatus = 'Pending';
+    } else if (totalCount > 0 && completedCount === 0 && task.status === 'Completed') {
+      // If task was completed but now has uncompleted stages → In Progress
+      newStatus = 'In Progress';
+    }
+
+    const updatedTasks = tasks.map(t =>
+      t.id === task.id
+        ? {
+          ...t,
+          stages: stages,
+          status: newStatus,
+          updatedAt: now,
+          // Set startedAt if moving to In Progress and not already set
+          startedAt: newStatus === 'In Progress' && !t.startedAt ? now : t.startedAt,
+          // Set completedAt if becoming Completed, clear it otherwise
+          completedAt: newStatus === 'Completed' ? now : undefined,
+        }
+        : t
+    );
+    setTasks(updatedTasks);
+    saveTasks(updatedTasks);
+  };
+
+  const handlePinTask = async (task: Task) => {
+    const isPinned = !task.isPinned;
+    const now = new Date().toISOString();
+    const updatedTasks = tasks.map(t =>
+      t.id === task.id
+        ? {
+          ...t,
+          isPinned,
+          pinTimestamp: isPinned ? Date.now() : null,
+          updatedAt: now,
+        }
+        : t
+    );
+    setTasks(updatedTasks);
+    await saveTasks(updatedTasks);
   };
 
   // Timer countdown effect
@@ -1108,6 +1175,8 @@ export default function App() {
               onDeleteTask={handleDeleteTask}
               onEditTask={handleEditTask}
               onUpdateComment={handleUpdateComment}
+              onUpdateStages={handleUpdateStages}
+              onPinTask={handlePinTask}
               categories={categories}
               selectedDate={selectedDate}
               onDateChange={setSelectedDate}
@@ -1151,57 +1220,82 @@ export default function App() {
     }
   };
 
+  // Handle pinning/unpinning a timer
+  const handlePinTimer = async (timer: Timer) => {
+    const isPinned = !timer.isPinned;
+    const now = new Date().toISOString();
+    const updatedTimers = timers.map(t =>
+      t.id === timer.id
+        ? {
+          ...t,
+          isPinned,
+          pinTimestamp: isPinned ? Date.now() : null,
+          updatedAt: now,
+        }
+        : t
+    );
+    setTimers(updatedTimers);
+    await saveTimers(updatedTimers);
+    setDeleteModalVisible(false);
+    setSelectedTimer(null);
+  };
+
   return (
-    <SafeAreaProvider>
-      {renderScreen()}
+    <GestureHandlerRootView style={{ flex: 1 }}>
+      <TouchableWithoutFeedback onPress={() => Keyboard.dismiss()} accessible={false}>
+        <View style={{ flex: 1 }}>
+          <SafeAreaProvider>
+            {renderScreen()}
 
-      <AddTimerModal
-        visible={addModalVisible}
-        onCancel={() => {
-          setAddModalVisible(false);
-          setTimerToEdit(null);
-        }}
-        onAdd={handleAddTimer}
-        onUpdate={handleUpdateTimer}
-        initialDate={formatDate(selectedDate)}
-        categories={categories}
-        timerToEdit={timerToEdit}
-        isPastTimersDisabled={isPastTimersDisabled}
-      />
+            <AddTimerModal
+              visible={addModalVisible}
+              onCancel={() => {
+                setAddModalVisible(false);
+                setTimerToEdit(null);
+              }}
+              onAdd={handleAddTimer}
+              onUpdate={handleUpdateTimer}
+              initialDate={formatDate(selectedDate)}
+              categories={categories}
+              timerToEdit={timerToEdit}
+              isPastTimersDisabled={isPastTimersDisabled}
+            />
 
-      <DeleteModal
-        visible={deleteModalVisible}
-        timer={selectedTimer}
-        onCancel={() => {
-          setDeleteModalVisible(false);
-          setSelectedTimer(null);
-        }}
-        onUpdate={() => {
-          if (isPastTimersDisabled) {
-            setTimerToEdit(selectedTimer);
-            setDeleteModalVisible(false);
-            setAddModalVisible(true);
-          }
-        }}
-        onReset={handleResetTimer}
-        onDelete={confirmDelete}
-      />
+            <DeleteModal
+              visible={deleteModalVisible}
+              timer={selectedTimer}
+              onCancel={() => {
+                setDeleteModalVisible(false);
+                setSelectedTimer(null);
+              }}
+              onUpdate={() => {
+                setTimerToEdit(selectedTimer);
+                setDeleteModalVisible(false);
+                setAddModalVisible(true);
+              }}
+              onReset={handleResetTimer}
+              onDelete={confirmDelete}
+              onPin={handlePinTimer}
+            />
 
-      <AddTaskModal
-        visible={addTaskModalVisible}
-        onCancel={() => {
-          setAddTaskModalVisible(false);
-          setTaskToEdit(null);
-        }}
-        onAdd={handleAddTask}
-        onUpdate={handleUpdateTask}
-        taskToEdit={taskToEdit}
-        categories={categories}
-        initialDate={formatDate(selectedDate)}
-        isPastTasksDisabled={isPastTasksDisabled}
-      />
+            <AddTaskModal
+              visible={addTaskModalVisible}
+              onCancel={() => {
+                setAddTaskModalVisible(false);
+                setTaskToEdit(null);
+              }}
+              onAdd={handleAddTask}
+              onUpdate={handleUpdateTask}
+              taskToEdit={taskToEdit}
+              categories={categories}
+              initialDate={formatDate(selectedDate)}
+              isPastTasksDisabled={isPastTasksDisabled}
+            />
 
-      <StatusBar style="light" />
-    </SafeAreaProvider>
+            <StatusBar style="light" />
+          </SafeAreaProvider>
+        </View>
+      </TouchableWithoutFeedback>
+    </GestureHandlerRootView>
   );
 }
