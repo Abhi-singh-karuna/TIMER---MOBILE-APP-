@@ -39,6 +39,7 @@ export interface ThemeSectionProps {
     onTimerTextColorChange: (color: string) => void;
     onPresetChange: (index: number) => void;
     onResetToDefaults: () => void;
+    resetKey?: number;
 }
 
 // Audio section props

@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { LogBox, AppState, AppStateStatus, LayoutAnimation, UIManager, Platform, Keyboard, TouchableWithoutFeedback, View } from 'react-native';
+import { LogBox, AppState, AppStateStatus, LayoutAnimation, UIManager, Platform, Keyboard, TouchableWithoutFeedback, View, Pressable } from 'react-native';
 import * as Notifications from 'expo-notifications';
 import { StatusBar } from 'expo-status-bar';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
@@ -1242,8 +1242,12 @@ export default function App() {
 
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>
-      <TouchableWithoutFeedback onPress={() => Keyboard.dismiss()} accessible={false}>
-        <View style={{ flex: 1 }}>
+      <Pressable
+        style={{ flex: 1 }}
+        onPress={() => Keyboard.dismiss()}
+        accessible={false}
+      >
+        <View style={{ flex: 1 }} pointerEvents="box-none">
           <SafeAreaProvider>
             {renderScreen()}
 
@@ -1295,7 +1299,7 @@ export default function App() {
             <StatusBar style="light" />
           </SafeAreaProvider>
         </View>
-      </TouchableWithoutFeedback>
+      </Pressable>
     </GestureHandlerRootView>
   );
 }

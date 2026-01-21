@@ -3,10 +3,10 @@ import {
     View,
     Text,
     TouchableOpacity,
-    ScrollView,
     Animated,
     StyleSheet,
 } from 'react-native';
+import { ScrollView } from 'react-native-gesture-handler';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { LinearGradient } from 'expo-linear-gradient';
 import { MaterialIcons } from '@expo/vector-icons';
@@ -40,21 +40,33 @@ export default function ThemeSection({
     onTimerTextColorChange,
     onPresetChange,
     onResetToDefaults,
+    resetKey,
 }: ThemeSectionFullProps) {
     const scrollRef = useRef<ScrollView>(null);
     const pulseAnim = useRef(new Animated.Value(1)).current;
+    const lastScrolledIndex = useRef(activePresetIndex);
+    const isProgrammaticScroll = useRef(false);
 
-    // Initial scroll to active preset
+    // Scroll to active preset when it changes (e.g. on reset or mount)
     useEffect(() => {
         if (scrollRef.current) {
-            setTimeout(() => {
+            // Use a small delay to ensure layout is ready and avoid race conditions
+            const timer = setTimeout(() => {
+                isProgrammaticScroll.current = true;
                 scrollRef.current?.scrollTo({
                     x: activePresetIndex * previewWidth,
-                    animated: false
+                    animated: true
                 });
+                lastScrolledIndex.current = activePresetIndex;
+
+                // Reset flag after animation duration
+                setTimeout(() => {
+                    isProgrammaticScroll.current = false;
+                }, 500);
             }, 100);
+            return () => clearTimeout(timer);
         }
-    }, []);
+    }, [activePresetIndex, previewWidth, resetKey]);
 
     const triggerPulse = () => {
         pulseAnim.setValue(1);
@@ -65,10 +77,13 @@ export default function ThemeSection({
     };
 
     const handleScroll = (event: any) => {
+        if (isProgrammaticScroll.current) return;
+
         const slideSize = event.nativeEvent.layoutMeasurement.width;
         const currentOffset = event.nativeEvent.contentOffset.x;
         const index = Math.round(currentOffset / slideSize);
         if (index !== activePresetIndex && index >= 0 && index < LANDSCAPE_PRESETS.length) {
+            lastScrolledIndex.current = index;
             onPresetChange(index);
             triggerPulse();
         }
@@ -106,6 +121,9 @@ export default function ThemeSection({
                         onScroll={handleScroll}
                         style={styles.previewScroll}
                         scrollEventThrottle={16}
+                        nestedScrollEnabled={true}
+                        canCancelContentTouches={false}
+                        disallowInterruption={true}
                     >
                         {LANDSCAPE_PRESETS.map((preset, index) => (
                             <View key={index} style={[styles.previewCard, { width: previewWidth }]}>
@@ -221,6 +239,7 @@ export function LandscapePreviewComponent({
     activePresetIndex,
     previewWidth,
     onPresetChange,
+    resetKey,
 }: {
     isLandscape: boolean;
     fillerColor: string;
@@ -229,20 +248,30 @@ export function LandscapePreviewComponent({
     activePresetIndex: number;
     previewWidth: number;
     onPresetChange: (index: number) => void;
+    resetKey?: number;
 }) {
     const scrollRef = useRef<ScrollView>(null);
     const pulseAnim = useRef(new Animated.Value(1)).current;
+    const lastScrolledIndex = useRef(activePresetIndex);
+    const isProgrammaticScroll = useRef(false);
 
     useEffect(() => {
         if (scrollRef.current) {
-            setTimeout(() => {
+            const timer = setTimeout(() => {
+                isProgrammaticScroll.current = true;
                 scrollRef.current?.scrollTo({
                     x: activePresetIndex * previewWidth,
-                    animated: false
+                    animated: true
                 });
+                lastScrolledIndex.current = activePresetIndex;
+
+                setTimeout(() => {
+                    isProgrammaticScroll.current = false;
+                }, 500);
             }, 100);
+            return () => clearTimeout(timer);
         }
-    }, []);
+    }, [activePresetIndex, previewWidth, resetKey]);
 
     const triggerPulse = () => {
         pulseAnim.setValue(1);
@@ -253,10 +282,13 @@ export function LandscapePreviewComponent({
     };
 
     const handleScroll = (event: any) => {
+        if (isProgrammaticScroll.current) return;
+
         const slideSize = event.nativeEvent.layoutMeasurement.width;
         const currentOffset = event.nativeEvent.contentOffset.x;
         const index = Math.round(currentOffset / slideSize);
         if (index !== activePresetIndex && index >= 0 && index < LANDSCAPE_PRESETS.length) {
+            lastScrolledIndex.current = index;
             onPresetChange(index);
             triggerPulse();
         }
@@ -276,6 +308,9 @@ export function LandscapePreviewComponent({
                         onScroll={handleScroll}
                         style={styles.previewScroll}
                         scrollEventThrottle={16}
+                        nestedScrollEnabled={true}
+                        canCancelContentTouches={false}
+                        disallowInterruption={true}
                     >
                         {LANDSCAPE_PRESETS.map((preset, index) => (
                             <View key={index} style={[styles.previewCard, { width: previewWidth }]}>
