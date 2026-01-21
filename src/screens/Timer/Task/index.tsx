@@ -24,7 +24,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { BlurView } from 'expo-blur';
 import { MaterialIcons } from '@expo/vector-icons';
 import DraggableFlatList, { RenderItemParams } from 'react-native-draggable-flatlist';
-import { Category, Task, TaskStage, QuickMessage } from '../../../constants/data';
+import { Category, Task, TaskStage, QuickMessage, StageStatus } from '../../../constants/data';
 import TaskActionModal from '../../../components/TaskActionModal';
 import * as Haptics from 'expo-haptics';
 
@@ -1208,6 +1208,18 @@ const styles = StyleSheet.create({
         backgroundColor: '#4CAF50',
         borderColor: '#4CAF50',
     },
+    stageOrderCircleProcess: {
+        backgroundColor: 'rgba(255, 183, 77, 0.25)',
+        borderColor: '#FFB74D',
+    },
+    stageOrderCircleUncompleted: {
+        backgroundColor: 'rgba(255, 82, 82, 0.25)',
+        borderColor: '#FF5252',
+    },
+    stageOrderCircleUpcoming: {
+        backgroundColor: 'rgba(255,255,255,0.08)',
+        borderColor: 'rgba(255,255,255,0.15)',
+    },
     stageOrderText: {
         fontSize: 11,
         fontWeight: '700',
@@ -2162,22 +2174,250 @@ interface TaskCardProps {
 interface DraggableStagesListProps {
     stages: TaskStage[];
     onReorder: (newStages: TaskStage[]) => void;
-    onToggleStage: (stageId: number) => void;
+    onSetStageStatus: (stageId: number, status: StageStatus) => void;
     onDeleteStage: (stageId: number) => void;
 }
 
+// Stage Action Popup Props
+interface StageActionPopupProps {
+    visible: boolean;
+    position: { x: number; y: number };
+    onSelectStatus: (status: StageStatus) => void;
+    onClose: () => void;
+    currentStatus: StageStatus;
+}
+
+// Stage status configuration
+const STAGE_STATUS_CONFIG: Record<StageStatus, { icon: keyof typeof MaterialIcons.glyphMap; color: string; label: string }> = {
+    Upcoming: { icon: 'schedule', color: '#8E8E93', label: 'Upcoming' },
+    Process: { icon: 'play-circle-fill', color: '#FFB74D', label: 'In Process' },
+    Done: { icon: 'check-circle', color: '#4CAF50', label: 'Done' },
+    Undone: { icon: 'cancel', color: '#FF5252', label: 'Undone' },
+};
+
+// Stage Action Popup Component
+function StageActionPopup({ visible, position, onSelectStatus, onClose, currentStatus }: StageActionPopupProps) {
+    const { width: screenWidth, height: screenHeight } = useWindowDimensions();
+    const fadeAnim = useRef(new Animated.Value(0)).current;
+    const scaleAnim = useRef(new Animated.Value(0.8)).current;
+
+    useEffect(() => {
+        if (visible) {
+            Animated.parallel([
+                Animated.timing(fadeAnim, {
+                    toValue: 1,
+                    duration: 150,
+                    useNativeDriver: true,
+                }),
+                Animated.spring(scaleAnim, {
+                    toValue: 1,
+                    friction: 8,
+                    tension: 100,
+                    useNativeDriver: true,
+                }),
+            ]).start();
+        } else {
+            fadeAnim.setValue(0);
+            scaleAnim.setValue(0.8);
+        }
+    }, [visible, fadeAnim, scaleAnim]);
+
+    if (!visible) return null;
+
+    // Calculate popup dimensions
+    const popupWidth = 140;
+    const popupHeight = 180;
+    const padding = 12;
+
+    // Center popup horizontally relative to x
+    let adjustedX = position.x - popupWidth / 2;
+    let adjustedY = position.y + 10; // offset below
+
+    // Check right edge
+    if (adjustedX + popupWidth > screenWidth - padding) {
+        adjustedX = screenWidth - popupWidth - padding;
+    }
+    // Check left edge
+    if (adjustedX < padding) {
+        adjustedX = padding;
+    }
+    // Check bottom edge
+    if (adjustedY + popupHeight > screenHeight - padding) {
+        adjustedY = position.y - popupHeight - 15; // Show above the circle
+    }
+    // Check top edge
+    if (adjustedY < padding) {
+        adjustedY = padding;
+    }
+
+    const statusOrder: StageStatus[] = ['Upcoming', 'Process', 'Done', 'Undone'];
+
+    return (
+        <Modal
+            visible={visible}
+            transparent
+            animationType="none"
+            onRequestClose={onClose}
+            supportedOrientations={['portrait', 'landscape']}
+            statusBarTranslucent={true}
+        >
+            <TouchableOpacity
+                style={stagePopupStyles.overlay}
+                activeOpacity={1}
+                onPress={onClose}
+            >
+                <Animated.View
+                    style={[
+                        stagePopupStyles.popup,
+                        {
+                            left: adjustedX,
+                            top: adjustedY,
+                            opacity: fadeAnim,
+                            transform: [{ scale: scaleAnim }],
+                        },
+                    ]}
+                >
+                    {statusOrder.map((status, index) => {
+                        const config = STAGE_STATUS_CONFIG[status];
+                        const isActive = currentStatus === status;
+                        return (
+                            <React.Fragment key={status}>
+                                {index > 0 && <View style={stagePopupStyles.separator} />}
+                                <TouchableOpacity
+                                    style={[
+                                        stagePopupStyles.option,
+                                        isActive && stagePopupStyles.optionActive,
+                                    ]}
+                                    onPress={() => {
+                                        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                                        onSelectStatus(status);
+                                    }}
+                                    activeOpacity={0.7}
+                                >
+                                    <MaterialIcons name={config.icon} size={18} color={config.color} />
+                                    <Text style={[stagePopupStyles.optionText, { color: config.color }]}>
+                                        {config.label}
+                                    </Text>
+                                    {isActive && (
+                                        <MaterialIcons
+                                            name="check"
+                                            size={16}
+                                            color={config.color}
+                                            style={{ marginLeft: 'auto' }}
+                                        />
+                                    )}
+                                </TouchableOpacity>
+                            </React.Fragment>
+                        );
+                    })}
+                </Animated.View>
+            </TouchableOpacity>
+        </Modal>
+    );
+}
+
+// Stage Popup Styles
+const stagePopupStyles = StyleSheet.create({
+    overlay: {
+        flex: 1,
+        backgroundColor: 'rgba(0,0,0,0.3)',
+    },
+    popup: {
+        position: 'absolute',
+        backgroundColor: 'rgba(30, 30, 30, 0.98)',
+        borderRadius: 14,
+        paddingVertical: 6,
+        minWidth: 140,
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 8 },
+        shadowOpacity: 0.4,
+        shadowRadius: 16,
+        elevation: 20,
+        borderWidth: 1,
+        borderColor: 'rgba(255,255,255,0.1)',
+    },
+    option: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        paddingHorizontal: 14,
+        paddingVertical: 10,
+        gap: 10,
+    },
+    optionActive: {
+        backgroundColor: 'rgba(255,255,255,0.05)',
+    },
+    optionText: {
+        fontSize: 13,
+        fontWeight: '600',
+    },
+    separator: {
+        height: 1,
+        backgroundColor: 'rgba(255,255,255,0.08)',
+        marginHorizontal: 10,
+    },
+});
+
 // Draggable Stages List Component
-function DraggableStagesList({ stages, onReorder, onToggleStage, onDeleteStage }: DraggableStagesListProps) {
+function DraggableStagesList({ stages, onReorder, onSetStageStatus, onDeleteStage }: DraggableStagesListProps) {
     const [data, setData] = useState<TaskStage[]>(stages);
+    const [popupVisible, setPopupVisible] = useState(false);
+    const [popupPosition, setPopupPosition] = useState({ x: 0, y: 0 });
+    const [selectedStage, setSelectedStage] = useState<TaskStage | null>(null);
 
     useEffect(() => {
         setData(stages);
     }, [stages]);
 
+    const handleCirclePress = useCallback((stage: TaskStage, event: any) => {
+        const { pageX, pageY } = event.nativeEvent;
+        setSelectedStage(stage);
+        setPopupPosition({ x: pageX, y: pageY });
+        setPopupVisible(true);
+        Haptics.selectionAsync();
+    }, []);
+
+    const handleSelectStatus = useCallback((status: StageStatus) => {
+        if (selectedStage) {
+            onSetStageStatus(selectedStage.id, status);
+        }
+        setPopupVisible(false);
+        setSelectedStage(null);
+    }, [selectedStage, onSetStageStatus]);
+
+    const handleClosePopup = useCallback(() => {
+        setPopupVisible(false);
+        setSelectedStage(null);
+    }, []);
+
+    // Get circle style based on status
+    const getCircleStyle = (stage: TaskStage, isActive: boolean) => {
+        const status = stage.status || 'Upcoming';
+
+        if (isActive) {
+            return [
+                styles.stageOrderCircle,
+                { backgroundColor: 'rgba(0,0,0,0.08)', borderColor: 'rgba(0,0,0,0.15)' }
+            ];
+        }
+
+        switch (status) {
+            case 'Done':
+                return [styles.stageOrderCircle, styles.stageOrderCircleCompleted];
+            case 'Process':
+                return [styles.stageOrderCircle, styles.stageOrderCircleProcess];
+            case 'Undone':
+                return [styles.stageOrderCircle, styles.stageOrderCircleUncompleted];
+            default: // Upcoming
+                return [styles.stageOrderCircle, styles.stageOrderCircleUpcoming];
+        }
+    };
+
     const renderItem = useCallback(
         ({ item, drag, isActive, getIndex }: RenderItemParams<TaskStage>) => {
             const index = getIndex?.() ?? 0;
             const orderNumber = index + 1;
+            const status = item.status || 'Upcoming';
+            const isDone = status === 'Done';
 
             return (
                 <View style={[styles.portraitStageItem, isActive && styles.stageItemDragging]}>
@@ -2200,25 +2440,15 @@ function DraggableStagesList({ stages, onReorder, onToggleStage, onDeleteStage }
 
                     {/* Combined Order/Completion Circle */}
                     <TouchableOpacity
-                        style={[
-                            styles.stageOrderCircle,
-                            item.isCompleted && styles.stageOrderCircleCompleted,
-                            isActive && !item.isCompleted && {
-                                backgroundColor: 'rgba(0,0,0,0.08)',
-                                borderColor: 'rgba(0,0,0,0.15)'
-                            }
-                        ]}
-                        onPress={() => {
-                            Haptics.selectionAsync();
-                            onToggleStage(item.id);
-                        }}
+                        style={getCircleStyle(item, isActive)}
+                        onPress={(event) => handleCirclePress(item, event)}
                         disabled={isActive}
                         activeOpacity={0.7}
                     >
                         <Text style={[
                             styles.stageOrderText,
-                            item.isCompleted && { color: '#fff' },
-                            isActive && !item.isCompleted && styles.stageOrderTextDragging
+                            (status === 'Done' || status === 'Undone') && { color: '#fff' },
+                            isActive && styles.stageOrderTextDragging
                         ]}>
                             {orderNumber}
                         </Text>
@@ -2227,7 +2457,7 @@ function DraggableStagesList({ stages, onReorder, onToggleStage, onDeleteStage }
                     {/* Stage Text */}
                     <Text style={[
                         styles.portraitStageText,
-                        item.isCompleted && styles.stageTextCompleted,
+                        isDone && styles.stageTextCompleted,
                         isActive && styles.stageTextDragging
                     ]}>
                         {item.text}
@@ -2262,31 +2492,40 @@ function DraggableStagesList({ stages, onReorder, onToggleStage, onDeleteStage }
                 </View>
             );
         },
-        [onDeleteStage, onToggleStage]
+        [onDeleteStage, handleCirclePress, getCircleStyle]
     );
 
     return (
-        <DraggableFlatList
-            data={data}
-            keyExtractor={(item) => String(item.id)}
-            renderItem={renderItem}
-            onDragBegin={() => {
-                LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
-            }}
-            onDragEnd={({ data: next }) => {
-                LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
-                setData(next);
-                onReorder(next);
-                Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-            }}
-            autoscrollThreshold={80}
-            autoscrollSpeed={90}
-            activationDistance={12}
-            nestedScrollEnabled={true}
-            showsVerticalScrollIndicator={true}
-            keyboardShouldPersistTaps="handled"
-            contentContainerStyle={{ paddingBottom: 40 }}
-        />
+        <>
+            <DraggableFlatList
+                data={data}
+                keyExtractor={(item) => String(item.id)}
+                renderItem={renderItem}
+                onDragBegin={() => {
+                    LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+                }}
+                onDragEnd={({ data: next }) => {
+                    LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+                    setData(next);
+                    onReorder(next);
+                    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+                }}
+                autoscrollThreshold={80}
+                autoscrollSpeed={90}
+                activationDistance={12}
+                nestedScrollEnabled={true}
+                showsVerticalScrollIndicator={true}
+                keyboardShouldPersistTaps="handled"
+                contentContainerStyle={{ paddingBottom: 40 }}
+            />
+            <StageActionPopup
+                visible={popupVisible}
+                position={popupPosition}
+                onSelectStatus={handleSelectStatus}
+                onClose={handleClosePopup}
+                currentStatus={selectedStage?.status || 'Upcoming'}
+            />
+        </>
     );
 }
 
@@ -2340,6 +2579,7 @@ function TaskCard({
             id: Date.now(),
             text: stageText.trim(),
             isCompleted: false,
+            status: 'Upcoming',
             createdAt: new Date().toISOString(),
         };
         const updatedStages = [...(task.stages || []), newStage];
@@ -2348,9 +2588,9 @@ function TaskCard({
         Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     };
 
-    const handleToggleStage = (stageId: number) => {
+    const handleSetStageStatus = (stageId: number, status: StageStatus) => {
         const updatedStages = (task.stages || []).map(s =>
-            s.id === stageId ? { ...s, isCompleted: !s.isCompleted } : s
+            s.id === stageId ? { ...s, status, isCompleted: status === 'Done' } : s
         );
         onUpdateStages?.(task, updatedStages);
         Haptics.selectionAsync();
@@ -2774,17 +3014,17 @@ function TaskCard({
                                         <View style={[styles.metaRow, { marginBottom: 12, paddingHorizontal: 4 }]}>
                                             <Text style={[styles.metaLabel, { width: 'auto', marginRight: 12 }]}>PROGRESS</Text>
                                             <View style={styles.stagesProgressWrapper}>
-                                                <View style={[styles.stagesProgressBar, { width: `${(task.stages?.length || 0) > 0 ? (task.stages?.filter(s => s.isCompleted).length || 0) / (task.stages?.length || 0) * 100 : 0}%` }]} />
+                                                <View style={[styles.stagesProgressBar, { width: `${(task.stages?.length || 0) > 0 ? (task.stages?.filter(s => s.status === 'Done').length || 0) / (task.stages?.length || 0) * 100 : 0}%` }]} />
                                             </View>
                                             <Text style={[styles.sectionSubtitle, { marginLeft: 12 }]}>
-                                                {task.stages?.filter(s => s.isCompleted).length} / {task.stages?.length}
+                                                {task.stages?.filter(s => s.status === 'Done').length} / {task.stages?.length}
                                             </Text>
                                         </View>
                                         {/* Stages List - Draggable */}
                                         <DraggableStagesList
                                             stages={task.stages || []}
                                             onReorder={handleReorderStages}
-                                            onToggleStage={handleToggleStage}
+                                            onSetStageStatus={handleSetStageStatus}
                                             onDeleteStage={handleDeleteStage}
                                         />
                                     </View>
@@ -2849,10 +3089,10 @@ function TaskCard({
                                 <View style={[styles.metaRow, { marginTop: 8, marginBottom: 8 }]}>
                                     <Text style={[styles.metaLabel, { width: 'auto', marginRight: 8, fontSize: 9 }]}>PROGRESS</Text>
                                     <View style={[styles.stagesProgressWrapper, { flex: 1 }]}>
-                                        <View style={[styles.stagesProgressBar, { width: `${(task.stages?.filter(s => s.isCompleted).length || 0) / (task.stages?.length || 1) * 100}%` }]} />
+                                        <View style={[styles.stagesProgressBar, { width: `${(task.stages?.filter(s => s.status === 'Done').length || 0) / (task.stages?.length || 1) * 100}%` }]} />
                                     </View>
                                     <Text style={[styles.sectionSubtitle, { marginLeft: 8, fontSize: 10 }]}>
-                                        {task.stages?.filter(s => s.isCompleted).length}/{task.stages?.length}
+                                        {task.stages?.filter(s => s.status === 'Done').length}/{task.stages?.length}
                                     </Text>
                                 </View>
                             )}
@@ -2864,7 +3104,7 @@ function TaskCard({
                                 <DraggableStagesList
                                     stages={task.stages || []}
                                     onReorder={handleReorderStages}
-                                    onToggleStage={handleToggleStage}
+                                    onSetStageStatus={handleSetStageStatus}
                                     onDeleteStage={handleDeleteStage}
                                 />
                             ) : (

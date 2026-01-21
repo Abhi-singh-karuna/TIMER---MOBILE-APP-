@@ -61,10 +61,13 @@ export interface Comment {
   createdAt: string; // ISO string
 }
 
+export type StageStatus = 'Upcoming' | 'Process' | 'Done' | 'Undone';
+
 export interface TaskStage {
   id: number;
   text: string;
-  isCompleted: boolean;
+  isCompleted: boolean; // Kept for backward compatibility (true = Done, false = others)
+  status: StageStatus;  // New field for 4-state tracking
   createdAt: string;
 }
 
