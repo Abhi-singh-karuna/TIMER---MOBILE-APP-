@@ -1392,6 +1392,11 @@ export default function TaskList({
     const slideAnim = useRef(new Animated.Value(0)).current;
     const fadeAnim = useRef(new Animated.Value(1)).current;
 
+    // Reset expanded task when date or backlog filter changes
+    useEffect(() => {
+        setExpandedTaskId(null);
+    }, [selectedDate, showBacklog]);
+
     // Format date for comparison
     const formatDate = (date: Date) => {
         return `${date.getFullYear()}-${(date.getMonth() + 1).toString().padStart(2, '0')}-${date.getDate().toString().padStart(2, '0')}`;
