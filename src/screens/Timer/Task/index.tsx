@@ -26,6 +26,7 @@ import { MaterialIcons } from '@expo/vector-icons';
 import DraggableFlatList, { RenderItemParams } from 'react-native-draggable-flatlist';
 import { Category, Task, TaskStage, QuickMessage, StageStatus } from '../../../constants/data';
 import TaskActionModal from '../../../components/TaskActionModal';
+import LiveFocusView from './LiveFocusView';
 import * as Haptics from 'expo-haptics';
 
 const { width, height } = Dimensions.get('window');
@@ -1385,6 +1386,7 @@ export default function TaskList({
     const [showFiltersPortrait, setShowFiltersPortrait] = useState(false);
     const [viewDate, setViewDate] = useState(new Date());
     const [showBacklog, setShowBacklog] = useState(false);
+    const [showLive, setShowLive] = useState(false);
     const [actionModalVisible, setActionModalVisible] = useState(false);
     const [selectedActionTask, setSelectedActionTask] = useState<Task | null>(null);
     const [expandedTaskId, setExpandedTaskId] = useState<number | null>(null);
@@ -1395,7 +1397,7 @@ export default function TaskList({
     // Reset expanded task when date or backlog filter changes
     useEffect(() => {
         setExpandedTaskId(null);
-    }, [selectedDate, showBacklog]);
+    }, [selectedDate, showBacklog, showLive]);
 
     // Format date for comparison
     const formatDate = (date: Date) => {
@@ -1604,6 +1606,40 @@ export default function TaskList({
     };
 
 
+    const handleUpdateStageLayout = (taskId: number, stageId: number, startTimeMinutes: number, durationMinutes: number) => {
+        const task = tasks.find(t => t.id === taskId);
+        if (!task || !task.stages) return;
+
+        const updatedStages = task.stages.map(s =>
+            s.id === stageId ? { ...s, startTimeMinutes, durationMinutes } : s
+        );
+
+        if (onUpdateStages) {
+            onUpdateStages(task, updatedStages);
+        }
+    };
+
+    if (isLandscape && showLive) {
+        return (
+            <View style={styles.container}>
+                <LiveFocusView
+                    tasks={filteredTasks}
+                    selectedDate={selectedDate}
+                    onDateChange={onDateChange}
+                    categories={categories}
+                    onClose={() => setShowLive(false)}
+                    onExpandTask={(task) => {
+                        LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+                        setExpandedTaskId(task.id);
+                        setShowLive(false);
+                    }}
+                    onUpdateStageLayout={handleUpdateStageLayout}
+                    onUpdateStages={onUpdateStages}
+                />
+            </View>
+        );
+    }
+
     return (
         <LinearGradient
             colors={['#000000', '#000000']}
@@ -1717,6 +1753,21 @@ export default function TaskList({
                                             <View style={styles.filtersSection}>
                                                 <View style={styles.filterHeaderRow}>
                                                     <Text style={styles.filterHeaderLabel}>FILTERS</Text>
+                                                    <TouchableOpacity
+                                                        style={[styles.backlogHeaderBtn, showLive && { backgroundColor: 'rgba(255, 61, 0, 0.1)', borderColor: 'rgba(255, 61, 0, 0.3)' }, { marginRight: 8 }]}
+                                                        onPress={() => setShowLive(!showLive)}
+                                                        activeOpacity={0.7}
+                                                    >
+                                                        <MaterialIcons
+                                                            name="sensors"
+                                                            size={14}
+                                                            color={showLive ? "#FF3D00" : "rgba(255,255,255,0.4)"}
+                                                        />
+                                                        <Text style={[styles.backlogHeaderBtnText, showLive && { color: "#FF3D00" }]}>
+                                                            LIVE
+                                                        </Text>
+                                                    </TouchableOpacity>
+
                                                     <TouchableOpacity
                                                         style={[styles.backlogHeaderBtn, showBacklog && styles.backlogHeaderBtnActive]}
                                                         onPress={() => setShowBacklog(!showBacklog)}
@@ -2042,6 +2093,14 @@ export default function TaskList({
                                                     contentContainerStyle={styles.portraitFiltersScroll}
                                                     style={{ flexGrow: 0 }}
                                                 >
+                                                    <TouchableOpacity
+                                                        style={[styles.miniChip, showLive && { backgroundColor: 'rgba(255, 61, 0, 0.15)', borderColor: 'rgba(255, 61, 0, 0.3)' }]}
+                                                        onPress={() => setShowLive(!showLive)}
+                                                    >
+                                                        <MaterialIcons name="sensors" size={10} color={showLive ? "#FF3D00" : "rgba(255,255,255,0.4)"} />
+                                                        <Text style={[styles.miniChipText, showLive && { color: '#FF3D00', fontWeight: '800' }]}> Live</Text>
+                                                    </TouchableOpacity>
+
                                                     <TouchableOpacity
                                                         style={[styles.miniChip, showBacklog && styles.miniChipActive]}
                                                         onPress={() => setShowBacklog(!showBacklog)}

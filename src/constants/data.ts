@@ -69,6 +69,11 @@ export interface TaskStage {
   isCompleted: boolean; // Kept for backward compatibility (true = Done, false = others)
   status: StageStatus;  // New field for 4-state tracking
   createdAt: string;
+  startTimeMinutes?: number; // Start time in minutes from 00:00
+  durationMinutes?: number;  // Duration in minutes
+  startTime?: string;        // ISO string when subtask was started
+  endTime?: string;          // ISO string when subtask was ended
+  endTimeMinutes?: number;    // End time in minutes from 00:00 (calculated from startTimeMinutes + durationMinutes)
 }
 
 export interface Task {
