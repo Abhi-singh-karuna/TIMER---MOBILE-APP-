@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect, useCallback } from 'react';
+import React, { useState, useRef, useEffect, useLayoutEffect, useCallback } from 'react';
 import {
     View,
     Text,
@@ -18,6 +18,7 @@ import {
 import { MaterialIcons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
 import { Task, Category, TaskStage, StageStatus } from '../../../constants/data';
+import AddSubtaskModal from '../../../components/AddSubtaskModal';
 
 interface LiveFocusViewProps {
     tasks: Task[];
@@ -39,6 +40,14 @@ const getTaskLiveStatus = (task: Task): TaskLiveStatus => {
     return 'PLANNED';
 };
 
+// Stage status configuration for timeline cards
+const STAGE_STATUS_CONFIG: Record<StageStatus, { icon: keyof typeof MaterialIcons.glyphMap; color: string }> = {
+    Upcoming: { icon: 'schedule', color: '#8E8E93' },
+    Process: { icon: 'play-circle-fill', color: '#FFB74D' },
+    Done: { icon: 'check-circle', color: '#4CAF50' },
+    Undone: { icon: 'cancel', color: '#FF5252' },
+};
+
 export default function LiveFocusView({
     tasks,
     selectedDate,
@@ -52,7 +61,8 @@ export default function LiveFocusView({
 }: LiveFocusViewProps) {
     const { width: screenWidth, height: screenHeight } = useWindowDimensions();
     const isLandscape = screenWidth > screenHeight;
-    const [currentTime, setCurrentTime] = useState(new Date());
+    // Use a ref for current time to avoid re-renders - captured once on mount
+    const currentTimeRef = useRef(new Date());
     const DEBUG_LANES = false;
     // Refs to avoid stale state inside PanResponder
     const minutesPerCellRef = useRef(60);
@@ -61,6 +71,8 @@ export default function LiveFocusView({
     const activeStageRef = useRef<{ taskId: number; stageId: number } | null>(null);
     const initialStageLayoutRef = useRef<{ left: number; width: number; top: number; lane: number } | null>(null);
     const tempStageLayoutRef = useRef<{ left: number; width: number; top: number; lane: number } | null>(null);
+    // Prevent accidental "tap" commits: only save layout if a real move/resize occurred.
+    const didEditStageRef = useRef(false);
     const lastPinchDistanceRef = useRef(0);
     const horizontalScrollHeaderRef = useRef<ScrollView>(null);
     const horizontalScrollTimelineRef = useRef<ScrollView>(null);
@@ -93,11 +105,155 @@ export default function LiveFocusView({
     // Freeze lane layout during timed-stage drag so other stages don't "jump"
     const frozenLanesRef = useRef<{ taskId: number; lanes: Map<number, number> } | null>(null);
 
+    // Pending layouts: uses REF for synchronous access (avoids React batching issues)
+    // This prevents subtasks from snapping back when another subtask is dragged
+    const pendingLayoutsRef = useRef<Map<number, { startTimeMinutes: number; durationMinutes: number }>>(new Map());
+    // Version counter to trigger re-renders when pending layouts change
+    const [pendingLayoutsVersion, setPendingLayoutsVersion] = useState(0);
+
+    // Add subtask modal state
+    const [addSubtaskModal, setAddSubtaskModal] = useState<{ visible: boolean; taskId: number | null; startTimeMinutes: number }>({
+        visible: false,
+        taskId: null,
+        startTimeMinutes: 0,
+    });
+
+    // Task column visibility toggle
+    const [isTaskColumnVisible, setIsTaskColumnVisible] = useState(true);
+
+    // Auto-scroll during drag/resize
+    const autoScrollIntervalRef = useRef<NodeJS.Timeout | null>(null);
+    const isAutoScrollingRef = useRef(false);
+    const checkAndUpdateAutoScrollRef = useRef<((pageX: number) => void) | null>(null);
+    // Track scroll offset during drag to compensate position calculations
+    const dragStartScrollXRef = useRef(0);
+    const currentAutoScrollOffsetRef = useRef(0);
+    const currentAutoScrollDirectionRef = useRef<'left' | 'right' | null>(null);
+    const currentAutoScrollSpeedRef = useRef(1);
+
     const debugLog = useCallback((...args: any[]) => {
         if (!DEBUG_LANES) return;
         // eslint-disable-next-line no-console
         console.log('[LiveFocusView]', ...args);
     }, [DEBUG_LANES]);
+
+    // Helper function to clear all editing state when switching between subtasks
+    const clearEditingState = useCallback(() => {
+        frozenLanesRef.current = null;
+        resizeHandleSideRef.current = null;
+        didEditStageRef.current = false;
+        // Clear state first
+        setActiveStage(null);
+        setIsDragging(false);
+        setIsResizing(false);
+        setInitialStageLayout(null);
+        setTempStageLayout(null);
+        setResizeModeStage(null);
+        // Also clear refs immediately for synchronous access
+        activeStageRef.current = null;
+        isDraggingRef.current = false;
+        isResizingRef.current = false;
+        initialStageLayoutRef.current = null;
+        tempStageLayoutRef.current = null;
+        resizeModeStageRef.current = null;
+    }, []);
+
+    // Auto-scroll functions for drag/resize near edges
+    const stopAutoScroll = useCallback(() => {
+        if (autoScrollIntervalRef.current) {
+            clearInterval(autoScrollIntervalRef.current);
+            autoScrollIntervalRef.current = null;
+        }
+        isAutoScrollingRef.current = false;
+        currentAutoScrollDirectionRef.current = null;
+        currentAutoScrollSpeedRef.current = 1;
+    }, []);
+
+    const resetScrollTracking = useCallback(() => {
+        dragStartScrollXRef.current = timelineScrollXRef.current;
+        currentAutoScrollOffsetRef.current = 0;
+    }, []);
+
+    const startAutoScroll = useCallback((direction: 'left' | 'right', speed: number = 1) => {
+        // If already scrolling in the same direction, just update the speed
+        if (isAutoScrollingRef.current && 
+            currentAutoScrollDirectionRef.current === direction && 
+            autoScrollIntervalRef.current) {
+            currentAutoScrollSpeedRef.current = speed;
+            return;
+        }
+
+        // Stop any existing auto-scroll
+        stopAutoScroll();
+
+        isAutoScrollingRef.current = true;
+        currentAutoScrollDirectionRef.current = direction;
+        currentAutoScrollSpeedRef.current = speed;
+
+        const baseScrollAmount = 5; // Base pixels per interval
+
+        autoScrollIntervalRef.current = setInterval(() => {
+            if (!horizontalScrollTimelineRef.current) return;
+
+            // Use current speed (can be updated without restarting interval)
+            const scrollAmount = baseScrollAmount * currentAutoScrollSpeedRef.current;
+            const currentScrollX = timelineScrollXRef.current;
+            const scrollDelta = currentAutoScrollDirectionRef.current === 'right' ? scrollAmount : -scrollAmount;
+            const newScrollX = Math.max(0, currentScrollX + scrollDelta);
+
+            // Only scroll if there's actual movement (prevents jitter at boundaries)
+            if (newScrollX === currentScrollX) {
+                return;
+            }
+
+            // Track cumulative scroll offset during drag
+            const actualScrollDelta = newScrollX - currentScrollX;
+            currentAutoScrollOffsetRef.current += actualScrollDelta;
+
+            // Scroll both timeline and header smoothly
+            if (horizontalScrollTimelineRef.current) {
+                horizontalScrollTimelineRef.current.scrollTo({ x: newScrollX, animated: false });
+            }
+            if (horizontalScrollHeaderRef.current) {
+                horizontalScrollHeaderRef.current.scrollTo({ x: newScrollX, animated: false });
+            }
+
+            timelineScrollXRef.current = newScrollX;
+        }, 16); // ~60fps
+    }, [stopAutoScroll]);
+
+    const checkAndUpdateAutoScroll = useCallback((pageX: number) => {
+        const EDGE_THRESHOLD = 100; // Distance from edge to trigger auto-scroll
+        const timelineStart = isTaskColumnVisible ? TRACK_LABEL_WIDTH : 0;
+        const timelineEnd = screenWidth;
+        const timelineWidth = timelineEnd - timelineStart;
+
+        // Calculate position relative to visible timeline
+        const relativeX = pageX - timelineStart;
+
+        // Check if near left edge of timeline
+        if (relativeX >= 0 && relativeX < EDGE_THRESHOLD) {
+            const proximityFactor = 1 - (relativeX / EDGE_THRESHOLD); // 0 to 1 (closer = higher)
+            // Smoother speed curve: starts slow, accelerates near edge
+            const speed = 0.5 + (proximityFactor * proximityFactor * 2.0); // 0.5 to 2.5x speed (quadratic)
+            if (!isAutoScrollingRef.current || autoScrollIntervalRef.current === null) {
+                startAutoScroll('left', speed);
+            }
+        }
+        // Check if near right edge of timeline
+        else if (relativeX > timelineWidth - EDGE_THRESHOLD && relativeX <= timelineWidth) {
+            const proximityFactor = 1 - ((timelineWidth - relativeX) / EDGE_THRESHOLD); // 0 to 1 (closer = higher)
+            // Smoother speed curve: starts slow, accelerates near edge
+            const speed = 0.5 + (proximityFactor * proximityFactor * 2.0); // 0.5 to 2.5x speed (quadratic)
+            if (!isAutoScrollingRef.current || autoScrollIntervalRef.current === null) {
+                startAutoScroll('right', speed);
+            }
+        }
+        // Not near any edge - stop auto-scrolling
+        else {
+            stopAutoScroll();
+        }
+    }, [isTaskColumnVisible, screenWidth, startAutoScroll, stopAutoScroll]);
 
 
     // Calculate timeline based on zoom level
@@ -167,6 +323,18 @@ export default function LiveFocusView({
     useEffect(() => { tempStageLayoutRef.current = tempStageLayout; }, [tempStageLayout]);
     useEffect(() => { lastPinchDistanceRef.current = lastPinchDistance; }, [lastPinchDistance]);
     useEffect(() => { resizeModeStageRef.current = resizeModeStage; }, [resizeModeStage]);
+    useEffect(() => { checkAndUpdateAutoScrollRef.current = checkAndUpdateAutoScroll; }, [checkAndUpdateAutoScroll]);
+
+    // Cleanup auto-scroll on unmount
+    useEffect(() => {
+        return () => {
+            stopAutoScroll();
+            currentAutoScrollOffsetRef.current = 0;
+            dragStartScrollXRef.current = 0;
+            currentAutoScrollDirectionRef.current = null;
+            currentAutoScrollSpeedRef.current = 1;
+        };
+    }, [stopAutoScroll]);
 
     // Individual Stage Gesture Handler (timed stages). Uses refs so it works after time is attached.
     // Supports 2D dragging (both horizontal and vertical movement) for MOVE
@@ -201,12 +369,21 @@ export default function LiveFocusView({
                 const initial = initialStageLayoutRef.current;
                 const temp = tempStageLayoutRef.current;
 
+                // Check for auto-scroll based on touch position
+                const { pageX } = evt.nativeEvent;
+                if (checkAndUpdateAutoScrollRef.current) {
+                    checkAndUpdateAutoScrollRef.current(pageX);
+                }
+
                 // Handle MOVE (long-press drag)
                 if (isDraggingRef.current && !isResizingRef.current && a && initial) {
                     const dx = gestureState.dx;
                     const dy = gestureState.dy;
 
-                    const newLeft = Math.max(0, initial.left + dx);
+                    // CRITICAL: Add scroll offset to compensate for auto-scroll
+                    // This keeps the card under the finger even when timeline scrolls
+                    const adjustedDx = dx + currentAutoScrollOffsetRef.current;
+                    const newLeft = Math.max(0, initial.left + adjustedDx);
 
                     const CARD_HEIGHT = 21;
                     const LANE_SPACING = 10;
@@ -224,6 +401,7 @@ export default function LiveFocusView({
 
                     // Only update state if change is visible (sub-pixel optimization)
                     if (!temp || Math.abs(temp.left - newLeft) > 0.3 || temp.lane !== newLane) {
+                        didEditStageRef.current = true;
                         setTempStageLayout({
                             left: newLeft,
                             width: initial.width,
@@ -241,8 +419,11 @@ export default function LiveFocusView({
                     const mpcCurrent = minutesPerCellRef.current;
                     const pixelsPer5Min = (5 / mpcCurrent) * CELL_WIDTH;
 
+                    // CRITICAL: Add scroll offset to compensate for auto-scroll
+                    const adjustedDx = dx + currentAutoScrollOffsetRef.current;
+
                     if (handleSide === 'right') {
-                        const newWidth = Math.max(30, initial.width + dx);
+                        const newWidth = Math.max(30, initial.width + adjustedDx);
 
                         // Haptic feedback for resizing precision
                         if (temp && Math.abs(temp.width - newWidth) >= pixelsPer5Min) {
@@ -250,6 +431,7 @@ export default function LiveFocusView({
                         }
 
                         if (!temp || Math.abs(temp.width - newWidth) > 0.3) {
+                            didEditStageRef.current = true;
                             setTempStageLayout({
                                 left: initial.left,
                                 width: newWidth,
@@ -259,7 +441,7 @@ export default function LiveFocusView({
                         }
                     } else if (handleSide === 'left') {
                         const originalEnd = initial.left + initial.width;
-                        const newLeft = Math.max(0, initial.left + dx);
+                        const newLeft = Math.max(0, initial.left + adjustedDx);
                         const newWidth = Math.max(30, originalEnd - newLeft);
 
                         if (temp && Math.abs(temp.left - newLeft) >= pixelsPer5Min) {
@@ -268,6 +450,7 @@ export default function LiveFocusView({
 
                         if (!temp || Math.abs(temp.left - newLeft) > 0.3) {
                             if (newLeft + newWidth >= originalEnd - 20) {
+                                didEditStageRef.current = true;
                                 setTempStageLayout({
                                     left: Math.min(newLeft, originalEnd - 30),
                                     width: Math.max(30, originalEnd - Math.min(newLeft, originalEnd - 30)),
@@ -275,6 +458,7 @@ export default function LiveFocusView({
                                     lane: initial.lane
                                 });
                             } else {
+                                didEditStageRef.current = true;
                                 setTempStageLayout({
                                     left: newLeft,
                                     width: newWidth,
@@ -288,13 +472,27 @@ export default function LiveFocusView({
                 }
             },
             onPanResponderRelease: () => {
+                // Stop auto-scroll
+                stopAutoScroll();
+
                 const a = activeStageRef.current;
                 const temp = tempStageLayoutRef.current;
                 const mpc = minutesPerCellRef.current;
 
-                if (a && temp && onUpdateStageLayout) {
+                // Only commit if user actually moved/resized (prevents width changes on tap).
+                if (didEditStageRef.current && a && temp && onUpdateStageLayout) {
                     const startTime = (temp.left / CELL_WIDTH) * mpc;
                     const duration = (temp.width / CELL_WIDTH) * mpc;
+
+                    // Store in pending layouts REF IMMEDIATELY (synchronous)
+                    // This ensures the layout persists even during React's async state updates
+                    pendingLayoutsRef.current.set(a.stageId, {
+                        startTimeMinutes: Math.round(startTime),
+                        durationMinutes: Math.round(duration),
+                    });
+                    // Trigger re-render to reflect the change
+                    setPendingLayoutsVersion(v => v + 1);
+
                     onUpdateStageLayout(a.taskId, a.stageId, startTime, duration);
                     debugLog('stage-release', {
                         taskId: a.taskId,
@@ -316,8 +514,13 @@ export default function LiveFocusView({
                 }
 
                 // Clean up all state
+                didEditStageRef.current = false;
                 frozenLanesRef.current = null;
                 resizeHandleSideRef.current = null;
+                currentAutoScrollOffsetRef.current = 0;
+                dragStartScrollXRef.current = 0;
+                currentAutoScrollDirectionRef.current = null;
+                currentAutoScrollSpeedRef.current = 1;
                 setActiveStage(null);
                 setIsDragging(false);
                 setIsResizing(false);
@@ -327,8 +530,16 @@ export default function LiveFocusView({
                 // Keep resize mode open - user must explicitly exit
             },
             onPanResponderTerminate: () => {
+                // Stop auto-scroll
+                stopAutoScroll();
+
+                didEditStageRef.current = false;
                 frozenLanesRef.current = null;
                 resizeHandleSideRef.current = null;
+                currentAutoScrollOffsetRef.current = 0;
+                dragStartScrollXRef.current = 0;
+                currentAutoScrollDirectionRef.current = null;
+                currentAutoScrollSpeedRef.current = 1;
                 setActiveStage(null);
                 setIsDragging(false);
                 setIsResizing(false);
@@ -339,11 +550,8 @@ export default function LiveFocusView({
         })
     ).current;
 
-    // Update current time every minute
-    useEffect(() => {
-        const interval = setInterval(() => setCurrentTime(new Date()), 60000);
-        return () => clearInterval(interval);
-    }, []);
+    // Note: Removed automatic current time update to prevent re-renders that reset state
+    // The NOW line position is captured once on mount
 
     // Set default startTimeMinutes (00:00) and durationMinutes (3 hours) for stages that don't have them
     useEffect(() => {
@@ -381,6 +589,14 @@ export default function LiveFocusView({
             }, 100);
         }
     }, [tasks.length]);
+
+    // Track if we've centered on initial mount to prevent re-centering on updates
+    const hasCenteredOnMountRef = useRef(false);
+    const initialScrollXRef = useRef<number | null>(null);
+
+    // NOTE: Removed the cleanup effect for pendingLayoutsRef
+    // Pending layouts now persist for the lifetime of the component
+    // This prevents any race conditions where A1 reverts when A2 is edited
 
     // Clear measured heights when stages change to force recalculation for dynamic lane adjustment
     useEffect(() => {
@@ -488,12 +704,90 @@ export default function LiveFocusView({
     }, []);
 
     // NOW position (relative to timeline, not including label width)
+    // Uses ref to avoid re-renders
     const getNowPosition = () => {
-        const totalMinutesNow = currentTime.getHours() * 60 + currentTime.getMinutes();
+        const totalMinutesNow = currentTimeRef.current.getHours() * 60 + currentTimeRef.current.getMinutes();
         if (totalMinutesNow < START_HOUR * 60) return 0;
         if (totalMinutesNow > END_HOUR * 60) return TOTAL_CELLS * CELL_WIDTH;
         return (totalMinutesNow / minutesPerCell) * CELL_WIDTH;
     };
+
+    // Calculate and set initial scroll position to center NOW line
+    const calculateAndSetScrollPosition = useCallback(() => {
+        if (screenWidth === 0) return null; // Wait for screen dimensions
+
+        const nowPosition = getNowPosition();
+        const timelineVisibleWidth = screenWidth - TRACK_LABEL_WIDTH;
+        const centerOffset = timelineVisibleWidth / 2;
+        const scrollX = Math.max(0, nowPosition - centerOffset);
+
+        return scrollX;
+    }, [screenWidth, minutesPerCell]); // Removed currentTime dependency
+
+    // Calculate initial scroll position on mount
+    useLayoutEffect(() => {
+        if (hasCenteredOnMountRef.current) return;
+
+        const scrollX = calculateAndSetScrollPosition();
+        if (scrollX === null) return;
+
+        initialScrollXRef.current = scrollX;
+        timelineScrollXRef.current = scrollX;
+        hasCenteredOnMountRef.current = true;
+
+        // Set scroll position immediately if refs are already available
+        if (horizontalScrollTimelineRef.current) {
+            horizontalScrollTimelineRef.current.scrollTo({ x: scrollX, animated: false });
+        }
+        if (horizontalScrollHeaderRef.current) {
+            horizontalScrollHeaderRef.current.scrollTo({ x: scrollX, animated: false });
+        }
+    }, [calculateAndSetScrollPosition]);
+
+    // Ref callback to set scroll position immediately when ScrollView mounts
+    const setTimelineScrollRef = useCallback((ref: ScrollView | null) => {
+        horizontalScrollTimelineRef.current = ref;
+        if (ref) {
+            let scrollX = initialScrollXRef.current;
+
+            // Calculate scroll position if not already calculated
+            if (scrollX === null && !hasCenteredOnMountRef.current) {
+                scrollX = calculateAndSetScrollPosition();
+                if (scrollX !== null) {
+                    initialScrollXRef.current = scrollX;
+                    timelineScrollXRef.current = scrollX;
+                    hasCenteredOnMountRef.current = true;
+                }
+            }
+
+            if (scrollX !== null) {
+                // Set scroll position immediately - ref callback runs during render, before paint
+                ref.scrollTo({ x: scrollX, animated: false });
+            }
+        }
+    }, [calculateAndSetScrollPosition]);
+
+    const setHeaderScrollRef = useCallback((ref: ScrollView | null) => {
+        horizontalScrollHeaderRef.current = ref;
+        if (ref) {
+            let scrollX = initialScrollXRef.current;
+
+            // Calculate scroll position if not already calculated
+            if (scrollX === null && !hasCenteredOnMountRef.current) {
+                scrollX = calculateAndSetScrollPosition();
+                if (scrollX !== null) {
+                    initialScrollXRef.current = scrollX;
+                    timelineScrollXRef.current = scrollX;
+                    hasCenteredOnMountRef.current = true;
+                }
+            }
+
+            if (scrollX !== null) {
+                // Set scroll position immediately - ref callback runs during render, before paint
+                ref.scrollTo({ x: scrollX, animated: false });
+            }
+        }
+    }, [calculateAndSetScrollPosition]);
 
     // Check if two stages overlap
     const checkStagesOverlap = useCallback((stage1: TaskStage, stage2: TaskStage): boolean => {
@@ -521,28 +815,43 @@ export default function LiveFocusView({
     // - E goes below D if E.start < D.end
     // - No stage ever "jumps upward" to an unrelated earlier line
     // - Layout grows only when overlap exists (with the previous stage)
+    // IMPORTANT: Uses pending layouts to get correct positions for edited stages
     const calculateStageLanes = useCallback((stages: TaskStage[]): Map<number, number> => {
         if (stages.length === 0) return new Map();
 
         const laneMap = new Map<number, number>(); // stageId -> lane number
 
-        // Sort by start time asc, tie-breaker id asc (stable)
+        // Helper to get effective start/duration (pending or props)
+        const getEffectiveTime = (stage: TaskStage) => {
+            const pending = pendingLayoutsRef.current.get(stage.id);
+            if (pending) {
+                return { start: pending.startTimeMinutes, duration: pending.durationMinutes };
+            }
+            return {
+                start: stage.startTimeMinutes ?? 0,
+                duration: stage.durationMinutes ?? 180
+            };
+        };
+
+        // Sort by start time asc (using effective time), tie-breaker id asc (stable)
         const sortedStages = [...stages].sort((a, b) => {
-            const startA = a.startTimeMinutes ?? 0;
-            const startB = b.startTimeMinutes ?? 0;
-            if (startA !== startB) return startA - startB;
+            const timeA = getEffectiveTime(a);
+            const timeB = getEffectiveTime(b);
+            if (timeA.start !== timeB.start) return timeA.start - timeB.start;
             return a.id - b.id;
         });
 
         // First stage always starts at lane 0
+        const firstTime = getEffectiveTime(sortedStages[0]);
         let prevLane = 0;
-        let prevEnd = (sortedStages[0].startTimeMinutes ?? 0) + (sortedStages[0].durationMinutes ?? 180);
+        let prevEnd = firstTime.start + firstTime.duration;
         laneMap.set(sortedStages[0].id, 0);
 
         for (let i = 1; i < sortedStages.length; i++) {
             const cur = sortedStages[i];
-            const curStart = cur.startTimeMinutes ?? 0;
-            const curDuration = cur.durationMinutes ?? 180;
+            const curTime = getEffectiveTime(cur);
+            const curStart = curTime.start;
+            const curDuration = curTime.duration;
             const curEnd = curStart + curDuration;
 
             const overlapsPrev = curStart < prevEnd;
@@ -576,6 +885,14 @@ export default function LiveFocusView({
 
         const top = lane !== undefined ? BASE_TOP + (lane * (CARD_HEIGHT + LANE_SPACING)) : BASE_TOP;
 
+        // Check pending layouts REF first - these are committed changes waiting for props to update
+        const pending = pendingLayoutsRef.current.get(stage.id);
+        if (pending) {
+            const pendingLeft = (pending.startTimeMinutes / minutesPerCell) * CELL_WIDTH;
+            const pendingWidth = (pending.durationMinutes / minutesPerCell) * CELL_WIDTH;
+            return { left: pendingLeft, width: Math.max(pendingWidth, 60), top };
+        }
+
         // Default values: startTime = 0 (00:00), duration = 180 minutes (3 hours)
         const startTime = stage.startTimeMinutes ?? 0;
         const duration = stage.durationMinutes ?? 180; // Default: 3 hours
@@ -584,6 +901,49 @@ export default function LiveFocusView({
         const width = (duration / minutesPerCell) * CELL_WIDTH;
 
         return { left, width: Math.max(width, 60), top }; // Minimum width of 60
+    };
+
+    // Get effective stage time (live during drag/resize, or from pending layouts, or from props)
+    // This function returns real-time values during dragging for live time display
+    const getEffectiveStageTime = useCallback((stage: TaskStage): { startTimeMinutes: number; durationMinutes: number } => {
+        // LIVE MODE: If this stage is being actively dragged or resized, calculate from tempStageLayout
+        if (activeStage?.stageId === stage.id && tempStageLayout) {
+            // Calculate live time from the current visual position
+            const liveStartTime = (tempStageLayout.left / CELL_WIDTH) * minutesPerCell;
+            const liveDuration = (tempStageLayout.width / CELL_WIDTH) * minutesPerCell;
+            return {
+                startTimeMinutes: Math.round(liveStartTime),
+                durationMinutes: Math.round(liveDuration),
+            };
+        }
+
+        // Check pending layouts REF (synchronous access)
+        const pending = pendingLayoutsRef.current.get(stage.id);
+        if (pending) {
+            return pending;
+        }
+
+        // Otherwise use actual values from stage (which comes from local storage via props)
+        return {
+            startTimeMinutes: stage.startTimeMinutes ?? 0,
+            durationMinutes: stage.durationMinutes ?? 180,
+        };
+    }, [activeStage, tempStageLayout, minutesPerCell, pendingLayoutsVersion]);
+
+    // Format time for compact display (e.g., "09:00" or "2h30m")
+    const formatTimeCompact = (minutes: number): string => {
+        const hours = Math.floor(minutes / 60);
+        const mins = Math.floor(minutes % 60);
+        return `${String(hours % 24).padStart(2, '0')}:${String(mins).padStart(2, '0')}`;
+    };
+
+    // Format duration for compact display (e.g., "2h" or "2h30m" or "45m")
+    const formatDurationCompact = (minutes: number): string => {
+        const hours = Math.floor(minutes / 60);
+        const mins = Math.round(minutes % 60);
+        if (hours === 0) return `${mins}m`;
+        if (mins === 0) return `${hours}h`;
+        return `${hours}h${mins}m`;
     };
 
     const formatTimeRange = (startMinutes: number, endMinutes: number) => {
@@ -665,116 +1025,194 @@ export default function LiveFocusView({
 
             {/* Main Container: Fixed Labels + Scrollable Timeline */}
             <View style={styles.mainContainer}>
+                {/* Toggle Button for Task Column (Pull-Handle style) */}
+                <TouchableOpacity
+                    style={[
+                        styles.taskColumnToggle,
+                        { left: isTaskColumnVisible ? TRACK_LABEL_WIDTH : 0 }
+                    ]}
+                    onPress={() => {
+                        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+                        setIsTaskColumnVisible(!isTaskColumnVisible);
+                    }}
+                    activeOpacity={0.8}
+                >
+                    <View style={styles.taskColumnToggleLine} />
+                    <MaterialIcons
+                        name={isTaskColumnVisible ? 'chevron-left' : 'chevron-right'}
+                        size={14}
+                        color="#FFFFFF"
+                    />
+                </TouchableOpacity>
+
                 {/* Fixed Left Column - Task Labels */}
-                <View style={styles.fixedLabelsColumn}>
-                    {/* Sticky Time Axis Header (empty space for alignment) */}
-                    <View style={[styles.stickyHeaderFixed, { width: TRACK_LABEL_WIDTH, height: 25 }]} />
+                {isTaskColumnVisible && (
+                    <View style={styles.fixedLabelsColumn}>
+                        {/* Sticky Time Axis Header (empty space for alignment) */}
+                        <View style={[styles.stickyHeaderFixed, { width: TRACK_LABEL_WIDTH, height: 25 }]} />
 
-                    {/* Vertical Scroll for Labels (synced with timeline) */}
-                    <ScrollView
-                        ref={verticalScrollLabelsRef}
-                        style={styles.verticalScrollLabels}
-                        contentContainerStyle={{ minHeight: contentHeight, paddingBottom: 0 }}
-                        showsVerticalScrollIndicator={false}
-                        scrollEnabled={!activeStage} // Now scrollable, synced with timeline
-                        onScroll={handleVerticalScrollLabels}
-                        scrollEventThrottle={16}
-                        bounces={true}
-                        bouncesZoom={false}
-                        alwaysBounceVertical={true}
-                        removeClippedSubviews={Platform.OS === 'android'}
-                        overScrollMode="never"
-                    >
-                        <View>
-                            {tasks.map((task, taskIndex) => {
-                                const stages = task.stages || [];
-                                const liveStatus = getTaskLiveStatus(task);
-                                const isActive = liveStatus === 'ACTIVE';
-                                const category = categories.find(c => c.id === task.categoryId);
+                        {/* Vertical Scroll for Labels (synced with timeline) */}
+                        <ScrollView
+                            ref={verticalScrollLabelsRef}
+                            style={styles.verticalScrollLabels}
+                            contentContainerStyle={{ minHeight: contentHeight, paddingBottom: 0 }}
+                            showsVerticalScrollIndicator={false}
+                            scrollEnabled={!activeStage} // Now scrollable, synced with timeline
+                            onScroll={handleVerticalScrollLabels}
+                            scrollEventThrottle={16}
+                            bounces={true}
+                            bouncesZoom={false}
+                            alwaysBounceVertical={true}
+                            removeClippedSubviews={Platform.OS === 'android'}
+                            overScrollMode="never"
+                        >
+                            <View>
+                                {tasks.map((task, taskIndex) => {
+                                    const stages = task.stages || [];
+                                    const liveStatus = getTaskLiveStatus(task);
+                                    const isActive = liveStatus === 'ACTIVE';
+                                    const category = categories.find(c => c.id === task.categoryId);
 
-                                // Get measured height or calculate fallback (must grow when new lanes appear)
-                                const measuredHeight = taskHeights.get(task.id) ?? 0;
+                                    // Get measured height or calculate fallback (must grow when new lanes appear)
+                                    const measuredHeight = taskHeights.get(task.id) ?? 0;
 
-                                // Keep filtering consistent with timeline-side logic
-                                const untimedStages = stages.filter(s =>
-                                    (s.startTimeMinutes === undefined || s.startTimeMinutes === null) &&
-                                    (s.durationMinutes === undefined || s.durationMinutes === null)
-                                );
-                                const timedStages = stages.filter(s =>
-                                    (s.startTimeMinutes !== undefined && s.startTimeMinutes !== null) ||
-                                    (s.durationMinutes !== undefined && s.durationMinutes !== null)
-                                );
+                                    // Keep filtering consistent with timeline-side logic
+                                    const untimedStages = stages.filter(s =>
+                                        (s.startTimeMinutes === undefined || s.startTimeMinutes === null) &&
+                                        (s.durationMinutes === undefined || s.durationMinutes === null)
+                                    );
+                                    const timedStages = stages.filter(s =>
+                                        (s.startTimeMinutes !== undefined && s.startTimeMinutes !== null) ||
+                                        (s.durationMinutes !== undefined && s.durationMinutes !== null)
+                                    );
 
-                                const untimedListHeight = untimedStages.length > 0
-                                    ? (untimedStages.length * 24.5) + 7 + 7 + 3.5 // items + top + bottom + extra bottom margin
-                                    : 0;
+                                    const untimedListHeight = untimedStages.length > 0
+                                        ? (untimedStages.length * 24.5) + 7 + 7 + 3.5 // items + top + bottom + extra bottom margin
+                                        : 0;
 
-                                // Timed stages may stack into multiple lanes; include that in row height
-                                const timedStageLanes = calculateStageLanes(timedStages);
-                                const maxLane = timedStages.length > 0
-                                    ? Math.max(...Array.from(timedStageLanes.values()), -1)
-                                    : -1;
-                                const CARD_HEIGHT = 21;
-                                const LANE_SPACING = 10; // 4px gap between consecutive subtasks
-                                const BASE_TOP = 7;
-                                const timedStagesHeight = maxLane >= 0
-                                    ? BASE_TOP + ((maxLane + 1) * (CARD_HEIGHT + LANE_SPACING)) - LANE_SPACING + 7
-                                    : 0;
+                                    // Timed stages may stack into multiple lanes; include that in row height
+                                    const timedStageLanes = calculateStageLanes(timedStages);
+                                    const maxLane = timedStages.length > 0
+                                        ? Math.max(...Array.from(timedStageLanes.values()), -1)
+                                        : -1;
+                                    const CARD_HEIGHT = 21;
+                                    const LANE_SPACING = 10; // 4px gap between consecutive subtasks
+                                    const BASE_TOP = 7;
+                                    const timedStagesHeight = maxLane >= 0
+                                        ? BASE_TOP + ((maxLane + 1) * (CARD_HEIGHT + LANE_SPACING)) - LANE_SPACING + 7
+                                        : 0;
 
-                                const computedHeight = Math.max(TRACK_HEIGHT, untimedListHeight, timedStagesHeight);
-                                const trackHeight = Math.max(measuredHeight, computedHeight);
+                                    const computedHeight = Math.max(TRACK_HEIGHT, untimedListHeight, timedStagesHeight);
+                                    const trackHeight = Math.max(measuredHeight, computedHeight);
 
-                                const handleLabelLayout = (event: any) => {
-                                    const { height } = event.nativeEvent.layout;
-                                    if (height > 0) {
-                                        // Use requestAnimationFrame to ensure layout is complete
-                                        requestAnimationFrame(() => {
-                                            handleTaskHeightMeasured(task.id, height);
-                                        });
-                                    }
-                                };
+                                    const handleLabelLayout = (event: any) => {
+                                        const { height } = event.nativeEvent.layout;
+                                        if (height > 0) {
+                                            // Use requestAnimationFrame to ensure layout is complete
+                                            requestAnimationFrame(() => {
+                                                handleTaskHeightMeasured(task.id, height);
+                                            });
+                                        }
+                                    };
 
-                                return (
-                                    <View key={task.id}>
-                                        <View style={styles.trackSeparator} />
-                                        <View
-                                            style={[styles.trackLabelContainer, { height: trackHeight }]}
-                                            onLayout={handleLabelLayout}
-                                        >
-                                            <TouchableOpacity
-                                                activeOpacity={0.7}
-                                                onPress={() => { }}
-                                                style={[styles.trackLabel, { width: TRACK_LABEL_WIDTH }]}
+                                    return (
+                                        <View key={task.id}>
+                                            <View style={styles.trackSeparator} />
+                                            <View
+                                                style={[styles.trackLabelContainer, { height: trackHeight }]}
+                                                onLayout={handleLabelLayout}
                                             >
-                                                <View style={{ flex: 1 }}>
-                                                    <Text style={[styles.trackTitle, isActive && styles.trackTitleActive]} numberOfLines={1}>
-                                                        {task.title.toUpperCase()}
-                                                    </Text>
-                                                    <Text style={styles.trackSubtitle} numberOfLines={1}>
-                                                        {category ? category.name.toUpperCase() : 'GENERAL'}
-                                                    </Text>
-                                                </View>
-                                            </TouchableOpacity>
+                                                <TouchableOpacity
+                                                    activeOpacity={1}
+                                                    onPress={() => {
+                                                        // Do nothing as requested by user to prevent page close
+                                                    }}
+                                                    style={[styles.trackLabel, { width: TRACK_LABEL_WIDTH }, isActive && styles.trackLabelActive]}
+                                                >
+                                                    <View style={[styles.categoryAccent, { backgroundColor: category?.color || '#333' }]} />
+                                                    <View style={{ flex: 1, paddingLeft: 10 }}>
+                                                        <View style={styles.titleRow}>
+                                                            <Text style={[styles.trackTitle, isActive && styles.trackTitleActive]} numberOfLines={1}>
+                                                                {task.title}
+                                                            </Text>
+                                                            {isActive && <View style={styles.activeDot} />}
+                                                        </View>
+                                                        <View style={styles.subtitleRow}>
+                                                            {category && (
+                                                                <MaterialIcons
+                                                                    name={category.icon as any}
+                                                                    size={10}
+                                                                    color={category.color}
+                                                                    style={{ marginRight: 4 }}
+                                                                />
+                                                            )}
+                                                            <Text style={[styles.trackSubtitle, { color: category ? category.color : 'rgba(255,255,255,0.4)' }]} numberOfLines={1}>
+                                                                {category ? category.name.toUpperCase() : 'GENERAL'}
+                                                            </Text>
+                                                        </View>
+
+                                                        {/* Stage Status Statistics */}
+                                                        <View style={styles.stageStatsRow}>
+                                                            {(() => {
+                                                                const s = task.stages || [];
+                                                                const up = s.filter(i => i.status === 'Upcoming').length;
+                                                                const proc = s.filter(i => i.status === 'Process').length;
+                                                                const done = s.filter(i => i.status === 'Done').length;
+                                                                const undon = s.filter(i => i.status === 'Undone').length;
+
+                                                                return (
+                                                                    <>
+                                                                        {up > 0 && (
+                                                                            <View style={styles.stageStatItem}>
+                                                                                <View style={[styles.miniStatusDot, { backgroundColor: 'rgba(255,255,255,0.3)' }]} />
+                                                                                <Text style={styles.stageStatText}>{up}</Text>
+                                                                            </View>
+                                                                        )}
+                                                                        {proc > 0 && (
+                                                                            <View style={styles.stageStatItem}>
+                                                                                <View style={[styles.miniStatusDot, { backgroundColor: '#FFB74D' }]} />
+                                                                                <Text style={styles.stageStatText}>{proc}</Text>
+                                                                            </View>
+                                                                        )}
+                                                                        {done > 0 && (
+                                                                            <View style={styles.stageStatItem}>
+                                                                                <View style={[styles.miniStatusDot, { backgroundColor: '#4CAF50' }]} />
+                                                                                <Text style={styles.stageStatText}>{done}</Text>
+                                                                            </View>
+                                                                        )}
+                                                                        {undon > 0 && (
+                                                                            <View style={styles.stageStatItem}>
+                                                                                <View style={[styles.miniStatusDot, { backgroundColor: '#FF5252' }]} />
+                                                                                <Text style={styles.stageStatText}>{undon}</Text>
+                                                                            </View>
+                                                                        )}
+                                                                    </>
+                                                                );
+                                                            })()}
+                                                        </View>
+                                                    </View>
+                                                </TouchableOpacity>
+                                            </View>
                                         </View>
+                                    );
+                                })}
+                                {tasks.length > 0 && <View style={styles.trackSeparator} />}
+                                {tasks.length === 0 && (
+                                    <View style={[styles.emptyState, { width: TRACK_LABEL_WIDTH }]}>
+                                        <Text style={styles.emptyText}>No tracks</Text>
                                     </View>
-                                );
-                            })}
-                            {tasks.length > 0 && <View style={styles.trackSeparator} />}
-                            {tasks.length === 0 && (
-                                <View style={[styles.emptyState, { width: TRACK_LABEL_WIDTH }]}>
-                                    <Text style={styles.emptyText}>No tracks</Text>
-                                </View>
-                            )}
-                        </View>
-                    </ScrollView>
-                </View>
+                                )}
+                            </View>
+                        </ScrollView>
+                    </View>
+                )}
 
                 {/* Scrollable Timeline Section */}
                 <View style={styles.timelineSection}>
                     {/* Sticky Time Axis Header */}
                     <View style={styles.stickyHeaderContainer}>
                         <ScrollView
-                            ref={horizontalScrollHeaderRef}
+                            ref={setHeaderScrollRef}
                             horizontal
                             showsHorizontalScrollIndicator={false}
                             scrollEnabled={!activeStage && !isDragging}
@@ -797,7 +1235,7 @@ export default function LiveFocusView({
                                 ))}
 
                                 {/* NOW Line Dot (Top portion) */}
-                                {currentTime.getHours() >= START_HOUR && currentTime.getHours() <= END_HOUR && (
+                                {currentTimeRef.current.getHours() >= START_HOUR && currentTimeRef.current.getHours() <= END_HOUR && (
                                     <View style={[styles.nowLineSticky, { left: getNowPosition() }]}>
                                         <View style={styles.nowDot} />
                                     </View>
@@ -828,7 +1266,7 @@ export default function LiveFocusView({
                         >
                             <ScrollView
                                 horizontal
-                                ref={horizontalScrollTimelineRef}
+                                ref={setTimelineScrollRef}
                                 showsHorizontalScrollIndicator={true}
                                 scrollEnabled={!activeStage && !isDragging}
                                 contentContainerStyle={{ width: TIMELINE_ONLY_WIDTH }}
@@ -851,7 +1289,7 @@ export default function LiveFocusView({
                                     ))}
 
                                     {/* NOW Line - Vertical segment */}
-                                    {currentTime.getHours() >= START_HOUR && currentTime.getHours() <= END_HOUR && (
+                                    {currentTimeRef.current.getHours() >= START_HOUR && currentTimeRef.current.getHours() <= END_HOUR && (
                                         <View style={[styles.nowLine, { left: getNowPosition() }]} />
                                     )}
 
@@ -875,8 +1313,14 @@ export default function LiveFocusView({
                                             );
 
                                             // Sort timed subtasks by startTimeMinutes (ascending)
+                                            // Uses pending layouts for edited stages
                                             const sortedTimedStages = [...timedStages].sort((a, b) => {
-                                                const timeDiff = (a.startTimeMinutes || 0) - (b.startTimeMinutes || 0);
+                                                // Get effective start time from pending or props
+                                                const pendingA = pendingLayoutsRef.current.get(a.id);
+                                                const pendingB = pendingLayoutsRef.current.get(b.id);
+                                                const startA = pendingA ? pendingA.startTimeMinutes : (a.startTimeMinutes || 0);
+                                                const startB = pendingB ? pendingB.startTimeMinutes : (b.startTimeMinutes || 0);
+                                                const timeDiff = startA - startB;
                                                 if (timeDiff !== 0) return timeDiff;
                                                 // Tie-breaker: use id for consistent ordering
                                                 return a.id - b.id;
@@ -943,6 +1387,8 @@ export default function LiveFocusView({
                                                                 trackLabelWidth={TRACK_LABEL_WIDTH}
                                                                 getTimelineScrollX={() => timelineScrollXRef.current}
                                                                 isLandscape={isLandscape}
+                                                                checkAndUpdateAutoScroll={checkAndUpdateAutoScroll}
+                                                                stopAutoScroll={stopAutoScroll}
                                                                 onDropOnTimeline={(stageId, xPosition) => {
                                                                     if (!onUpdateStages || !onUpdateStageLayout) return;
                                                                     // Calculate startTimeMinutes from X position
@@ -1020,9 +1466,9 @@ export default function LiveFocusView({
                                                                         style={[
                                                                             // Universal card design (same as untimed cards) for timeline too
                                                                             styles.timelineStageCard,
-                                                                            { left, width, top },
                                                                             isBeingEdited && styles.stageCardDragging,
                                                                             isInResizeMode && styles.stageCardResizeMode,
+                                                                            { left, width, top }, // Apply position/size last to ensure it overrides any style changes
                                                                         ]}
                                                                         {...stagePanResponder.panHandlers}
                                                                     >
@@ -1031,7 +1477,13 @@ export default function LiveFocusView({
                                                                             <TouchableOpacity
                                                                                 style={styles.resizeHandleLeft}
                                                                                 onPressIn={() => {
+                                                                                    // Clear any previous drag state if switching to a different stage
+                                                                                    if (activeStage && (activeStage.taskId !== task.id || activeStage.stageId !== stage.id)) {
+                                                                                        clearEditingState();
+                                                                                    }
                                                                                     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                                                                                    // Reset scroll tracking for smooth resize during auto-scroll
+                                                                                    resetScrollTracking();
                                                                                     resizeHandleSideRef.current = 'left';
                                                                                     setActiveStage({ taskId: task.id, stageId: stage.id });
                                                                                     setIsResizing(true);
@@ -1049,15 +1501,45 @@ export default function LiveFocusView({
                                                                             onPress={() => {
                                                                                 // Tap to enter resize mode (if not already in it)
                                                                                 if (!isInResizeMode && !isDragging && !isResizing) {
+                                                                                    // Clear any previous editing state if switching to a different stage
+                                                                                    const isDifferentStage =
+                                                                                        (activeStage && (activeStage.taskId !== task.id || activeStage.stageId !== stage.id)) ||
+                                                                                        (resizeModeStage && (resizeModeStage.taskId !== task.id || resizeModeStage.stageId !== stage.id));
+                                                                                    if (isDifferentStage) {
+                                                                                        clearEditingState();
+                                                                                    }
                                                                                     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
                                                                                     setResizeModeStage({ taskId: task.id, stageId: stage.id });
+                                                                                } else if ((isInResizeMode || isDragging || isResizing)) {
+                                                                                    // If already in resize mode for this stage, do nothing (captures touch to prevent background dismissal)
+                                                                                    const isDifferentStage =
+                                                                                        (activeStage && (activeStage.taskId !== task.id || activeStage.stageId !== stage.id)) ||
+                                                                                        (resizeModeStage && (resizeModeStage.taskId !== task.id || resizeModeStage.stageId !== stage.id));
+
+                                                                                    if (isDifferentStage) {
+                                                                                        clearEditingState();
+                                                                                        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                                                                                        setResizeModeStage({ taskId: task.id, stageId: stage.id });
+                                                                                    }
+                                                                                    // If same stage, we do nothing - but we CAPTURE the touch
                                                                                 }
                                                                             }}
                                                                             onLongPress={() => {
                                                                                 // Long-press to move - only if not in resize mode
                                                                                 if (isInResizeMode) return;
 
+                                                                                // Clear any previous editing state if switching to a different stage
+                                                                                const isDifferentStage =
+                                                                                    (activeStage && (activeStage.taskId !== task.id || activeStage.stageId !== stage.id)) ||
+                                                                                    (resizeModeStage && (resizeModeStage.taskId !== task.id || resizeModeStage.stageId !== stage.id));
+                                                                                if (isDifferentStage) {
+                                                                                    clearEditingState();
+                                                                                }
+
                                                                                 Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+
+                                                                                // Reset scroll tracking for smooth drag during auto-scroll
+                                                                                resetScrollTracking();
 
                                                                                 // Freeze lanes for this task at drag start so other stages stay put.
                                                                                 frozenLanesRef.current = {
@@ -1083,18 +1565,55 @@ export default function LiveFocusView({
                                                                             delayLongPress={300}
                                                                             activeOpacity={0.8}
                                                                             style={[
-                                                                                { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'flex-start' },
-                                                                                isInResizeMode && { paddingHorizontal: 12 }
+                                                                                { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'flex-start' }
                                                                             ]}
-                                                                            disabled={isInResizeMode} // Disable tap when in resize mode
                                                                         >
+                                                                            {/* Stage Name */}
                                                                             <Text style={[
                                                                                 styles.untimedStageName,
+                                                                                { flexShrink: 1 },
                                                                                 isBeingEdited && styles.stageTextDragging,
                                                                                 isInResizeMode && styles.stageTextResizeMode
-                                                                            ]} numberOfLines={1}>
+                                                                            ]} numberOfLines={1} ellipsizeMode="tail">
                                                                                 {stage.text}
                                                                             </Text>
+                                                                            {/* Time Display: Start Time & Duration */}
+                                                                            {(() => {
+                                                                                const { startTimeMinutes, durationMinutes } = getEffectiveStageTime(stage);
+                                                                                const startTimeStr = formatTimeCompact(startTimeMinutes);
+                                                                                const durationStr = formatDurationCompact(durationMinutes);
+                                                                                return (
+                                                                                    <View style={styles.stageTimeDisplay}>
+                                                                                        <Text style={[
+                                                                                            styles.stageTimeText,
+                                                                                            isBeingEdited && styles.stageTimeTextEditing,
+                                                                                            isInResizeMode && styles.stageTimeTextEditing
+                                                                                        ]}>
+                                                                                            {startTimeStr}
+                                                                                        </Text>
+                                                                                        <Text style={[
+                                                                                            styles.stageDurationText,
+                                                                                            isBeingEdited && styles.stageTimeTextEditing,
+                                                                                            isInResizeMode && styles.stageTimeTextEditing
+                                                                                        ]}>
+                                                                                            {durationStr}
+                                                                                        </Text>
+                                                                                    </View>
+                                                                                );
+                                                                            })()}
+                                                                            {/* Status Indicator */}
+                                                                            {(() => {
+                                                                                const status = stage.status || 'Upcoming';
+                                                                                const config = STAGE_STATUS_CONFIG[status];
+                                                                                return (
+                                                                                    <MaterialIcons
+                                                                                        name={config.icon}
+                                                                                        size={12}
+                                                                                        color={config.color}
+                                                                                        style={{ marginLeft: 4, flexShrink: 0 }}
+                                                                                    />
+                                                                                );
+                                                                            })()}
                                                                         </TouchableOpacity>
 
                                                                         {/* Right Resize Handle - simple vertical line */}
@@ -1102,7 +1621,13 @@ export default function LiveFocusView({
                                                                             <TouchableOpacity
                                                                                 style={styles.resizeHandleRight}
                                                                                 onPressIn={() => {
+                                                                                    // Clear any previous drag state if switching to a different stage
+                                                                                    if (activeStage && (activeStage.taskId !== task.id || activeStage.stageId !== stage.id)) {
+                                                                                        clearEditingState();
+                                                                                    }
                                                                                     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                                                                                    // Reset scroll tracking for smooth resize during auto-scroll
+                                                                                    resetScrollTracking();
                                                                                     resizeHandleSideRef.current = 'right';
                                                                                     setActiveStage({ taskId: task.id, stageId: stage.id });
                                                                                     setIsResizing(true);
@@ -1142,14 +1667,58 @@ export default function LiveFocusView({
                                                                             >
                                                                                 <MaterialIcons
                                                                                     name="delete-outline"
-                                                                                    size={12.6}
-                                                                                    color={isBeingEdited ? "rgba(0,0,0,0.4)" : "rgba(255,255,255,0.35)"}
+                                                                                    size={15}
+                                                                                    color={isBeingEdited ? "rgba(255,255,255,0.7)" : "#FF3B30"}
                                                                                 />
                                                                             </TouchableOpacity>
                                                                         )}
                                                                     </View>
                                                                 );
                                                             });
+                                                        })()}
+
+                                                        {/* Add Subtask Plus Button */}
+                                                        {(() => {
+                                                            // Calculate position after the last timed stage, aligned with the last card
+                                                            const lastStage = sortedTimedStages[sortedTimedStages.length - 1];
+                                                            let buttonLeft = 10; // Default position if no stages
+                                                            let buttonTop = 7; // Default top position (BASE_TOP)
+
+                                                            if (lastStage) {
+                                                                // Get the lane for the last stage
+                                                                const isLastActive = activeStage?.taskId === task.id && activeStage?.stageId === lastStage.id;
+                                                                const lastLane = isLastActive && tempStageLayout?.lane !== undefined
+                                                                    ? tempStageLayout.lane
+                                                                    : (calculateStageLanes(sortedTimedStages).get(lastStage.id) ?? 0);
+
+                                                                // Get layout of the last card
+                                                                const { left, width, top } = getStageLayout(lastStage, sortedTimedStages.length - 1, lastLane);
+
+                                                                // Position button right after the last card with small spacing
+                                                                buttonLeft = left + width + 8; // 8px spacing after the card
+                                                                buttonTop = top; // Align vertically with the last card
+                                                            }
+
+                                                            // Calculate the start time for the new subtask (Now)
+                                                            const nowMinutes = currentTimeRef.current.getHours() * 60 + currentTimeRef.current.getMinutes();
+                                                            const newStartTime = nowMinutes;
+
+                                                            return (
+                                                                <TouchableOpacity
+                                                                    style={[styles.addSubtaskButton, { left: buttonLeft, top: buttonTop }]}
+                                                                    onPress={() => {
+                                                                        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                                                                        setAddSubtaskModal({
+                                                                            visible: true,
+                                                                            taskId: task.id,
+                                                                            startTimeMinutes: newStartTime,
+                                                                        });
+                                                                    }}
+                                                                    activeOpacity={0.7}
+                                                                >
+                                                                    <MaterialIcons name="add" size={18} color="#808080" />
+                                                                </TouchableOpacity>
+                                                            );
                                                         })()}
 
                                                     </TouchableOpacity>
@@ -1163,6 +1732,35 @@ export default function LiveFocusView({
                     </ScrollView>
                 </View>
             </View >
+
+            {/* Add Subtask Modal */}
+            <AddSubtaskModal
+                visible={addSubtaskModal.visible}
+                taskId={addSubtaskModal.taskId}
+                startTimeMinutes={addSubtaskModal.startTimeMinutes}
+                onClose={() => setAddSubtaskModal({ visible: false, taskId: null, startTimeMinutes: 0 })}
+                onAdd={(taskId, text, startTime, duration) => {
+                    if (!onUpdateStages) return;
+                    const task = tasks.find(t => t.id === taskId);
+                    if (!task) return;
+
+                    const newStage: TaskStage = {
+                        id: Date.now(),
+                        text: text,
+                        isCompleted: false,
+                        status: 'Upcoming',
+                        createdAt: new Date().toISOString(),
+                        startTimeMinutes: startTime,
+                        durationMinutes: duration,
+                    };
+
+                    const updatedStages = [...(task.stages || []), newStage];
+                    onUpdateStages(task, updatedStages);
+
+                    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+                    setAddSubtaskModal({ visible: false, taskId: null, startTimeMinutes: 0 });
+                }}
+            />
 
         </View >
     );
@@ -1180,6 +1778,8 @@ interface UntimedStagesDraggableListProps {
     onDeleteStage: (stageId: number) => void;
     onDropOnTimeline: (stageId: number, xPosition: number) => void;
     onHeightChange?: (height: number) => void; // Callback when list height changes
+    checkAndUpdateAutoScroll: (pageX: number) => void;
+    stopAutoScroll: () => void;
 }
 
 function UntimedStagesDraggableList({
@@ -1192,7 +1792,9 @@ function UntimedStagesDraggableList({
     isLandscape,
     onDeleteStage,
     onDropOnTimeline,
-    onHeightChange
+    onHeightChange,
+    checkAndUpdateAutoScroll,
+    stopAutoScroll
 }: UntimedStagesDraggableListProps) {
     const [currentTime, setCurrentTime] = useState(new Date());
     const [measuredWidths, setMeasuredWidths] = useState<Map<number, number>>(new Map());
@@ -1269,9 +1871,16 @@ function UntimedStagesDraggableList({
             onPanResponderMove: (evt) => {
                 if (!drag2DStageIdRef.current) return;
                 const { pageX, pageY } = evt.nativeEvent;
+                
+                // Check for auto-scroll
+                checkAndUpdateAutoScroll(pageX);
+                
                 setDrag2DPos({ x: pageX, y: pageY });
             },
             onPanResponderRelease: (evt) => {
+                // Stop auto-scroll
+                stopAutoScroll();
+                
                 const stageId = drag2DStageIdRef.current;
                 if (!stageId) return;
 
@@ -1288,7 +1897,11 @@ function UntimedStagesDraggableList({
 
                 stop2DDrag();
             },
-            onPanResponderTerminate: () => stop2DDrag(),
+            onPanResponderTerminate: () => {
+                // Stop auto-scroll
+                stopAutoScroll();
+                stop2DDrag();
+            },
         })
     ).current;
 
@@ -1355,8 +1968,8 @@ function UntimedStagesDraggableList({
                 >
                     <MaterialIcons
                         name="delete-outline"
-                        size={12.6}
-                        color={isDragging2D ? "rgba(0,0,0,0.4)" : "rgba(255,255,255,0.4)"}
+                        size={15}
+                        color={isDragging2D ? "#FF3B30" : "#FF3B30"}
                     />
                 </TouchableOpacity>
             </View>
@@ -1456,10 +2069,10 @@ const styles = StyleSheet.create({
     },
     fixedLabelsColumn: {
         width: 150, // TRACK_LABEL_WIDTH
-        backgroundColor: '#000000',
+        backgroundColor: '#0C0C0C',
         zIndex: 100,
         borderRightWidth: 1,
-        borderRightColor: 'rgba(255,255,255,0.08)',
+        borderRightColor: 'rgba(255,255,255,0.06)',
         overflow: 'hidden',
     },
     timelineSection: {
@@ -1467,18 +2080,20 @@ const styles = StyleSheet.create({
         flexDirection: 'column',
     },
     stickyHeaderFixed: {
-        backgroundColor: '#000000',
-        // Removed borderBottom - hour sticks provide visual separation
+        backgroundColor: '#0C0C0C',
+        borderBottomWidth: 1,
+        borderBottomColor: 'rgba(76, 175, 80, 0.3)', // Semi-transparent green
     },
     stickyHeaderContainer: {
         height: 25,
         backgroundColor: '#000000',
-        // Removed borderBottom - hour sticks provide visual separation
+        borderBottomWidth: 1,
+        borderBottomColor: 'rgba(76, 175, 80, 0.3)', // Semi-transparent green
         zIndex: 1000,
     },
     verticalScrollLabels: {
         flex: 1,
-        backgroundColor: '#000000',
+        backgroundColor: '#0C0C0C',
         // Ensure smooth scrolling
         overflow: 'hidden',
     },
@@ -1499,7 +2114,7 @@ const styles = StyleSheet.create({
     hourLabelsScroll: {
         height: 30,
         borderBottomWidth: 1,
-        borderBottomColor: 'rgba(255,255,255,0.1)',
+        borderBottomColor: 'rgba(76, 175, 80, 0.3)',
     },
     hourMarker: {
         position: 'absolute',
@@ -1593,7 +2208,7 @@ const styles = StyleSheet.create({
     },
     trackSeparator: {
         height: 1,
-        backgroundColor: 'rgba(255,255,255,0.15)',
+        backgroundColor: 'rgba(76, 175, 80, 0.4)', // Slightly more visible green
         marginLeft: 0,
         marginRight: 0,
     },
@@ -1607,43 +2222,102 @@ const styles = StyleSheet.create({
         flex: 1,
         flexDirection: 'row',
         alignItems: 'center',
-        gap: 6,
-        paddingLeft: 8,
-        paddingRight: 10,
-        backgroundColor: '#000000',
+        paddingRight: 12,
+        backgroundColor: '#0C0C0C',
         height: '100%',
     },
+    trackLabelActive: {
+        backgroundColor: 'rgba(255, 255, 255, 0.03)',
+    },
+    categoryAccent: {
+        width: 4,
+        height: '60%',
+        borderRadius: 2,
+        position: 'absolute',
+        left: 0,
+    },
+    titleRow: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        marginBottom: 2,
+    },
+    subtitleRow: {
+        flexDirection: 'row',
+        alignItems: 'center',
+    },
+    activeDot: {
+        width: 6,
+        height: 6,
+        borderRadius: 3,
+        backgroundColor: '#4CAF50',
+        marginLeft: 8,
+        shadowColor: '#4CAF50',
+        shadowOffset: { width: 0, height: 0 },
+        shadowOpacity: 0.8,
+        shadowRadius: 4,
+    },
     trackTitle: {
-        fontSize: 11,
-        fontWeight: '900',
+        fontSize: 12,
+        fontWeight: '800',
         color: '#FFFFFF',
-        letterSpacing: 0.5,
+        letterSpacing: 0.4,
     },
     trackTitleActive: {
-        color: '#4CAF50',
+        color: '#FFFFFF',
+        fontWeight: '900',
     },
     trackSubtitle: {
-        fontSize: 8,
+        fontSize: 9,
         fontWeight: '700',
-        color: 'rgba(255,255,255,0.4)',
-        marginTop: 1,
+        letterSpacing: 0.8,
+    },
+    stageStatsRow: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        marginTop: 6,
+        gap: 8,
+    },
+    stageStatItem: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 3,
+        backgroundColor: 'rgba(255, 255, 255, 0.05)',
+        paddingHorizontal: 5,
+        paddingVertical: 1,
+        borderRadius: 4,
+    },
+    miniStatusDot: {
+        width: 4,
+        height: 4,
+        borderRadius: 2,
+    },
+    stageStatText: {
+        fontSize: 8,
+        fontWeight: '800',
+        color: 'rgba(255,255,255,0.6)',
     },
     // Universal card design for timed stages on timeline
     timelineStageCard: {
         position: 'absolute',
         top: 7, // align with untimed list top padding (7)
-        borderRadius: 2.8,
-        backgroundColor: 'rgba(20, 20, 20, 0.8)',
+        borderRadius: 8,
+        backgroundColor: '#FFFFFF',
         borderWidth: 1,
-        borderColor: 'rgba(255, 255, 255, 0.1)',
+        borderColor: 'rgba(0, 0, 0, 0.15)',
         minHeight: 21,
-        paddingHorizontal: 4.2,
-        paddingVertical: 2.8,
+        paddingHorizontal: 6,
+        paddingVertical: 3,
         flexDirection: 'row',
         alignItems: 'center',
         justifyContent: 'flex-start',
         gap: 5.6,
         overflow: 'hidden',
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 1 },
+        shadowOpacity: 0.1,
+        shadowRadius: 2,
+        elevation: 2,
     },
     stageBlock: {
         position: 'absolute',
@@ -1718,24 +2392,30 @@ const styles = StyleSheet.create({
         flexDirection: 'row',
         alignItems: 'center',
         marginBottom: 3.5, // 5 * 0.7 = 3.5 (compressed by 30%)
-        borderRadius: 2.8, // 4 * 0.7 = 2.8 (compressed by 30%)
-        backgroundColor: 'rgba(20, 20, 20, 0.8)',
+        borderRadius: 4, // Slightly more rounded for premium look
+        backgroundColor: '#FFFFFF',
         borderWidth: 1,
-        borderColor: 'rgba(255, 255, 255, 0.1)',
+        borderColor: 'rgba(0, 0, 0, 0.15)',
         minHeight: 21, // 30 * 0.7 = 21 (compressed by 30%)
-        paddingHorizontal: 4.2, // 6 * 0.7 = 4.2 (compressed by 30%)
-        paddingVertical: 2.8, // 4 * 0.7 = 2.8 (compressed by 30%)
+        paddingHorizontal: 6, // Slightly more padding
+        paddingVertical: 3,
         gap: 5.6, // 8 * 0.7 = 5.6 (compressed by 30%)
         width: '100%', // Take full width of container
         maxWidth: '100%', // Ensure it doesn't exceed container
         overflow: 'hidden', // Prevent content overflow
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 1 },
+        shadowOpacity: 0.1,
+        shadowRadius: 2,
+        elevation: 2,
     },
     untimedStageName: {
-        fontSize: 7.7, // 11 * 0.7 = 7.7 (compressed by 30%)
-        fontWeight: '700',
-        color: '#FFFFFF',
+        fontSize: 9,
+        fontWeight: '900',
+        color: '#000000',
         flexShrink: 1,
         minWidth: 0, // Allow text to shrink
+        letterSpacing: 0.2,
     },
     untimedStageStatus: {
         fontSize: 6.3, // 9 * 0.7 = 6.3 (compressed by 30%)
@@ -1845,20 +2525,18 @@ const styles = StyleSheet.create({
         shadowRadius: 16,
         elevation: 20,
         zIndex: 9999,
-        transform: [{ scale: 1.05 }],
         borderColor: '#FFFFFF',
         borderWidth: 1,
     },
     stageCardResizeMode: {
         borderColor: '#FF9800',
-        borderWidth: 2,
         backgroundColor: '#FF9800',
-        transform: [{ scale: 1.02 }],
-        shadowColor: '#000',
-        shadowOffset: { width: 0, height: 4 },
-        shadowOpacity: 0.3,
-        shadowRadius: 8,
-        elevation: 10,
+        borderWidth: 1, // Explicitly match base style
+        borderRadius: 8, // Explicitly match base style
+        paddingHorizontal: 6, // Explicitly match base style
+        paddingVertical: 3, // Explicitly match base style
+        minHeight: 21, // Explicitly match base style
+        // Keep all layout properties exactly the same - only change colors
     },
     stageTextDragging: {
         color: '#000000',
@@ -1915,5 +2593,68 @@ const styles = StyleSheet.create({
         backgroundColor: 'rgba(0, 0, 0, 0.2)',
         alignItems: 'center',
         justifyContent: 'center',
+    },
+    addSubtaskButton: {
+        position: 'absolute',
+        top: 7,
+        width: 28,
+        height: 28,
+        borderRadius: 14,
+        backgroundColor: '#1E1E1E',
+        borderWidth: 1,
+        borderColor: '#2F2F2F',
+        alignItems: 'center',
+        justifyContent: 'center',
+    },
+    // Time display styles for subtask cards
+    stageTimeDisplay: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        marginLeft: 6,
+        gap: 4,
+        flexShrink: 0,
+    },
+    stageTimeText: {
+        fontSize: 8,
+        fontWeight: '700',
+        color: 'rgba(0, 0, 0, 0.5)',
+        letterSpacing: 0.2,
+    },
+    stageDurationText: {
+        fontSize: 7,
+        fontWeight: '600',
+        color: 'rgba(0, 0, 0, 0.35)',
+        letterSpacing: 0.1,
+    },
+    stageTimeTextEditing: {
+        color: 'rgba(0, 0, 0, 0.7)',
+    },
+    // Task column toggle button styles (Long, Thin, Black & White Design)
+    taskColumnToggle: {
+        position: 'absolute',
+        top: '35%',
+        width: 14,
+        height: 120,
+        backgroundColor: 'transparent',
+        borderTopRightRadius: 7,
+        borderBottomRightRadius: 7,
+        alignItems: 'center',
+        justifyContent: 'center',
+        zIndex: 5000,
+        borderWidth: 1,
+        borderLeftWidth: 0,
+        borderColor: '#FFFFFF',
+        shadowColor: '#000',
+        shadowOffset: { width: 2, height: 0 },
+        shadowOpacity: 0.5,
+        shadowRadius: 4,
+        elevation: 10,
+    },
+    taskColumnToggleLine: {
+        width: 1,
+        height: 30,
+        backgroundColor: '#FFFFFF',
+        borderRadius: 0.5,
+        marginBottom: 6,
     },
 });
