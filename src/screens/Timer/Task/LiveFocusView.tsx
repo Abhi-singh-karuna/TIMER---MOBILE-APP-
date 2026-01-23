@@ -14,11 +14,13 @@ import {
     NativeScrollEvent,
     Modal,
     Alert,
+    Animated,
 } from 'react-native';
 import { MaterialIcons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
 import { Task, Category, TaskStage, StageStatus } from '../../../constants/data';
 import AddSubtaskModal from '../../../components/AddSubtaskModal';
+import ApprovalPopup from './ApprovalPopup';
 
 interface LiveFocusViewProps {
     tasks: Task[];
@@ -131,6 +133,9 @@ export default function LiveFocusView({
     const currentAutoScrollDirectionRef = useRef<'left' | 'right' | null>(null);
     const currentAutoScrollSpeedRef = useRef(1);
 
+    const [approvalPopupVisible, setApprovalPopupVisible] = useState(false);
+    const approvalButtonScale = useRef(new Animated.Value(1)).current;
+
     const debugLog = useCallback((...args: any[]) => {
         if (!DEBUG_LANES) return;
         // eslint-disable-next-line no-console
@@ -176,8 +181,8 @@ export default function LiveFocusView({
 
     const startAutoScroll = useCallback((direction: 'left' | 'right', speed: number = 1) => {
         // If already scrolling in the same direction, just update the speed
-        if (isAutoScrollingRef.current && 
-            currentAutoScrollDirectionRef.current === direction && 
+        if (isAutoScrollingRef.current &&
+            currentAutoScrollDirectionRef.current === direction &&
             autoScrollIntervalRef.current) {
             currentAutoScrollSpeedRef.current = speed;
             return;
@@ -1017,11 +1022,154 @@ export default function LiveFocusView({
         });
     }, []);
 
+    const handleApproveAll = useCallback(() => {
+        if (!onUpdateStages) return;
+        const now = new Date();
+        const currentMinutes = now.getHours() * 60 + now.getMinutes();
+
+        tasks.forEach(task => {
+            let hasChanges = false;
+            const updatedStages = (task.stages || []).map(stage => {
+                const startTime = stage.startTimeMinutes ?? 0;
+                const duration = stage.durationMinutes ?? 0;
+                const endTime = startTime + duration;
+
+                if (stage.status === 'Process' && endTime <= currentMinutes) {
+                    hasChanges = true;
+                    return { ...stage, status: 'Done' as StageStatus };
+                }
+                return stage;
+            });
+
+            if (hasChanges) {
+                onUpdateStages(task, updatedStages);
+            }
+        });
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+        setApprovalPopupVisible(false);
+    }, [tasks, onUpdateStages]);
+
+    const handleUpdateStageStatus = useCallback((taskId: number, stageId: number, status: StageStatus) => {
+        if (!onUpdateStages) return;
+        const task = tasks.find(t => t.id === taskId);
+        if (!task) return;
+
+        const updatedStages = (task.stages || []).map(s =>
+            s.id === stageId ? { ...s, status } : s
+        );
+        onUpdateStages(task, updatedStages);
+        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    }, [tasks, onUpdateStages]);
+
+    const handleDeleteStage = useCallback((taskId: number, stageId: number) => {
+        if (!onUpdateStages) return;
+        const task = tasks.find(t => t.id === taskId);
+        if (!task) return;
+
+        Alert.alert(
+            'Delete Stage',
+            'Are you sure you want to delete this stage?',
+            [
+                { text: 'Cancel', style: 'cancel' },
+                {
+                    text: 'Delete',
+                    style: 'destructive',
+                    onPress: () => {
+                        const updatedStages = (task.stages || []).filter(s => s.id !== stageId);
+                        onUpdateStages(task, updatedStages);
+                        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+                    }
+                }
+            ]
+        );
+    }, [tasks, onUpdateStages]);
+
+    const getApprovalCount = useCallback(() => {
+        const now = new Date();
+        const currentMinutes = now.getHours() * 60 + now.getMinutes();
+        let count = 0;
+
+        tasks.forEach(task => {
+            task.stages?.forEach(stage => {
+                const startTime = stage.startTimeMinutes ?? 0;
+                const duration = stage.durationMinutes ?? 0;
+                const endTime = startTime + duration;
+                if (stage.status === 'Process' && endTime <= currentMinutes) {
+                    count++;
+                }
+            });
+        });
+        return count;
+    }, [tasks]);
+
+    const approvalCount = getApprovalCount();
+
     return (
         <View style={styles.container}>
             <TouchableOpacity style={styles.closeBtnOverlay} onPress={onClose}>
                 <MaterialIcons name="close" size={24} color="#FFFFFF" />
             </TouchableOpacity>
+
+            {approvalCount > 0 && !approvalPopupVisible && (
+                <Animated.View
+                    style={[
+                        styles.approvalsBtnOverlay,
+                        {
+                            transform: [{ scale: approvalButtonScale }],
+                        },
+                    ]}
+                >
+                    <TouchableOpacity
+                        style={styles.approvalsBtnTouchable}
+                        onPress={() => {
+                            // Animate button press
+                            Animated.sequence([
+                                Animated.spring(approvalButtonScale, {
+                                    toValue: 0.95,
+                                    useNativeDriver: true,
+                                    tension: 300,
+                                    friction: 10,
+                                }),
+                                Animated.spring(approvalButtonScale, {
+                                    toValue: 1.05,
+                                    useNativeDriver: true,
+                                    tension: 300,
+                                    friction: 10,
+                                }),
+                                Animated.spring(approvalButtonScale, {
+                                    toValue: 1,
+                                    useNativeDriver: true,
+                                    tension: 300,
+                                    friction: 10,
+                                }),
+                            ]).start();
+                            
+                            // Configure layout animation for smooth expansion
+                            LayoutAnimation.configureNext({
+                                duration: 300,
+                                create: {
+                                    type: LayoutAnimation.Types.easeInEaseOut,
+                                    property: LayoutAnimation.Properties.scaleXY,
+                                },
+                                update: {
+                                    type: LayoutAnimation.Types.easeInEaseOut,
+                                },
+                            });
+                            
+                            setApprovalPopupVisible(true);
+                        }}
+                        activeOpacity={0.8}
+                    >
+                        <View style={styles.approvalsBtnContent}>
+                            <View style={styles.approvalDot} />
+                            <Text style={styles.approvalsBtnText}>APPROVALS</Text>
+                            <View style={styles.approvalBadge}>
+                                <Text style={styles.approvalBadgeText}>{approvalCount}</Text>
+                            </View>
+                        </View>
+                    </TouchableOpacity>
+                </Animated.View>
+            )}
 
             {/* Main Container: Fixed Labels + Scrollable Timeline */}
             <View style={styles.mainContainer}>
@@ -1762,6 +1910,16 @@ export default function LiveFocusView({
                 }}
             />
 
+            <ApprovalPopup
+                visible={approvalPopupVisible}
+                onClose={() => setApprovalPopupVisible(false)}
+                tasks={tasks}
+                categories={categories}
+                onUpdateStageStatus={handleUpdateStageStatus}
+                onDeleteStage={handleDeleteStage}
+                onApproveAll={handleApproveAll}
+            />
+
         </View >
     );
 }
@@ -1871,16 +2029,16 @@ function UntimedStagesDraggableList({
             onPanResponderMove: (evt) => {
                 if (!drag2DStageIdRef.current) return;
                 const { pageX, pageY } = evt.nativeEvent;
-                
+
                 // Check for auto-scroll
                 checkAndUpdateAutoScroll(pageX);
-                
+
                 setDrag2DPos({ x: pageX, y: pageY });
             },
             onPanResponderRelease: (evt) => {
                 // Stop auto-scroll
                 stopAutoScroll();
-                
+
                 const stageId = drag2DStageIdRef.current;
                 if (!stageId) return;
 
@@ -2656,5 +2814,51 @@ const styles = StyleSheet.create({
         backgroundColor: '#FFFFFF',
         borderRadius: 0.5,
         marginBottom: 6,
+    },
+    approvalsBtnOverlay: {
+        position: 'absolute',
+        top: 5,
+        right: 20,
+        zIndex: 3000,
+    },
+    approvalsBtnTouchable: {
+        paddingHorizontal: 12,
+        paddingVertical: 6,
+        backgroundColor: 'rgba(255, 255, 255, 0.12)',
+        borderRadius: 12,
+        borderWidth: 1,
+        borderColor: 'rgba(255, 255, 255, 0.1)',
+    },
+    approvalsBtnContent: {
+        flexDirection: 'row',
+        alignItems: 'center',
+    },
+    approvalDot: {
+        width: 6,
+        height: 6,
+        borderRadius: 3,
+        backgroundColor: '#4CAF50',
+        marginRight: 8,
+    },
+    approvalsBtnText: {
+        color: '#FFFFFF',
+        fontSize: 10,
+        fontWeight: '900',
+        letterSpacing: 1,
+    },
+    approvalBadge: {
+        marginLeft: 8,
+        backgroundColor: '#4CAF50',
+        paddingHorizontal: 6,
+        paddingVertical: 2,
+        borderRadius: 8,
+        minWidth: 18,
+        alignItems: 'center',
+        justifyContent: 'center',
+    },
+    approvalBadgeText: {
+        color: '#FFFFFF',
+        fontSize: 9,
+        fontWeight: '900',
     },
 });
