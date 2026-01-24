@@ -174,6 +174,88 @@ export default function LiveFocusView({
         currentAutoScrollSpeedRef.current = 1;
     }, []);
 
+    // Consolidate layout persistence into a single reliable path
+    const commitLayoutChange = useCallback(() => {
+        // Stop auto-scroll immediately
+        stopAutoScroll();
+
+        const a = activeStageRef.current;
+        const temp = tempStageLayoutRef.current;
+        const mpc = minutesPerCellRef.current;
+
+        // Persist whenever we have a temp layout (meaning user was dragging or resizing)
+        if (a && temp && (onUpdateStages || onUpdateStageLayout)) {
+            const startTime = Math.round((temp.left / CELL_WIDTH) * mpc);
+            const duration = Math.round((temp.width / CELL_WIDTH) * mpc);
+
+            // 1. Synchronously update pending layouts REF
+            pendingLayoutsRef.current.set(a.stageId, {
+                startTimeMinutes: startTime,
+                durationMinutes: duration,
+            });
+
+            // 2. Batch Update: Merge ALL pending layouts for this task
+            const targetTask = tasks.find(t => t.id === a.taskId);
+            if (targetTask && onUpdateStages) {
+                // If we have onUpdateStages, we can send the full list of updated stages
+                // which prevents race conditions in the parent component
+                const updatedStages = (targetTask.stages || []).map(s => {
+                    const pending = pendingLayoutsRef.current.get(s.id);
+                    if (pending) {
+                        return {
+                            ...s,
+                            startTimeMinutes: pending.startTimeMinutes,
+                            durationMinutes: pending.durationMinutes
+                        };
+                    }
+                    return s;
+                });
+                onUpdateStages(targetTask, updatedStages);
+                debugLog('batch-commit', { taskId: a.taskId, stageCount: updatedStages.length });
+            } else if (onUpdateStageLayout) {
+                // Fallback to granular update if batch update isn't available
+                onUpdateStageLayout(a.taskId, a.stageId, startTime, duration);
+            }
+
+            // Trigger re-render to reflect the change in UI
+            setPendingLayoutsVersion(v => v + 1);
+
+            // Clear measured height to force recalculation with new lane positions
+            setTimeout(() => {
+                setTaskHeights(prev => {
+                    const newMap = new Map(prev);
+                    newMap.delete(a.taskId);
+                    return newMap;
+                });
+            }, 100);
+        }
+
+        // Clean up all editing/gesture state
+        didEditStageRef.current = false;
+        frozenLanesRef.current = null;
+        resizeHandleSideRef.current = null;
+        currentAutoScrollOffsetRef.current = 0;
+        dragStartScrollXRef.current = 0;
+        currentAutoScrollDirectionRef.current = null;
+        currentAutoScrollSpeedRef.current = 1;
+
+        // Reset React state
+        setActiveStage(null);
+        setIsDragging(false);
+        setIsResizing(false);
+        setInitialStageLayout(null);
+        setTempStageLayout(null);
+        setLastPinchDistance(0);
+
+        // Also clear refs immediately for synchronous access during next render cycle
+        activeStageRef.current = null;
+        isDraggingRef.current = false;
+        isResizingRef.current = false;
+        initialStageLayoutRef.current = null;
+        tempStageLayoutRef.current = null;
+        resizeModeStageRef.current = null;
+    }, [onUpdateStageLayout, onUpdateStages, tasks, stopAutoScroll, debugLog, minutesPerCell]);
+
     const resetScrollTracking = useCallback(() => {
         dragStartScrollXRef.current = timelineScrollXRef.current;
         currentAutoScrollOffsetRef.current = 0;
@@ -477,80 +559,10 @@ export default function LiveFocusView({
                 }
             },
             onPanResponderRelease: () => {
-                // Stop auto-scroll
-                stopAutoScroll();
-
-                const a = activeStageRef.current;
-                const temp = tempStageLayoutRef.current;
-                const mpc = minutesPerCellRef.current;
-
-                // Only commit if user actually moved/resized (prevents width changes on tap).
-                if (didEditStageRef.current && a && temp && onUpdateStageLayout) {
-                    const startTime = (temp.left / CELL_WIDTH) * mpc;
-                    const duration = (temp.width / CELL_WIDTH) * mpc;
-
-                    // Store in pending layouts REF IMMEDIATELY (synchronous)
-                    // This ensures the layout persists even during React's async state updates
-                    pendingLayoutsRef.current.set(a.stageId, {
-                        startTimeMinutes: Math.round(startTime),
-                        durationMinutes: Math.round(duration),
-                    });
-                    // Trigger re-render to reflect the change
-                    setPendingLayoutsVersion(v => v + 1);
-
-                    onUpdateStageLayout(a.taskId, a.stageId, startTime, duration);
-                    debugLog('stage-release', {
-                        taskId: a.taskId,
-                        stageId: a.stageId,
-                        startTimeMinutes: Math.round(startTime),
-                        durationMinutes: Math.round(duration),
-                        lane: temp.lane,
-                        wasResizing: isResizingRef.current,
-                    });
-
-                    // Clear measured height to force recalculation with new lane positions
-                    setTimeout(() => {
-                        setTaskHeights(prev => {
-                            const newMap = new Map(prev);
-                            newMap.delete(a.taskId);
-                            return newMap;
-                        });
-                    }, 100);
-                }
-
-                // Clean up all state
-                didEditStageRef.current = false;
-                frozenLanesRef.current = null;
-                resizeHandleSideRef.current = null;
-                currentAutoScrollOffsetRef.current = 0;
-                dragStartScrollXRef.current = 0;
-                currentAutoScrollDirectionRef.current = null;
-                currentAutoScrollSpeedRef.current = 1;
-                setActiveStage(null);
-                setIsDragging(false);
-                setIsResizing(false);
-                setInitialStageLayout(null);
-                setTempStageLayout(null);
-                setLastPinchDistance(0);
-                // Keep resize mode open - user must explicitly exit
+                commitLayoutChange();
             },
             onPanResponderTerminate: () => {
-                // Stop auto-scroll
-                stopAutoScroll();
-
-                didEditStageRef.current = false;
-                frozenLanesRef.current = null;
-                resizeHandleSideRef.current = null;
-                currentAutoScrollOffsetRef.current = 0;
-                dragStartScrollXRef.current = 0;
-                currentAutoScrollDirectionRef.current = null;
-                currentAutoScrollSpeedRef.current = 1;
-                setActiveStage(null);
-                setIsDragging(false);
-                setIsResizing(false);
-                setInitialStageLayout(null);
-                setTempStageLayout(null);
-                setLastPinchDistance(0);
+                commitLayoutChange();
             },
         })
     ).current;
@@ -1143,7 +1155,7 @@ export default function LiveFocusView({
                                     friction: 10,
                                 }),
                             ]).start();
-                            
+
                             // Configure layout animation for smooth expansion
                             LayoutAnimation.configureNext({
                                 duration: 300,
@@ -1155,7 +1167,7 @@ export default function LiveFocusView({
                                     type: LayoutAnimation.Types.easeInEaseOut,
                                 },
                             });
-                            
+
                             setApprovalPopupVisible(true);
                         }}
                         activeOpacity={0.8}
@@ -1538,18 +1550,32 @@ export default function LiveFocusView({
                                                                 checkAndUpdateAutoScroll={checkAndUpdateAutoScroll}
                                                                 stopAutoScroll={stopAutoScroll}
                                                                 onDropOnTimeline={(stageId, xPosition) => {
-                                                                    if (!onUpdateStages || !onUpdateStageLayout) return;
+                                                                    if (!onUpdateStages) return;
                                                                     // Calculate startTimeMinutes from X position
                                                                     const startTimeMinutes = Math.max(0, Math.round((xPosition / CELL_WIDTH) * minutesPerCell));
                                                                     const durationMinutes = 180; // Default duration: 3 hours
 
-                                                                    // Update the stage with startTimeMinutes
-                                                                    const updatedStages = (task.stages || []).map(s =>
-                                                                        s.id === stageId
-                                                                            ? { ...s, startTimeMinutes, durationMinutes }
-                                                                            : s
-                                                                    );
+                                                                    // Synchronously update pending layouts REF to include this drop
+                                                                    pendingLayoutsRef.current.set(stageId, {
+                                                                        startTimeMinutes,
+                                                                        durationMinutes,
+                                                                    });
+
+                                                                    // Batch Update: Merge ALL pending layouts for this task
+                                                                    const updatedStages = (task.stages || []).map(s => {
+                                                                        const pending = pendingLayoutsRef.current.get(s.id);
+                                                                        if (pending) {
+                                                                            return {
+                                                                                ...s,
+                                                                                startTimeMinutes: pending.startTimeMinutes,
+                                                                                durationMinutes: pending.durationMinutes
+                                                                            };
+                                                                        }
+                                                                        return s;
+                                                                    });
+
                                                                     onUpdateStages(task, updatedStages);
+                                                                    setPendingLayoutsVersion(v => v + 1);
                                                                     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
                                                                 }}
                                                                 onDeleteStage={(stageId) => {
@@ -2790,31 +2816,29 @@ const styles = StyleSheet.create({
     // Task column toggle button styles (Long, Thin, Black & White Design)
     taskColumnToggle: {
         position: 'absolute',
-        top: '35%',
-        width: 14,
-        height: 120,
-        backgroundColor: 'transparent',
-        borderTopRightRadius: 7,
-        borderBottomRightRadius: 7,
+        top: '40%',
+        width: 10,
+        height: 96,
+        backgroundColor: 'rgba(126, 203, 161, 0.9)',
+        borderTopRightRadius: 6,
+        borderBottomRightRadius: 6,
         alignItems: 'center',
         justifyContent: 'center',
         zIndex: 5000,
-        borderWidth: 1,
-        borderLeftWidth: 0,
-        borderColor: '#FFFFFF',
         shadowColor: '#000',
-        shadowOffset: { width: 2, height: 0 },
-        shadowOpacity: 0.5,
-        shadowRadius: 4,
-        elevation: 10,
+        shadowOffset: { width: 1, height: 0 },
+        shadowOpacity: 0.15,
+        shadowRadius: 2,
+        elevation: 6,
     },
+    
     taskColumnToggleLine: {
-        width: 1,
-        height: 30,
-        backgroundColor: '#FFFFFF',
-        borderRadius: 0.5,
-        marginBottom: 6,
-    },
+        width: 2,
+        height: 32,
+        backgroundColor: '#000',
+        borderRadius: 1,
+        opacity: 0.6,
+    },    
     approvalsBtnOverlay: {
         position: 'absolute',
         top: 5,
