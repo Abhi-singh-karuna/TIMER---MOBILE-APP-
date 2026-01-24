@@ -35,6 +35,13 @@ import {
   cancelTimerNotification,
   calculateRemainingTime,
 } from './src/utils/backgroundTimer';
+import {
+  DEFAULT_TIME_OF_DAY_BACKGROUND_CONFIG,
+  loadOrSeedTimeOfDayBackgroundConfig,
+  saveTimeOfDayBackgroundConfig,
+  slotsForDate,
+  TimeOfDayBackgroundConfig,
+} from './src/utils/timeOfDaySlots';
 
 const LANDSCAPE_COLOR_KEY = '@timer_app_landscape_color';
 const FILLER_COLOR_KEY = '@timer_filler_color';
@@ -48,6 +55,52 @@ const ENABLE_FUTURE_TIMERS_KEY = '@timer_enable_future';
 const IS_PAST_TIMERS_DISABLED_KEY = '@timer_is_past_disabled';
 const IS_PAST_TASKS_DISABLED_KEY = '@task_is_past_disabled';
 const TASKS_KEY = '@timer_app_tasks';
+
+const DEFAULT_STAGE_START_TIME_MINUTES = 0; // 00:00
+const DEFAULT_STAGE_DURATION_MINUTES = 180; // 3 hours
+
+const normalizeStages = (stages: TaskStage[] | undefined, nowIso: string) => {
+  let didChange = false;
+  const seen = new Set<number>();
+  const out: TaskStage[] = [];
+
+  for (const s of stages || []) {
+    // Drop duplicates by id (preserve first occurrence)
+    if (seen.has(s.id)) {
+      didChange = true;
+      continue;
+    }
+    seen.add(s.id);
+
+    const startTimeMinutes = s.startTimeMinutes ?? DEFAULT_STAGE_START_TIME_MINUTES;
+    const durationMinutes = s.durationMinutes ?? DEFAULT_STAGE_DURATION_MINUTES;
+    if (s.startTimeMinutes == null || s.durationMinutes == null) didChange = true;
+
+    out.push({
+      ...s,
+      createdAt: s.createdAt ?? nowIso,
+      status: s.status ?? 'Upcoming',
+      isCompleted: s.isCompleted ?? (s.status === 'Done'),
+      startTimeMinutes,
+      durationMinutes,
+    });
+  }
+
+  return { stages: out, didChange };
+};
+
+const normalizeTasks = (tasks: Task[]) => {
+  const nowIso = new Date().toISOString();
+  let didChange = false;
+
+  const out = tasks.map(t => {
+    const norm = normalizeStages(t.stages, nowIso);
+    if (norm.didChange) didChange = true;
+    return norm.didChange ? { ...t, stages: norm.stages } : t;
+  });
+
+  return { tasks: out, didChange };
+};
 
 
 
@@ -109,6 +162,7 @@ export default function App() {
   const [isPastTasksDisabled, setIsPastTasksDisabled] = useState(false);
   const [activeView, setActiveViewState] = useState<'timer' | 'task'>('timer');
   const [quickMessages, setQuickMessages] = useState<QuickMessage[]>(DEFAULT_QUICK_MESSAGES);
+  const [timeOfDayBackgroundConfig, setTimeOfDayBackgroundConfig] = useState<TimeOfDayBackgroundConfig>(DEFAULT_TIME_OF_DAY_BACKGROUND_CONFIG);
 
   // Enable LayoutAnimation on Android
   if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
@@ -285,8 +339,18 @@ export default function App() {
       // Load tasks
       const storedTasks = await AsyncStorage.getItem(TASKS_KEY);
       if (storedTasks) {
-        setTasks(JSON.parse(storedTasks));
+        const parsed: Task[] = JSON.parse(storedTasks);
+        const norm = normalizeTasks(parsed);
+        setTasks(norm.tasks);
+        // Persist normalization once on rehydration (no UI screen side-effects)
+        if (norm.didChange) {
+          saveTasks(norm.tasks);
+        }
       }
+
+      // Load/seed time-of-day background slots (single source of truth)
+      const cfg = await loadOrSeedTimeOfDayBackgroundConfig();
+      setTimeOfDayBackgroundConfig(cfg);
     } catch (e) {
       console.error('Failed to load color preferences:', e);
     }
@@ -298,6 +362,25 @@ export default function App() {
       await AsyncStorage.setItem(TASKS_KEY, JSON.stringify(tasksToSave));
     } catch (e) {
       console.error('Failed to save tasks:', e);
+    }
+  };
+
+  // Rehydrate tasks from AsyncStorage (single source of truth)
+  const rehydrateTasksFromStorage = async () => {
+    try {
+      const storedTasks = await AsyncStorage.getItem(TASKS_KEY);
+      if (storedTasks) {
+        const parsed: Task[] = JSON.parse(storedTasks);
+        const norm = normalizeTasks(parsed);
+        setTasks(norm.tasks);
+        if (norm.didChange) {
+          saveTasks(norm.tasks);
+        }
+      } else {
+        setTasks([]);
+      }
+    } catch (e) {
+      console.error('Failed to rehydrate tasks:', e);
     }
   };
 
@@ -432,13 +515,16 @@ export default function App() {
       if (!latestTask) return prev;
 
       const previousStages = latestTask.stages || [];
+      const normalized = normalizeStages(stages, now);
+      const nextStages = normalized.stages;
 
       // Determine if this is adding a new stage
-      const isAddingStage = stages.length > previousStages.length;
+      const stageCountChanged = nextStages.length !== previousStages.length;
+      const isAddingStage = nextStages.length > previousStages.length;
 
       // Calculate completion status
-      const completedCount = stages.filter(s => s.isCompleted || s.status === 'Done').length;
-      const totalCount = stages.length;
+      const completedCount = nextStages.filter(s => s.isCompleted || s.status === 'Done').length;
+      const totalCount = nextStages.length;
       const allCompleted = totalCount > 0 && completedCount === totalCount;
       const someCompleted = completedCount > 0 && completedCount < totalCount;
 
@@ -463,7 +549,7 @@ export default function App() {
         t.id === task.id
           ? {
             ...t,
-            stages: stages,
+            stages: nextStages,
             status: newStatus,
             updatedAt: now,
             // Set startedAt if moving to In Progress and not already set
@@ -473,7 +559,15 @@ export default function App() {
           }
           : t
       );
-      saveTasks(updated);
+
+      // Persist immediately (single source of truth)
+      const persist = saveTasks(updated);
+
+      // After ADD/DELETE: rehydrate from storage so UI renders from persisted data (not cached UI state)
+      if (stageCountChanged) {
+        persist.then(() => rehydrateTasksFromStorage());
+      }
+
       return updated;
     });
   };
@@ -1187,6 +1281,11 @@ export default function App() {
               setQuickMessages(messages);
               await AsyncStorage.setItem(QUICK_MESSAGES_KEY, JSON.stringify(messages));
             }}
+            timeOfDayBackgroundConfig={timeOfDayBackgroundConfig}
+            onTimeOfDayBackgroundConfigChange={(cfg) => {
+              setTimeOfDayBackgroundConfig(cfg);
+              saveTimeOfDayBackgroundConfig(cfg);
+            }}
           />
         );
 
@@ -1227,6 +1326,7 @@ export default function App() {
               onSettings={() => setCurrentScreen('settings')}
               isPastTasksDisabled={isPastTasksDisabled}
               quickMessages={quickMessages}
+              timeOfDaySlots={slotsForDate(timeOfDayBackgroundConfig, selectedDate)}
             />
           );
         }

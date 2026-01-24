@@ -1,5 +1,6 @@
 import { MaterialIcons } from '@expo/vector-icons';
 import { Category, QuickMessage } from '../../../constants/data';
+import { TimeOfDayBackgroundConfig } from '../../../utils/timeOfDaySlots';
 
 // Settings screen props interface
 export interface SettingsScreenProps {
@@ -24,6 +25,8 @@ export interface SettingsScreenProps {
     onPastTasksDisabledChange: (val: boolean) => void;
     quickMessages: QuickMessage[];
     onQuickMessagesChange: (messages: QuickMessage[]) => void;
+    timeOfDayBackgroundConfig: TimeOfDayBackgroundConfig;
+    onTimeOfDayBackgroundConfigChange: (config: TimeOfDayBackgroundConfig) => void;
 }
 
 // Theme section props

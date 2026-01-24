@@ -19,6 +19,7 @@ import CategorySection from './CategorySection';
 import GeneralSection from './GeneralSection';
 import InfoSection from './InfoSection';
 import QuickMessageSection from './QuickMessageSection';
+import TimeOfDayBackgroundScreen from './TimeOfDayBackgroundScreen';
 import { styles } from './styles';
 import {
     SettingsScreenProps,
@@ -53,12 +54,15 @@ export default function SettingsScreen({
     onPastTasksDisabledChange,
     quickMessages,
     onQuickMessagesChange,
+    timeOfDayBackgroundConfig,
+    onTimeOfDayBackgroundConfigChange,
 }: SettingsScreenProps) {
     const { width, height } = useWindowDimensions();
     const isLandscape = width > height;
 
     const [activeTab, setActiveTab] = useState<'customization' | 'sound' | 'categories' | 'quickmsg' | 'general' | 'about'>('customization');
     const [resetKey, setResetKey] = useState(0);
+    const [activeSubPage, setActiveSubPage] = useState<null | 'timeOfDayBackground'>(null);
 
     // Widen sidebar to 38% for a larger preview
     const sidebarWidth = width * 0.38;
@@ -79,6 +83,16 @@ export default function SettingsScreen({
             setResetKey(prev => prev + 1);
         } catch (e) { console.error('Failed to reset defaults:', e); }
     };
+
+    if (activeSubPage === 'timeOfDayBackground') {
+        return (
+            <TimeOfDayBackgroundScreen
+                config={timeOfDayBackgroundConfig}
+                onSave={onTimeOfDayBackgroundConfigChange}
+                onBack={() => setActiveSubPage(null)}
+            />
+        );
+    }
 
     const renderPortraitLayout = () => (
         <ScrollView
@@ -135,6 +149,17 @@ export default function SettingsScreen({
                 />
             </View>
             <View style={styles.section}>
+                <Text style={styles.sectionTitle}>TIMELINE</Text>
+                <TouchableOpacity
+                    style={styles.resetButton}
+                    onPress={() => setActiveSubPage('timeOfDayBackground')}
+                    activeOpacity={0.7}
+                >
+                    <MaterialIcons name="timeline" size={20} color="#FFFFFF" />
+                    <Text style={styles.resetButtonText}>Time-of-Day Background</Text>
+                </TouchableOpacity>
+            </View>
+            <View style={styles.section}>
                 <Text style={styles.sectionTitle}>DEFAULTS</Text>
                 <TouchableOpacity style={styles.resetButton} onPress={handleResetToDefaults} activeOpacity={0.7}>
                     <MaterialIcons name="refresh" size={20} color="#FFFFFF" /><Text style={styles.resetButtonText}>Reset Theme to Defaults</Text>
@@ -149,7 +174,7 @@ export default function SettingsScreen({
 
     // Landscape Layout - Side by side with Sidebar
     const renderLandscapeLayout = () => {
-        const renderSidebarButton = (id: 'customization' | 'sound' | 'categories' | 'quickmsg' | 'general' | 'about', icon: keyof typeof MaterialIcons.glyphMap, label: string) => {
+        const renderSidebarButton = (id: 'customization' | 'sound' | 'categories' | 'quickmsg' | 'general' | 'timeline' | 'about', icon: keyof typeof MaterialIcons.glyphMap, label: string) => {
             const isActive = activeTab === id;
             return (
                 <TouchableOpacity
@@ -158,7 +183,13 @@ export default function SettingsScreen({
                         styles.sidebarButtonRow,
                         isActive && styles.sidebarButtonRowActive
                     ]}
-                    onPress={() => setActiveTab(id)}
+                    onPress={() => {
+                        if (id === 'timeline') {
+                            setActiveSubPage('timeOfDayBackground');
+                            return;
+                        }
+                        setActiveTab(id as any);
+                    }}
                     activeOpacity={0.7}
                 >
                     <View style={styles.sidebarIconLabelContainer}>
@@ -218,6 +249,7 @@ export default function SettingsScreen({
                                 {renderSidebarButton('categories', 'category', 'Category')}
                                 {renderSidebarButton('quickmsg', 'chat', 'Quick Msg')}
                                 {renderSidebarButton('general', 'settings', 'General')}
+                                {renderSidebarButton('timeline', 'timeline', 'Timeline BG')}
                                 {renderSidebarButton('about', 'info', 'Info')}
                             </View>
                         </ScrollView>

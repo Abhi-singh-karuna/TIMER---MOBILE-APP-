@@ -28,6 +28,7 @@ import { Category, Task, TaskStage, QuickMessage, StageStatus } from '../../../c
 import TaskActionModal from '../../../components/TaskActionModal';
 import LiveFocusView from './LiveFocusView';
 import * as Haptics from 'expo-haptics';
+import { TimeOfDaySlotConfigList } from '../../../utils/timeOfDaySlots';
 
 const { width, height } = Dimensions.get('window');
 
@@ -1349,6 +1350,7 @@ interface TaskListProps {
     onUpdateStages?: (task: Task, stages: TaskStage[]) => void;
     onPinTask?: (task: Task) => void;
     quickMessages?: QuickMessage[];
+    timeOfDaySlots?: TimeOfDaySlotConfigList;
 }
 
 export default function TaskList({
@@ -1368,6 +1370,7 @@ export default function TaskList({
     onUpdateStages,
     onPinTask,
     quickMessages,
+    timeOfDaySlots,
 }: TaskListProps) {
     const { width: screenWidth, height: screenHeight } = useWindowDimensions();
     const isLandscape = screenWidth > screenHeight;
@@ -1635,6 +1638,7 @@ export default function TaskList({
                     }}
                     onUpdateStageLayout={handleUpdateStageLayout}
                     onUpdateStages={onUpdateStages}
+                    timeOfDaySlots={timeOfDaySlots}
                 />
             </View>
         );
@@ -2639,12 +2643,22 @@ function TaskCard({
 
     const handleAddStage = () => {
         if (!stageText.trim()) return;
+        const nowIso = new Date().toISOString();
+
+        // Generate a stable stage id (avoid collisions within the task)
+        const existingIds = new Set((task.stages || []).map(s => s.id));
+        let stageId = Date.now();
+        while (existingIds.has(stageId)) stageId += 1;
+
         const newStage: TaskStage = {
-            id: Date.now(),
+            id: stageId,
             text: stageText.trim(),
             isCompleted: false,
             status: 'Upcoming',
-            createdAt: new Date().toISOString(),
+            createdAt: nowIso,
+            // Assign defaults at creation time (so persistence never relies on UI-side effects)
+            startTimeMinutes: 0,
+            durationMinutes: 180,
         };
         const updatedStages = [...(task.stages || []), newStage];
         onUpdateStages?.(task, updatedStages);

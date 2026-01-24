@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect, useLayoutEffect, useCallback } from 'react';
+import React, { useState, useRef, useEffect, useLayoutEffect, useCallback, useMemo } from 'react';
 import {
     View,
     Text,
@@ -21,6 +21,7 @@ import * as Haptics from 'expo-haptics';
 import { Task, Category, TaskStage, StageStatus } from '../../../constants/data';
 import AddSubtaskModal from '../../../components/AddSubtaskModal';
 import ApprovalPopup from './ApprovalPopup';
+import { buildTimeOfDayBackgroundSegments, DEFAULT_TIME_OF_DAY_SLOTS, TimeOfDaySlotConfigList } from '../../../utils/timeOfDaySlots';
 
 interface LiveFocusViewProps {
     tasks: Task[];
@@ -32,6 +33,7 @@ interface LiveFocusViewProps {
     onExpandTask?: (task: Task) => void;
     onUpdateStageLayout?: (taskId: number, stageId: number, startTimeMinutes: number, durationMinutes: number) => void;
     onUpdateStages?: (task: Task, stages: TaskStage[]) => void;
+    timeOfDaySlots?: TimeOfDaySlotConfigList;
 }
 
 type TaskLiveStatus = 'ACTIVE' | 'DONE' | 'PLANNED';
@@ -60,9 +62,11 @@ export default function LiveFocusView({
     onExpandTask,
     onUpdateStageLayout,
     onUpdateStages,
+    timeOfDaySlots,
 }: LiveFocusViewProps) {
     const { width: screenWidth, height: screenHeight } = useWindowDimensions();
     const isLandscape = screenWidth > screenHeight;
+    const progressDockHeight = 55; // Fixed ultra-compact height
     // Use a ref for current time to avoid re-renders - captured once on mount
     const currentTimeRef = useRef(new Date());
     const DEBUG_LANES = false;
@@ -120,6 +124,13 @@ export default function LiveFocusView({
         startTimeMinutes: 0,
     });
 
+    // Floating progress bar state (UI-only; resets safely on unmount)
+    const [isProgressExpanded, setIsProgressExpanded] = useState(false);
+    const progressAnim = useRef(new Animated.Value(0)).current; // 0 collapsed, 1 expanded (bottom dock slide)
+
+    // Subtask info overlay state (UI-only; no persistence)
+    const [subtaskInfoStage, setSubtaskInfoStage] = useState<{ taskId: number; stageId: number } | null>(null);
+
     // Task column visibility toggle
     const [isTaskColumnVisible, setIsTaskColumnVisible] = useState(true);
 
@@ -135,6 +146,54 @@ export default function LiveFocusView({
 
     const [approvalPopupVisible, setApprovalPopupVisible] = useState(false);
     const approvalButtonScale = useRef(new Animated.Value(1)).current;
+
+    // Bottom dock timer (UI-only)
+    const [dockTimerSeconds, setDockTimerSeconds] = useState(0);
+    const [isDockTimerRunning, setIsDockTimerRunning] = useState(false);
+    const dockTimerIntervalRef = useRef<NodeJS.Timeout | null>(null);
+
+    useEffect(() => {
+        if (!isDockTimerRunning) {
+            if (dockTimerIntervalRef.current) {
+                clearInterval(dockTimerIntervalRef.current);
+                dockTimerIntervalRef.current = null;
+            }
+            return;
+        }
+
+        dockTimerIntervalRef.current = setInterval(() => {
+            setDockTimerSeconds(s => s + 1);
+        }, 1000);
+
+        return () => {
+            if (dockTimerIntervalRef.current) {
+                clearInterval(dockTimerIntervalRef.current);
+                dockTimerIntervalRef.current = null;
+            }
+        };
+    }, [isDockTimerRunning]);
+
+    // Animate progress panel expand/collapse
+    useEffect(() => {
+        Animated.timing(progressAnim, {
+            toValue: isProgressExpanded ? 1 : 0,
+            duration: 260,
+            useNativeDriver: true, // translateY animation
+        }).start();
+    }, [isProgressExpanded, progressAnim]);
+
+    // Close subtask info panel when selection is cleared or changes
+    useEffect(() => {
+        if (!resizeModeStage) {
+            setSubtaskInfoStage(null);
+            return;
+        }
+        if (subtaskInfoStage &&
+            (subtaskInfoStage.taskId !== resizeModeStage.taskId || subtaskInfoStage.stageId !== resizeModeStage.stageId)
+        ) {
+            setSubtaskInfoStage(null);
+        }
+    }, [resizeModeStage, subtaskInfoStage]);
 
     const debugLog = useCallback((...args: any[]) => {
         if (!DEBUG_LANES) return;
@@ -570,28 +629,9 @@ export default function LiveFocusView({
     // Note: Removed automatic current time update to prevent re-renders that reset state
     // The NOW line position is captured once on mount
 
-    // Set default startTimeMinutes (00:00) and durationMinutes (3 hours) for stages that don't have them
-    useEffect(() => {
-        if (!onUpdateStages) return;
-
-        tasks.forEach(task => {
-            if (!task.stages || task.stages.length === 0) return;
-
-            const needsUpdate = task.stages.some(s =>
-                (s.startTimeMinutes === undefined || s.startTimeMinutes === null) ||
-                (s.durationMinutes === undefined || s.durationMinutes === null)
-            );
-
-            if (needsUpdate) {
-                const updatedStages = task.stages.map(s => ({
-                    ...s,
-                    startTimeMinutes: s.startTimeMinutes ?? 0, // Default: 00:00
-                    durationMinutes: s.durationMinutes ?? 180, // Default: 3 hours
-                }));
-                onUpdateStages(task, updatedStages);
-            }
-        });
-    }, [tasks, onUpdateStages]);
+    // IMPORTANT:
+    // This screen must never auto-mutate parent/global task data on mount or when `tasks` changes.
+    // Defaults (startTimeMinutes/durationMinutes) are applied at creation time and/or during app rehydration.
 
     // Sync initial scroll positions on mount
     useEffect(() => {
@@ -963,6 +1003,15 @@ export default function LiveFocusView({
         return `${hours}h${mins}m`;
     };
 
+    const formatStopwatch = (totalSeconds: number): string => {
+        const safeSeconds = Math.max(0, Math.floor(totalSeconds));
+        const h = Math.floor(safeSeconds / 3600);
+        const m = Math.floor((safeSeconds % 3600) / 60);
+        const s = safeSeconds % 60;
+        if (h > 0) return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
+        return `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
+    };
+
     const formatTimeRange = (startMinutes: number, endMinutes: number) => {
         const startHour = Math.floor(startMinutes / 60);
         const startMin = Math.floor(startMinutes % 60);
@@ -972,6 +1021,85 @@ export default function LiveFocusView({
     };
 
     const TIMELINE_ONLY_WIDTH = TOTAL_CELLS * CELL_WIDTH + 100; // Width without label column
+
+    // Time-of-day sliding background segments (timeline-level, derived from time ranges only)
+    // Recomputes automatically when zoom level changes or config changes.
+    const timeOfDayBackgroundSegments = useMemo(() => {
+        return buildTimeOfDayBackgroundSegments(
+            timeOfDaySlots ?? DEFAULT_TIME_OF_DAY_SLOTS,
+            minutesPerCell,
+            CELL_WIDTH,
+            TOTAL_MINUTES
+        );
+    }, [timeOfDaySlots, minutesPerCell, CELL_WIDTH, TOTAL_MINUTES]);
+
+    const progressSummary = useMemo(() => {
+        const totals = tasks.reduce(
+            (acc, task) => {
+                const stages = task.stages || [];
+                acc.tasks += 1;
+                acc.totalStages += stages.length;
+
+                stages.forEach(s => {
+                    const status = s.status || 'Upcoming';
+                    const isDone = s.isCompleted || status === 'Done';
+                    const duration = s.durationMinutes ?? 0;
+
+                    // Stage counts
+                    if (isDone) acc.completed += 1;
+                    else if (status === 'Process') acc.active += 1;
+                    else if (status === 'Undone') acc.undone += 1;
+                    else acc.pending += 1;
+
+                    // Time totals (minutes)
+                    acc.totalMinutes += duration;
+                    if (isDone) acc.doneMinutes += duration;
+                    else if (status === 'Undone') acc.undoneMinutes += duration;
+                    else {
+                        // Pending time includes Upcoming + Process (everything not Done/Undone)
+                        acc.pendingMinutes += duration;
+                        if (status === 'Process') acc.activeMinutes += duration;
+                    }
+
+                    if (status !== 'Done') {
+                        acc.remainingMinutes += (s.durationMinutes ?? 0);
+                    }
+                });
+
+                return acc;
+            },
+            {
+                tasks: 0,
+                totalStages: 0,
+                completed: 0,
+                active: 0,
+                pending: 0,
+                undone: 0,
+                remainingMinutes: 0,
+                totalMinutes: 0,
+                doneMinutes: 0,
+                pendingMinutes: 0,
+                activeMinutes: 0,
+                undoneMinutes: 0,
+            }
+        );
+
+        const pct = totals.totalStages > 0 ? Math.round((totals.completed / totals.totalStages) * 100) : 0;
+        const undonePct = totals.totalStages > 0 ? Math.round((totals.undone / totals.totalStages) * 100) : 0;
+        const remainingHours = Math.floor(totals.remainingMinutes / 60);
+        const remainingMins = Math.round(totals.remainingMinutes % 60);
+
+        return { ...totals, pct, undonePct, remainingHours, remainingMins };
+    }, [tasks]);
+
+    const zoomLabel = useMemo(() => {
+        const m = Math.round(minutesPerCell);
+        if (m % 60 === 0) return `${m / 60}HR`;
+        if (m < 60) return `${m}MIN`;
+        const h = Math.floor(m / 60);
+        const mm = m % 60;
+        return `${h}H ${mm}M`;
+    }, [minutesPerCell]);
 
     // Calculate content height based on number of tasks and untimed subtasks
     // Calculate content height using measured heights or fallback to estimation
@@ -1125,70 +1253,6 @@ export default function LiveFocusView({
 
     return (
         <View style={styles.container}>
-            <TouchableOpacity style={styles.closeBtnOverlay} onPress={onClose}>
-                <MaterialIcons name="close" size={24} color="#FFFFFF" />
-            </TouchableOpacity>
-
-            {approvalCount > 0 && !approvalPopupVisible && (
-                <Animated.View
-                    style={[
-                        styles.approvalsBtnOverlay,
-                        {
-                            transform: [{ scale: approvalButtonScale }],
-                        },
-                    ]}
-                >
-                    <TouchableOpacity
-                        style={styles.approvalsBtnTouchable}
-                        onPress={() => {
-                            // Animate button press
-                            Animated.sequence([
-                                Animated.spring(approvalButtonScale, {
-                                    toValue: 0.95,
-                                    useNativeDriver: true,
-                                    tension: 300,
-                                    friction: 10,
-                                }),
-                                Animated.spring(approvalButtonScale, {
-                                    toValue: 1.05,
-                                    useNativeDriver: true,
-                                    tension: 300,
-                                    friction: 10,
-                                }),
-                                Animated.spring(approvalButtonScale, {
-                                    toValue: 1,
-                                    useNativeDriver: true,
-                                    tension: 300,
-                                    friction: 10,
-                                }),
-                            ]).start();
-
-                            // Configure layout animation for smooth expansion
-                            LayoutAnimation.configureNext({
-                                duration: 300,
-                                create: {
-                                    type: LayoutAnimation.Types.easeInEaseOut,
-                                    property: LayoutAnimation.Properties.scaleXY,
-                                },
-                                update: {
-                                    type: LayoutAnimation.Types.easeInEaseOut,
-                                },
-                            });
-
-                            setApprovalPopupVisible(true);
-                        }}
-                        activeOpacity={0.8}
-                    >
-                        <View style={styles.approvalsBtnContent}>
-                            <View style={styles.approvalDot} />
-                            <Text style={styles.approvalsBtnText}>APPROVALS</Text>
-                            <View style={styles.approvalBadge}>
-                                <Text style={styles.approvalBadgeText}>{approvalCount}</Text>
-                            </View>
-                        </View>
-                    </TouchableOpacity>
-                </Animated.View>
-            )}
 
             {/* Main Container: Fixed Labels + Scrollable Timeline */}
             <View style={styles.mainContainer}>
@@ -1222,7 +1286,10 @@ export default function LiveFocusView({
                         <ScrollView
                             ref={verticalScrollLabelsRef}
                             style={styles.verticalScrollLabels}
-                            contentContainerStyle={{ minHeight: contentHeight, paddingBottom: 0 }}
+                            contentContainerStyle={{
+                                minHeight: contentHeight,
+                                paddingBottom: isProgressExpanded ? progressDockHeight : 20,
+                            }}
                             showsVerticalScrollIndicator={false}
                             scrollEnabled={!activeStage} // Now scrollable, synced with timeline
                             onScroll={handleVerticalScrollLabels}
@@ -1394,6 +1461,19 @@ export default function LiveFocusView({
                             overScrollMode="never"
                         >
                             <View style={[styles.timelineContent, { width: TIMELINE_ONLY_WIDTH, height: 25 }]}>
+                                {/* Time-of-day background layer (behind header labels) */}
+                                <View pointerEvents="none" style={styles.timeOfDayBackgroundLayer}>
+                                    {timeOfDayBackgroundSegments.map((seg, i) => (
+                                        <View
+                                            key={`${seg.key}-${i}`}
+                                            style={[
+                                                styles.timeOfDayBackgroundSegment,
+                                                { left: seg.left, width: seg.width, backgroundColor: seg.colorHex }
+                                            ]}
+                                        />
+                                    ))}
+                                </View>
+
                                 {/* Time labels */}
                                 {getTimeLabels().map((label, i) => (
                                     <View key={i} style={[styles.stickyHourLabel, { left: label.left }]}>
@@ -1415,7 +1495,10 @@ export default function LiveFocusView({
                     <ScrollView
                         ref={verticalScrollRef}
                         style={styles.verticalScroll}
-                        contentContainerStyle={{ minHeight: contentHeight, paddingBottom: 0 }}
+                        contentContainerStyle={{
+                            minHeight: contentHeight,
+                            paddingBottom: isProgressExpanded ? progressDockHeight : 20,
+                        }}
                         showsVerticalScrollIndicator={true}
                         scrollEnabled={!activeStage}
                         onScroll={handleVerticalScroll}
@@ -1448,6 +1531,19 @@ export default function LiveFocusView({
                                 overScrollMode="never"
                             >
                                 <View style={[styles.timelineContent, { width: TIMELINE_ONLY_WIDTH }]}>
+                                    {/* Time-of-day background layer (behind grid lines & cards) */}
+                                    <View pointerEvents="none" style={styles.timeOfDayBackgroundLayer}>
+                                        {timeOfDayBackgroundSegments.map((seg, i) => (
+                                            <View
+                                                key={`${seg.key}-${i}`}
+                                                style={[
+                                                    styles.timeOfDayBackgroundSegment,
+                                                    { left: seg.left, width: seg.width, backgroundColor: seg.colorHex }
+                                                ]}
+                                            />
+                                        ))}
+                                    </View>
+
                                     {/* Vertical Lines (Grid) */}
                                     {getTimeLabels().map((label, i) => (
                                         <View key={i} style={[styles.hourLineOnly, { left: label.left }]}>
@@ -1640,49 +1736,81 @@ export default function LiveFocusView({
                                                                 const { left, width, top } = getStageLayout(stage, stageIndex, lane);
                                                                 const isBeingEdited = activeStage?.stageId === stage.id;
                                                                 const isInResizeMode = resizeModeStage?.taskId === task.id && resizeModeStage?.stageId === stage.id;
+                                                                const isInfoOpen = subtaskInfoStage?.taskId === task.id && subtaskInfoStage?.stageId === stage.id;
+                                                                const infoPanelTop = top + 26; // attach just below card
+                                                                const infoPanelLeft = left + 2;
+                                                                const infoPanelWidth = Math.max(190, Math.min(320, width + 140));
+                                                                const effectiveTime = getEffectiveStageTime(stage);
 
                                                                 return (
-                                                                    <View
-                                                                        key={stage.id}
-                                                                        style={[
-                                                                            // Universal card design (same as untimed cards) for timeline too
-                                                                            styles.timelineStageCard,
-                                                                            { backgroundColor: STAGE_STATUS_CONFIG[stage.status || 'Upcoming'].color },
-                                                                            isBeingEdited && styles.stageCardDragging,
-                                                                            isInResizeMode && styles.stageCardResizeMode,
-                                                                            { left, width, top }, // Apply position/size last to ensure it overrides any style changes
-                                                                        ]}
-                                                                        {...stagePanResponder.panHandlers}
-                                                                    >
-                                                                        {/* Left Resize Handle - simple vertical line */}
-                                                                        {isInResizeMode && (
-                                                                            <TouchableOpacity
-                                                                                style={styles.resizeHandleLeft}
-                                                                                onPressIn={() => {
-                                                                                    // Clear any previous drag state if switching to a different stage
-                                                                                    if (activeStage && (activeStage.taskId !== task.id || activeStage.stageId !== stage.id)) {
-                                                                                        clearEditingState();
-                                                                                    }
-                                                                                    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                                                                                    // Reset scroll tracking for smooth resize during auto-scroll
-                                                                                    resetScrollTracking();
-                                                                                    resizeHandleSideRef.current = 'left';
-                                                                                    setActiveStage({ taskId: task.id, stageId: stage.id });
-                                                                                    setIsResizing(true);
-                                                                                    setInitialStageLayout({ left, width, top, lane });
-                                                                                    setTempStageLayout({ left, width, top, lane });
-                                                                                }}
-                                                                                activeOpacity={0.7}
-                                                                            >
-                                                                                <View style={styles.resizeHandleLine} />
-                                                                            </TouchableOpacity>
-                                                                        )}
+                                                                    <React.Fragment key={stage.id}>
+                                                                        <View
+                                                                            style={[
+                                                                                // Universal card design (same as untimed cards) for timeline too
+                                                                                styles.timelineStageCard,
+                                                                                { backgroundColor: STAGE_STATUS_CONFIG[stage.status || 'Upcoming'].color },
+                                                                                isBeingEdited && styles.stageCardDragging,
+                                                                                isInResizeMode && styles.stageCardResizeMode,
+                                                                                { left, width, top }, // Apply position/size last to ensure it overrides any style changes
+                                                                            ]}
+                                                                            {...stagePanResponder.panHandlers}
+                                                                        >
+                                                                            {/* Left Resize Handle - simple vertical line */}
+                                                                            {isInResizeMode && (
+                                                                                <TouchableOpacity
+                                                                                    style={styles.resizeHandleLeft}
+                                                                                    onPressIn={() => {
+                                                                                        // Clear any previous drag state if switching to a different stage
+                                                                                        if (activeStage && (activeStage.taskId !== task.id || activeStage.stageId !== stage.id)) {
+                                                                                            clearEditingState();
+                                                                                        }
+                                                                                        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                                                                                        // Reset scroll tracking for smooth resize during auto-scroll
+                                                                                        resetScrollTracking();
+                                                                                        resizeHandleSideRef.current = 'left';
+                                                                                        setActiveStage({ taskId: task.id, stageId: stage.id });
+                                                                                        setIsResizing(true);
+                                                                                        setInitialStageLayout({ left, width, top, lane });
+                                                                                        setTempStageLayout({ left, width, top, lane });
+                                                                                    }}
+                                                                                    activeOpacity={0.7}
+                                                                                >
+                                                                                    <View style={styles.resizeHandleLine} />
+                                                                                </TouchableOpacity>
+                                                                            )}
 
-                                                                        {/* Main content area */}
-                                                                        <TouchableOpacity
-                                                                            onPress={() => {
-                                                                                // Tap to enter resize mode (if not already in it)
-                                                                                if (!isInResizeMode && !isDragging && !isResizing) {
+                                                                            {/* Main content area */}
+                                                                            <TouchableOpacity
+                                                                                onPress={() => {
+                                                                                    // Tap to enter resize mode (if not already in it)
+                                                                                    if (!isInResizeMode && !isDragging && !isResizing) {
+                                                                                        // Clear any previous editing state if switching to a different stage
+                                                                                        const isDifferentStage =
+                                                                                            (activeStage && (activeStage.taskId !== task.id || activeStage.stageId !== stage.id)) ||
+                                                                                            (resizeModeStage && (resizeModeStage.taskId !== task.id || resizeModeStage.stageId !== stage.id));
+                                                                                        if (isDifferentStage) {
+                                                                                            clearEditingState();
+                                                                                        }
+                                                                                        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                                                                                        setResizeModeStage({ taskId: task.id, stageId: stage.id });
+                                                                                    } else if ((isInResizeMode || isDragging || isResizing)) {
+                                                                                        // If already in resize mode for this stage, do nothing (captures touch to prevent background dismissal)
+                                                                                        const isDifferentStage =
+                                                                                            (activeStage && (activeStage.taskId !== task.id || activeStage.stageId !== stage.id)) ||
+                                                                                            (resizeModeStage && (resizeModeStage.taskId !== task.id || resizeModeStage.stageId !== stage.id));
+
+                                                                                        if (isDifferentStage) {
+                                                                                            clearEditingState();
+                                                                                            Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                                                                                            setResizeModeStage({ taskId: task.id, stageId: stage.id });
+                                                                                        }
+                                                                                        // If same stage, we do nothing - but we CAPTURE the touch
+                                                                                    }
+                                                                                }}
+                                                                                onLongPress={() => {
+                                                                                    // Long-press to move - only if not in resize mode
+                                                                                    if (isInResizeMode) return;
+
                                                                                     // Clear any previous editing state if switching to a different stage
                                                                                     const isDifferentStage =
                                                                                         (activeStage && (activeStage.taskId !== task.id || activeStage.stageId !== stage.id)) ||
@@ -1690,173 +1818,213 @@ export default function LiveFocusView({
                                                                                     if (isDifferentStage) {
                                                                                         clearEditingState();
                                                                                     }
-                                                                                    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                                                                                    setResizeModeStage({ taskId: task.id, stageId: stage.id });
-                                                                                } else if ((isInResizeMode || isDragging || isResizing)) {
-                                                                                    // If already in resize mode for this stage, do nothing (captures touch to prevent background dismissal)
-                                                                                    const isDifferentStage =
-                                                                                        (activeStage && (activeStage.taskId !== task.id || activeStage.stageId !== stage.id)) ||
-                                                                                        (resizeModeStage && (resizeModeStage.taskId !== task.id || resizeModeStage.stageId !== stage.id));
 
-                                                                                    if (isDifferentStage) {
-                                                                                        clearEditingState();
-                                                                                        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                                                                                        setResizeModeStage({ taskId: task.id, stageId: stage.id });
-                                                                                    }
-                                                                                    // If same stage, we do nothing - but we CAPTURE the touch
-                                                                                }
-                                                                            }}
-                                                                            onLongPress={() => {
-                                                                                // Long-press to move - only if not in resize mode
-                                                                                if (isInResizeMode) return;
+                                                                                    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
 
-                                                                                // Clear any previous editing state if switching to a different stage
-                                                                                const isDifferentStage =
-                                                                                    (activeStage && (activeStage.taskId !== task.id || activeStage.stageId !== stage.id)) ||
-                                                                                    (resizeModeStage && (resizeModeStage.taskId !== task.id || resizeModeStage.stageId !== stage.id));
-                                                                                if (isDifferentStage) {
-                                                                                    clearEditingState();
-                                                                                }
-
-                                                                                Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-
-                                                                                // Reset scroll tracking for smooth drag during auto-scroll
-                                                                                resetScrollTracking();
-
-                                                                                // Freeze lanes for this task at drag start so other stages stay put.
-                                                                                frozenLanesRef.current = {
-                                                                                    taskId: task.id,
-                                                                                    lanes: calculateStageLanes(sortedTimedStages),
-                                                                                };
-                                                                                debugLog('freeze-lanes', {
-                                                                                    taskId: task.id,
-                                                                                    stageId: stage.id,
-                                                                                    maxLane: Math.max(
-                                                                                        ...Array.from(frozenLanesRef.current.lanes.values()),
-                                                                                        0
-                                                                                    ),
-                                                                                });
-
-                                                                                // Set active stage FIRST to disable scrolling immediately
-                                                                                setActiveStage({ taskId: task.id, stageId: stage.id });
-                                                                                setIsDragging(true);
-                                                                                // Store initial layout including lane information for 2D drag
-                                                                                setInitialStageLayout({ left, width, top, lane });
-                                                                                setTempStageLayout({ left, width, top, lane });
-                                                                            }}
-                                                                            delayLongPress={300}
-                                                                            activeOpacity={0.8}
-                                                                            style={[
-                                                                                { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'flex-start' }
-                                                                            ]}
-                                                                        >
-                                                                            {/* Stage Name */}
-                                                                            <Text style={[
-                                                                                styles.untimedStageName,
-                                                                                { flexShrink: 1, color: '#FFFFFF' }, // White text for status backgrounds
-                                                                                isBeingEdited && styles.stageTextDragging,
-                                                                                isInResizeMode && styles.stageTextResizeMode
-                                                                            ]} numberOfLines={1} ellipsizeMode="tail">
-                                                                                {stage.text}
-                                                                            </Text>
-                                                                            {/* Time Display: Start Time & Duration */}
-                                                                            {(() => {
-                                                                                const { startTimeMinutes, durationMinutes } = getEffectiveStageTime(stage);
-                                                                                const startTimeStr = formatTimeCompact(startTimeMinutes);
-                                                                                const durationStr = formatDurationCompact(durationMinutes);
-                                                                                return (
-                                                                                    <View style={styles.stageTimeDisplay}>
-                                                                                        <Text style={[
-                                                                                            styles.stageTimeText,
-                                                                                            { color: 'rgba(255, 255, 255, 0.8)' },
-                                                                                            isBeingEdited && styles.stageTimeTextEditing,
-                                                                                            isInResizeMode && styles.stageTimeTextEditing
-                                                                                        ]}>
-                                                                                            {startTimeStr}
-                                                                                        </Text>
-                                                                                        <Text style={[
-                                                                                            styles.stageDurationText,
-                                                                                            { color: 'rgba(255, 255, 255, 0.6)' },
-                                                                                            isBeingEdited && styles.stageTimeTextEditing,
-                                                                                            isInResizeMode && styles.stageTimeTextEditing
-                                                                                        ]}>
-                                                                                            {durationStr}
-                                                                                        </Text>
-                                                                                    </View>
-                                                                                );
-                                                                            })()}
-                                                                            {/* Status Indicator */}
-                                                                            {(() => {
-                                                                                const status = stage.status || 'Upcoming';
-                                                                                const config = STAGE_STATUS_CONFIG[status];
-                                                                                return (
-                                                                                    <MaterialIcons
-                                                                                        name={config.icon}
-                                                                                        size={12}
-                                                                                        color="#FFFFFF" // White icons for status backgrounds
-                                                                                        style={{ marginLeft: 4, flexShrink: 0 }}
-                                                                                    />
-                                                                                );
-                                                                            })()}
-                                                                        </TouchableOpacity>
-
-                                                                        {/* Right Resize Handle - simple vertical line */}
-                                                                        {isInResizeMode && (
-                                                                            <TouchableOpacity
-                                                                                style={styles.resizeHandleRight}
-                                                                                onPressIn={() => {
-                                                                                    // Clear any previous drag state if switching to a different stage
-                                                                                    if (activeStage && (activeStage.taskId !== task.id || activeStage.stageId !== stage.id)) {
-                                                                                        clearEditingState();
-                                                                                    }
-                                                                                    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                                                                                    // Reset scroll tracking for smooth resize during auto-scroll
+                                                                                    // Reset scroll tracking for smooth drag during auto-scroll
                                                                                     resetScrollTracking();
-                                                                                    resizeHandleSideRef.current = 'right';
+
+                                                                                    // Freeze lanes for this task at drag start so other stages stay put.
+                                                                                    frozenLanesRef.current = {
+                                                                                        taskId: task.id,
+                                                                                        lanes: calculateStageLanes(sortedTimedStages),
+                                                                                    };
+                                                                                    debugLog('freeze-lanes', {
+                                                                                        taskId: task.id,
+                                                                                        stageId: stage.id,
+                                                                                        maxLane: Math.max(
+                                                                                            ...Array.from(frozenLanesRef.current.lanes.values()),
+                                                                                            0
+                                                                                        ),
+                                                                                    });
+
+                                                                                    // Set active stage FIRST to disable scrolling immediately
                                                                                     setActiveStage({ taskId: task.id, stageId: stage.id });
-                                                                                    setIsResizing(true);
+                                                                                    setIsDragging(true);
+                                                                                    // Store initial layout including lane information for 2D drag
                                                                                     setInitialStageLayout({ left, width, top, lane });
                                                                                     setTempStageLayout({ left, width, top, lane });
                                                                                 }}
-                                                                                activeOpacity={0.7}
+                                                                                delayLongPress={300}
+                                                                                activeOpacity={0.8}
+                                                                                style={[
+                                                                                    { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'flex-start' }
+                                                                                ]}
                                                                             >
-                                                                                <View style={styles.resizeHandleLine} />
-                                                                            </TouchableOpacity>
-                                                                        )}
-
-                                                                        {/* Delete button - visible only when NOT in resize mode */}
-                                                                        {!isInResizeMode && (
-                                                                            <TouchableOpacity
-                                                                                style={styles.stageDeleteButton}
-                                                                                onPress={() => {
-                                                                                    if (!onUpdateStages) return;
-                                                                                    Alert.alert(
-                                                                                        'Delete Stage',
-                                                                                        `Are you sure you want to delete "${stage.text}"?`,
-                                                                                        [
-                                                                                            { text: 'Cancel', style: 'cancel' },
-                                                                                            {
-                                                                                                text: 'Delete',
-                                                                                                style: 'destructive',
-                                                                                                onPress: () => {
-                                                                                                    const updatedStages = (task.stages || []).filter(s => s.id !== stage.id);
-                                                                                                    onUpdateStages(task, updatedStages);
-                                                                                                    LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
-                                                                                                },
-                                                                                            },
-                                                                                        ]
+                                                                                {/* Stage Name */}
+                                                                                <Text style={[
+                                                                                    styles.untimedStageName,
+                                                                                    { flexShrink: 1, color: '#FFFFFF' }, // White text for status backgrounds
+                                                                                    isBeingEdited && styles.stageTextDragging,
+                                                                                    isInResizeMode && styles.stageTextResizeMode
+                                                                                ]} numberOfLines={1} ellipsizeMode="tail">
+                                                                                    {stage.text}
+                                                                                </Text>
+                                                                                {/* Time Display: Start Time & Duration */}
+                                                                                {(() => {
+                                                                                    const { startTimeMinutes, durationMinutes } = effectiveTime;
+                                                                                    const startTimeStr = formatTimeCompact(startTimeMinutes);
+                                                                                    const durationStr = formatDurationCompact(durationMinutes);
+                                                                                    return (
+                                                                                        <View style={styles.stageTimeDisplay}>
+                                                                                            <Text style={[
+                                                                                                styles.stageTimeText,
+                                                                                                { color: 'rgba(255, 255, 255, 0.8)' },
+                                                                                                isBeingEdited && styles.stageTimeTextEditing,
+                                                                                                isInResizeMode && styles.stageTimeTextEditing
+                                                                                            ]}>
+                                                                                                {startTimeStr}
+                                                                                            </Text>
+                                                                                            <Text style={[
+                                                                                                styles.stageDurationText,
+                                                                                                { color: 'rgba(255, 255, 255, 0.6)' },
+                                                                                                isBeingEdited && styles.stageTimeTextEditing,
+                                                                                                isInResizeMode && styles.stageTimeTextEditing
+                                                                                            ]}>
+                                                                                                {durationStr}
+                                                                                            </Text>
+                                                                                        </View>
                                                                                     );
-                                                                                }}
-                                                                                activeOpacity={0.7}
-                                                                            >
-                                                                                <MaterialIcons
-                                                                                    name="delete-outline"
-                                                                                    size={15}
-                                                                                    color={isBeingEdited ? "rgba(255,255,255,0.7)" : "#FF3B30"}
-                                                                                />
+                                                                                })()}
+                                                                                {/* Status Indicator */}
+                                                                                {(() => {
+                                                                                    const status = stage.status || 'Upcoming';
+                                                                                    const config = STAGE_STATUS_CONFIG[status];
+                                                                                    return (
+                                                                                        <MaterialIcons
+                                                                                            name={config.icon}
+                                                                                            size={12}
+                                                                                            color="#FFFFFF" // White icons for status backgrounds
+                                                                                            style={{ marginLeft: 4, flexShrink: 0 }}
+                                                                                        />
+                                                                                    );
+                                                                                })()}
                                                                             </TouchableOpacity>
+
+                                                                            {/* Selected-card toggle (info panel) */}
+                                                                            {isInResizeMode && (
+                                                                                <TouchableOpacity
+                                                                                    style={styles.subtaskInfoToggle}
+                                                                                    onPress={() => {
+                                                                                        if (isDragging || isResizing) return;
+                                                                                        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                                                                                        setSubtaskInfoStage(prev => {
+                                                                                            const next = { taskId: task.id, stageId: stage.id };
+                                                                                            if (prev && prev.taskId === next.taskId && prev.stageId === next.stageId) return null;
+                                                                                            return next;
+                                                                                        });
+                                                                                    }}
+                                                                                    activeOpacity={0.85}
+                                                                                >
+                                                                                    <MaterialIcons
+                                                                                        name={isInfoOpen ? 'expand-less' : 'info-outline'}
+                                                                                        size={14}
+                                                                                        color="rgba(0,0,0,0.75)"
+                                                                                    />
+                                                                                </TouchableOpacity>
+                                                                            )}
+
+                                                                            {/* Right Resize Handle - simple vertical line */}
+                                                                            {isInResizeMode && (
+                                                                                <TouchableOpacity
+                                                                                    style={styles.resizeHandleRight}
+                                                                                    onPressIn={() => {
+                                                                                        // Clear any previous drag state if switching to a different stage
+                                                                                        if (activeStage && (activeStage.taskId !== task.id || activeStage.stageId !== stage.id)) {
+                                                                                            clearEditingState();
+                                                                                        }
+                                                                                        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                                                                                        // Reset scroll tracking for smooth resize during auto-scroll
+                                                                                        resetScrollTracking();
+                                                                                        resizeHandleSideRef.current = 'right';
+                                                                                        setActiveStage({ taskId: task.id, stageId: stage.id });
+                                                                                        setIsResizing(true);
+                                                                                        setInitialStageLayout({ left, width, top, lane });
+                                                                                        setTempStageLayout({ left, width, top, lane });
+                                                                                    }}
+                                                                                    activeOpacity={0.7}
+                                                                                >
+                                                                                    <View style={styles.resizeHandleLine} />
+                                                                                </TouchableOpacity>
+                                                                            )}
+
+                                                                            {/* Delete button - visible only when NOT in resize mode */}
+                                                                            {!isInResizeMode && (
+                                                                                <TouchableOpacity
+                                                                                    style={styles.stageDeleteButton}
+                                                                                    onPress={() => {
+                                                                                        if (!onUpdateStages) return;
+                                                                                        Alert.alert(
+                                                                                            'Delete Stage',
+                                                                                            `Are you sure you want to delete "${stage.text}"?`,
+                                                                                            [
+                                                                                                { text: 'Cancel', style: 'cancel' },
+                                                                                                {
+                                                                                                    text: 'Delete',
+                                                                                                    style: 'destructive',
+                                                                                                    onPress: () => {
+                                                                                                        const updatedStages = (task.stages || []).filter(s => s.id !== stage.id);
+                                                                                                        onUpdateStages(task, updatedStages);
+                                                                                                        LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+                                                                                                    },
+                                                                                                },
+                                                                                            ]
+                                                                                        );
+                                                                                    }}
+                                                                                    activeOpacity={0.7}
+                                                                                >
+                                                                                    <MaterialIcons
+                                                                                        name="delete-outline"
+                                                                                        size={15}
+                                                                                        color={isBeingEdited ? "rgba(255,255,255,0.7)" : "#FF3B30"}
+                                                                                    />
+                                                                                </TouchableOpacity>
+                                                                            )}
+                                                                        </View>
+
+                                                                        {/* Subtask info panel (attached, compact, dismissible) */}
+                                                                        {isInfoOpen && (
+                                                                            <View
+                                                                                pointerEvents={isDragging || isResizing ? 'none' : 'auto'}
+                                                                                style={[
+                                                                                    styles.subtaskInfoPanel,
+                                                                                    { left: infoPanelLeft, top: infoPanelTop, width: infoPanelWidth }
+                                                                                ]}
+                                                                            >
+                                                                                <View style={styles.subtaskInfoHeaderRow}>
+                                                                                    <Text style={styles.subtaskInfoTitle} numberOfLines={1}>
+                                                                                        {stage.text}
+                                                                                    </Text>
+                                                                                    <TouchableOpacity
+                                                                                        style={styles.subtaskInfoClose}
+                                                                                        onPress={() => setSubtaskInfoStage(null)}
+                                                                                        activeOpacity={0.8}
+                                                                                    >
+                                                                                        <MaterialIcons name="close" size={14} color="rgba(255,255,255,0.75)" />
+                                                                                    </TouchableOpacity>
+                                                                                </View>
+
+                                                                                <View style={styles.subtaskInfoMetaRow}>
+                                                                                    <View style={styles.subtaskInfoChip}>
+                                                                                        <Text style={styles.subtaskInfoChipLabel}>START</Text>
+                                                                                        <Text style={styles.subtaskInfoChipValue}>{formatTimeCompact(effectiveTime.startTimeMinutes)}</Text>
+                                                                                    </View>
+                                                                                    <View style={styles.subtaskInfoChip}>
+                                                                                        <Text style={styles.subtaskInfoChipLabel}>DUR</Text>
+                                                                                        <Text style={styles.subtaskInfoChipValue}>{formatDurationCompact(effectiveTime.durationMinutes)}</Text>
+                                                                                    </View>
+                                                                                    <View style={styles.subtaskInfoChip}>
+                                                                                        <Text style={styles.subtaskInfoChipLabel}>STATUS</Text>
+                                                                                        <Text style={styles.subtaskInfoChipValue}>{(stage.status || 'Upcoming').toUpperCase()}</Text>
+                                                                                    </View>
+                                                                                </View>
+
+                                                                                <Text style={styles.subtaskInfoFooterText} numberOfLines={1}>
+                                                                                    Task: {task.title}
+                                                                                </Text>
+                                                                            </View>
                                                                         )}
-                                                                    </View>
+                                                                    </React.Fragment>
                                                                 );
                                                             });
                                                         })()}
@@ -1917,6 +2085,212 @@ export default function LiveFocusView({
                 </View>
             </View >
 
+            {/* Bottom progress dock (slides in/out) */}
+            <Animated.View
+                pointerEvents={isProgressExpanded ? 'auto' : 'none'}
+                style={[
+                    styles.bottomProgressDock,
+                    { height: progressDockHeight, maxHeight: progressDockHeight },
+                    {
+                        transform: [
+                            {
+                                translateY: progressAnim.interpolate({
+                                    inputRange: [0, 1],
+                                    outputRange: [progressDockHeight + 20, 0],
+                                }),
+                            },
+                        ],
+                    },
+                ]}
+            >
+                {/* Bar header (improved progress) */}
+                <View style={styles.bottomDockBar}>
+                    <View style={styles.bottomDockProgressTrack}>
+                        <View style={[styles.bottomDockProgressFill, { width: `${progressSummary.pct}%` }]} />
+                        <View style={[styles.bottomDockProgressUndone, { width: `${progressSummary.undonePct}%`, left: `${progressSummary.pct}%` }]} />
+                    </View>
+
+                    {/* Time progress bar (TOTAL split by Done / Pending / Undone) */}
+                    <View style={styles.bottomDockTimeBarTrack}>
+                        {progressSummary.totalMinutes > 0 ? (
+                            <>
+                                {progressSummary.doneMinutes > 0 && (
+                                    <View
+                                        style={[
+                                            styles.bottomDockTimeBarSeg,
+                                            { flex: progressSummary.doneMinutes, backgroundColor: '#4CAF50' },
+                                        ]}
+                                    />
+                                )}
+                                {progressSummary.pendingMinutes > 0 && (
+                                    <View
+                                        style={[
+                                            styles.bottomDockTimeBarSeg,
+                                            { flex: progressSummary.pendingMinutes, backgroundColor: 'rgba(255,255,255,0.35)' },
+                                        ]}
+                                    />
+                                )}
+                                {progressSummary.undoneMinutes > 0 && (
+                                    <View
+                                        style={[
+                                            styles.bottomDockTimeBarSeg,
+                                            { flex: progressSummary.undoneMinutes, backgroundColor: '#FF5252' },
+                                        ]}
+                                    />
+                                )}
+                            </>
+                        ) : (
+                            <View
+                                style={[
+                                    styles.bottomDockTimeBarSeg,
+                                    { flex: 1, backgroundColor: 'rgba(255,255,255,0.12)' },
+                                ]}
+                            />
+                        )}
+                    </View>
+
+                    <View style={styles.bottomDockRow}>
+                        {/* Exit button */}
+                        <TouchableOpacity
+                            style={styles.dockExitBtn}
+                            onPress={() => {
+                                Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+                                onClose();
+                            }}
+                        >
+                            <MaterialIcons name="arrow-back" size={18} color="rgb(0, 0, 0)" />
+                        </TouchableOpacity>
+
+                        <View style={styles.bottomDockDivider} />
+
+                        {/* Time summary (compact; fits 55px dock) */}
+                        <View style={styles.bottomDockTimeSummary}>
+                            <Text numberOfLines={1} style={styles.bottomDockTimeSummaryTop}>
+                                <Text style={styles.bottomDockTimeSummaryLabel}>TOTAL </Text>
+                                <Text style={styles.bottomDockTimeSummaryValue}>
+                                    {formatDurationCompact(progressSummary.totalMinutes)}
+                                </Text>
+                                <Text style={styles.bottomDockTimeSummaryMeta}>
+                                    {' '}
+                                    · {progressSummary.completed}/{progressSummary.totalStages}
+                                </Text>
+                            </Text>
+                            <Text numberOfLines={1} style={styles.bottomDockTimeSummaryBottom}>
+                                <Text style={styles.bottomDockTimeSummaryK}>DONE </Text>
+                                <Text style={[styles.bottomDockTimeSummaryV, { color: '#4CAF50' }]}>
+                                    {formatDurationCompact(progressSummary.doneMinutes)}
+                                </Text>
+                                <Text style={styles.bottomDockTimeSummarySep}>  ·  </Text>
+                                <Text style={styles.bottomDockTimeSummaryK}>UNDONE </Text>
+                                <Text style={[styles.bottomDockTimeSummaryV, { color: '#FF5252' }]}>
+                                    {formatDurationCompact(progressSummary.undoneMinutes)}
+                                </Text>
+                                <Text style={styles.bottomDockTimeSummarySep}>  ·  </Text>
+                                <Text style={styles.bottomDockTimeSummaryK}>PENDING </Text>
+                                <Text style={styles.bottomDockTimeSummaryV}>
+                                    {formatDurationCompact(progressSummary.pendingMinutes)}
+                                </Text>
+                            </Text>
+                        </View>
+
+                        <View style={styles.bottomDockDivider} />
+
+                        {/* Dock timer (tap to increment, play/pause, clear) */}
+                        <View style={styles.bottomDockTimerContainer}>
+                            <TouchableOpacity
+                                style={styles.bottomDockTimerDisplay}
+                                onPress={() => {
+                                    // Tap increments in ascending order (1s per tap)
+                                    Haptics.selectionAsync();
+                                    setDockTimerSeconds(s => s + 1);
+                                }}
+                                activeOpacity={0.9}
+                            >
+                                <Text style={styles.bottomDockTimerLabel}>TIMER</Text>
+                                <Text style={styles.bottomDockTimerValue}>{formatStopwatch(dockTimerSeconds)}</Text>
+                            </TouchableOpacity>
+
+                            <TouchableOpacity
+                                style={styles.bottomDockTimerBtn}
+                                onPress={() => {
+                                    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                                    setIsDockTimerRunning(v => !v);
+                                }}
+                                activeOpacity={0.85}
+                            >
+                                <MaterialIcons
+                                    name={isDockTimerRunning ? 'pause' : 'play-arrow'}
+                                    size={18}
+                                    color="rgba(255,255,255,0.85)"
+                                />
+                            </TouchableOpacity>
+
+                            <TouchableOpacity
+                                style={styles.bottomDockTimerBtn}
+                                onPress={() => {
+                                    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                                    setIsDockTimerRunning(false);
+                                    setDockTimerSeconds(0);
+                                }}
+                                activeOpacity={0.85}
+                            >
+                                <MaterialIcons name="replay" size={18} color="rgba(255,255,255,0.85)" />
+                            </TouchableOpacity>
+                        </View>
+
+                        <View style={styles.bottomDockDivider} />
+
+                        {/* Approvals button integrated */}
+                        {approvalCount > 0 && (
+                            <>
+                                <TouchableOpacity
+                                    style={styles.dockApprovalsBtn}
+                                    onPress={() => {
+                                        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+                                        setApprovalPopupVisible(true);
+                                    }}
+                                >
+                                    <MaterialIcons name="notification-important" size={18} color="#FFFFFF" />
+                                    <View style={styles.dockApprovalBadge}>
+                                        <Text style={styles.dockApprovalBadgeText}>{approvalCount}</Text>
+                                    </View>
+                                </TouchableOpacity>
+                                <View style={styles.bottomDockDivider} />
+                            </>
+                        )}
+
+                        <TouchableOpacity
+                            style={styles.dockCancelBtn}
+                            onPress={() => {
+                                Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                                setIsProgressExpanded(false);
+                            }}
+                        >
+                            <MaterialIcons name="close" size={20} color="rgb(1, 1, 1)" />
+                        </TouchableOpacity>
+                    </View>
+                </View>
+            </Animated.View>
+
+            {/* Bottom open button (visible when dock is collapsed) */}
+            {
+                !isProgressExpanded && (
+                    <TouchableOpacity
+                        style={styles.bottomOpenProgressBtn}
+                        onPress={() => {
+                            Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                            setIsProgressExpanded(true);
+                        }}
+                        activeOpacity={0.85}
+                    >
+                        <View style={styles.bottomOpenPill}>
+                            <Text style={styles.bottomOpenPillLabel}>PROGRESS</Text>
+                            <Text style={styles.bottomOpenPillValue}>{progressSummary.pct}%</Text>
+                        </View>
+                    </TouchableOpacity>
+                )
+            }
+
             {/* Add Subtask Modal */}
             <AddSubtaskModal
                 visible={addSubtaskModal.visible}
@@ -1928,14 +2302,20 @@ export default function LiveFocusView({
                     const task = tasks.find(t => t.id === taskId);
                     if (!task) return;
 
+                    // Generate a stable stage id (avoid collisions within the task)
+                    const existingIds = new Set((task.stages || []).map(s => s.id));
+                    let stageId = Date.now();
+                    while (existingIds.has(stageId)) stageId += 1;
+
                     const newStage: TaskStage = {
-                        id: Date.now(),
+                        id: stageId,
                         text: text,
                         isCompleted: false,
                         status: 'Upcoming',
                         createdAt: new Date().toISOString(),
-                        startTimeMinutes: startTime,
-                        durationMinutes: duration,
+                        // Ensure defaults exist at creation time (no UI-side effects later)
+                        startTimeMinutes: startTime ?? 0,
+                        durationMinutes: duration ?? 180,
                     };
 
                     const updatedStages = [...(task.stages || []), newStage];
@@ -2258,6 +2638,296 @@ const styles = StyleSheet.create({
         flex: 1,
         backgroundColor: '#000000',
     },
+    topStatusBar: {
+        backgroundColor: '#000000',
+        borderBottomWidth: 1,
+        borderBottomColor: 'rgba(76, 175, 80, 0.35)',
+    },
+    topStatusProgressTrack: {
+        height: 3,
+        backgroundColor: 'rgba(255,255,255,0.06)',
+    },
+    topStatusProgressFill: {
+        height: 3,
+        backgroundColor: '#4CAF50',
+    },
+    topStatusRow: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        paddingHorizontal: 12,
+        paddingVertical: 8,
+        gap: 12,
+    },
+    topStatusBlock: {
+        minWidth: 120,
+    },
+    topStatusLabel: {
+        fontSize: 9,
+        fontWeight: '900',
+        letterSpacing: 2,
+        color: 'rgba(255,255,255,0.35)',
+    },
+    topStatusValue: {
+        marginTop: 4,
+        fontSize: 12,
+        fontWeight: '900',
+        color: '#FFFFFF',
+    },
+    topStatusDivider: {
+        width: 1,
+        height: 24,
+        backgroundColor: 'rgba(255,255,255,0.10)',
+    },
+    topStatusSpacer: {
+        flex: 1,
+    },
+    topStatusMiniBlock: {
+        alignItems: 'flex-start',
+        minWidth: 60,
+    },
+    topStatusMiniLabel: {
+        fontSize: 8,
+        fontWeight: '900',
+        letterSpacing: 2,
+        color: 'rgba(255,255,255,0.35)',
+    },
+    topStatusMiniValue: {
+        marginTop: 3,
+        fontSize: 11,
+        fontWeight: '900',
+        color: 'rgba(255,255,255,0.9)',
+    },
+    topStatusMiniDivider: {
+        width: 1,
+        height: 18,
+        backgroundColor: 'rgba(255,255,255,0.10)',
+        marginHorizontal: 4,
+    },
+    topStatusGear: {
+        width: 34,
+        height: 34,
+        borderRadius: 17,
+        alignItems: 'center',
+        justifyContent: 'center',
+        backgroundColor: 'rgba(255,255,255,0.06)',
+        borderWidth: 1,
+        borderColor: 'rgba(255,255,255,0.10)',
+    },
+    progressDetailsContainer: {
+        backgroundColor: '#000000',
+        borderBottomWidth: 1,
+        borderBottomColor: 'rgba(255,255,255,0.08)',
+        overflow: 'hidden',
+    },
+    bottomProgressDock: {
+        position: 'absolute',
+        left: 0,
+        right: 0,
+        bottom: 0,
+        height: 55,
+        maxHeight: 55,
+        backgroundColor: 'rgba(0,0,0,0.98)',
+        borderTopWidth: 1,
+        borderTopColor: 'rgba(255,255,255,0.14)',
+        overflow: 'hidden',
+        zIndex: 6500,
+    },
+    bottomDockBar: {
+        flex: 1,
+    },
+    bottomDockProgressTrack: {
+        height: 1,
+        backgroundColor: 'rgba(255,255,255,0.06)',
+    },
+    bottomDockProgressFill: {
+        position: 'absolute',
+        left: 0,
+        height: '100%',
+        backgroundColor: '#4CAF50',
+    },
+    bottomDockProgressUndone: {
+        position: 'absolute',
+        height: '100%',
+        backgroundColor: '#FF5252',
+    },
+    bottomDockTimeBarTrack: {
+        height: 4,
+        backgroundColor: 'rgba(255,255,255,0.06)',
+        flexDirection: 'row',
+        overflow: 'hidden',
+    },
+    bottomDockTimeBarSeg: {
+        height: '100%',
+    },
+    bottomDockRow: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        paddingHorizontal: 19,
+        paddingVertical: 8,
+        gap: 8,
+    },
+    bottomDockBlock: {
+        minWidth: 90,
+    },
+    bottomDockLabel: {
+        fontSize: 9,
+        fontWeight: '900',
+        letterSpacing: 2,
+        color: 'rgba(255,255,255,0.35)',
+    },
+    bottomDockValue: {
+        marginTop: 4,
+        fontSize: 12,
+        fontWeight: '900',
+        color: '#FFFFFF',
+    },
+    bottomDockDivider: {
+        width: 1,
+        height: 24,
+        backgroundColor: 'rgba(255,255,255,0.10)',
+    },
+    bottomDockTimeSummary: {
+        flex: 1,
+        minWidth: 0,
+        justifyContent: 'center',
+    },
+    bottomDockTimeSummaryTop: {
+        fontSize: 9,
+        fontWeight: '900',
+        color: 'rgba(255,255,255,0.85)',
+        letterSpacing: 0.2,
+    },
+    bottomDockTimeSummaryLabel: {
+        fontSize: 8,
+        fontWeight: '900',
+        letterSpacing: 2,
+        color: 'rgba(255,255,255,0.35)',
+    },
+    bottomDockTimeSummaryValue: {
+        fontSize: 11,
+        fontWeight: '900',
+        color: '#FFFFFF',
+    },
+    bottomDockTimeSummaryMeta: {
+        fontSize: 10,
+        fontWeight: '800',
+        color: 'rgba(255,255,255,0.35)',
+    },
+    bottomDockTimeSummaryBottom: {
+        marginTop: 2,
+        fontSize: 9,
+        fontWeight: '900',
+        color: 'rgba(255,255,255,0.75)',
+        letterSpacing: 0.2,
+    },
+    bottomDockTimeSummaryK: {
+        fontSize: 8,
+        fontWeight: '900',
+        letterSpacing: 2,
+        color: 'rgba(255,255,255,0.35)',
+    },
+    bottomDockTimeSummaryV: {
+        fontSize: 10,
+        fontWeight: '900',
+        color: '#FFFFFF',
+    },
+    bottomDockTimeSummarySep: {
+        color: 'rgba(255,255,255,0.25)',
+        fontSize: 10,
+        fontWeight: '900',
+    },
+    // bottomDockSpacer removed in favor of consistent dividers
+    bottomDockTimerContainer: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 6,
+    },
+    bottomDockTimerDisplay: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 8,
+        paddingHorizontal: 10,
+        paddingVertical: 6,
+        borderRadius: 12,
+        backgroundColor: 'rgba(255,255,255,0.08)',
+        borderWidth: 1,
+        borderColor: 'rgba(255,255,255,0.12)',
+    },
+    bottomDockTimerLabel: {
+        fontSize: 8,
+        fontWeight: '900',
+        letterSpacing: 2,
+        color: 'rgba(255,255,255,0.35)',
+    },
+    bottomDockTimerValue: {
+        fontSize: 12,
+        fontWeight: '900',
+        color: '#FFFFFF',
+        minWidth: 56,
+        textAlign: 'right',
+    },
+    bottomDockTimerBtn: {
+        width: 34,
+        height: 34,
+        borderRadius: 17,
+        alignItems: 'center',
+        justifyContent: 'center',
+        backgroundColor: 'rgba(255,255,255,0.08)',
+        borderWidth: 1,
+        borderColor: 'rgba(255,255,255,0.12)',
+    },
+    bottomDockMiniBlock: {
+        alignItems: 'flex-start',
+        minWidth: 60,
+    },
+    bottomDockMiniLabel: {
+        fontSize: 8,
+        fontWeight: '900',
+        letterSpacing: 2,
+        color: 'rgba(255,255,255,0.35)',
+    },
+    bottomDockMiniValue: {
+        marginTop: 3,
+        fontSize: 11,
+        fontWeight: '900',
+        color: 'rgba(255,255,255,0.9)',
+    },
+    bottomDockMiniDivider: {
+        width: 1,
+        height: 18,
+        backgroundColor: 'rgba(255,255,255,0.10)',
+        marginHorizontal: 4,
+    },
+    bottomOpenProgressBtn: {
+        position: 'absolute',
+        left: 0,
+        right: 0,
+        bottom: 12,
+        alignItems: 'center',
+        zIndex: 6400,
+    },
+    bottomOpenPill: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 8,
+        paddingHorizontal: 14,
+        paddingVertical: 10,
+        borderRadius: 18,
+        backgroundColor: 'rgba(0,0,0,0.85)',
+        borderWidth: 1,
+        borderColor: 'rgba(255,255,255,0.12)',
+    },
+    bottomOpenPillLabel: {
+        fontSize: 10,
+        fontWeight: '900',
+        letterSpacing: 2,
+        color: 'rgba(255,255,255,0.55)',
+    },
+    bottomOpenPillValue: {
+        fontSize: 12,
+        fontWeight: '900',
+        color: '#fff',
+    },
     mainContainer: {
         flex: 1,
         flexDirection: 'row',
@@ -2329,6 +2999,19 @@ const styles = StyleSheet.create({
     },
     timelineContent: {
         position: 'relative',
+    },
+    timeOfDayBackgroundLayer: {
+        position: 'absolute',
+        top: 0,
+        bottom: 0,
+        left: 0,
+        right: 0,
+    },
+    timeOfDayBackgroundSegment: {
+        position: 'absolute',
+        top: 0,
+        bottom: 0,
+        opacity: 0.35,
     },
     hourLabelsRow: {
         position: 'absolute',
@@ -2513,6 +3196,83 @@ const styles = StyleSheet.create({
         shadowOpacity: 0.1,
         shadowRadius: 2,
         elevation: 2,
+    },
+    subtaskInfoToggle: {
+        position: 'absolute',
+        right: 18, // leave space for right resize handle
+        top: 2,
+        width: 20,
+        height: 20,
+        borderRadius: 10,
+        backgroundColor: 'rgba(255,255,255,0.85)',
+        alignItems: 'center',
+        justifyContent: 'center',
+        borderWidth: 1,
+        borderColor: 'rgba(0,0,0,0.12)',
+    },
+    subtaskInfoPanel: {
+        position: 'absolute',
+        padding: 10,
+        borderRadius: 12,
+        backgroundColor: 'rgba(0,0,0,0.88)',
+        borderWidth: 1,
+        borderColor: 'rgba(255,255,255,0.12)',
+        zIndex: 5500,
+    },
+    subtaskInfoHeaderRow: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        gap: 10,
+        marginBottom: 8,
+    },
+    subtaskInfoTitle: {
+        flex: 1,
+        fontSize: 12,
+        fontWeight: '900',
+        color: '#fff',
+        letterSpacing: 0.2,
+    },
+    subtaskInfoClose: {
+        width: 24,
+        height: 24,
+        borderRadius: 12,
+        alignItems: 'center',
+        justifyContent: 'center',
+        backgroundColor: 'rgba(255,255,255,0.08)',
+        borderWidth: 1,
+        borderColor: 'rgba(255,255,255,0.10)',
+    },
+    subtaskInfoMetaRow: {
+        flexDirection: 'row',
+        gap: 8,
+        marginBottom: 8,
+    },
+    subtaskInfoChip: {
+        flex: 1,
+        paddingVertical: 8,
+        paddingHorizontal: 8,
+        borderRadius: 10,
+        backgroundColor: 'rgba(255,255,255,0.06)',
+        borderWidth: 1,
+        borderColor: 'rgba(255,255,255,0.10)',
+    },
+    subtaskInfoChipLabel: {
+        fontSize: 9,
+        fontWeight: '900',
+        letterSpacing: 1.2,
+        color: 'rgba(255,255,255,0.45)',
+    },
+    subtaskInfoChipValue: {
+        marginTop: 4,
+        fontSize: 12,
+        fontWeight: '800',
+        color: '#fff',
+    },
+    subtaskInfoFooterText: {
+        fontSize: 11,
+        fontWeight: '600',
+        color: 'rgba(255,255,255,0.5)',
     },
     stageBlock: {
         position: 'absolute',
@@ -2850,50 +3610,49 @@ const styles = StyleSheet.create({
         borderRadius: 1,
         opacity: 0.6,
     },
-    approvalsBtnOverlay: {
-        position: 'absolute',
-        top: 5,
-        right: 20,
-        zIndex: 3000,
-    },
-    approvalsBtnTouchable: {
-        paddingHorizontal: 12,
-        paddingVertical: 6,
-        backgroundColor: 'rgba(255, 255, 255, 0.12)',
-        borderRadius: 12,
+    dockExitBtn: {
+        paddingHorizontal: 5,
+        paddingVertical: 5,
+        borderRadius: 20,
+        backgroundColor: 'rgb(255, 255, 255)',
         borderWidth: 1,
-        borderColor: 'rgba(255, 255, 255, 0.1)',
-    },
-    approvalsBtnContent: {
-        flexDirection: 'row',
-        alignItems: 'center',
-    },
-    approvalDot: {
-        width: 6,
-        height: 6,
-        borderRadius: 3,
-        backgroundColor: '#4CAF50',
-        marginRight: 8,
-    },
-    approvalsBtnText: {
-        color: '#FFFFFF',
-        fontSize: 10,
-        fontWeight: '900',
-        letterSpacing: 1,
-    },
-    approvalBadge: {
-        marginLeft: 8,
-        backgroundColor: '#4CAF50',
-        paddingHorizontal: 6,
-        paddingVertical: 2,
-        borderRadius: 8,
-        minWidth: 18,
+        borderColor: 'rgba(255, 255, 255, 0.12)',
         alignItems: 'center',
         justifyContent: 'center',
     },
-    approvalBadgeText: {
+    dockApprovalsBtn: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        backgroundColor: 'rgba(76, 175, 80, 0.15)',
+        paddingHorizontal: 10,
+        paddingVertical: 6,
+        borderRadius: 10,
+        borderWidth: 1,
+        borderColor: 'rgba(76, 175, 80, 0.3)',
+        gap: 3,
+    },
+    dockApprovalBadge: {
+        backgroundColor: '#4CAF50',
+        paddingHorizontal: 5,
+        paddingVertical: 1,
+        borderRadius: 6,
+        minWidth: 16,
+        alignItems: 'center',
+        justifyContent: 'center',
+    },
+    dockApprovalBadgeText: {
         color: '#FFFFFF',
         fontSize: 9,
         fontWeight: '900',
+    },
+    dockCancelBtn: {
+        paddingHorizontal: 5,
+        paddingVertical: 5,
+        borderRadius: 20,
+        backgroundColor: '#FFFFFF',
+        borderWidth: 1,
+        borderColor: 'rgba(255, 255, 255, 0.12)',
+        alignItems: 'center',
+        justifyContent: 'center',
     },
 });
