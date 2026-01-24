@@ -69,18 +69,23 @@ export default function ApprovalPopup({
     const currentMinutes = now.getHours() * 60 + now.getMinutes();
 
     // Filter stages that need approval
-    const approvalStages: { task: Task; stage: TaskStage; category?: Category }[] = [];
+    const approvalStages: { task: Task; stage: TaskStage; category?: Category; type: 'START' | 'FINISH' }[] = [];
 
     tasks.forEach(task => {
         const category = categories.find(c => c.id === task.categoryId);
         task.stages?.forEach(stage => {
-            // Only process states that are "left of now" and in "Process" status
             const startTime = stage.startTimeMinutes ?? 0;
             const duration = stage.durationMinutes ?? 0;
             const endTime = startTime + duration;
 
+            // 1. Approval for FINISHING: Process status and now past end time
             if (stage.status === 'Process' && endTime <= currentMinutes) {
-                approvalStages.push({ task, stage, category });
+                approvalStages.push({ task, stage, category, type: 'FINISH' });
+            }
+
+            // 2. Approval for STARTING: Upcoming status and now past or at start time
+            if (stage.status === 'Upcoming' && startTime <= currentMinutes) {
+                approvalStages.push({ task, stage, category, type: 'START' });
             }
         });
     });
@@ -125,21 +130,34 @@ export default function ApprovalPopup({
                     ]}
                     onStartShouldSetResponder={() => true}
                 >
-                    <View 
+                    <View
                         style={styles.content}
                         onStartShouldSetResponder={() => true}
                     >
                         {/* List */}
-                        <ScrollView 
-                            style={styles.list} 
+                        <ScrollView
+                            style={styles.list}
                             contentContainerStyle={styles.listContent}
                             showsVerticalScrollIndicator={false}
                         >
-                            {approvalStages.map(({ task, stage, category }) => (
-                                <View key={stage.id} style={styles.itemCard}>
+                            {approvalStages.map(({ task, stage, category, type }) => (
+                                <View key={`${stage.id}-${type}`} style={styles.itemCard}>
                                     <View style={[styles.categoryBar, { backgroundColor: category?.color || '#333' }]} />
                                     <View style={styles.itemMain}>
-                                        <Text style={styles.itemTitle}>{stage.text.toUpperCase()}</Text>
+                                        <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                                            <Text style={styles.itemTitle}>{stage.text.toUpperCase()}</Text>
+                                            <View style={[
+                                                styles.typeBadge,
+                                                { backgroundColor: type === 'START' ? '#FFB74D30' : '#4CAF5030' }
+                                            ]}>
+                                                <Text style={[
+                                                    styles.typeBadgeText,
+                                                    { color: type === 'START' ? '#FFB74D' : '#4CAF50' }
+                                                ]}>
+                                                    {type === 'START' ? 'TO START' : 'TO FINISH'}
+                                                </Text>
+                                            </View>
+                                        </View>
                                         <View style={styles.itemDetails}>
                                             <View style={styles.detailRow}>
                                                 <MaterialIcons name="play-arrow" size={7} color="#8E8E93" style={styles.detailIcon} />
@@ -160,21 +178,16 @@ export default function ApprovalPopup({
                                     <View style={styles.actions}>
                                         <TouchableOpacity
                                             style={styles.actionBtn}
-                                            onPress={() => onUpdateStageStatus(task.id, stage.id, 'Upcoming')}
+                                            onPress={() => onUpdateStageStatus(task.id, stage.id, type === 'START' ? 'Undone' : 'Upcoming')}
                                         >
-                                            <MaterialIcons name="undo" size={9} color="#FFB74D" />
+                                            <MaterialIcons name={type === 'START' ? "close" : "undo"} size={10} color="#FF5252" />
                                         </TouchableOpacity>
-                                        <TouchableOpacity
-                                            style={styles.actionBtn}
-                                            onPress={() => onDeleteStage(task.id, stage.id)}
-                                        >
-                                            <MaterialIcons name="delete-outline" size={9} color="#FF5252" />
-                                        </TouchableOpacity>
+
                                         <TouchableOpacity
                                             style={[styles.actionBtn, styles.doneBtn]}
-                                            onPress={() => onUpdateStageStatus(task.id, stage.id, 'Done')}
+                                            onPress={() => onUpdateStageStatus(task.id, stage.id, type === 'START' ? 'Process' : 'Done')}
                                         >
-                                            <MaterialIcons name="check" size={9} color="#FFF" />
+                                            <MaterialIcons name={type === 'START' ? "play-arrow" : "check"} size={12} color="#FFF" />
                                         </TouchableOpacity>
                                     </View>
                                 </View>
@@ -245,13 +258,24 @@ const styles = StyleSheet.create({
         color: '#FFFFFF',
         fontSize: 9,
         fontWeight: '800',
-        marginBottom: 2,
         letterSpacing: 0.2,
+    },
+    typeBadge: {
+        paddingHorizontal: 4,
+        paddingVertical: 1,
+        borderRadius: 4,
+        marginLeft: 6,
+    },
+    typeBadgeText: {
+        fontSize: 7,
+        fontWeight: '900',
+        letterSpacing: 0.4,
     },
     itemDetails: {
         flexDirection: 'row',
         alignItems: 'center',
         gap: 4,
+        marginTop: 2,
     },
     detailRow: {
         flexDirection: 'row',

@@ -1106,7 +1106,14 @@ export default function LiveFocusView({
                 const startTime = stage.startTimeMinutes ?? 0;
                 const duration = stage.durationMinutes ?? 0;
                 const endTime = startTime + duration;
-                if (stage.status === 'Process' && endTime <= currentMinutes) {
+
+                // 1. Approval for FINISHING: Process status and now past end time
+                const needsFinishApproval = stage.status === 'Process' && endTime <= currentMinutes;
+
+                // 2. Approval for STARTING: Upcoming status and now past or at start time
+                const needsStartApproval = stage.status === 'Upcoming' && startTime <= currentMinutes;
+
+                if (needsFinishApproval || needsStartApproval) {
                     count++;
                 }
             });
@@ -1640,6 +1647,7 @@ export default function LiveFocusView({
                                                                         style={[
                                                                             // Universal card design (same as untimed cards) for timeline too
                                                                             styles.timelineStageCard,
+                                                                            { backgroundColor: STAGE_STATUS_CONFIG[stage.status || 'Upcoming'].color },
                                                                             isBeingEdited && styles.stageCardDragging,
                                                                             isInResizeMode && styles.stageCardResizeMode,
                                                                             { left, width, top }, // Apply position/size last to ensure it overrides any style changes
@@ -1745,7 +1753,7 @@ export default function LiveFocusView({
                                                                             {/* Stage Name */}
                                                                             <Text style={[
                                                                                 styles.untimedStageName,
-                                                                                { flexShrink: 1 },
+                                                                                { flexShrink: 1, color: '#FFFFFF' }, // White text for status backgrounds
                                                                                 isBeingEdited && styles.stageTextDragging,
                                                                                 isInResizeMode && styles.stageTextResizeMode
                                                                             ]} numberOfLines={1} ellipsizeMode="tail">
@@ -1760,6 +1768,7 @@ export default function LiveFocusView({
                                                                                     <View style={styles.stageTimeDisplay}>
                                                                                         <Text style={[
                                                                                             styles.stageTimeText,
+                                                                                            { color: 'rgba(255, 255, 255, 0.8)' },
                                                                                             isBeingEdited && styles.stageTimeTextEditing,
                                                                                             isInResizeMode && styles.stageTimeTextEditing
                                                                                         ]}>
@@ -1767,6 +1776,7 @@ export default function LiveFocusView({
                                                                                         </Text>
                                                                                         <Text style={[
                                                                                             styles.stageDurationText,
+                                                                                            { color: 'rgba(255, 255, 255, 0.6)' },
                                                                                             isBeingEdited && styles.stageTimeTextEditing,
                                                                                             isInResizeMode && styles.stageTimeTextEditing
                                                                                         ]}>
@@ -1783,7 +1793,7 @@ export default function LiveFocusView({
                                                                                     <MaterialIcons
                                                                                         name={config.icon}
                                                                                         size={12}
-                                                                                        color={config.color}
+                                                                                        color="#FFFFFF" // White icons for status backgrounds
                                                                                         style={{ marginLeft: 4, flexShrink: 0 }}
                                                                                     />
                                                                                 );
@@ -2104,6 +2114,7 @@ function UntimedStagesDraggableList({
                 key={item.id}
                 style={[
                     styles.untimedStageItem,
+                    { backgroundColor: STAGE_STATUS_CONFIG[status].color },
                     isDragging2D && styles.stageItemDragging2D,
                 ]}
                 onLayout={onCardLayout}
@@ -2120,7 +2131,7 @@ function UntimedStagesDraggableList({
                     <Text
                         style={[
                             styles.untimedStageName,
-                            { marginRight: 0 },
+                            { marginRight: 0, color: '#FFFFFF' }, // White text for status backgrounds
                             isDragging2D && styles.stageTextDragging
                         ]}
                         numberOfLines={1}
@@ -2153,12 +2164,12 @@ function UntimedStagesDraggableList({
                     <MaterialIcons
                         name="delete-outline"
                         size={15}
-                        color={isDragging2D ? "#FF3B30" : "#FF3B30"}
+                        color="#FFFFFF" // White icons
                     />
                 </TouchableOpacity>
             </View>
         );
-    }, [drag2DStage, getTimePosition, handleCardLayout, onDeleteStage, start2DDrag]);
+    }, [handleCardLayout, getTimePosition, onDeleteStage, drag2DStage, start2DDrag]);
 
     // Calculate dynamic width based on measured card widths
     const calculateListWidth = useCallback(() => {
@@ -2632,15 +2643,15 @@ const styles = StyleSheet.create({
         paddingHorizontal: 4.2,
         paddingVertical: 2.8,
         borderRadius: 2.8,
-        backgroundColor: '#FFFFFF', // White background when dragging
+        backgroundColor: '#00E5FF', // Changed from white to cyan for consistency
         borderWidth: 1,
-        borderColor: 'rgba(0, 0, 0, 0.1)',
+        borderColor: 'rgba(0, 0, 0, 0.2)',
         minHeight: 21, // Match original card height
         shadowColor: '#000',
-        shadowOffset: { width: 0, height: 6 },
-        shadowOpacity: 0.5,
-        shadowRadius: 12,
-        elevation: 12,
+        shadowOffset: { width: 0, height: 3 }, // Reduced for stability
+        shadowOpacity: 0.3,
+        shadowRadius: 6,
+        elevation: 6,
     },
     dragOverlayContent: {
         flex: 1,
@@ -2693,28 +2704,28 @@ const styles = StyleSheet.create({
         elevation: 8,
     },
     stageItemDragging2D: {
-        backgroundColor: '#FFFFFF',
+        backgroundColor: '#00E5FF', // Changed from white to cyan for consistency
         shadowColor: '#000',
-        shadowOffset: { width: 0, height: 4 },
-        shadowOpacity: 0.3,
-        shadowRadius: 8,
-        elevation: 10,
+        shadowOffset: { width: 0, height: 2 }, // Reduced for stability
+        shadowOpacity: 0.2,
+        shadowRadius: 4,
+        elevation: 4, // Reduced from 10
         zIndex: 1000,
     },
     stageCardDragging: {
-        backgroundColor: '#FF9800',
+        backgroundColor: '#00E5FF',
         shadowColor: '#000',
-        shadowOffset: { width: 0, height: 12 },
-        shadowOpacity: 0.5,
-        shadowRadius: 16,
-        elevation: 20,
+        shadowOffset: { width: 0, height: 4 }, // Reduced from 12 for stability
+        shadowOpacity: 0.25, // Reduced from 0.5 for stability
+        shadowRadius: 8, // Reduced from 16
+        elevation: 6, // Reduced from 20 to prevent "lifting" feel
         zIndex: 9999,
-        borderColor: '#FFFFFF',
+        borderColor: '#000000',
         borderWidth: 1,
     },
     stageCardResizeMode: {
-        borderColor: '#FF9800',
-        backgroundColor: '#FF9800',
+        borderColor: '#00E5FF',
+        backgroundColor: '#00E5FF',
         borderWidth: 1, // Explicitly match base style
         borderRadius: 8, // Explicitly match base style
         paddingHorizontal: 6, // Explicitly match base style
@@ -2831,14 +2842,14 @@ const styles = StyleSheet.create({
         shadowRadius: 2,
         elevation: 6,
     },
-    
+
     taskColumnToggleLine: {
         width: 2,
         height: 32,
         backgroundColor: '#000',
         borderRadius: 1,
         opacity: 0.6,
-    },    
+    },
     approvalsBtnOverlay: {
         position: 'absolute',
         top: 5,
