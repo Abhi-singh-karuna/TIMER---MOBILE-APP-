@@ -31,6 +31,7 @@ import LiveFocusView from './LiveFocusView';
 import StageActionPopup from './StageActionPopup';
 import * as Haptics from 'expo-haptics';
 import { TimeOfDaySlotConfigList } from '../../../utils/timeOfDaySlots';
+import { getLogicalDate, getStartOfLogicalDay, DEFAULT_DAILY_START_MINUTES, formatDailyStartRangeCompact } from '../../../utils/dailyStartTime';
 
 const { width, height } = Dimensions.get('window');
 
@@ -126,6 +127,20 @@ const styles = StyleSheet.create({
     },
     todayNavTextActive: {
         color: '#4CAF50',
+    },
+    todayLabelBlock: {
+        marginLeft: 3,
+        alignItems: 'flex-start',
+    },
+    todayRangeLabel: {
+        fontSize: 8,
+        fontWeight: '600',
+        color: 'rgba(255,255,255,0.5)',
+        letterSpacing: 0.3,
+        marginTop: 1,
+    },
+    todayRangeLabelActive: {
+        color: 'rgba(76,175,80,0.85)',
     },
 
     // Stats
@@ -335,6 +350,10 @@ const styles = StyleSheet.create({
     },
     todayBtnTextActivePortrait: {
         color: '#4CAF50',
+    },
+    todayLabelBlockPortrait: {
+        marginLeft: 4,
+        alignItems: 'flex-start',
     },
     portraitFiltersContainer: {
         marginTop: 12,
@@ -1352,6 +1371,7 @@ interface TaskListProps {
     onViewChange?: (view: 'timer' | 'task') => void;
     onSettings?: () => void;
     isPastTasksDisabled?: boolean;
+    dailyStartMinutes?: number;
     onUpdateComment?: (task: Task, comment: string) => void;
     onUpdateStages?: (task: Task, stages: TaskStage[]) => void;
     onPinTask?: (task: Task) => void;
@@ -1375,6 +1395,7 @@ export default function TaskList({
     onViewChange,
     onSettings,
     isPastTasksDisabled,
+    dailyStartMinutes = DEFAULT_DAILY_START_MINUTES,
     onUpdateComment,
     onUpdateStages,
     onPinTask,
@@ -1437,14 +1458,12 @@ export default function TaskList({
         setExpandedTaskId(null);
     }, [selectedDate, showBacklog, showLive]);
 
-    // Format date for comparison
-    const formatDate = (date: Date) => {
-        return `${date.getFullYear()}-${(date.getMonth() + 1).toString().padStart(2, '0')}-${date.getDate().toString().padStart(2, '0')}`;
-    };
+    // Logical date for the selected day (uses daily start time for rollover)
+    const selectedLogical = getLogicalDate(selectedDate, dailyStartMinutes);
 
     // Filter tasks by selected date OR backlog status
     const dateFilteredTasks = tasks.filter(t =>
-        showBacklog ? !!t.isBacklog : (t.forDate === formatDate(selectedDate) && !t.isBacklog)
+        showBacklog ? !!t.isBacklog : (t.forDate === selectedLogical && !t.isBacklog)
     );
 
     // Apply category and status filters
@@ -1477,7 +1496,7 @@ export default function TaskList({
     const dayNum = selectedDate.getDate();
     const monthName = MONTHS[selectedDate.getMonth()].toUpperCase();
 
-    const isToday = formatDate(selectedDate) === formatDate(new Date());
+    const isToday = selectedLogical === getLogicalDate(new Date(), dailyStartMinutes);
     const dateLabel = isToday ? 'TODAY' : `on ${dayName} ${dayNum}`;
 
     // Calendar helpers
@@ -1591,21 +1610,19 @@ export default function TaskList({
                     }
                 ]}>
                     {calendarDays.map((item, index) => {
+                        const logicalToday = getLogicalDate(new Date(), dailyStartMinutes);
+                        const [ltY, ltM1, ltD] = logicalToday.split('-').map(Number);
                         const isTodayDate = item.currentMonth &&
-                            item.day === new Date().getDate() &&
-                            viewDate.getMonth() === new Date().getMonth() &&
-                            viewDate.getFullYear() === new Date().getFullYear();
+                            item.day === ltD &&
+                            viewDate.getMonth() === ltM1 - 1 &&
+                            viewDate.getFullYear() === ltY;
 
                         const isSelected = item.currentMonth &&
                             item.day === selectedDate.getDate() &&
                             viewDate.getMonth() === selectedDate.getMonth() &&
                             viewDate.getFullYear() === selectedDate.getFullYear();
 
-                        const today = new Date();
-                        today.setHours(0, 0, 0, 0);
-                        const selectedDateObj = new Date(selectedDate);
-                        selectedDateObj.setHours(0, 0, 0, 0);
-                        const isPastSelection = isSelected && selectedDateObj < today;
+                        const isPastSelection = isSelected && selectedLogical < getLogicalDate(new Date(), dailyStartMinutes);
 
                         return (
                             <TouchableOpacity
@@ -1613,8 +1630,8 @@ export default function TaskList({
                                 style={styles.dayCell}
                                 onPress={() => {
                                     if (item.currentMonth) {
-                                        const newSelected = new Date(viewDate.getFullYear(), viewDate.getMonth(), item.day);
-                                        onDateChange(newSelected);
+                                        const y = viewDate.getFullYear(), m = viewDate.getMonth(), d = item.day;
+                                        onDateChange(new Date(y, m, d, Math.floor(dailyStartMinutes / 60), dailyStartMinutes % 60, 0, 0));
                                     }
                                 }}
                             >
@@ -1701,6 +1718,7 @@ export default function TaskList({
                     onUpdateStageLayout={handleUpdateStageLayout}
                     onUpdateStages={onUpdateStages}
                     timeOfDaySlots={timeOfDaySlots}
+                    dailyStartMinutes={dailyStartMinutes}
                     initialZoom={liveFocusZoom}
                     initialScrollX={liveFocusScrollX}
                     onZoomChange={handleLiveFocusZoomChange}
@@ -1795,14 +1813,17 @@ export default function TaskList({
                                         <TouchableOpacity
                                             style={[styles.todayNavBtn, isToday && styles.todayNavBtnActive]}
                                             onPress={() => {
-                                                const today = new Date();
-                                                onDateChange(today);
-                                                setViewDate(today);
+                                                const start = getStartOfLogicalDay(new Date(), dailyStartMinutes);
+                                                onDateChange(start);
+                                                setViewDate(start);
                                             }}
                                             activeOpacity={0.7}
                                         >
                                             <MaterialIcons name="today" size={12} color={isToday ? "#4CAF50" : "rgba(255,255,255,0.4)"} />
-                                            <Text style={[styles.todayNavText, isToday && styles.todayNavTextActive]}>TODAY</Text>
+                                            <View style={styles.todayLabelBlock}>
+                                                <Text style={[styles.todayNavText, isToday && styles.todayNavTextActive, { marginLeft: 0 }]}>TODAY</Text>
+                                                <Text style={[styles.todayRangeLabel, isToday && styles.todayRangeLabelActive]}>({formatDailyStartRangeCompact(dailyStartMinutes)})</Text>
+                                            </View>
                                         </TouchableOpacity>
                                     </View>
 
@@ -1982,6 +2003,7 @@ export default function TaskList({
                                         onEdit={() => onEditTask?.(tasks.find(t => t.id === expandedTaskId)!)}
                                         isLandscape={true}
                                         categories={categories}
+                                        dailyStartMinutes={dailyStartMinutes}
                                         isPastTasksDisabled={isPastTasksDisabled}
                                         onOpenMenu={() => {
                                             const t = tasks.find(tsk => tsk.id === expandedTaskId)!;
@@ -2038,6 +2060,7 @@ export default function TaskList({
                                                             onEdit={() => onEditTask?.(task)}
                                                             isLandscape={true}
                                                             categories={categories}
+                                                            dailyStartMinutes={dailyStartMinutes}
                                                             isPastTasksDisabled={isPastTasksDisabled}
                                                             onOpenMenu={() => {
                                                                 setSelectedActionTask(task);
@@ -2086,6 +2109,7 @@ export default function TaskList({
                                         onEdit={() => onEditTask?.(task)}
                                         isLandscape={false}
                                         categories={categories}
+                                        dailyStartMinutes={dailyStartMinutes}
                                         isPastTasksDisabled={isPastTasksDisabled}
                                         onOpenMenu={() => {
                                             setSelectedActionTask(task);
@@ -2129,14 +2153,17 @@ export default function TaskList({
                                             <TouchableOpacity
                                                 style={[styles.todayBtnPortrait, isToday && styles.todayBtnActivePortrait]}
                                                 onPress={() => {
-                                                    const today = new Date();
-                                                    onDateChange(today);
-                                                    setViewDate(today);
+                                                    const start = getStartOfLogicalDay(new Date(), dailyStartMinutes);
+                                                    onDateChange(start);
+                                                    setViewDate(start);
                                                 }}
                                                 activeOpacity={0.7}
                                             >
                                                 <MaterialIcons name="today" size={12} color={isToday ? "#4CAF50" : "rgba(255,255,255,0.4)"} />
-                                                <Text style={[styles.todayBtnTextPortrait, isToday && styles.todayBtnTextActivePortrait]}>TODAY</Text>
+                                                <View style={styles.todayLabelBlockPortrait}>
+                                                    <Text style={[styles.todayBtnTextPortrait, isToday && styles.todayBtnTextActivePortrait, { marginLeft: 0 }]}>TODAY</Text>
+                                                    <Text style={[styles.todayRangeLabel, isToday && styles.todayRangeLabelActive]}>({formatDailyStartRangeCompact(dailyStartMinutes)})</Text>
+                                                </View>
                                             </TouchableOpacity>
 
                                             <TouchableOpacity
@@ -2299,6 +2326,8 @@ interface TaskCardProps {
     onEdit?: () => void;
     isLandscape: boolean;
     categories: Category[];
+    /** Daily start (minutes from midnight). Used so isPast matches 06:00–06:00 logical day. */
+    dailyStartMinutes?: number;
     isPastTasksDisabled?: boolean;
     onOpenMenu: () => void;
     isExpanded: boolean;
@@ -2518,6 +2547,7 @@ function TaskCard({
     onEdit,
     isLandscape,
     categories,
+    dailyStartMinutes = DEFAULT_DAILY_START_MINUTES,
     isPastTasksDisabled,
     onOpenMenu,
     isExpanded,
@@ -2576,8 +2606,8 @@ function TaskCard({
         onUpdateStages?.(task, newStages);
     };
 
-    const today = new Date().toISOString().split('T')[0];
-    const isPast = task.forDate < today && !task.isBacklog;
+    const logicalToday = getLogicalDate(new Date(), dailyStartMinutes);
+    const isPast = task.forDate < logicalToday && !task.isBacklog;
     const isLocked = isPast && isPastTasksDisabled;
 
     const category = categories.find(c => c.id === task.categoryId);

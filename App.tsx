@@ -42,6 +42,14 @@ import {
   slotsForDate,
   TimeOfDayBackgroundConfig,
 } from './src/utils/timeOfDaySlots';
+import {
+  loadDailyStartMinutes,
+  saveDailyStartMinutes,
+  getLogicalDate,
+  getStartOfLogicalDay,
+  getStartOfLogicalDayFromString,
+  DEFAULT_DAILY_START_MINUTES,
+} from './src/utils/dailyStartTime';
 
 const LANDSCAPE_COLOR_KEY = '@timer_app_landscape_color';
 const FILLER_COLOR_KEY = '@timer_filler_color';
@@ -155,7 +163,8 @@ export default function App() {
   const [activePresetIndex, setActivePresetIndex] = useState(0);
   const [selectedSound, setSelectedSound] = useState(0);
   const [soundRepetition, setSoundRepetition] = useState(1);
-  const [selectedDate, setSelectedDate] = useState(new Date());
+  const [selectedDate, setSelectedDate] = useState(() => getStartOfLogicalDay(new Date(), DEFAULT_DAILY_START_MINUTES));
+  const [dailyStartMinutes, setDailyStartMinutes] = useState(DEFAULT_DAILY_START_MINUTES);
   const [categories, setCategories] = useState<Category[]>(DEFAULT_CATEGORIES);
   const [timerToEdit, setTimerToEdit] = useState<Timer | null>(null);
   const [isPastTimersDisabled, setIsPastTimersDisabled] = useState(false);
@@ -351,6 +360,15 @@ export default function App() {
       // Load/seed time-of-day background slots (single source of truth)
       const cfg = await loadOrSeedTimeOfDayBackgroundConfig();
       setTimeOfDayBackgroundConfig(cfg);
+
+      // Daily start time (when the calendar day rolls over)
+      const loadedStart = await loadDailyStartMinutes();
+      setDailyStartMinutes(loadedStart);
+      setSelectedDate((prev) => {
+        const logical = getLogicalDate(prev, DEFAULT_DAILY_START_MINUTES);
+        const [y, m1, d] = logical.split('-').map(Number);
+        return new Date(y, m1 - 1, d, Math.floor(loadedStart / 60), loadedStart % 60, 0, 0);
+      });
     } catch (e) {
       console.error('Failed to load color preferences:', e);
     }
@@ -657,9 +675,11 @@ export default function App() {
     setActiveTimer(timer);
     if (timer) {
       await AsyncStorage.setItem(ACTIVE_TIMER_ID_KEY, timer.id.toString());
-      // When opening an active timer, ensure we view its date
+      // When opening an active timer, ensure we view its date.
+      // Use start of logical day so getLogicalDate(selectedDate, dailyStartMinutes) === timer.forDate;
+      // new Date(timer.forDate) is midnight and would yield the previous logical day.
       if (timer.forDate) {
-        setSelectedDate(new Date(timer.forDate));
+        setSelectedDate(getStartOfLogicalDayFromString(timer.forDate, dailyStartMinutes));
       }
     } else {
       await AsyncStorage.removeItem(ACTIVE_TIMER_ID_KEY);
@@ -1276,6 +1296,14 @@ export default function App() {
               setIsPastTasksDisabled(val);
               await AsyncStorage.setItem(IS_PAST_TASKS_DISABLED_KEY, val.toString());
             }}
+            dailyStartMinutes={dailyStartMinutes}
+            onDailyStartMinutesChange={async (newVal) => {
+              await saveDailyStartMinutes(newVal);
+              setDailyStartMinutes(newVal);
+              setSelectedDate((prev) =>
+                new Date(prev.getFullYear(), prev.getMonth(), prev.getDate(), Math.floor(newVal / 60), newVal % 60, 0, 0)
+              );
+            }}
             quickMessages={quickMessages}
             onQuickMessagesChange={async (messages) => {
               setQuickMessages(messages);
@@ -1325,6 +1353,7 @@ export default function App() {
               onViewChange={setActiveView}
               onSettings={() => setCurrentScreen('settings')}
               isPastTasksDisabled={isPastTasksDisabled}
+              dailyStartMinutes={dailyStartMinutes}
               quickMessages={quickMessages}
               timeOfDaySlots={slotsForDate(timeOfDayBackgroundConfig, selectedDate)}
               runningTimer={timers.find(t => t.status === 'Running') ?? null}
@@ -1365,6 +1394,7 @@ export default function App() {
             onDateChange={setSelectedDate}
             categories={categories}
             isPastTimersDisabled={isPastTimersDisabled}
+            dailyStartMinutes={dailyStartMinutes}
             activeView={activeView}
             onViewChange={setActiveView}
           />
@@ -1411,7 +1441,8 @@ export default function App() {
               }}
               onAdd={handleAddTimer}
               onUpdate={handleUpdateTimer}
-              initialDate={formatDate(selectedDate)}
+              initialDate={getLogicalDate(selectedDate, dailyStartMinutes)}
+              dailyStartMinutes={dailyStartMinutes}
               categories={categories}
               timerToEdit={timerToEdit}
               isPastTimersDisabled={isPastTimersDisabled}
@@ -1444,7 +1475,8 @@ export default function App() {
               onUpdate={handleUpdateTask}
               taskToEdit={taskToEdit}
               categories={categories}
-              initialDate={formatDate(selectedDate)}
+              initialDate={getLogicalDate(selectedDate, dailyStartMinutes)}
+              dailyStartMinutes={dailyStartMinutes}
               isPastTasksDisabled={isPastTasksDisabled}
             />
 

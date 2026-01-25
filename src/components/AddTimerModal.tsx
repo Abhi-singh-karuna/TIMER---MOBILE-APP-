@@ -21,6 +21,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import * as Haptics from 'expo-haptics';
 import { MaterialIcons } from '@expo/vector-icons';
 import { Timer, Category } from '../constants/data';
+import { getLogicalDate, DEFAULT_DAILY_START_MINUTES } from '../utils/dailyStartTime';
 
 const DAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
@@ -34,6 +35,8 @@ interface AddTimerModalProps {
     onAdd: (name: string, hours: number, minutes: number, seconds: number, date: string, categoryId?: string) => void;
     onUpdate?: (timerId: number, name: string, hours: number, minutes: number, seconds: number, date: string, categoryId?: string) => void;
     initialDate?: string; // YYYY-MM-DD
+    /** Daily start (minutes from midnight). Used so "today" and isPast match 06:00–06:00 logical day. */
+    dailyStartMinutes?: number;
     categories: Category[];
     timerToEdit?: Timer | null;
     isPastTimersDisabled?: boolean;
@@ -130,14 +133,14 @@ const pickerStyles = StyleSheet.create({
     text: { fontSize: 24, fontWeight: '400', color: '#fff' },
 });
 
-export default function AddTimerModal({ visible, onCancel, onAdd, onUpdate, initialDate, categories, timerToEdit, isPastTimersDisabled }: AddTimerModalProps) {
+export default function AddTimerModal({ visible, onCancel, onAdd, onUpdate, initialDate, dailyStartMinutes = DEFAULT_DAILY_START_MINUTES, categories, timerToEdit, isPastTimersDisabled }: AddTimerModalProps) {
     const { width: screenWidth, height: screenHeight } = useWindowDimensions();
     const isLandscape = screenWidth > screenHeight;
     const [name, setName] = useState('');
     const [hours, setHours] = useState(0);
     const [minutes, setMinutes] = useState(0);
     const [seconds, setSeconds] = useState(0);
-    const [selectedDate, setSelectedDate] = useState(initialDate || new Date().toISOString().split('T')[0]);
+    const [selectedDate, setSelectedDate] = useState(initialDate || getLogicalDate(new Date(), dailyStartMinutes));
     const [selectedCategoryId, setSelectedCategoryId] = useState<string | undefined>(categories[0]?.id);
     const [showDatePicker, setShowDatePicker] = useState(false);
     const [viewDate, setViewDate] = useState(new Date(selectedDate));
@@ -150,7 +153,7 @@ export default function AddTimerModal({ visible, onCancel, onAdd, onUpdate, init
             if (timerToEdit) {
                 // Pre-fill form for editing
                 setName(timerToEdit.title);
-                setSelectedDate(timerToEdit.forDate || initialDate || new Date().toISOString().split('T')[0]);
+                setSelectedDate(timerToEdit.forDate || initialDate || getLogicalDate(new Date(), dailyStartMinutes));
                 setSelectedCategoryId(timerToEdit.categoryId || categories[0]?.id);
 
                 // Parse time HH:MM:SS or MM:SS
@@ -170,10 +173,13 @@ export default function AddTimerModal({ visible, onCancel, onAdd, onUpdate, init
                 setViewDate(new Date(initialDate));
                 resetForm();
             } else {
+                const d = getLogicalDate(new Date(), dailyStartMinutes);
+                setSelectedDate(d);
+                setViewDate(new Date(d));
                 resetForm();
             }
         }
-    }, [visible, initialDate, timerToEdit]);
+    }, [visible, initialDate, timerToEdit, dailyStartMinutes]);
 
     const getDaysInMonth = (year: number, month: number) => new Date(year, month + 1, 0).getDate();
     const getFirstDayOfMonth = (year: number, month: number) => new Date(year, month, 1).getDay();
@@ -233,7 +239,7 @@ export default function AddTimerModal({ visible, onCancel, onAdd, onUpdate, init
                     {daysArray.map((item, i) => {
                         const dateStr = item.current ? formatDate(new Date(viewDate.getFullYear(), viewDate.getMonth(), item.day)) : '';
                         const isSelected = item.current && dateStr === selectedDate;
-                        const todayStr = formatDate(new Date());
+                        const todayStr = getLogicalDate(new Date(), dailyStartMinutes);
                         const isToday = item.current && dateStr === todayStr;
                         const isPast = item.current && dateStr < todayStr;
 
@@ -273,8 +279,8 @@ export default function AddTimerModal({ visible, onCancel, onAdd, onUpdate, init
     };
 
     const handleAdd = () => {
-        const todayStr = new Date().toISOString().split('T')[0];
-        const isDateInvalid = selectedDate < todayStr && isPastTimersDisabled;
+        const logicalToday = getLogicalDate(new Date(), dailyStartMinutes);
+        const isDateInvalid = selectedDate < logicalToday && isPastTimersDisabled;
         const hasName = name.trim().length > 0;
         const hasTime = (hours + minutes + seconds) > 0;
 
@@ -392,7 +398,7 @@ export default function AddTimerModal({ visible, onCancel, onAdd, onUpdate, init
                                                     style={[
                                                         styles.dateDisplay,
                                                         styles.compactInput,
-                                                        (selectedDate < new Date().toISOString().split('T')[0] && isPastTimersDisabled) && styles.inputError
+                                                        (selectedDate < getLogicalDate(new Date(), dailyStartMinutes) && isPastTimersDisabled) && styles.inputError
                                                     ]}
                                                     onPress={() => {
                                                         setShowDatePicker(true);
@@ -476,7 +482,7 @@ export default function AddTimerModal({ visible, onCancel, onAdd, onUpdate, init
                                             style={[
                                                 styles.dateDisplay,
                                                 { marginBottom: 24 },
-                                                (selectedDate < new Date().toISOString().split('T')[0] && isPastTimersDisabled) && styles.inputError
+                                                (selectedDate < getLogicalDate(new Date(), dailyStartMinutes) && isPastTimersDisabled) && styles.inputError
                                             ]}
                                             onPress={() => {
                                                 setShowDatePicker(true);

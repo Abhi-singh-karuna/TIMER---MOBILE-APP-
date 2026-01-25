@@ -24,6 +24,7 @@ import AddSubtaskModal from '../../../components/AddSubtaskModal';
 import ApprovalPopup from './ApprovalPopup';
 import StageActionPopup from './StageActionPopup';
 import { buildTimeOfDayBackgroundSegments, DEFAULT_TIME_OF_DAY_SLOTS, TimeOfDaySlotConfigList } from '../../../utils/timeOfDaySlots';
+import { getLogicalDate, getStartOfLogicalDay, isSameLogicalDay, toDisplayMinutes, DEFAULT_DAILY_START_MINUTES } from '../../../utils/dailyStartTime';
 
 interface LiveFocusViewProps {
     tasks: Task[];
@@ -36,6 +37,8 @@ interface LiveFocusViewProps {
     onUpdateStageLayout?: (taskId: number, stageId: number, startTimeMinutes: number, durationMinutes: number) => void;
     onUpdateStages?: (task: Task, stages: TaskStage[]) => void;
     timeOfDaySlots?: TimeOfDaySlotConfigList;
+    /** Daily start time (minutes from midnight) from General Settings. Used for date rollover: when the clock crosses this time, the calendar day changes. Must match the app config (Daily start time) so Live Focus stays in sync with TaskList and TimerList. */
+    dailyStartMinutes?: number;
     initialZoom?: number;
     initialScrollX?: number;
     onZoomChange?: (zoom: number) => void;
@@ -80,6 +83,7 @@ export default function LiveFocusView({
     onUpdateStageLayout,
     onUpdateStages,
     timeOfDaySlots,
+    dailyStartMinutes = DEFAULT_DAILY_START_MINUTES,
     initialZoom,
     initialScrollX,
     onZoomChange,
@@ -219,7 +223,8 @@ export default function LiveFocusView({
         };
     }, [isTimerRunning]);
 
-    // Live current time HH:MM:SS for the Now button; also updates currentTimeRef so NOW line moves in real time
+    // Live current time HH:MM:SS for the Now button; also updates currentTimeRef so NOW line moves in real time.
+    // Date rollover: when the clock crosses the daily start time, switch to the new logical day.
     const [nowHHMMSS, setNowHHMMSS] = useState('');
     useEffect(() => {
         const tick = () => {
@@ -228,11 +233,16 @@ export default function LiveFocusView({
             setNowHHMMSS(
                 `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}:${String(d.getSeconds()).padStart(2, '0')}`
             );
+            const logicalNow = getLogicalDate(d, dailyStartMinutes);
+            const logicalSel = getLogicalDate(selectedDate, dailyStartMinutes);
+            if (logicalNow !== logicalSel) {
+                onDateChange(getStartOfLogicalDay(d, dailyStartMinutes));
+            }
         };
         tick();
         const t = setInterval(tick, 1000);
         return () => clearInterval(t);
-    }, []);
+    }, [dailyStartMinutes, selectedDate, onDateChange]);
 
     const debugLog = useCallback((...args: any[]) => {
         if (!DEBUG_LANES) return;
@@ -281,9 +291,12 @@ export default function LiveFocusView({
         const temp = tempStageLayoutRef.current;
         const mpc = minutesPerCellRef.current;
 
-        // Persist whenever we have a temp layout (meaning user was dragging or resizing)
+        // Persist whenever we have a temp layout (meaning user was dragging or resizing).
+        // temp.left is in display space (0 = daily start). Convert to minutes-from-midnight:
+        // startTimeMinutes = (displayStart + dailyStartMinutes) % 1440
         if (a && temp && (onUpdateStages || onUpdateStageLayout)) {
-            const startTime = Math.round((temp.left / CELL_WIDTH) * mpc);
+            const displayStart = (temp.left / CELL_WIDTH) * mpc;
+            const startTime = (Math.round(displayStart) + dailyStartMinutes) % 1440;
             const duration = Math.round((temp.width / CELL_WIDTH) * mpc);
 
             // 1. Synchronously update pending layouts REF
@@ -355,7 +368,7 @@ export default function LiveFocusView({
         initialStageLayoutRef.current = null;
         tempStageLayoutRef.current = null;
         resizeModeStageRef.current = null;
-    }, [onUpdateStageLayout, onUpdateStages, stopAutoScroll, debugLog]);
+    }, [onUpdateStageLayout, onUpdateStages, stopAutoScroll, debugLog, dailyStartMinutes]);
 
     useEffect(() => {
         commitLayoutChangeRef.current = commitLayoutChange;
@@ -448,20 +461,21 @@ export default function LiveFocusView({
     }, [isTaskColumnVisible, screenWidth, startAutoScroll, stopAutoScroll]);
 
 
-    // Calculate timeline based on zoom level
+    // Calculate timeline based on zoom level.
+    // Timeline runs from daily start (e.g. 06:00) to next daily start (06:00) — 1440 display minutes.
     const CELL_WIDTH = 80; // Fixed width per cell
-    const START_HOUR = 0;
-    const END_HOUR = 24;
-    const TOTAL_MINUTES = (END_HOUR - START_HOUR) * 60;
+    const TOTAL_MINUTES = 1440;
     const TOTAL_CELLS = Math.ceil(TOTAL_MINUTES / minutesPerCell);
     const TRACK_HEIGHT = 80; // Reduced for compact design
     const TRACK_LABEL_WIDTH = 150;
+    /** Same as BASE_TOP: space between the last card and the horizontal separator below, so it matches the gap between the top separator and the first card. */
+    const TRACK_BOTTOM_PADDING = 7;
     const TIMELINE_WIDTH = TRACK_LABEL_WIDTH + TOTAL_CELLS * CELL_WIDTH + 100;
 
-    // Generate time labels based on zoom level
+    // Generate time labels based on zoom level.
+    // Display axis 0..1440; label shows wall clock: (displayMinutes + dailyStartMinutes) % 1440.
     const getTimeLabels = () => {
         const labels = [];
-        // Determine label frequency based on zoom to prevent overlap
         let labelStep = minutesPerCell;
         if (minutesPerCell < 15) labelStep = 15;
         else if (minutesPerCell < 30) labelStep = 30;
@@ -469,11 +483,12 @@ export default function LiveFocusView({
         else if (minutesPerCell < 120) labelStep = 120;
 
         for (let minutes = 0; minutes <= TOTAL_MINUTES; minutes += labelStep) {
-            const hours = Math.floor(minutes / 60);
-            const mins = minutes % 60;
+            const wallMinutes = (minutes + dailyStartMinutes) % 1440;
+            const hours = Math.floor(wallMinutes / 60);
+            const mins = wallMinutes % 60;
             labels.push({
                 text: `${String(hours).padStart(2, '0')}:${String(mins).padStart(2, '0')}`,
-                left: (minutes / minutesPerCell) * CELL_WIDTH, // No TRACK_LABEL_WIDTH offset for timeline-only labels
+                left: (minutes / minutesPerCell) * CELL_WIDTH,
             });
         }
         return labels;
@@ -811,13 +826,12 @@ export default function LiveFocusView({
         }
     }, [onScrollChange]);
 
-    // NOW position (relative to timeline, not including label width)
-    // Uses currentTimeRef, updated every second with nowHHMMSS so it stays live
+    // NOW position (relative to timeline). Display axis: 0 = daily start, 1440 = next daily start.
+    // displayMinutes = (minutesFromMidnight - dailyStartMinutes + 1440) % 1440
     const getNowPosition = () => {
         const totalMinutesNow = currentTimeRef.current.getHours() * 60 + currentTimeRef.current.getMinutes();
-        if (totalMinutesNow < START_HOUR * 60) return 0;
-        if (totalMinutesNow > END_HOUR * 60) return TOTAL_CELLS * CELL_WIDTH;
-        return (totalMinutesNow / minutesPerCell) * CELL_WIDTH;
+        const displayMinutes = (totalMinutesNow - dailyStartMinutes + 1440) % 1440;
+        return (displayMinutes / minutesPerCell) * CELL_WIDTH;
     };
 
     // Ref callbacks: apply initialScrollX (from parent) when ScrollView mounts
@@ -854,68 +868,57 @@ export default function LiveFocusView({
         return start1 < end2 && start2 < end1;
     }, []);
 
-    // Calculate lane assignment using the "previous-only" rule (matches the table example):
-    // - Sort by start time ascending.
-    // - For each stage, compare ONLY with the immediately previous stage in this sorted order.
-    // - Overlap check is: current.start < previous.end
-    // - If overlap: current goes one line BELOW previous (prevLane + 1)
-    // - If no overlap: current stays on the SAME line as previous (prevLane)
-    // This guarantees:
-    // - D aligns with C if D.start >= C.end
-    // - E goes below D if E.start < D.end
-    // - No stage ever "jumps upward" to an unrelated earlier line
-    // - Layout grows only when overlap exists (with the previous stage)
-    // IMPORTANT: Uses pending layouts to get correct positions for edited stages
+    // Lane assignment: 6-to-6 as a single day (display 0–1440). Overlap in DISPLAY space so overnight aligns when it doesn’t overlap last today.
+    // - Overlap (in display) => next lane down; no overlap => same lane as previous (align with last card).
+    // - Single pass: today (start>=dailyStart) first by start, then overnight (start<dailyStart) by start. No reset: first overnight’s “previous” is last today.
+    // - Overlap: (curDisplayStart < prevDisplayEnd) && (prevDisplayStart < curDisplayEnd). Uses pending layouts.
     const calculateStageLanes = useCallback((stages: TaskStage[]): Map<number, number> => {
         if (stages.length === 0) return new Map();
 
-        const laneMap = new Map<number, number>(); // stageId -> lane number
-
-        // Helper to get effective start/duration (pending or props)
         const getEffectiveTime = (stage: TaskStage) => {
             const pending = pendingLayoutsRef.current.get(stage.id);
-            if (pending) {
-                return { start: pending.startTimeMinutes, duration: pending.durationMinutes };
-            }
-            return {
-                start: stage.startTimeMinutes ?? 0,
-                duration: stage.durationMinutes ?? 180
-            };
+            if (pending) return { start: pending.startTimeMinutes, duration: pending.durationMinutes };
+            return { start: stage.startTimeMinutes ?? 0, duration: stage.durationMinutes ?? 180 };
         };
 
-        // Sort by start time asc (using effective time), tie-breaker id asc (stable)
+        const getDisplayBounds = (stage: TaskStage) => {
+            const { start, duration } = getEffectiveTime(stage);
+            const displayStart = (start - dailyStartMinutes + 1440) % 1440;
+            const displayEnd = Math.min(displayStart + duration, 1440);
+            return { displayStart, displayEnd };
+        };
+
+        // Order: today (start>=dailyStart) by start, then overnight (start<dailyStart) by start
         const sortedStages = [...stages].sort((a, b) => {
             const timeA = getEffectiveTime(a);
             const timeB = getEffectiveTime(b);
+            const inTodayA = timeA.start >= dailyStartMinutes ? 0 : 1;
+            const inTodayB = timeB.start >= dailyStartMinutes ? 0 : 1;
+            if (inTodayA !== inTodayB) return inTodayA - inTodayB;
             if (timeA.start !== timeB.start) return timeA.start - timeB.start;
             return a.id - b.id;
         });
 
-        // First stage always starts at lane 0
-        const firstTime = getEffectiveTime(sortedStages[0]);
+        const laneMap = new Map<number, number>();
+        const b0 = getDisplayBounds(sortedStages[0]);
         let prevLane = 0;
-        let prevEnd = firstTime.start + firstTime.duration;
+        let prevDisplayStart = b0.displayStart;
+        let prevDisplayEnd = b0.displayEnd;
         laneMap.set(sortedStages[0].id, 0);
 
         for (let i = 1; i < sortedStages.length; i++) {
             const cur = sortedStages[i];
-            const curTime = getEffectiveTime(cur);
-            const curStart = curTime.start;
-            const curDuration = curTime.duration;
-            const curEnd = curStart + curDuration;
-
-            const overlapsPrev = curStart < prevEnd;
+            const cb = getDisplayBounds(cur);
+            // Overlap in 6–6 display: both intervals share some time
+            const overlapsPrev = (cb.displayStart < prevDisplayEnd) && (prevDisplayStart < cb.displayEnd);
             const curLane = overlapsPrev ? prevLane + 1 : prevLane;
-
             laneMap.set(cur.id, curLane);
-
-            // Advance "previous" pointer for next comparison (previous-only rule)
             prevLane = curLane;
-            prevEnd = curEnd;
+            prevDisplayStart = cb.displayStart;
+            prevDisplayEnd = cb.displayEnd;
         }
-
         return laneMap;
-    }, []);
+    }, [dailyStartMinutes]);
 
     // Stage position based on zoom level (relative to timeline start, not including label width)
     const getStageLayout = (stage: TaskStage, stageIndex: number, lane?: number): { left: number; width: number; top: number } => {
@@ -935,36 +938,35 @@ export default function LiveFocusView({
 
         const top = lane !== undefined ? BASE_TOP + (lane * (CARD_HEIGHT + LANE_SPACING)) : BASE_TOP;
 
-        // Check pending layouts REF first - these are committed changes waiting for props to update
+        // Check pending layouts REF first - these are committed changes waiting for props to update.
+        // startTimeMinutes is minutes-from-midnight; convert to display: (start - dailyStart + 1440) % 1440
         const pending = pendingLayoutsRef.current.get(stage.id);
         if (pending) {
-            const pendingLeft = (pending.startTimeMinutes / minutesPerCell) * CELL_WIDTH;
+            const displayStart = (pending.startTimeMinutes - dailyStartMinutes + 1440) % 1440;
+            const pendingLeft = (displayStart / minutesPerCell) * CELL_WIDTH;
             const pendingWidth = (pending.durationMinutes / minutesPerCell) * CELL_WIDTH;
             return { left: pendingLeft, width: Math.max(pendingWidth, 60), top };
         }
 
         // Default values: startTime = 0 (00:00), duration = 180 minutes (3 hours)
         const startTime = stage.startTimeMinutes ?? 0;
-        const duration = stage.durationMinutes ?? 180; // Default: 3 hours
-
-        const left = (startTime / minutesPerCell) * CELL_WIDTH; // No TRACK_LABEL_WIDTH offset
+        const duration = stage.durationMinutes ?? 180;
+        const displayStart = (startTime - dailyStartMinutes + 1440) % 1440;
+        const left = (displayStart / minutesPerCell) * CELL_WIDTH;
         const width = (duration / minutesPerCell) * CELL_WIDTH;
 
-        return { left, width: Math.max(width, 60), top }; // Minimum width of 60
+        return { left, width: Math.max(width, 60), top };
     };
 
-    // Get effective stage time (live during drag/resize, or from pending layouts, or from props)
-    // This function returns real-time values during dragging for live time display
+    // Get effective stage time (live during drag/resize, or from pending layouts, or from props).
+    // Returns minutes-from-midnight for display (formatTimeCompact etc).
     const getEffectiveStageTime = useCallback((stage: TaskStage): { startTimeMinutes: number; durationMinutes: number } => {
-        // LIVE MODE: If this stage is being actively dragged or resized, calculate from tempStageLayout
+        // LIVE MODE: tempStageLayout.left is in display space; convert to minutes-from-midnight
         if (activeStage?.stageId === stage.id && tempStageLayout) {
-            // Calculate live time from the current visual position
-            const liveStartTime = (tempStageLayout.left / CELL_WIDTH) * minutesPerCell;
-            const liveDuration = (tempStageLayout.width / CELL_WIDTH) * minutesPerCell;
-            return {
-                startTimeMinutes: Math.round(liveStartTime),
-                durationMinutes: Math.round(liveDuration),
-            };
+            const displayStart = (tempStageLayout.left / CELL_WIDTH) * minutesPerCell;
+            const startTimeMinutes = (Math.round(displayStart) + dailyStartMinutes) % 1440;
+            const durationMinutes = Math.round((tempStageLayout.width / CELL_WIDTH) * minutesPerCell);
+            return { startTimeMinutes, durationMinutes };
         }
 
         // Check pending layouts REF (synchronous access)
@@ -978,7 +980,7 @@ export default function LiveFocusView({
             startTimeMinutes: stage.startTimeMinutes ?? 0,
             durationMinutes: stage.durationMinutes ?? 180,
         };
-    }, [activeStage, tempStageLayout, minutesPerCell, pendingLayoutsVersion]);
+    }, [activeStage, tempStageLayout, minutesPerCell, pendingLayoutsVersion, dailyStartMinutes]);
 
     // Format time for compact display (e.g., "09:00" or "2h30m")
     const formatTimeCompact = (minutes: number): string => {
@@ -1014,18 +1016,21 @@ export default function LiveFocusView({
 
     const TIMELINE_ONLY_WIDTH = TOTAL_CELLS * CELL_WIDTH + 100; // Width without label column
 
-    // Scroll timeline so the NOW line is centered. Keeps current zoom; updates onScrollChange for persistence.
+    // Scroll timeline so the NOW line is centered when viewing the current logical day; otherwise scroll to start (daily start).
     const scrollToNow = useCallback(() => {
         const now = new Date();
-        const totalMinutesNow = now.getHours() * 60 + now.getMinutes();
-        let nowPosition: number;
-        if (totalMinutesNow < START_HOUR * 60) nowPosition = 0;
-        else if (totalMinutesNow > END_HOUR * 60) nowPosition = TOTAL_CELLS * CELL_WIDTH;
-        else nowPosition = (totalMinutesNow / minutesPerCell) * CELL_WIDTH;
-
         const timelineVisibleWidth = screenWidth - (isTaskColumnVisible ? TRACK_LABEL_WIDTH : 0);
         const maxScrollX = Math.max(0, TIMELINE_ONLY_WIDTH - timelineVisibleWidth);
-        const scrollX = Math.max(0, Math.min(nowPosition - timelineVisibleWidth / 2, maxScrollX));
+
+        let scrollX: number;
+        if (isSameLogicalDay(selectedDate, now, dailyStartMinutes)) {
+            const totalMinutesNow = now.getHours() * 60 + now.getMinutes();
+            const displayMinutes = (totalMinutesNow - dailyStartMinutes + 1440) % 1440;
+            const nowPosition = (displayMinutes / minutesPerCell) * CELL_WIDTH;
+            scrollX = Math.max(0, Math.min(nowPosition - timelineVisibleWidth / 2, maxScrollX));
+        } else {
+            scrollX = 0; // Start of logical day
+        }
 
         isScrollingHorizontally.current = true;
         timelineScrollXRef.current = scrollX;
@@ -1035,18 +1040,18 @@ export default function LiveFocusView({
         requestAnimationFrame(() => {
             isScrollingHorizontally.current = false;
         });
-    }, [screenWidth, isTaskColumnVisible, minutesPerCell, onScrollChange]);
+    }, [screenWidth, isTaskColumnVisible, minutesPerCell, onScrollChange, selectedDate, dailyStartMinutes]);
 
-    // Time-of-day sliding background segments (timeline-level, derived from time ranges only)
-    // Recomputes automatically when zoom level changes or config changes.
+    // Time-of-day sliding background segments (timeline-level). Uses dailyStartMinutes so 0 = daily start.
     const timeOfDayBackgroundSegments = useMemo(() => {
         return buildTimeOfDayBackgroundSegments(
             timeOfDaySlots ?? DEFAULT_TIME_OF_DAY_SLOTS,
             minutesPerCell,
             CELL_WIDTH,
-            TOTAL_MINUTES
+            TOTAL_MINUTES,
+            dailyStartMinutes
         );
-    }, [timeOfDaySlots, minutesPerCell, CELL_WIDTH, TOTAL_MINUTES]);
+    }, [timeOfDaySlots, minutesPerCell, CELL_WIDTH, TOTAL_MINUTES, dailyStartMinutes]);
 
     const progressSummary = useMemo(() => {
         const totals = tasks.reduce(
@@ -1150,11 +1155,11 @@ export default function LiveFocusView({
                 const LANE_SPACING = 10; // 4px gap between consecutive subtasks
                 const BASE_TOP = 7;
                 const timedStagesHeight = maxLane >= 0
-                    ? BASE_TOP + ((maxLane + 1) * (CARD_HEIGHT + LANE_SPACING)) - LANE_SPACING + 7 // +7 for bottom padding
+                    ? BASE_TOP + ((maxLane + 1) * (CARD_HEIGHT + LANE_SPACING)) - LANE_SPACING + TRACK_BOTTOM_PADDING
                     : 0;
 
                 const trackHeight = Math.max(TRACK_HEIGHT, untimedListHeight, timedStagesHeight);
-                totalHeight += trackHeight + 1; // +1 for separator
+                totalHeight += trackHeight + 1 + TRACK_BOTTOM_PADDING; // +1 separator, +marginBottom so scroll height matches
             }
         });
         return totalHeight + 30; // +30 for extra padding at bottom
@@ -1241,9 +1246,10 @@ export default function LiveFocusView({
         );
     }, [tasks, onUpdateStages]);
 
+    // 6-to-6 day as one: use toDisplayMinutes so 23:55→00:25 and "now" 01:30 compare correctly across midnight.
     const getApprovalCount = useCallback(() => {
-        const now = new Date();
-        const currentMinutes = now.getHours() * 60 + now.getMinutes();
+        const currentMinutes = currentTimeRef.current.getHours() * 60 + currentTimeRef.current.getMinutes();
+        const nowD = toDisplayMinutes(currentMinutes, dailyStartMinutes);
         let count = 0;
 
         tasks.forEach(task => {
@@ -1252,11 +1258,11 @@ export default function LiveFocusView({
                 const duration = stage.durationMinutes ?? 0;
                 const endTime = startTime + duration;
 
-                // 1. Approval for FINISHING: Process status and now past end time
-                const needsFinishApproval = stage.status === 'Process' && endTime <= currentMinutes;
+                const startD = toDisplayMinutes(startTime, dailyStartMinutes);
+                const endD = toDisplayMinutes(endTime >= 1440 ? endTime - 1440 : endTime, dailyStartMinutes);
 
-                // 2. Approval for STARTING: Upcoming status and now past or at start time
-                const needsStartApproval = stage.status === 'Upcoming' && startTime <= currentMinutes;
+                const needsFinishApproval = stage.status === 'Process' && endD <= nowD;
+                const needsStartApproval = stage.status === 'Upcoming' && startD <= nowD;
 
                 if (needsFinishApproval || needsStartApproval) {
                     count++;
@@ -1264,20 +1270,23 @@ export default function LiveFocusView({
             });
         });
         return count;
-    }, [tasks]);
+    }, [tasks, dailyStartMinutes]);
 
     const approvalCount = getApprovalCount();
 
-    // Same logic as getApprovalCount/ApprovalPopup: stage is "in request" (needs approval)
+    // Same 6-to-6 display comparison as getApprovalCount/ApprovalPopup.
     const stageNeedsApproval = useCallback((stage: TaskStage): 'START' | 'FINISH' | null => {
         const currentMinutes = currentTimeRef.current.getHours() * 60 + currentTimeRef.current.getMinutes();
+        const nowD = toDisplayMinutes(currentMinutes, dailyStartMinutes);
         const startTime = stage.startTimeMinutes ?? 0;
         const duration = stage.durationMinutes ?? 0;
         const endTime = startTime + duration;
-        if (stage.status === 'Process' && endTime <= currentMinutes) return 'FINISH';
-        if (stage.status === 'Upcoming' && startTime <= currentMinutes) return 'START';
+        const startD = toDisplayMinutes(startTime, dailyStartMinutes);
+        const endD = toDisplayMinutes(endTime >= 1440 ? endTime - 1440 : endTime, dailyStartMinutes);
+        if (stage.status === 'Process' && endD <= nowD) return 'FINISH';
+        if (stage.status === 'Upcoming' && startD <= nowD) return 'START';
         return null;
-    }, []);
+    }, [dailyStartMinutes]);
 
     return (
         <View style={styles.container}>
@@ -1332,9 +1341,12 @@ export default function LiveFocusView({
                         },
                     ]}
                 >
-                        {/* Task list heading (aligns with timeline time-axis header); count = tasks for selected day */}
+                        {/* Task list heading: TASKS + count badge (aligns with timeline time-axis header) */}
                         <View style={[styles.stickyHeaderFixed, styles.taskListHeader, { width: TRACK_LABEL_WIDTH, height: 25 }]}>
-                            <Text style={styles.taskListHeaderText}>TASK LIST ({tasks.length})</Text>
+                            <Text style={styles.taskListHeaderTitle}>TASKS</Text>
+                            <View style={styles.taskListHeaderBadge}>
+                                <Text style={styles.taskListHeaderBadgeText}>{tasks.length}</Text>
+                            </View>
                         </View>
 
                         {/* Vertical Scroll for Labels (synced with timeline) */}
@@ -1388,7 +1400,7 @@ export default function LiveFocusView({
                                     const LANE_SPACING = 10; // 4px gap between consecutive subtasks
                                     const BASE_TOP = 7;
                                     const timedStagesHeight = maxLane >= 0
-                                        ? BASE_TOP + ((maxLane + 1) * (CARD_HEIGHT + LANE_SPACING)) - LANE_SPACING + 7
+                                        ? BASE_TOP + ((maxLane + 1) * (CARD_HEIGHT + LANE_SPACING)) - LANE_SPACING + TRACK_BOTTOM_PADDING
                                         : 0;
 
                                     const computedHeight = Math.max(TRACK_HEIGHT, untimedListHeight, timedStagesHeight);
@@ -1408,77 +1420,62 @@ export default function LiveFocusView({
                                         <View key={task.id}>
                                             <View style={styles.trackSeparator} />
                                             <View
-                                                style={[styles.trackLabelContainer, { height: trackHeight }]}
+                                                style={[styles.trackLabelContainer, { height: trackHeight, marginBottom: TRACK_BOTTOM_PADDING }]}
                                                 onLayout={handleLabelLayout}
                                             >
                                                 <TouchableOpacity
                                                     activeOpacity={1}
-                                                    onPress={() => {
-                                                        // Do nothing as requested by user to prevent page close
-                                                    }}
-                                                    style={[styles.trackLabel, { width: TRACK_LABEL_WIDTH }, isActive && styles.trackLabelActive]}
+                                                    onPress={() => {}}
+                                                    style={[
+                                                        styles.trackLabel,
+                                                        { width: TRACK_LABEL_WIDTH, borderLeftWidth: 3, borderLeftColor: category?.color || 'rgba(255,255,255,0.12)' },
+                                                        isActive && styles.trackLabelActive,
+                                                    ]}
                                                 >
-                                                    <View style={[styles.categoryAccent, { backgroundColor: category?.color || '#333' }]} />
-                                                    <View style={{ flex: 1, paddingLeft: 10 }}>
+                                                    <View style={styles.trackLabelInner}>
+                                                        {/* Category pill: icon + name */}
+                                                        <View style={[styles.categoryPill, { borderLeftColor: category?.color || 'rgba(255,255,255,0.2)' }]}>
+                                                            {category && (
+                                                                <MaterialIcons name={category.icon as any} size={9} color={category.color} style={styles.categoryPillIcon} />
+                                                            )}
+                                                            <Text style={[styles.categoryPillText, { color: category ? category.color : 'rgba(255,255,255,0.5)' }]} numberOfLines={1}>
+                                                                {category ? category.name.toUpperCase() : 'GENERAL'}
+                                                            </Text>
+                                                        </View>
+
+                                                        {/* Task title + active indicator */}
                                                         <View style={styles.titleRow}>
                                                             <Text style={[styles.trackTitle, isActive && styles.trackTitleActive]} numberOfLines={1}>
                                                                 {task.title}
                                                             </Text>
                                                             {isActive && <View style={styles.activeDot} />}
                                                         </View>
-                                                        <View style={styles.subtitleRow}>
-                                                            {category && (
-                                                                <MaterialIcons
-                                                                    name={category.icon as any}
-                                                                    size={10}
-                                                                    color={category.color}
-                                                                    style={{ marginRight: 4 }}
-                                                                />
-                                                            )}
-                                                            <Text style={[styles.trackSubtitle, { color: category ? category.color : 'rgba(255,255,255,0.4)' }]} numberOfLines={1}>
-                                                                {category ? category.name.toUpperCase() : 'GENERAL'}
-                                                            </Text>
-                                                        </View>
 
-                                                        {/* Stage Status Statistics */}
-                                                        <View style={styles.stageStatsRow}>
-                                                            {(() => {
-                                                                const s = task.stages || [];
-                                                                const up = s.filter(i => i.status === 'Upcoming').length;
-                                                                const proc = s.filter(i => i.status === 'Process').length;
-                                                                const done = s.filter(i => i.status === 'Done').length;
-                                                                const undon = s.filter(i => i.status === 'Undone').length;
-
-                                                                return (
-                                                                    <>
-                                                                        {up > 0 && (
-                                                                            <View style={styles.stageStatItem}>
-                                                                                <View style={[styles.miniStatusDot, { backgroundColor: 'rgba(255,255,255,0.3)' }]} />
-                                                                                <Text style={styles.stageStatText}>{up}</Text>
-                                                                            </View>
+                                                        {/* Progress bar: Done (green) | Undone (red) | Pending (grey) + count */}
+                                                        {(() => {
+                                                            const s = task.stages || [];
+                                                            const total = s.length;
+                                                            const doneCount = s.filter(i => i.status === 'Done' || i.isCompleted).length;
+                                                            const undoneCount = s.filter(i => i.status === 'Undone').length;
+                                                            const pendingCount = Math.max(0, total - doneCount - undoneCount);
+                                                            const den = total || 1;
+                                                            return (
+                                                                <View style={styles.progressBarWrap}>
+                                                                    <View style={styles.progressBarTrack}>
+                                                                        {total > 0 ? (
+                                                                            <>
+                                                                                <View style={[styles.progressBarSegment, styles.progressBarDone, { flex: doneCount / den }]} />
+                                                                                <View style={[styles.progressBarSegment, styles.progressBarUndone, { flex: undoneCount / den }]} />
+                                                                                <View style={[styles.progressBarSegment, styles.progressBarPending, { flex: pendingCount / den }]} />
+                                                                            </>
+                                                                        ) : (
+                                                                            <View style={[styles.progressBarSegment, styles.progressBarPending, { flex: 1 }]} />
                                                                         )}
-                                                                        {proc > 0 && (
-                                                                            <View style={styles.stageStatItem}>
-                                                                                <View style={[styles.miniStatusDot, { backgroundColor: '#FFB74D' }]} />
-                                                                                <Text style={styles.stageStatText}>{proc}</Text>
-                                                                            </View>
-                                                                        )}
-                                                                        {done > 0 && (
-                                                                            <View style={styles.stageStatItem}>
-                                                                                <View style={[styles.miniStatusDot, { backgroundColor: '#4CAF50' }]} />
-                                                                                <Text style={styles.stageStatText}>{done}</Text>
-                                                                            </View>
-                                                                        )}
-                                                                        {undon > 0 && (
-                                                                            <View style={styles.stageStatItem}>
-                                                                                <View style={[styles.miniStatusDot, { backgroundColor: '#FF5252' }]} />
-                                                                                <Text style={styles.stageStatText}>{undon}</Text>
-                                                                            </View>
-                                                                        )}
-                                                                    </>
-                                                                );
-                                                            })()}
-                                                        </View>
+                                                                    </View>
+                                                                    <Text style={styles.progressBarLabel}>{doneCount}/{total}</Text>
+                                                                </View>
+                                                            );
+                                                        })()}
                                                     </View>
                                                 </TouchableOpacity>
                                             </View>
@@ -1535,8 +1532,8 @@ export default function LiveFocusView({
                                     </View>
                                 ))}
 
-                                {/* NOW Line Dot (Top portion) */}
-                                {currentTimeRef.current.getHours() >= START_HOUR && currentTimeRef.current.getHours() <= END_HOUR && (
+                                {/* NOW Line Dot (Top portion) — only when selected date is the current logical day */}
+                                {isSameLogicalDay(selectedDate, currentTimeRef.current, dailyStartMinutes) && (
                                     <View style={[styles.nowLineSticky, { left: getNowPosition() }]}>
                                         <View style={styles.nowDot} />
                                     </View>
@@ -1606,8 +1603,8 @@ export default function LiveFocusView({
                                         </View>
                                     ))}
 
-                                    {/* NOW Line - Vertical segment */}
-                                    {currentTimeRef.current.getHours() >= START_HOUR && currentTimeRef.current.getHours() <= END_HOUR && (
+                                    {/* NOW Line - Vertical segment — only when selected date is the current logical day */}
+                                    {isSameLogicalDay(selectedDate, currentTimeRef.current, dailyStartMinutes) && (
                                         <View style={[styles.nowLine, { left: getNowPosition() }]} />
                                     )}
 
@@ -1635,17 +1632,19 @@ export default function LiveFocusView({
                                                 (s.durationMinutes === undefined || s.durationMinutes === null)
                                             );
 
-                                            // Sort timed subtasks by startTimeMinutes (ascending)
-                                            // Uses pending layouts for edited stages
+                                            // Sort timed subtasks: 6–6 day. First: start >= dailyStart (today 6am–midnight); then: start < dailyStart (00:00–6am "overnight" at bottom). Within each, by start asc.
+                                            // Uses pending layouts for edited stages. dailyStartMinutes from settings.
                                             const sortedTimedStages = [...timedStages].sort((a, b) => {
-                                                // Get effective start time from pending or props
                                                 const pendingA = pendingLayoutsRef.current.get(a.id);
                                                 const pendingB = pendingLayoutsRef.current.get(b.id);
                                                 const startA = pendingA ? pendingA.startTimeMinutes : (a.startTimeMinutes || 0);
                                                 const startB = pendingB ? pendingB.startTimeMinutes : (b.startTimeMinutes || 0);
-                                                const timeDiff = startA - startB;
-                                                if (timeDiff !== 0) return timeDiff;
-                                                // Tie-breaker: use id for consistent ordering
+                                                // 1) Today (start >= dailyStart) first; overnight (start < dailyStart) at bottom
+                                                const inTodayA = startA >= dailyStartMinutes ? 0 : 1;
+                                                const inTodayB = startB >= dailyStartMinutes ? 0 : 1;
+                                                if (inTodayA !== inTodayB) return inTodayA - inTodayB;
+                                                // 2) By start ascending
+                                                if (startA !== startB) return startA - startB;
                                                 return a.id - b.id;
                                             });
 
@@ -1661,15 +1660,19 @@ export default function LiveFocusView({
 
                                             // Calculate max lanes needed for timed stages (infinite lanes supported)
                                             const timedStageLanes = calculateStageLanes(sortedTimedStages);
-                                            const maxLane = sortedTimedStages.length > 0
+                                            let maxLane = sortedTimedStages.length > 0
                                                 ? Math.max(...Array.from(timedStageLanes.values()), -1)
                                                 : -1;
+                                            // During drag in this task, include temp lane so track height fits the dragged card
+                                            if (activeStage?.taskId === task.id && tempStageLayout?.lane != null) {
+                                                maxLane = Math.max(maxLane, tempStageLayout.lane);
+                                            }
                                             const CARD_HEIGHT = 21;
                                             const LANE_SPACING = 10; // 4px gap between consecutive subtasks
                                             const BASE_TOP = 7;
-                                            // Calculate height for all lanes: base + (number of lanes * (card height + spacing)) - last spacing + bottom padding
+                                            // Calculate height for all lanes: base + (number of lanes * (card height + spacing)) - last spacing + bottom padding (matches top)
                                             const timedStagesHeight = maxLane >= 0
-                                                ? BASE_TOP + ((maxLane + 1) * (CARD_HEIGHT + LANE_SPACING)) - LANE_SPACING + 7 // +7 for bottom padding
+                                                ? BASE_TOP + ((maxLane + 1) * (CARD_HEIGHT + LANE_SPACING)) - LANE_SPACING + TRACK_BOTTOM_PADDING
                                                 : 0;
 
                                             // Dynamic track height: ALWAYS allow growth when new lanes appear
@@ -1686,8 +1689,10 @@ export default function LiveFocusView({
                                                 }
                                             };
 
+                                            const isTrackActive = activeStage?.taskId === task.id; // dragging or resizing a card in this task
+
                                             return (
-                                                <View key={task.id}>
+                                                <View key={task.id} style={isTrackActive ? { zIndex: 10000, elevation: 10000 } : undefined}>
                                                     <View style={styles.trackSeparator} />
                                                     <TouchableOpacity
                                                         activeOpacity={1}
@@ -1697,7 +1702,11 @@ export default function LiveFocusView({
                                                                 setResizeModeStage(null);
                                                             }
                                                         }}
-                                                        style={[styles.track, { height: trackHeight }]}
+                                                        style={[
+                                                            styles.track,
+                                                            { height: trackHeight, marginBottom: TRACK_BOTTOM_PADDING },
+                                                            isTrackActive && { overflow: 'visible' as const },
+                                                        ]}
                                                         onLayout={handleTrackLayout}
                                                     >
                                                         {/* Untimed Subtasks List (on the left) - Draggable */}
@@ -1715,8 +1724,9 @@ export default function LiveFocusView({
                                                                 stopAutoScroll={stopAutoScroll}
                                                                 onDropOnTimeline={(stageId, xPosition) => {
                                                                     if (!onUpdateStages) return;
-                                                                    // Calculate startTimeMinutes from X position
-                                                                    const startTimeMinutes = Math.max(0, Math.round((xPosition / CELL_WIDTH) * minutesPerCell));
+                                                                    // xPosition is in display space (0 = daily start). Convert to minutes-from-midnight.
+                                                                    const displayStart = (xPosition / CELL_WIDTH) * minutesPerCell;
+                                                                    const startTimeMinutes = (Math.round(displayStart) + dailyStartMinutes) % 1440;
                                                                     const durationMinutes = 180; // Default duration: 3 hours
 
                                                                     // Synchronously update pending layouts REF to include this drop
@@ -2014,31 +2024,37 @@ export default function LiveFocusView({
                                                             });
                                                         })()}
 
-                                                        {/* Add Subtask Plus Button */}
+                                                        {/* Add Subtask Plus Button — placed after the "last" card in the 6-to-6 day (max displayEnd; dailyStart from settings) */}
                                                         {(() => {
-                                                            // Calculate position after the last timed stage, aligned with the last card
-                                                            const lastStage = sortedTimedStages[sortedTimedStages.length - 1];
-                                                            let buttonLeft = 10; // Default position if no stages
-                                                            let buttonTop = 7; // Default top position (BASE_TOP)
+                                                            let buttonLeft = 10; // Default if no stages
+                                                            let buttonTop = 7;
+
+                                                            // Last card = the one that ends latest in the 6-to-6 display (0=dailyStart, 1440=next dailyStart)
+                                                            let lastStage: TaskStage | undefined;
+                                                            let maxDisplayEnd = -1;
+                                                            let maxDisplayStart = -1;
+                                                            for (const s of sortedTimedStages) {
+                                                                const { startTimeMinutes: start, durationMinutes: dur } = getEffectiveStageTime(s);
+                                                                const displayStart = (start - dailyStartMinutes + 1440) % 1440;
+                                                                const displayEnd = Math.min(displayStart + dur, 1440);
+                                                                if (displayEnd > maxDisplayEnd || (displayEnd === maxDisplayEnd && displayStart > maxDisplayStart)) {
+                                                                    maxDisplayEnd = displayEnd;
+                                                                    maxDisplayStart = displayStart;
+                                                                    lastStage = s;
+                                                                }
+                                                            }
 
                                                             if (lastStage) {
-                                                                // Get the lane for the last stage
                                                                 const isLastActive = activeStage?.taskId === task.id && activeStage?.stageId === lastStage.id;
                                                                 const lastLane = isLastActive && tempStageLayout?.lane !== undefined
                                                                     ? tempStageLayout.lane
                                                                     : (calculateStageLanes(sortedTimedStages).get(lastStage.id) ?? 0);
-
-                                                                // Get layout of the last card
-                                                                const { left, width, top } = getStageLayout(lastStage, sortedTimedStages.length - 1, lastLane);
-
-                                                                // Position button right after the last card with small spacing
-                                                                buttonLeft = left + width + 8; // 8px spacing after the card
-                                                                buttonTop = top; // Align vertically with the last card
+                                                                const { left, width, top } = getStageLayout(lastStage, 0, lastLane);
+                                                                buttonLeft = left + width + 8;
+                                                                buttonTop = top;
                                                             }
 
-                                                            // Calculate the start time for the new subtask (Now)
                                                             const nowMinutes = currentTimeRef.current.getHours() * 60 + currentTimeRef.current.getMinutes();
-                                                            const newStartTime = nowMinutes;
 
                                                             return (
                                                                 <TouchableOpacity
@@ -2048,7 +2064,7 @@ export default function LiveFocusView({
                                                                         setAddSubtaskModal({
                                                                             visible: true,
                                                                             taskId: task.id,
-                                                                            startTimeMinutes: newStartTime,
+                                                                            startTimeMinutes: nowMinutes,
                                                                         });
                                                                     }}
                                                                     activeOpacity={0.7}
@@ -2312,21 +2328,27 @@ export default function LiveFocusView({
 
                         <View style={styles.bottomDockDivider} />
 
-                        {/* Approvals button integrated */}
-                        {approvalCount > 0 && (
-                            <TouchableOpacity
-                                style={styles.dockApprovalsBtn}
-                                onPress={() => {
-                                    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-                                    setApprovalPopupVisible(true);
-                                }}
-                            >
-                                <MaterialIcons name="notification-important" size={18} color="#FFFFFF" />
+                        {/* Notifications: one list (To START + To FINISH), one count, one popup */}
+                        <TouchableOpacity
+                            style={[styles.dockApprovalsBtn, approvalCount === 0 && styles.dockApprovalsBtnDisabled]}
+                            onPress={approvalCount > 0 ? () => {
+                                Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+                                setApprovalPopupVisible(true);
+                            } : undefined}
+                            disabled={approvalCount === 0}
+                            activeOpacity={0.7}
+                        >
+                            <MaterialIcons
+                                name="notification-important"
+                                size={18}
+                                color={approvalCount > 0 ? '#FFFFFF' : 'rgba(255,255,255,0.4)'}
+                            />
+                            {approvalCount > 0 && (
                                 <View style={styles.dockApprovalBadge}>
                                     <Text style={styles.dockApprovalBadgeText}>{approvalCount}</Text>
                                 </View>
-                            </TouchableOpacity>
-                        )}
+                            )}
+                        </TouchableOpacity>
 
                         {/* Vertical divider */}
                         <View style={styles.bottomDockDivider} />
@@ -2403,6 +2425,8 @@ export default function LiveFocusView({
                 onClose={() => setApprovalPopupVisible(false)}
                 tasks={tasks}
                 categories={categories}
+                dailyStartMinutes={dailyStartMinutes}
+                currentMinutes={currentTimeRef.current.getHours() * 60 + currentTimeRef.current.getMinutes()}
                 onUpdateStageStatus={handleUpdateStageStatus}
                 onDeleteStage={handleDeleteStage}
                 onApproveAll={handleApproveAll}
@@ -3082,14 +3106,30 @@ const styles = StyleSheet.create({
         borderBottomColor: 'rgba(76, 175, 80, 0.3)', // Semi-transparent green
     },
     taskListHeader: {
-        justifyContent: 'center',
-        paddingLeft: 35,
+        flexDirection: 'row',
+        paddingLeft: 55,
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        paddingHorizontal: 10,
     },
-    taskListHeaderText: {
+    taskListHeaderTitle: {
         fontSize: 10,
         fontWeight: '900',
-        letterSpacing: 1.2,
-        color: 'rgba(255,255,255,0.5)',
+        letterSpacing: 1.5,
+        color: 'rgba(255,255,255,0.6)',
+    },
+    taskListHeaderBadge: {
+        backgroundColor: 'rgba(255,255,255,0.1)',
+        paddingHorizontal: 6,
+        paddingVertical: 2,
+        borderRadius: 8,
+        minWidth: 20,
+        alignItems: 'center',
+    },
+    taskListHeaderBadgeText: {
+        fontSize: 9,
+        fontWeight: '900',
+        color: 'rgba(255,255,255,0.7)',
     },
     stickyHeaderContainer: {
         height: 25,
@@ -3252,13 +3292,73 @@ const styles = StyleSheet.create({
     trackLabel: {
         flex: 1,
         flexDirection: 'row',
-        alignItems: 'center',
-        paddingRight: 12,
+        alignItems: 'stretch',
+        paddingRight: 8,
         backgroundColor: '#0C0C0C',
         height: '100%',
     },
     trackLabelActive: {
-        backgroundColor: 'rgba(255, 255, 255, 0.03)',
+        backgroundColor: 'rgba(255, 255, 255, 0.04)',
+    },
+    trackLabelInner: {
+        flex: 1,
+        paddingVertical: 8,
+        paddingHorizontal: 8,
+        justifyContent: 'flex-start',
+        minWidth: 0,
+    },
+    categoryPill: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        alignSelf: 'flex-start',
+        paddingVertical: 2,
+        paddingHorizontal: 6,
+        paddingLeft: 6,
+        borderLeftWidth: 2,
+        borderRadius: 4,
+        backgroundColor: 'rgba(255,255,255,0.06)',
+        marginBottom: 4,
+        maxWidth: '100%',
+    },
+    categoryPillIcon: {
+        marginRight: 4,
+    },
+    categoryPillText: {
+        fontSize: 8,
+        fontWeight: '800',
+        letterSpacing: 0.8,
+    },
+    progressBarWrap: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        marginTop: 4,
+        gap: 6,
+    },
+    progressBarTrack: {
+        flex: 1,
+        height: 4,
+        borderRadius: 2,
+        flexDirection: 'row',
+        overflow: 'hidden',
+        backgroundColor: 'rgba(255,255,255,0.08)',
+        minWidth: 0,
+    },
+    progressBarSegment: {
+        minWidth: 0,
+    },
+    progressBarDone: {
+        backgroundColor: '#4CAF50',
+    },
+    progressBarUndone: {
+        backgroundColor: '#FF5252',
+    },
+    progressBarPending: {
+        backgroundColor: 'rgba(255,255,255,0.15)',
+    },
+    progressBarLabel: {
+        fontSize: 8,
+        fontWeight: '800',
+        color: 'rgba(255,255,255,0.5)',
     },
     categoryAccent: {
         width: 4,
@@ -3732,6 +3832,11 @@ const styles = StyleSheet.create({
         borderWidth: 1,
         borderColor: 'rgba(76, 175, 80, 0.3)',
         gap: 3,
+    },
+    dockApprovalsBtnDisabled: {
+        backgroundColor: 'rgba(255,255,255,0.06)',
+        borderColor: 'rgba(255,255,255,0.1)',
+        opacity: 0.7,
     },
     dockApprovalBadge: {
         backgroundColor: '#4CAF50',

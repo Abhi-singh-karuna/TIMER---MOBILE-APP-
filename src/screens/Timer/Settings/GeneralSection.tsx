@@ -6,6 +6,7 @@ import {
 } from 'react-native';
 import { styles } from './styles';
 import { GeneralSectionProps } from './types';
+import DailyStartTimeSection from './DailyStartTimeSection';
 
 export default function GeneralSection({
     isLandscape,
@@ -13,11 +14,18 @@ export default function GeneralSection({
     onPastTimersDisabledChange,
     isPastTasksDisabled,
     onPastTasksDisabledChange,
+    dailyStartMinutes,
+    onDailyStartMinutesChange,
 }: GeneralSectionProps) {
     return (
         <View style={styles.generalTabContainer}>
             {isLandscape && <Text style={styles.sectionTitleLandscape}>GENERAL SETTINGS</Text>}
             <View style={styles.behaviorList}>
+                <DailyStartTimeSection
+                    isLandscape={isLandscape}
+                    dailyStartMinutes={dailyStartMinutes}
+                    onDailyStartMinutesChange={onDailyStartMinutesChange}
+                />
                 <View style={styles.settingRow}>
                     <View style={styles.settingInfo}>
                         <Text style={styles.settingLabel}>Disable Past Timers</Text>

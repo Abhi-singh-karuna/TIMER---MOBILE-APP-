@@ -23,6 +23,8 @@ export interface SettingsScreenProps {
     onPastTimersDisabledChange: (val: boolean) => void;
     isPastTasksDisabled: boolean;
     onPastTasksDisabledChange: (val: boolean) => void;
+    dailyStartMinutes: number;
+    onDailyStartMinutesChange: (minutes: number) => void;
     quickMessages: QuickMessage[];
     onQuickMessagesChange: (messages: QuickMessage[]) => void;
     timeOfDayBackgroundConfig: TimeOfDayBackgroundConfig;
@@ -68,6 +70,8 @@ export interface GeneralSectionProps {
     onPastTimersDisabledChange: (val: boolean) => void;
     isPastTasksDisabled: boolean;
     onPastTasksDisabledChange: (val: boolean) => void;
+    dailyStartMinutes: number;
+    onDailyStartMinutesChange: (minutes: number) => void;
 }
 
 // Quick Message section props

@@ -11,12 +11,17 @@ import {
 } from 'react-native';
 import { MaterialIcons } from '@expo/vector-icons';
 import { Task, Category, TaskStage } from '../../../constants/data';
+import { toDisplayMinutes, DEFAULT_DAILY_START_MINUTES } from '../../../utils/dailyStartTime';
 
 interface ApprovalPopupProps {
     visible: boolean;
     onClose: () => void;
     tasks: Task[];
     categories: Category[];
+    /** Daily start (e.g. 360=6am). Used for 6-to-6 display so 23:55→00:25 and now 01:30 compare correctly. */
+    dailyStartMinutes?: number;
+    /** Current time as minutes-from-midnight; if not provided, uses new Date(). Aligns with Now button. */
+    currentMinutes?: number;
     onUpdateStageStatus: (taskId: number, stageId: number, status: 'Done' | 'Upcoming' | 'Undone' | 'Process') => void;
     onDeleteStage: (taskId: number, stageId: number) => void;
     onApproveAll: () => void;
@@ -27,6 +32,8 @@ export default function ApprovalPopup({
     onClose,
     tasks,
     categories,
+    dailyStartMinutes = DEFAULT_DAILY_START_MINUTES,
+    currentMinutes: currentMinutesProp,
     onUpdateStageStatus,
     onDeleteStage,
     onApproveAll,
@@ -65,11 +72,14 @@ export default function ApprovalPopup({
         }
     }, [visible]);
 
-    const now = new Date();
-    const currentMinutes = now.getHours() * 60 + now.getMinutes();
+    const currentMinutes = currentMinutesProp != null
+        ? currentMinutesProp
+        : (() => { const d = new Date(); return d.getHours() * 60 + d.getMinutes(); })();
 
-    // Filter stages that need approval
-    const approvalStages: { task: Task; stage: TaskStage; category?: Category; type: 'START' | 'FINISH' }[] = [];
+    const nowD = toDisplayMinutes(currentMinutes, dailyStartMinutes);
+
+    // 6-to-6 as one: toDisplayMinutes so 23:55→00:25 and now 01:30 compare correctly. Sorted by due in display space.
+    const approvalStages: { task: Task; stage: TaskStage; category?: Category; type: 'START' | 'FINISH'; dueD: number }[] = [];
 
     tasks.forEach(task => {
         const category = categories.find(c => c.id === task.categoryId);
@@ -78,19 +88,19 @@ export default function ApprovalPopup({
             const duration = stage.durationMinutes ?? 0;
             const endTime = startTime + duration;
 
-            // 1. Approval for FINISHING: Process status and now past end time
-            if (stage.status === 'Process' && endTime <= currentMinutes) {
-                approvalStages.push({ task, stage, category, type: 'FINISH' });
-            }
+            const startD = toDisplayMinutes(startTime, dailyStartMinutes);
+            const endD = toDisplayMinutes(endTime >= 1440 ? endTime - 1440 : endTime, dailyStartMinutes);
 
-            // 2. Approval for STARTING: Upcoming status and now past or at start time
-            if (stage.status === 'Upcoming' && startTime <= currentMinutes) {
-                approvalStages.push({ task, stage, category, type: 'START' });
+            if (stage.status === 'Process' && endD <= nowD) {
+                approvalStages.push({ task, stage, category, type: 'FINISH', dueD: endD });
+            }
+            if (stage.status === 'Upcoming' && startD <= nowD) {
+                approvalStages.push({ task, stage, category, type: 'START', dueD: startD });
             }
         });
     });
 
-    if (approvalStages.length === 0) return null;
+    approvalStages.sort((a, b) => a.dueD - b.dueD);
 
     const formatTime = (minutes: number) => {
         const h = Math.floor(minutes / 60) % 24;
@@ -134,13 +144,19 @@ export default function ApprovalPopup({
                         style={styles.content}
                         onStartShouldSetResponder={() => true}
                     >
-                        {/* List */}
+                        {/* List: max 6 visible; scroll when more. Min 1: empty state when 0. */}
                         <ScrollView
                             style={styles.list}
                             contentContainerStyle={styles.listContent}
-                            showsVerticalScrollIndicator={false}
+                            showsVerticalScrollIndicator={approvalStages.length > 6}
+                            nestedScrollEnabled
                         >
-                            {approvalStages.map(({ task, stage, category, type }) => (
+                            {approvalStages.length === 0 ? (
+                                <View style={styles.emptyRow}>
+                                    <Text style={styles.emptyRowText}>No pending approvals</Text>
+                                </View>
+                            ) : (
+                            approvalStages.map(({ task, stage, category, type }) => (
                                 <View key={`${stage.id}-${type}`} style={styles.itemCard}>
                                     <View style={[styles.categoryBar, { backgroundColor: category?.color || '#333' }]} />
                                     <View style={styles.itemMain}>
@@ -191,7 +207,8 @@ export default function ApprovalPopup({
                                         </TouchableOpacity>
                                     </View>
                                 </View>
-                            ))}
+                            ))
+                            )}
                         </ScrollView>
                     </View>
                 </Animated.View>
@@ -230,10 +247,21 @@ const styles = StyleSheet.create({
         flex: 0,
     },
     list: {
-        // No fixed maxHeight, let popupContainer handle it
+        maxHeight: 330, /* ~6 items × 55px; when more than 6, list scrolls */
     },
     listContent: {
         paddingVertical: 0,
+    },
+    emptyRow: {
+        paddingVertical: 16,
+        paddingHorizontal: 12,
+        alignItems: 'center',
+        justifyContent: 'center',
+    },
+    emptyRowText: {
+        fontSize: 12,
+        fontWeight: '600',
+        color: 'rgba(255,255,255,0.45)',
     },
     itemCard: {
         flexDirection: 'row',
