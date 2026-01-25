@@ -99,11 +99,11 @@ export default function QuickMessageSection({
                     <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ paddingVertical: 8 }}>
                         {COLOR_PRESETS.map(preset => (
                             <TouchableOpacity
-                                key={preset.value}
-                                style={[styles.catColorChip, selectedMessageColor === preset.value && { borderColor: '#fff' }]}
-                                onPress={() => setSelectedMessageColor(preset.value)}
+                                key={preset.hex}
+                                style={[styles.catColorChip, selectedMessageColor === preset.hex && { borderColor: '#fff' }]}
+                                onPress={() => setSelectedMessageColor(preset.hex)}
                             >
-                                <View style={[styles.catColorInner, { backgroundColor: preset.value }]} />
+                                <View style={[styles.catColorInner, { backgroundColor: preset.hex }]} />
                             </TouchableOpacity>
                         ))}
                     </ScrollView>

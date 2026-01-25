@@ -69,6 +69,11 @@ export interface TaskStage {
   isCompleted: boolean; // Kept for backward compatibility (true = Done, false = others)
   status: StageStatus;  // New field for 4-state tracking
   createdAt: string;
+  startTimeMinutes?: number; // Start time in minutes from 00:00
+  durationMinutes?: number;  // Duration in minutes
+  startTime?: string;        // ISO string when subtask was started
+  endTime?: string;          // ISO string when subtask was ended
+  endTimeMinutes?: number;    // End time in minutes from 00:00 (calculated from startTimeMinutes + durationMinutes)
 }
 
 export interface Task {
@@ -121,17 +126,17 @@ export const SOUND_OPTIONS = [
   },
 ];
 export const COLOR_PRESETS = [
-  { name: 'White', value: '#FFFFFF' },
-  { name: 'Light Gray', value: '#CCCCCC' },
-  { name: 'Dark Gray', value: '#444444' },
-  { name: 'Gold', value: '#FFD700' },
-  { name: 'Coral', value: '#FF6B6B' },
-  { name: 'Mint', value: '#4ECDC4' },
-  { name: 'Sky Blue', value: '#00E5FF' },
-  { name: 'Electric Pink', value: '#FF80AB' },
-  { name: 'Vibrant Orange', value: '#FF9100' },
-  { name: 'Spring Green', value: '#00E676' },
-  { name: 'Royal Purple', value: '#D1C4E9' },
+  { name: 'White', hex: '#FFFFFF' },
+  { name: 'Light Gray', hex: '#CCCCCC' },
+  { name: 'Dark Gray', hex: '#444444' },
+  { name: 'Gold', hex: '#FFD700' },
+  { name: 'Coral', hex: '#FF6B6B' },
+  { name: 'Mint', hex: '#4ECDC4' },
+  { name: 'Sky Blue', hex: '#00E5FF' },
+  { name: 'Electric Pink', hex: '#FF80AB' },
+  { name: 'Vibrant Orange', hex: '#FF9100' },
+  { name: 'Spring Green', hex: '#00E676' },
+  { name: 'Royal Purple', hex: '#D1C4E9' },
 ];
 
 export const LANDSCAPE_PRESETS = [

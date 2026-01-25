@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { LogBox, AppState, AppStateStatus, LayoutAnimation, UIManager, Platform, Keyboard, TouchableWithoutFeedback, View } from 'react-native';
+import { LogBox, AppState, AppStateStatus, LayoutAnimation, UIManager, Platform, Keyboard, TouchableWithoutFeedback, View, Pressable } from 'react-native';
 import * as Notifications from 'expo-notifications';
 import { StatusBar } from 'expo-status-bar';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
@@ -35,6 +35,13 @@ import {
   cancelTimerNotification,
   calculateRemainingTime,
 } from './src/utils/backgroundTimer';
+import {
+  DEFAULT_TIME_OF_DAY_BACKGROUND_CONFIG,
+  loadOrSeedTimeOfDayBackgroundConfig,
+  saveTimeOfDayBackgroundConfig,
+  slotsForDate,
+  TimeOfDayBackgroundConfig,
+} from './src/utils/timeOfDaySlots';
 
 const LANDSCAPE_COLOR_KEY = '@timer_app_landscape_color';
 const FILLER_COLOR_KEY = '@timer_filler_color';
@@ -48,6 +55,52 @@ const ENABLE_FUTURE_TIMERS_KEY = '@timer_enable_future';
 const IS_PAST_TIMERS_DISABLED_KEY = '@timer_is_past_disabled';
 const IS_PAST_TASKS_DISABLED_KEY = '@task_is_past_disabled';
 const TASKS_KEY = '@timer_app_tasks';
+
+const DEFAULT_STAGE_START_TIME_MINUTES = 0; // 00:00
+const DEFAULT_STAGE_DURATION_MINUTES = 180; // 3 hours
+
+const normalizeStages = (stages: TaskStage[] | undefined, nowIso: string) => {
+  let didChange = false;
+  const seen = new Set<number>();
+  const out: TaskStage[] = [];
+
+  for (const s of stages || []) {
+    // Drop duplicates by id (preserve first occurrence)
+    if (seen.has(s.id)) {
+      didChange = true;
+      continue;
+    }
+    seen.add(s.id);
+
+    const startTimeMinutes = s.startTimeMinutes ?? DEFAULT_STAGE_START_TIME_MINUTES;
+    const durationMinutes = s.durationMinutes ?? DEFAULT_STAGE_DURATION_MINUTES;
+    if (s.startTimeMinutes == null || s.durationMinutes == null) didChange = true;
+
+    out.push({
+      ...s,
+      createdAt: s.createdAt ?? nowIso,
+      status: s.status ?? 'Upcoming',
+      isCompleted: s.isCompleted ?? (s.status === 'Done'),
+      startTimeMinutes,
+      durationMinutes,
+    });
+  }
+
+  return { stages: out, didChange };
+};
+
+const normalizeTasks = (tasks: Task[]) => {
+  const nowIso = new Date().toISOString();
+  let didChange = false;
+
+  const out = tasks.map(t => {
+    const norm = normalizeStages(t.stages, nowIso);
+    if (norm.didChange) didChange = true;
+    return norm.didChange ? { ...t, stages: norm.stages } : t;
+  });
+
+  return { tasks: out, didChange };
+};
 
 
 
@@ -109,6 +162,7 @@ export default function App() {
   const [isPastTasksDisabled, setIsPastTasksDisabled] = useState(false);
   const [activeView, setActiveViewState] = useState<'timer' | 'task'>('timer');
   const [quickMessages, setQuickMessages] = useState<QuickMessage[]>(DEFAULT_QUICK_MESSAGES);
+  const [timeOfDayBackgroundConfig, setTimeOfDayBackgroundConfig] = useState<TimeOfDayBackgroundConfig>(DEFAULT_TIME_OF_DAY_BACKGROUND_CONFIG);
 
   // Enable LayoutAnimation on Android
   if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
@@ -285,8 +339,18 @@ export default function App() {
       // Load tasks
       const storedTasks = await AsyncStorage.getItem(TASKS_KEY);
       if (storedTasks) {
-        setTasks(JSON.parse(storedTasks));
+        const parsed: Task[] = JSON.parse(storedTasks);
+        const norm = normalizeTasks(parsed);
+        setTasks(norm.tasks);
+        // Persist normalization once on rehydration (no UI screen side-effects)
+        if (norm.didChange) {
+          saveTasks(norm.tasks);
+        }
       }
+
+      // Load/seed time-of-day background slots (single source of truth)
+      const cfg = await loadOrSeedTimeOfDayBackgroundConfig();
+      setTimeOfDayBackgroundConfig(cfg);
     } catch (e) {
       console.error('Failed to load color preferences:', e);
     }
@@ -298,6 +362,25 @@ export default function App() {
       await AsyncStorage.setItem(TASKS_KEY, JSON.stringify(tasksToSave));
     } catch (e) {
       console.error('Failed to save tasks:', e);
+    }
+  };
+
+  // Rehydrate tasks from AsyncStorage (single source of truth)
+  const rehydrateTasksFromStorage = async () => {
+    try {
+      const storedTasks = await AsyncStorage.getItem(TASKS_KEY);
+      if (storedTasks) {
+        const parsed: Task[] = JSON.parse(storedTasks);
+        const norm = normalizeTasks(parsed);
+        setTasks(norm.tasks);
+        if (norm.didChange) {
+          saveTasks(norm.tasks);
+        }
+      } else {
+        setTasks([]);
+      }
+    } catch (e) {
+      console.error('Failed to rehydrate tasks:', e);
     }
   };
 
@@ -316,9 +399,11 @@ export default function App() {
       createdAt: now,
       updatedAt: now,
     };
-    const updatedTasks = [...tasks, newTask];
-    setTasks(updatedTasks);
-    saveTasks(updatedTasks);
+    setTasks(prev => {
+      const updated = [...prev, newTask];
+      saveTasks(updated);
+      return updated;
+    });
     setAddTaskModalVisible(false);
   };
 
@@ -329,19 +414,21 @@ export default function App() {
     const nextStatus = statusFlow[(currentIndex + 1) % statusFlow.length];
 
     const now = new Date().toISOString();
-    const updatedTasks = tasks.map(t =>
-      t.id === task.id
-        ? {
-          ...t,
-          status: nextStatus,
-          updatedAt: now,
-          startedAt: (nextStatus === 'In Progress' && !t.startedAt) ? now : t.startedAt,
-          completedAt: nextStatus === 'Completed' ? now : undefined
-        }
-        : t
-    );
-    setTasks(updatedTasks);
-    saveTasks(updatedTasks);
+    setTasks(prev => {
+      const updated = prev.map(t =>
+        t.id === task.id
+          ? {
+            ...t,
+            status: nextStatus,
+            updatedAt: now,
+            startedAt: (nextStatus === 'In Progress' && !t.startedAt) ? now : t.startedAt,
+            completedAt: nextStatus === 'Completed' ? now : undefined
+          }
+          : t
+      );
+      saveTasks(updated);
+      return updated;
+    });
   };
 
   // Handle deleting a task
@@ -355,9 +442,11 @@ export default function App() {
           text: 'Delete',
           style: 'destructive',
           onPress: () => {
-            const updatedTasks = tasks.filter(t => t.id !== task.id);
-            setTasks(updatedTasks);
-            saveTasks(updatedTasks);
+            setTasks(prev => {
+              const updated = prev.filter(t => t.id !== task.id);
+              saveTasks(updated);
+              return updated;
+            });
           },
         },
       ]
@@ -373,17 +462,19 @@ export default function App() {
   // Handle updating an existing task
   const handleUpdateTask = (taskId: number, taskData: { title: string; description?: string; priority: Task['priority']; categoryId?: string; forDate: string; isBacklog?: boolean }) => {
     const now = new Date().toISOString();
-    const updatedTasks = tasks.map(t =>
-      t.id === taskId
-        ? {
-          ...t,
-          ...taskData,
-          updatedAt: now,
-        }
-        : t
-    );
-    setTasks(updatedTasks);
-    saveTasks(updatedTasks);
+    setTasks(prev => {
+      const updated = prev.map(t =>
+        t.id === taskId
+          ? {
+            ...t,
+            ...taskData,
+            updatedAt: now,
+          }
+          : t
+      );
+      saveTasks(updated);
+      return updated;
+    });
     setAddTaskModalVisible(false);
     setTaskToEdit(null);
   };
@@ -399,83 +490,105 @@ export default function App() {
       createdAt: now,
     };
 
-    const updatedTasks = tasks.map(t =>
-      t.id === task.id
-        ? {
-          ...t,
-          comments: [newComment, ...(t.comments || [])],
-          updatedAt: now,
-        }
-        : t
-    );
-    setTasks(updatedTasks);
-    saveTasks(updatedTasks);
+    setTasks(prev => {
+      const updated = prev.map(t =>
+        t.id === task.id
+          ? {
+            ...t,
+            comments: [newComment, ...(t.comments || [])],
+            updatedAt: now,
+          }
+          : t
+      );
+      saveTasks(updated);
+      return updated;
+    });
   };
 
   // Handle updating stages (add, toggle, delete) with automatic status changes
   const handleUpdateStages = (task: Task, stages: TaskStage[]) => {
     const now = new Date().toISOString();
-    const previousStages = task.stages || [];
 
-    // Determine if this is adding a new stage
-    const isAddingStage = stages.length > previousStages.length;
+    setTasks(prev => {
+      // Find the latest version of the task in the current state
+      const latestTask = prev.find(t => t.id === task.id);
+      if (!latestTask) return prev;
 
-    // Calculate completion status
-    const completedCount = stages.filter(s => s.isCompleted).length;
-    const totalCount = stages.length;
-    const allCompleted = totalCount > 0 && completedCount === totalCount;
-    const someCompleted = completedCount > 0 && completedCount < totalCount;
+      const previousStages = latestTask.stages || [];
+      const normalized = normalizeStages(stages, now);
+      const nextStages = normalized.stages;
 
-    // Determine new status
-    let newStatus: Task['status'] = task.status;
+      // Determine if this is adding a new stage
+      const stageCountChanged = nextStages.length !== previousStages.length;
+      const isAddingStage = nextStages.length > previousStages.length;
 
-    if (allCompleted && totalCount > 0) {
-      // All stages completed → Task is Completed
-      newStatus = 'Completed';
-    } else if (someCompleted) {
-      // Some stages completed → Task is In Progress
-      newStatus = 'In Progress';
-    } else if (isAddingStage && task.status === 'Completed') {
-      // Adding a stage to a completed task → Back to Pending
-      newStatus = 'Pending';
-    } else if (totalCount > 0 && completedCount === 0 && task.status === 'Completed') {
-      // If task was completed but now has uncompleted stages → In Progress
-      newStatus = 'In Progress';
-    }
+      // Calculate completion status
+      const completedCount = nextStages.filter(s => s.isCompleted || s.status === 'Done').length;
+      const totalCount = nextStages.length;
+      const allCompleted = totalCount > 0 && completedCount === totalCount;
+      const someCompleted = completedCount > 0 && completedCount < totalCount;
 
-    const updatedTasks = tasks.map(t =>
-      t.id === task.id
-        ? {
-          ...t,
-          stages: stages,
-          status: newStatus,
-          updatedAt: now,
-          // Set startedAt if moving to In Progress and not already set
-          startedAt: newStatus === 'In Progress' && !t.startedAt ? now : t.startedAt,
-          // Set completedAt if becoming Completed, clear it otherwise
-          completedAt: newStatus === 'Completed' ? now : undefined,
-        }
-        : t
-    );
-    setTasks(updatedTasks);
-    saveTasks(updatedTasks);
+      // Determine new status
+      let newStatus: Task['status'] = latestTask.status;
+
+      if (allCompleted && totalCount > 0) {
+        // All stages completed → Task is Completed
+        newStatus = 'Completed';
+      } else if (someCompleted) {
+        // Some stages completed → Task is In Progress
+        newStatus = 'In Progress';
+      } else if (isAddingStage && latestTask.status === 'Completed') {
+        // Adding a stage to a completed task → Back to Pending
+        newStatus = 'Pending';
+      } else if (totalCount > 0 && completedCount === 0 && latestTask.status === 'Completed') {
+        // If task was completed but now has uncompleted stages → In Progress
+        newStatus = 'In Progress';
+      }
+
+      const updated = prev.map(t =>
+        t.id === task.id
+          ? {
+            ...t,
+            stages: nextStages,
+            status: newStatus,
+            updatedAt: now,
+            // Set startedAt if moving to In Progress and not already set
+            startedAt: newStatus === 'In Progress' && !t.startedAt ? now : t.startedAt,
+            // Set completedAt if becoming Completed, clear it otherwise
+            completedAt: newStatus === 'Completed' ? now : undefined,
+          }
+          : t
+      );
+
+      // Persist immediately (single source of truth)
+      const persist = saveTasks(updated);
+
+      // After ADD/DELETE: rehydrate from storage so UI renders from persisted data (not cached UI state)
+      if (stageCountChanged) {
+        persist.then(() => rehydrateTasksFromStorage());
+      }
+
+      return updated;
+    });
   };
 
   const handlePinTask = async (task: Task) => {
     const isPinned = !task.isPinned;
     const now = new Date().toISOString();
-    const updatedTasks = tasks.map(t =>
-      t.id === task.id
-        ? {
-          ...t,
-          isPinned,
-          pinTimestamp: isPinned ? Date.now() : null,
-          updatedAt: now,
-        }
-        : t
-    );
-    setTasks(updatedTasks);
-    await saveTasks(updatedTasks);
+    setTasks(prev => {
+      const updated = prev.map(t =>
+        t.id === task.id
+          ? {
+            ...t,
+            isPinned,
+            pinTimestamp: isPinned ? Date.now() : null,
+            updatedAt: now,
+          }
+          : t
+      );
+      saveTasks(updated);
+      return updated;
+    });
   };
 
   // Timer countdown effect
@@ -531,12 +644,12 @@ export default function App() {
   }, [timers, activeTimer, currentScreen]);
 
   const handleAcknowledgeCompletion = async (timerId: number) => {
-    setTimers(prevTimers => {
-      const updatedTimers = prevTimers.map(t =>
+    setTimers(prev => {
+      const updated = prev.map(t =>
         t.id === timerId ? { ...t, isAcknowledged: true, updatedAt: new Date().toISOString() } : t
       );
-      saveTimers(updatedTimers);
-      return updatedTimers;
+      saveTimers(updated);
+      return updated;
     });
   };
 
@@ -605,37 +718,38 @@ export default function App() {
     const timeStr = `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
     const now = new Date().toISOString();
 
-    const updatedTimers = timers.map(t => {
-      if (t.id === timerId) {
-        // If duration changed, we should probably reset state to Upcoming
-        const durationChanged = t.total !== timeStr;
-        return {
-          ...t,
-          title: name,
-          time: durationChanged ? timeStr : t.time,
-          total: timeStr,
-          status: durationChanged ? 'Upcoming' : t.status,
-          forDate: date,
-          categoryId: categoryId,
-          updatedAt: now,
-          // Reset session info if duration changed
-          ...(durationChanged && {
-            borrowedTime: 0,
-            borrowedTimeList: [],
-            completedPercentage: undefined,
-            savedTime: undefined,
-            startTime: undefined,
-            startedTimestamp: undefined,
-            remainingSecondsAtStart: undefined,
-            notificationId: undefined,
-          })
-        } as Timer;
-      }
-      return t;
+    setTimers(prev => {
+      const updated = prev.map(t => {
+        if (t.id === timerId) {
+          // If duration changed, we should probably reset state to Upcoming
+          const durationChanged = t.total !== timeStr;
+          return {
+            ...t,
+            title: name,
+            time: durationChanged ? timeStr : t.time,
+            total: timeStr,
+            status: durationChanged ? 'Upcoming' : t.status,
+            forDate: date,
+            categoryId: categoryId,
+            updatedAt: now,
+            // Reset session info if duration changed
+            ...(durationChanged && {
+              borrowedTime: 0,
+              borrowedTimeList: [],
+              completedPercentage: undefined,
+              savedTime: undefined,
+              startTime: undefined,
+              startedTimestamp: undefined,
+              remainingSecondsAtStart: undefined,
+              notificationId: undefined,
+            })
+          } as Timer;
+        }
+        return t;
+      });
+      saveTimers(updated);
+      return updated;
     });
-
-    setTimers(updatedTimers);
-    await saveTimers(updatedTimers);
     setAddModalVisible(false);
     setTimerToEdit(null);
   };
@@ -647,15 +761,18 @@ export default function App() {
 
   const confirmDelete = async () => {
     if (selectedTimer) {
-      const newTimers = timers.filter(t => t.id !== selectedTimer.id);
-      setTimers(newTimers);
-      await saveTimers(newTimers);
+      setTimers(prev => {
+        const updated = prev.filter(t => t.id !== selectedTimer.id);
+        saveTimers(updated);
 
-      // If we deleted the active timer, clear it
-      if (activeTimer && activeTimer.id === selectedTimer.id) {
-        await updateActiveTimer(null);
-        setCurrentScreen('list');
-      }
+        // If we deleted the active timer, clear it
+        if (activeTimer && activeTimer.id === selectedTimer.id) {
+          updateActiveTimer(null);
+          setCurrentScreen('list');
+        }
+
+        return updated;
+      });
     }
     setDeleteModalVisible(false);
     setSelectedTimer(null);
@@ -664,24 +781,26 @@ export default function App() {
   // Reset timer to initial/upcoming state
   const handleResetTimer = async () => {
     if (selectedTimer) {
-      const updatedTimers = timers.map(t => {
-        if (t.id === selectedTimer.id) {
-          return {
-            ...t,
-            time: t.total,
-            status: 'Upcoming',
-            borrowedTime: 0,
-            borrowedTimeList: [],
-            completedPercentage: undefined,
-            savedTime: undefined,
-            startTime: undefined,
-            updatedAt: new Date().toISOString(),
-          } as Timer;
-        }
-        return t;
+      setTimers(prev => {
+        const updated = prev.map(t => {
+          if (t.id === selectedTimer.id) {
+            return {
+              ...t,
+              time: t.total,
+              status: 'Upcoming',
+              borrowedTime: 0,
+              borrowedTimeList: [],
+              completedPercentage: undefined,
+              savedTime: undefined,
+              startTime: undefined,
+              updatedAt: new Date().toISOString(),
+            } as Timer;
+          }
+          return t;
+        });
+        saveTimers(updated);
+        return updated;
       });
-      setTimers(updatedTimers);
-      await saveTimers(updatedTimers);
     }
     setDeleteModalVisible(false);
     setSelectedTimer(null);
@@ -689,74 +808,80 @@ export default function App() {
 
   // Play/Pause a timer - only one can run at a time
   const handlePlayPause = async (timerToToggle: Timer) => {
-    // Find the latest version of this timer from state to ensure status is fresh
-    const currentTimer = timers.find(t => t.id === timerToToggle.id);
-    if (!currentTimer || currentTimer.status === 'Completed') return;
+    setTimers(prev => {
+      // Find the latest version of this timer from state to ensure status is fresh
+      const currentTimer = prev.find(t => t.id === timerToToggle.id);
+      if (!currentTimer || currentTimer.status === 'Completed') return prev;
 
-    const isCurrentlyRunning = currentTimer.status === 'Running';
-    const currentSeconds = timeToSeconds(currentTimer.time);
+      const isCurrentlyRunning = currentTimer.status === 'Running';
+      const currentSeconds = timeToSeconds(currentTimer.time);
 
-    let newNotificationId: string | null = null;
-
-    // Schedule or cancel notification based on new state
-    if (isCurrentlyRunning) {
-      // Pausing - cancel notification
-      await cancelTimerNotification(currentTimer.notificationId);
-    } else {
-      // Starting - schedule notification for timer completion
-      newNotificationId = await scheduleTimerNotification(
-        currentTimer.id,
-        currentSeconds,
-        currentTimer.title
-      );
-
-      // Also cancel any running timer's notification
-      const runningTimer = timers.find(t => t.status === 'Running' && t.id !== currentTimer.id);
-      if (runningTimer?.notificationId) {
-        await cancelTimerNotification(runningTimer.notificationId);
-      }
-    }
-
-    const updatedTimers = timers.map(t => {
-      if (t.id === timerToToggle.id) {
-        // Toggle: Running → Paused, anything else → Running
-        const isRestarting = t.status !== 'Running' && t.status !== 'Paused';
-        const newStatus = isCurrentlyRunning ? 'Paused' : 'Running';
-
-        let startInfo: Partial<Timer> = {};
-        if (isRestarting && !t.startTime) {
-          startInfo = { startTime: new Date().toISOString() };
-        }
-
-        // Track timestamp for background time calculation
-        if (!isCurrentlyRunning) {
-          startInfo.startedTimestamp = Date.now();
-          startInfo.remainingSecondsAtStart = timeToSeconds(t.time);
-          startInfo.notificationId = newNotificationId || undefined;
+      // Side Effect Alert: We ARE doing async inside a setter which is bad practice but
+      // we need to schedule/cancel notifications. The actual timer logic is handled by the map.
+      (async () => {
+        if (isCurrentlyRunning) {
+          await cancelTimerNotification(currentTimer.notificationId);
         } else {
-          startInfo.startedTimestamp = undefined;
-          startInfo.remainingSecondsAtStart = undefined;
-          startInfo.notificationId = undefined;
+          const newNotificationId = await scheduleTimerNotification(
+            currentTimer.id,
+            currentSeconds,
+            currentTimer.title
+          );
+
+          // Re-update the specific timer with the notification ID if we just started it
+          setTimers(latest => latest.map(t =>
+            t.id === currentTimer.id ? { ...t, notificationId: newNotificationId || undefined } : t
+          ));
+
+          // Also cancel any other running timer's notification
+          setTimers(latest => {
+            const otherRunning = latest.find(t => t.status === 'Running' && t.id !== currentTimer.id);
+            if (otherRunning?.notificationId) {
+              cancelTimerNotification(otherRunning.notificationId);
+            }
+            return latest;
+          });
         }
+      })();
 
-        return { ...t, status: newStatus, ...startInfo } as Timer;
-      } else if (t.status === 'Running') {
-        // Pause any other running timer
-        return { ...t, status: 'Paused', startedTimestamp: undefined, remainingSecondsAtStart: undefined, notificationId: undefined } as Timer;
+      const updated = prev.map(t => {
+        if (t.id === timerToToggle.id) {
+          const isRestarting = t.status !== 'Running' && t.status !== 'Paused';
+          const newStatus = isCurrentlyRunning ? 'Paused' : 'Running';
+
+          let startInfo: Partial<Timer> = {};
+          if (isRestarting && !t.startTime) {
+            startInfo = { startTime: new Date().toISOString() };
+          }
+
+          if (!isCurrentlyRunning) {
+            startInfo.startedTimestamp = Date.now();
+            startInfo.remainingSecondsAtStart = timeToSeconds(t.time);
+          } else {
+            startInfo.startedTimestamp = undefined;
+            startInfo.remainingSecondsAtStart = undefined;
+            startInfo.notificationId = undefined; // Cleared on pause
+          }
+
+          return { ...t, status: newStatus, ...startInfo } as Timer;
+        } else if (t.status === 'Running') {
+          return { ...t, status: 'Paused', startedTimestamp: undefined, remainingSecondsAtStart: undefined, notificationId: undefined } as Timer;
+        }
+        return t;
+      });
+
+      saveTimers(updated);
+
+      // Persist active timer if we just started one
+      if (!isCurrentlyRunning) {
+        const startedTimer = updated.find(t => t.id === timerToToggle.id);
+        if (startedTimer) {
+          updateActiveTimer(startedTimer);
+        }
       }
-      return t;
+
+      return updated;
     });
-
-    setTimers(updatedTimers);
-    await saveTimers(updatedTimers);
-
-    // Persist active timer if we just started one
-    if (!isCurrentlyRunning) {
-      const startedTimer = updatedTimers.find(t => t.id === timerToToggle.id);
-      if (startedTimer) {
-        await updateActiveTimer(startedTimer);
-      }
-    }
   };
 
   // Open timer screen when clicking on a card
@@ -787,29 +912,40 @@ export default function App() {
       );
 
       // Cancel any other running timer's notification
-      const runningTimer = timers.find(t => t.status === 'Running');
-      if (runningTimer?.notificationId) {
-        await cancelTimerNotification(runningTimer.notificationId);
-      }
-
-      const updatedTimers = timers.map(t => {
-        if (t.id === timer.id) {
-          const startTime = new Date().toISOString();
-          return {
-            ...t,
-            status: 'Running',
-            startTime,
-            startedTimestamp: Date.now(),
-            remainingSecondsAtStart: currentSeconds,
-            notificationId: notificationId || undefined,
-          } as Timer;
-        } else if (t.status === 'Running') {
-          return { ...t, status: 'Paused', startedTimestamp: undefined, remainingSecondsAtStart: undefined, notificationId: undefined } as Timer;
+      setTimers(prev => {
+        const runningTimer = prev.find(t => t.status === 'Running');
+        if (runningTimer?.notificationId) {
+          cancelTimerNotification(runningTimer.notificationId);
         }
-        return t;
+
+        const updated = prev.map(t => {
+          if (t.id === timer.id) {
+            const startTime = new Date().toISOString();
+            return {
+              ...t,
+              status: 'Running',
+              startTime,
+              startedTimestamp: Date.now(),
+              remainingSecondsAtStart: currentSeconds,
+              notificationId: notificationId || undefined,
+            } as Timer;
+          } else if (t.status === 'Running') {
+            return { ...t, status: 'Paused', startedTimestamp: undefined, remainingSecondsAtStart: undefined, notificationId: undefined } as Timer;
+          }
+          return t;
+        });
+
+        saveTimers(updated);
+
+        // Update active timer with the latest version
+        const startedTimer = updated.find(t => t.id === timer.id);
+        if (startedTimer) {
+          updateActiveTimer(startedTimer);
+        }
+
+        return updated;
       });
-      setTimers(updatedTimers);
-      await saveTimers(updatedTimers);
+
       setCurrentScreen('active');
     }
   };
@@ -1145,6 +1281,11 @@ export default function App() {
               setQuickMessages(messages);
               await AsyncStorage.setItem(QUICK_MESSAGES_KEY, JSON.stringify(messages));
             }}
+            timeOfDayBackgroundConfig={timeOfDayBackgroundConfig}
+            onTimeOfDayBackgroundConfigChange={(cfg) => {
+              setTimeOfDayBackgroundConfig(cfg);
+              saveTimeOfDayBackgroundConfig(cfg);
+            }}
           />
         );
 
@@ -1185,6 +1326,7 @@ export default function App() {
               onSettings={() => setCurrentScreen('settings')}
               isPastTasksDisabled={isPastTasksDisabled}
               quickMessages={quickMessages}
+              timeOfDaySlots={slotsForDate(timeOfDayBackgroundConfig, selectedDate)}
             />
           );
         }
@@ -1242,8 +1384,12 @@ export default function App() {
 
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>
-      <TouchableWithoutFeedback onPress={() => Keyboard.dismiss()} accessible={false}>
-        <View style={{ flex: 1 }}>
+      <Pressable
+        style={{ flex: 1 }}
+        onPress={() => Keyboard.dismiss()}
+        accessible={false}
+      >
+        <View style={{ flex: 1 }} pointerEvents="box-none">
           <SafeAreaProvider>
             {renderScreen()}
 
@@ -1295,7 +1441,7 @@ export default function App() {
             <StatusBar style="light" />
           </SafeAreaProvider>
         </View>
-      </TouchableWithoutFeedback>
+      </Pressable>
     </GestureHandlerRootView>
   );
 }

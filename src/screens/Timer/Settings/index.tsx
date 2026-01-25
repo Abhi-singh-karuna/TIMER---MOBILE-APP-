@@ -3,9 +3,11 @@ import {
     View,
     Text,
     TouchableOpacity,
-    ScrollView,
     useWindowDimensions,
+    KeyboardAvoidingView,
+    Platform,
 } from 'react-native';
+import { ScrollView, GestureHandlerRootView } from 'react-native-gesture-handler';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -17,6 +19,7 @@ import CategorySection from './CategorySection';
 import GeneralSection from './GeneralSection';
 import InfoSection from './InfoSection';
 import QuickMessageSection from './QuickMessageSection';
+import TimeOfDayBackgroundScreen from './TimeOfDayBackgroundScreen';
 import { styles } from './styles';
 import {
     SettingsScreenProps,
@@ -51,11 +54,15 @@ export default function SettingsScreen({
     onPastTasksDisabledChange,
     quickMessages,
     onQuickMessagesChange,
+    timeOfDayBackgroundConfig,
+    onTimeOfDayBackgroundConfigChange,
 }: SettingsScreenProps) {
     const { width, height } = useWindowDimensions();
     const isLandscape = width > height;
 
     const [activeTab, setActiveTab] = useState<'customization' | 'sound' | 'categories' | 'quickmsg' | 'general' | 'about'>('customization');
+    const [resetKey, setResetKey] = useState(0);
+    const [activeSubPage, setActiveSubPage] = useState<null | 'timeOfDayBackground'>(null);
 
     // Widen sidebar to 38% for a larger preview
     const sidebarWidth = width * 0.38;
@@ -73,11 +80,27 @@ export default function SettingsScreen({
             onSliderButtonColorChange(DEFAULT_SLIDER_BUTTON_COLOR);
             onTimerTextColorChange(DEFAULT_TEXT_COLOR);
             onPresetChange(0);
+            setResetKey(prev => prev + 1);
         } catch (e) { console.error('Failed to reset defaults:', e); }
     };
 
+    if (activeSubPage === 'timeOfDayBackground') {
+        return (
+            <TimeOfDayBackgroundScreen
+                config={timeOfDayBackgroundConfig}
+                onSave={onTimeOfDayBackgroundConfigChange}
+                onBack={() => setActiveSubPage(null)}
+            />
+        );
+    }
+
     const renderPortraitLayout = () => (
-        <ScrollView style={styles.content} contentContainerStyle={styles.scrollContent}>
+        <ScrollView
+            style={styles.content}
+            contentContainerStyle={styles.scrollContent}
+            alwaysBounceVertical={true}
+            showsVerticalScrollIndicator={false}
+        >
             <ThemeSection
                 isLandscape={false}
                 fillerColor={fillerColor}
@@ -90,6 +113,7 @@ export default function SettingsScreen({
                 onTimerTextColorChange={onTimerTextColorChange}
                 onPresetChange={onPresetChange}
                 onResetToDefaults={handleResetToDefaults}
+                resetKey={resetKey}
             />
             <AudioSection
                 isLandscape={false}
@@ -125,6 +149,17 @@ export default function SettingsScreen({
                 />
             </View>
             <View style={styles.section}>
+                <Text style={styles.sectionTitle}>TIMELINE</Text>
+                <TouchableOpacity
+                    style={styles.resetButton}
+                    onPress={() => setActiveSubPage('timeOfDayBackground')}
+                    activeOpacity={0.7}
+                >
+                    <MaterialIcons name="timeline" size={20} color="#FFFFFF" />
+                    <Text style={styles.resetButtonText}>Time-of-Day Background</Text>
+                </TouchableOpacity>
+            </View>
+            <View style={styles.section}>
                 <Text style={styles.sectionTitle}>DEFAULTS</Text>
                 <TouchableOpacity style={styles.resetButton} onPress={handleResetToDefaults} activeOpacity={0.7}>
                     <MaterialIcons name="refresh" size={20} color="#FFFFFF" /><Text style={styles.resetButtonText}>Reset Theme to Defaults</Text>
@@ -139,7 +174,7 @@ export default function SettingsScreen({
 
     // Landscape Layout - Side by side with Sidebar
     const renderLandscapeLayout = () => {
-        const renderSidebarButton = (id: 'customization' | 'sound' | 'categories' | 'quickmsg' | 'general' | 'about', icon: keyof typeof MaterialIcons.glyphMap, label: string) => {
+        const renderSidebarButton = (id: 'customization' | 'sound' | 'categories' | 'quickmsg' | 'general' | 'timeline' | 'about', icon: keyof typeof MaterialIcons.glyphMap, label: string) => {
             const isActive = activeTab === id;
             return (
                 <TouchableOpacity
@@ -148,7 +183,13 @@ export default function SettingsScreen({
                         styles.sidebarButtonRow,
                         isActive && styles.sidebarButtonRowActive
                     ]}
-                    onPress={() => setActiveTab(id)}
+                    onPress={() => {
+                        if (id === 'timeline') {
+                            setActiveSubPage('timeOfDayBackground');
+                            return;
+                        }
+                        setActiveTab(id as any);
+                    }}
                     activeOpacity={0.7}
                 >
                     <View style={styles.sidebarIconLabelContainer}>
@@ -174,7 +215,10 @@ export default function SettingsScreen({
         };
 
         return (
-            <View style={styles.landscapeContainer}>
+            <KeyboardAvoidingView
+                behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+                style={styles.landscapeContainer}
+            >
                 {/* Left Panel - Permanent Preview + Sidebar Buttons */}
                 <View style={[styles.leftSidebarCard, { width: '38%' }]}>
                     <Text style={styles.sidebarSectionTitle}>LIVE PREVIEW</Text>
@@ -188,6 +232,7 @@ export default function SettingsScreen({
                             activePresetIndex={activePresetIndex}
                             previewWidth={previewWidth}
                             onPresetChange={onPresetChange}
+                            resetKey={resetKey}
                         />
                     </View>
 
@@ -195,7 +240,8 @@ export default function SettingsScreen({
                     <View style={styles.sidebarNavSection}>
                         <ScrollView
                             showsVerticalScrollIndicator={false}
-                            contentContainerStyle={styles.sidebarButtonsScroll}
+                            contentContainerStyle={[styles.sidebarButtonsScroll, { flexGrow: 1 }]}
+                            alwaysBounceVertical={true}
                         >
                             <View style={styles.sidebarButtonsList}>
                                 {renderSidebarButton('customization', 'palette', 'Theme')}
@@ -203,6 +249,7 @@ export default function SettingsScreen({
                                 {renderSidebarButton('categories', 'category', 'Category')}
                                 {renderSidebarButton('quickmsg', 'chat', 'Quick Msg')}
                                 {renderSidebarButton('general', 'settings', 'General')}
+                                {renderSidebarButton('timeline', 'timeline', 'Timeline BG')}
                                 {renderSidebarButton('about', 'info', 'Info')}
                             </View>
                         </ScrollView>
@@ -222,8 +269,9 @@ export default function SettingsScreen({
                 <View style={styles.rightContentCard}>
                     <ScrollView
                         style={styles.rightContentScroll}
-                        contentContainerStyle={styles.rightContentScrollPadding}
+                        contentContainerStyle={[styles.rightContentScrollPadding, { flexGrow: 1 }]}
                         showsVerticalScrollIndicator={false}
+                        alwaysBounceVertical={true}
                     >
                         {activeTab === 'customization' && (
                             <ThemeSection
@@ -238,6 +286,7 @@ export default function SettingsScreen({
                                 onTimerTextColorChange={onTimerTextColorChange}
                                 onPresetChange={onPresetChange}
                                 onResetToDefaults={handleResetToDefaults}
+                                resetKey={resetKey}
                             />
                         )}
 
@@ -282,33 +331,35 @@ export default function SettingsScreen({
                         )}
                     </ScrollView>
                 </View>
-            </View>
+            </KeyboardAvoidingView>
         );
     };
 
     return (
-        <LinearGradient
-            colors={['#000000', '#000000']}
-            locations={[0, 1]}
-            style={styles.container}
-        >
-            <SafeAreaView
-                style={styles.safeArea}
-                edges={isLandscape ? ['left', 'right'] : ['top', 'left', 'right', 'bottom']}
+        <GestureHandlerRootView style={{ flex: 1 }}>
+            <LinearGradient
+                colors={['#000000', '#000000']}
+                locations={[0, 1]}
+                style={styles.container}
             >
-                {/* Header - Only visible in portrait */}
-                {!isLandscape && (
-                    <View style={styles.header}>
-                        <TouchableOpacity style={styles.backButton} onPress={onBack} activeOpacity={0.7}>
-                            <MaterialIcons name="arrow-back-ios" size={20} color="rgba(255,255,255,0.7)" style={{ marginLeft: 6 }} />
-                        </TouchableOpacity>
-                        <Text style={styles.headerTitle}>SETTINGS</Text>
-                        <View style={styles.headerSpacer} />
-                    </View>
-                )}
+                <SafeAreaView
+                    style={styles.safeArea}
+                    edges={isLandscape ? ['left', 'right'] : ['top', 'left', 'right', 'bottom']}
+                >
+                    {/* Header - Only visible in portrait */}
+                    {!isLandscape && (
+                        <View style={styles.header}>
+                            <TouchableOpacity style={styles.backButton} onPress={onBack} activeOpacity={0.7}>
+                                <MaterialIcons name="arrow-back-ios" size={20} color="rgba(255,255,255,0.7)" style={{ marginLeft: 6 }} />
+                            </TouchableOpacity>
+                            <Text style={styles.headerTitle}>SETTINGS</Text>
+                            <View style={styles.headerSpacer} />
+                        </View>
+                    )}
 
-                {isLandscape ? renderLandscapeLayout() : renderPortraitLayout()}
-            </SafeAreaView>
-        </LinearGradient>
+                    {isLandscape ? renderLandscapeLayout() : renderPortraitLayout()}
+                </SafeAreaView>
+            </LinearGradient>
+        </GestureHandlerRootView>
     );
 }
