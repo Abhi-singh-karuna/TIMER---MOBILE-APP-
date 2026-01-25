@@ -1327,6 +1327,16 @@ export default function App() {
               isPastTasksDisabled={isPastTasksDisabled}
               quickMessages={quickMessages}
               timeOfDaySlots={slotsForDate(timeOfDayBackgroundConfig, selectedDate)}
+              runningTimer={timers.find(t => t.status === 'Running') ?? null}
+              onOpenActiveTimer={(timer) => {
+                if (timer) {
+                  setActiveTimer(timer);
+                  setActiveView('timer');
+                  setCurrentScreen('active');
+                } else {
+                  setActiveView('timer');
+                }
+              }}
             />
           );
         }

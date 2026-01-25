@@ -1,5 +1,6 @@
 import * as React from 'react';
 import { useState, useRef, useEffect, useCallback } from 'react';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import {
     View,
     Text,
@@ -24,13 +25,18 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { BlurView } from 'expo-blur';
 import { MaterialIcons } from '@expo/vector-icons';
 import DraggableFlatList, { RenderItemParams } from 'react-native-draggable-flatlist';
-import { Category, Task, TaskStage, QuickMessage, StageStatus } from '../../../constants/data';
+import { Category, Task, TaskStage, QuickMessage, StageStatus, Timer } from '../../../constants/data';
 import TaskActionModal from '../../../components/TaskActionModal';
 import LiveFocusView from './LiveFocusView';
+import StageActionPopup from './StageActionPopup';
 import * as Haptics from 'expo-haptics';
 import { TimeOfDaySlotConfigList } from '../../../utils/timeOfDaySlots';
 
 const { width, height } = Dimensions.get('window');
+
+// AsyncStorage keys for LiveFocusView zoom and scroll persistence
+const LIVE_FOCUS_ZOOM_KEY = '@timer_app_live_focus_zoom';
+const LIVE_FOCUS_SCROLL_KEY = '@timer_app_live_focus_scroll_x';
 
 // Days and months for date formatting
 const DAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
@@ -1351,6 +1357,9 @@ interface TaskListProps {
     onPinTask?: (task: Task) => void;
     quickMessages?: QuickMessage[];
     timeOfDaySlots?: TimeOfDaySlotConfigList;
+    runningTimer?: Timer | null;
+    /** Open the active/expanded running timer (ActiveTimer) or Timer list when the dock live timer is tapped. */
+    onOpenActiveTimer?: (timer: Timer | null) => void;
 }
 
 export default function TaskList({
@@ -1371,6 +1380,8 @@ export default function TaskList({
     onPinTask,
     quickMessages,
     timeOfDaySlots,
+    runningTimer,
+    onOpenActiveTimer,
 }: TaskListProps) {
     const { width: screenWidth, height: screenHeight } = useWindowDimensions();
     const isLandscape = screenWidth > screenHeight;
@@ -1394,8 +1405,32 @@ export default function TaskList({
     const [selectedActionTask, setSelectedActionTask] = useState<Task | null>(null);
     const [expandedTaskId, setExpandedTaskId] = useState<number | null>(null);
 
+    // LiveFocusView: zoom (minutesPerCell) and scroll X — persisted across close/reopen
+    const [liveFocusZoom, setLiveFocusZoom] = useState(60);
+    const [liveFocusScrollX, setLiveFocusScrollX] = useState(0);
+    const liveFocusScrollXRef = useRef(0);
+    const liveFocusZoomRef = useRef(60);
+    const saveScrollTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+    const saveZoomTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
     const slideAnim = useRef(new Animated.Value(0)).current;
     const fadeAnim = useRef(new Animated.Value(1)).current;
+
+    // Load LiveFocus zoom and scroll from AsyncStorage on mount
+    useEffect(() => {
+        AsyncStorage.getItem(LIVE_FOCUS_ZOOM_KEY).then((v) => {
+            if (v != null) {
+                const n = Number(v);
+                if (!Number.isNaN(n) && n >= 5 && n <= 240) setLiveFocusZoom(n);
+            }
+        });
+        AsyncStorage.getItem(LIVE_FOCUS_SCROLL_KEY).then((v) => {
+            if (v != null) {
+                const n = Number(v);
+                if (!Number.isNaN(n) && n >= 0) setLiveFocusScrollX(n);
+            }
+        });
+    }, []);
 
     // Reset expanded task when date or backlog filter changes
     useEffect(() => {
@@ -1622,6 +1657,33 @@ export default function TaskList({
         }
     };
 
+    const handleLiveFocusZoomChange = useCallback((z: number) => {
+        liveFocusZoomRef.current = z;
+        if (saveZoomTimeoutRef.current) clearTimeout(saveZoomTimeoutRef.current);
+        saveZoomTimeoutRef.current = setTimeout(() => {
+            setLiveFocusZoom(liveFocusZoomRef.current);
+            AsyncStorage.setItem(LIVE_FOCUS_ZOOM_KEY, String(liveFocusZoomRef.current)).catch(() => {});
+            saveZoomTimeoutRef.current = null;
+        }, 120);
+    }, []);
+
+    const handleLiveFocusScrollChange = useCallback((x: number) => {
+        liveFocusScrollXRef.current = x;
+        if (saveScrollTimeoutRef.current) clearTimeout(saveScrollTimeoutRef.current);
+        saveScrollTimeoutRef.current = setTimeout(() => {
+            setLiveFocusScrollX(liveFocusScrollXRef.current);
+            AsyncStorage.setItem(LIVE_FOCUS_SCROLL_KEY, String(liveFocusScrollXRef.current)).catch(() => {});
+            saveScrollTimeoutRef.current = null;
+        }, 250);
+    }, []);
+
+    useEffect(() => {
+        return () => {
+            if (saveScrollTimeoutRef.current) clearTimeout(saveScrollTimeoutRef.current);
+            if (saveZoomTimeoutRef.current) clearTimeout(saveZoomTimeoutRef.current);
+        };
+    }, []);
+
     if (isLandscape && showLive) {
         return (
             <View style={styles.container}>
@@ -1639,6 +1701,15 @@ export default function TaskList({
                     onUpdateStageLayout={handleUpdateStageLayout}
                     onUpdateStages={onUpdateStages}
                     timeOfDaySlots={timeOfDaySlots}
+                    initialZoom={liveFocusZoom}
+                    initialScrollX={liveFocusScrollX}
+                    onZoomChange={handleLiveFocusZoomChange}
+                    onScrollChange={handleLiveFocusScrollChange}
+                    runningTimer={runningTimer ?? null}
+                    onOpenRunningTimer={(timer) => {
+                        setShowLive(false);
+                        onOpenActiveTimer?.(timer);
+                    }}
                 />
             </View>
         );
@@ -2245,185 +2316,6 @@ interface DraggableStagesListProps {
     onSetStageStatus: (stageId: number, status: StageStatus) => void;
     onDeleteStage: (stageId: number) => void;
 }
-
-// Stage Action Popup Props
-interface StageActionPopupProps {
-    visible: boolean;
-    position: { x: number; y: number };
-    onSelectStatus: (status: StageStatus) => void;
-    onClose: () => void;
-    currentStatus: StageStatus;
-}
-
-// Stage status configuration
-const STAGE_STATUS_CONFIG: Record<StageStatus, { icon: keyof typeof MaterialIcons.glyphMap; color: string; label: string }> = {
-    Upcoming: { icon: 'schedule', color: '#8E8E93', label: 'Upcoming' },
-    Process: { icon: 'play-circle-fill', color: '#FFB74D', label: 'In Process' },
-    Done: { icon: 'check-circle', color: '#4CAF50', label: 'Done' },
-    Undone: { icon: 'cancel', color: '#FF5252', label: 'Undone' },
-};
-
-// Stage Action Popup Component
-function StageActionPopup({ visible, position, onSelectStatus, onClose, currentStatus }: StageActionPopupProps) {
-    const { width: screenWidth, height: screenHeight } = useWindowDimensions();
-    const fadeAnim = useRef(new Animated.Value(0)).current;
-    const scaleAnim = useRef(new Animated.Value(0.8)).current;
-
-    useEffect(() => {
-        if (visible) {
-            Animated.parallel([
-                Animated.timing(fadeAnim, {
-                    toValue: 1,
-                    duration: 150,
-                    useNativeDriver: true,
-                }),
-                Animated.spring(scaleAnim, {
-                    toValue: 1,
-                    friction: 8,
-                    tension: 100,
-                    useNativeDriver: true,
-                }),
-            ]).start();
-        } else {
-            fadeAnim.setValue(0);
-            scaleAnim.setValue(0.8);
-        }
-    }, [visible, fadeAnim, scaleAnim]);
-
-    if (!visible) return null;
-
-    // Calculate popup dimensions
-    const popupWidth = 140;
-    const popupHeight = 180;
-    const padding = 12;
-
-    // Center popup horizontally relative to x
-    let adjustedX = position.x - popupWidth / 2;
-    let adjustedY = position.y + 10; // offset below
-
-    // Check right edge
-    if (adjustedX + popupWidth > screenWidth - padding) {
-        adjustedX = screenWidth - popupWidth - padding;
-    }
-    // Check left edge
-    if (adjustedX < padding) {
-        adjustedX = padding;
-    }
-    // Check bottom edge
-    if (adjustedY + popupHeight > screenHeight - padding) {
-        adjustedY = position.y - popupHeight - 15; // Show above the circle
-    }
-    // Check top edge
-    if (adjustedY < padding) {
-        adjustedY = padding;
-    }
-
-    const statusOrder: StageStatus[] = ['Upcoming', 'Process', 'Done', 'Undone'];
-
-    return (
-        <Modal
-            visible={visible}
-            transparent
-            animationType="none"
-            onRequestClose={onClose}
-            supportedOrientations={['portrait', 'landscape']}
-            statusBarTranslucent={true}
-        >
-            <TouchableOpacity
-                style={stagePopupStyles.overlay}
-                activeOpacity={1}
-                onPress={onClose}
-            >
-                <Animated.View
-                    style={[
-                        stagePopupStyles.popup,
-                        {
-                            left: adjustedX,
-                            top: adjustedY,
-                            opacity: fadeAnim,
-                            transform: [{ scale: scaleAnim }],
-                        },
-                    ]}
-                >
-                    {statusOrder.map((status, index) => {
-                        const config = STAGE_STATUS_CONFIG[status];
-                        const isActive = currentStatus === status;
-                        return (
-                            <React.Fragment key={status}>
-                                {index > 0 && <View style={stagePopupStyles.separator} />}
-                                <TouchableOpacity
-                                    style={[
-                                        stagePopupStyles.option,
-                                        isActive && stagePopupStyles.optionActive,
-                                    ]}
-                                    onPress={() => {
-                                        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                                        onSelectStatus(status);
-                                    }}
-                                    activeOpacity={0.7}
-                                >
-                                    <MaterialIcons name={config.icon} size={18} color={config.color} />
-                                    <Text style={[stagePopupStyles.optionText, { color: config.color }]}>
-                                        {config.label}
-                                    </Text>
-                                    {isActive && (
-                                        <MaterialIcons
-                                            name="check"
-                                            size={16}
-                                            color={config.color}
-                                            style={{ marginLeft: 'auto' }}
-                                        />
-                                    )}
-                                </TouchableOpacity>
-                            </React.Fragment>
-                        );
-                    })}
-                </Animated.View>
-            </TouchableOpacity>
-        </Modal>
-    );
-}
-
-// Stage Popup Styles
-const stagePopupStyles = StyleSheet.create({
-    overlay: {
-        flex: 1,
-        backgroundColor: 'rgba(0,0,0,0.3)',
-    },
-    popup: {
-        position: 'absolute',
-        backgroundColor: 'rgba(30, 30, 30, 0.98)',
-        borderRadius: 14,
-        paddingVertical: 6,
-        minWidth: 140,
-        shadowColor: '#000',
-        shadowOffset: { width: 0, height: 8 },
-        shadowOpacity: 0.4,
-        shadowRadius: 16,
-        elevation: 20,
-        borderWidth: 1,
-        borderColor: 'rgba(255,255,255,0.1)',
-    },
-    option: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        paddingHorizontal: 14,
-        paddingVertical: 10,
-        gap: 10,
-    },
-    optionActive: {
-        backgroundColor: 'rgba(255,255,255,0.05)',
-    },
-    optionText: {
-        fontSize: 13,
-        fontWeight: '600',
-    },
-    separator: {
-        height: 1,
-        backgroundColor: 'rgba(255,255,255,0.08)',
-        marginHorizontal: 10,
-    },
-});
 
 // Draggable Stages List Component
 function DraggableStagesList({ stages, onReorder, onSetStageStatus, onDeleteStage }: DraggableStagesListProps) {
