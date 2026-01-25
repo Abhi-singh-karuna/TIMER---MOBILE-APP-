@@ -15,6 +15,7 @@
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.abhisheksingh.timerapp",
+      "buildNumber": "1",
       "infoPlist": {
         "UIBackgroundModes": [
           "fetch"
