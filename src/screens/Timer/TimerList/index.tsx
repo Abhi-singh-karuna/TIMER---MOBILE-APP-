@@ -22,6 +22,7 @@ import { MaterialIcons } from '@expo/vector-icons';
 import { Audio } from 'expo-av';
 import { activateKeepAwakeAsync, deactivateKeepAwake } from 'expo-keep-awake';
 import { Timer, Category, SOUND_OPTIONS } from '../../../constants/data';
+import { getLogicalDate, getStartOfLogicalDay, DEFAULT_DAILY_START_MINUTES, formatDailyStartRangeCompact } from '../../../utils/dailyStartTime';
 
 // SOUND_OPTIONS moved to constants/data.ts
 
@@ -119,10 +120,11 @@ export default function TimerList({
     selectedDate: propSelectedDate,
     onDateChange,
     isPastTimersDisabled,
+    dailyStartMinutes = DEFAULT_DAILY_START_MINUTES,
     categories,
     activeView = 'timer',
     onViewChange
-}: TimerListProps & { selectedDate: Date, onDateChange: (date: Date) => void }) {
+}: TimerListProps & { selectedDate: Date; onDateChange: (date: Date) => void; dailyStartMinutes?: number }) {
     const [filterCategoryId, setFilterCategoryId] = useState<string>('All');
     const [filterStatus, setFilterStatus] = useState<string>('All');
     const [isCategoryExpanded, setIsCategoryExpanded] = useState(false);
@@ -259,12 +261,10 @@ export default function TimerList({
         prevTimersRef.current = [...timers];
     }, [timers, onTimerCompleted, onAcknowledgeCompletion]);
 
-    // Filter timers by selected date
-    const formatDate = (date: Date) => {
-        return `${date.getFullYear()}-${(date.getMonth() + 1).toString().padStart(2, '0')}-${date.getDate().toString().padStart(2, '0')}`;
-    };
+    // Logical date for the selected day (uses daily start time for rollover)
+    const selectedLogical = getLogicalDate(propSelectedDate, dailyStartMinutes);
 
-    const dateFilteredTimers = timers.filter(t => t.forDate === formatDate(propSelectedDate));
+    const dateFilteredTimers = timers.filter(t => t.forDate === selectedLogical);
 
     const filteredTimers = dateFilteredTimers
         .filter(t => {
@@ -318,12 +318,8 @@ export default function TimerList({
     const borrowedMinutes = Math.floor((totalBorrowedSeconds % 3600) / 60);
     const borrowedSeconds = totalBorrowedSeconds % 60;
 
-    const isToday = formatDate(propSelectedDate) === formatDate(new Date());
-    const todayObj = new Date();
-    todayObj.setHours(0, 0, 0, 0);
-    const selectedDateObj = new Date(propSelectedDate);
-    selectedDateObj.setHours(0, 0, 0, 0);
-    const isPast = selectedDateObj < todayObj;
+    const isToday = selectedLogical === getLogicalDate(new Date(), dailyStartMinutes);
+    const isPast = selectedLogical < getLogicalDate(new Date(), dailyStartMinutes);
     const isReadOnly = isPast && isPastTimersDisabled;
     const dateLabel = isToday ? 'TODAY' : `on ${dayName} ${dayNum}`;
     // Calendar Helpers
@@ -443,21 +439,19 @@ export default function TimerList({
                     }
                 ]}>
                     {calendarDays.map((item, index) => {
+                        const logicalToday = getLogicalDate(new Date(), dailyStartMinutes);
+                        const [ltY, ltM1, ltD] = logicalToday.split('-').map(Number);
                         const isToday = item.currentMonth &&
-                            item.day === new Date().getDate() &&
-                            viewDate.getMonth() === new Date().getMonth() &&
-                            viewDate.getFullYear() === new Date().getFullYear();
+                            item.day === ltD &&
+                            viewDate.getMonth() === ltM1 - 1 &&
+                            viewDate.getFullYear() === ltY;
 
                         const isSelected = item.currentMonth &&
                             item.day === propSelectedDate.getDate() &&
                             viewDate.getMonth() === propSelectedDate.getMonth() &&
                             viewDate.getFullYear() === propSelectedDate.getFullYear();
 
-                        const today = new Date();
-                        today.setHours(0, 0, 0, 0);
-                        const selectedDateObj = new Date(propSelectedDate);
-                        selectedDateObj.setHours(0, 0, 0, 0);
-                        const isPastSelection = isSelected && selectedDateObj < today;
+                        const isPastSelection = isSelected && selectedLogical < getLogicalDate(new Date(), dailyStartMinutes);
 
                         return (
                             <TouchableOpacity
@@ -465,7 +459,8 @@ export default function TimerList({
                                 style={styles.dayCell}
                                 onPress={() => {
                                     if (item.currentMonth) {
-                                        const newSelected = new Date(viewDate.getFullYear(), viewDate.getMonth(), item.day);
+                                        const y = viewDate.getFullYear(), m = viewDate.getMonth(), d = item.day;
+                                        const newSelected = new Date(y, m, d, Math.floor(dailyStartMinutes / 60), dailyStartMinutes % 60, 0, 0);
                                         onDateChange(newSelected);
                                         setInternalSelectedDate(newSelected);
                                     }
@@ -698,14 +693,17 @@ export default function TimerList({
                                         <TouchableOpacity
                                             style={[styles.todayNavBtn, isToday && styles.todayNavBtnActive]}
                                             onPress={() => {
-                                                const today = new Date();
-                                                onDateChange(today);
-                                                setViewDate(today);
+                                                const start = getStartOfLogicalDay(new Date(), dailyStartMinutes);
+                                                onDateChange(start);
+                                                setViewDate(start);
                                             }}
                                             activeOpacity={0.7}
                                         >
                                             <MaterialIcons name="today" size={12} color={isToday ? "#4CAF50" : "rgba(255,255,255,0.4)"} />
-                                            <Text style={[styles.todayNavText, isToday && styles.todayNavTextActive]}>TODAY</Text>
+                                            <View style={styles.todayLabelBlock}>
+                                                <Text style={[styles.todayNavText, isToday && styles.todayNavTextActive, { marginLeft: 0 }]}>TODAY</Text>
+                                                <Text style={[styles.todayRangeLabel, isToday && styles.todayRangeLabelActive]}>({formatDailyStartRangeCompact(dailyStartMinutes)})</Text>
+                                            </View>
                                         </TouchableOpacity>
                                     </View>
 
@@ -899,14 +897,17 @@ export default function TimerList({
                                 <TouchableOpacity
                                     style={[styles.todayBtnPortrait, isToday && styles.todayBtnActivePortrait]}
                                     onPress={() => {
-                                        const today = new Date();
-                                        onDateChange(today);
-                                        setViewDate(today);
+                                        const start = getStartOfLogicalDay(new Date(), dailyStartMinutes);
+                                        onDateChange(start);
+                                        setViewDate(start);
                                     }}
                                     activeOpacity={0.7}
                                 >
                                     <MaterialIcons name="today" size={12} color={isToday ? "#4CAF50" : "rgba(255,255,255,0.4)"} />
-                                    <Text style={[styles.todayBtnTextPortrait, isToday && styles.todayBtnTextActivePortrait]}>TODAY</Text>
+                                    <View style={styles.todayLabelBlockPortrait}>
+                                        <Text style={[styles.todayBtnTextPortrait, isToday && styles.todayBtnTextActivePortrait, { marginLeft: 0 }]}>TODAY</Text>
+                                        <Text style={[styles.todayRangeLabel, isToday && styles.todayRangeLabelActive]}>({formatDailyStartRangeCompact(dailyStartMinutes)})</Text>
+                                    </View>
                                 </TouchableOpacity>
 
                                 <TouchableOpacity
@@ -1653,6 +1654,10 @@ const styles = StyleSheet.create({
 
     todayBtnTextActivePortrait: {
         color: '#4CAF50',
+    },
+    todayLabelBlockPortrait: {
+        marginLeft: 4,
+        alignItems: 'flex-start',
     },
 
     settingsButton: {
@@ -3028,6 +3033,20 @@ const styles = StyleSheet.create({
     },
     todayNavTextActive: {
         color: '#4CAF50',
+    },
+    todayLabelBlock: {
+        marginLeft: 3,
+        alignItems: 'flex-start',
+    },
+    todayRangeLabel: {
+        fontSize: 8,
+        fontWeight: '600',
+        color: 'rgba(255,255,255,0.5)',
+        letterSpacing: 0.3,
+        marginTop: 1,
+    },
+    todayRangeLabelActive: {
+        color: 'rgba(76,175,80,0.85)',
     },
     readOnlyIcon: {
         position: 'absolute',

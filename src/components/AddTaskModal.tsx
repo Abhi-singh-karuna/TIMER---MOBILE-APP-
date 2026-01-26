@@ -18,6 +18,7 @@ import { BlurView } from 'expo-blur';
 import { MaterialIcons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
 import { Category, Task } from '../constants/data';
+import { getLogicalDate, DEFAULT_DAILY_START_MINUTES } from '../utils/dailyStartTime';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
@@ -29,6 +30,8 @@ interface AddTaskModalProps {
     onUpdate?: (taskId: number, task: { title: string; description?: string; priority: Task['priority']; categoryId?: string; forDate: string; isBacklog?: boolean }) => void;
     categories: Category[];
     initialDate?: string;
+    /** Daily start (minutes from midnight). Used so "today" and isPast match 06:00–06:00 logical day. */
+    dailyStartMinutes?: number;
     isPastTasksDisabled?: boolean;
     taskToEdit?: Task | null;
 }
@@ -40,6 +43,7 @@ export default function AddTaskModal({
     onUpdate,
     categories,
     initialDate,
+    dailyStartMinutes = DEFAULT_DAILY_START_MINUTES,
     isPastTasksDisabled = false,
     taskToEdit = null,
 }: AddTaskModalProps) {
@@ -50,7 +54,7 @@ export default function AddTaskModal({
     const [description, setDescription] = useState('');
     const [priority, setPriority] = useState<Task['priority']>('Medium');
     const [selectedCategoryId, setSelectedCategoryId] = useState<string | undefined>(categories[0]?.id);
-    const [selectedDate, setSelectedDate] = useState(initialDate || new Date().toISOString().split('T')[0]);
+    const [selectedDate, setSelectedDate] = useState(initialDate || getLogicalDate(new Date(), dailyStartMinutes));
     const [isBacklog, setIsBacklog] = useState(false);
     const [showDatePicker, setShowDatePicker] = useState(false);
     const [viewDate, setViewDate] = useState(new Date(selectedDate));
@@ -71,7 +75,7 @@ export default function AddTaskModal({
                 setDescription('');
                 setPriority('Medium');
                 setSelectedCategoryId(categories[0]?.id);
-                const date = initialDate || new Date().toISOString().split('T')[0];
+                const date = initialDate || getLogicalDate(new Date(), dailyStartMinutes);
                 setSelectedDate(date);
                 setViewDate(new Date(date));
                 setIsBacklog(false);
@@ -79,7 +83,7 @@ export default function AddTaskModal({
             setShowDatePicker(false);
             setErrorTitle(false);
         }
-    }, [visible, initialDate, taskToEdit]);
+    }, [visible, initialDate, taskToEdit, dailyStartMinutes]);
 
     const handleAdd = () => {
         if (!title.trim()) {
@@ -183,7 +187,7 @@ export default function AddTaskModal({
                     {daysArray.map((item, i) => {
                         const dateStr = item.current ? formatDate(new Date(viewDate.getFullYear(), viewDate.getMonth(), item.day)) : '';
                         const isSelected = item.current && dateStr === selectedDate;
-                        const todayStr = formatDate(new Date());
+                        const todayStr = getLogicalDate(new Date(), dailyStartMinutes);
                         const isToday = item.current && todayStr === dateStr;
                         const isPast = item.current && dateStr < todayStr;
 
@@ -362,7 +366,7 @@ export default function AddTaskModal({
                                                         style={[
                                                             styles.dateDisplay,
                                                             styles.compactInput,
-                                                            (isPastTasksDisabled && selectedDate < new Date().toISOString().split('T')[0]) && styles.inputError
+                                                            (isPastTasksDisabled && selectedDate < getLogicalDate(new Date(), dailyStartMinutes)) && styles.inputError
                                                         ]}
                                                         onPress={() => {
                                                             setShowDatePicker(true);
@@ -440,11 +444,11 @@ export default function AddTaskModal({
                                                     <>
                                                         <Text style={styles.label}>FOR DATE</Text>
                                                         <TouchableOpacity
-                                                            style={[
-                                                                styles.dateDisplay,
-                                                                { marginBottom: 24 },
-                                                                (isPastTasksDisabled && selectedDate < new Date().toISOString().split('T')[0]) && styles.inputError
-                                                            ]}
+                                                        style={[
+                                                            styles.dateDisplay,
+                                                            { marginBottom: 24 },
+                                                            (isPastTasksDisabled && selectedDate < getLogicalDate(new Date(), dailyStartMinutes)) && styles.inputError
+                                                        ]}
                                                             onPress={() => {
                                                                 setShowDatePicker(true);
                                                                 Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);

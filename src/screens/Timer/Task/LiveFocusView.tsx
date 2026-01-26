@@ -1,9 +1,10 @@
-import React, { useState, useRef, useEffect, useLayoutEffect, useCallback, useMemo } from 'react';
+import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react';
 import {
     View,
     Text,
     StyleSheet,
     TouchableOpacity,
+    TouchableWithoutFeedback,
     ScrollView,
     useWindowDimensions,
     GestureResponderEvent,
@@ -18,10 +19,13 @@ import {
 } from 'react-native';
 import { MaterialIcons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
-import { Task, Category, TaskStage, StageStatus } from '../../../constants/data';
+import { activateKeepAwakeAsync, deactivateKeepAwake } from 'expo-keep-awake';
+import { Task, Category, TaskStage, StageStatus, Timer } from '../../../constants/data';
 import AddSubtaskModal from '../../../components/AddSubtaskModal';
 import ApprovalPopup from './ApprovalPopup';
+import StageActionPopup from './StageActionPopup';
 import { buildTimeOfDayBackgroundSegments, DEFAULT_TIME_OF_DAY_SLOTS, TimeOfDaySlotConfigList } from '../../../utils/timeOfDaySlots';
+import { getLogicalDate, getStartOfLogicalDay, getStartOfLogicalDayFromString, isSameLogicalDay, toDisplayMinutes, DEFAULT_DAILY_START_MINUTES } from '../../../utils/dailyStartTime';
 
 interface LiveFocusViewProps {
     tasks: Task[];
@@ -34,6 +38,16 @@ interface LiveFocusViewProps {
     onUpdateStageLayout?: (taskId: number, stageId: number, startTimeMinutes: number, durationMinutes: number) => void;
     onUpdateStages?: (task: Task, stages: TaskStage[]) => void;
     timeOfDaySlots?: TimeOfDaySlotConfigList;
+    /** Daily start time (minutes from midnight) from General Settings. Used for date rollover: when the clock crosses this time, the calendar day changes. Must match the app config (Daily start time) so Live Focus stays in sync with TaskList and TimerList. */
+    dailyStartMinutes?: number;
+    initialZoom?: number;
+    initialScrollX?: number;
+    onZoomChange?: (zoom: number) => void;
+    onScrollChange?: (x: number) => void;
+    /** Running timer from TimerList (HH:MM:SS or MM:SS); shows "Not active timer" when null. */
+    runningTimer?: Timer | null;
+    /** When the live running timer in the dock is pressed: (timer) => open ActiveTimer if timer, else Timer list. */
+    onOpenRunningTimer?: (timer: Timer | null) => void;
 }
 
 type TaskLiveStatus = 'ACTIVE' | 'DONE' | 'PLANNED';
@@ -51,6 +65,16 @@ const STAGE_STATUS_CONFIG: Record<StageStatus, { icon: keyof typeof MaterialIcon
     Done: { icon: 'check-circle', color: '#4CAF50' },
     Undone: { icon: 'cancel', color: '#FF5252' },
 };
+// Labels for the Status button (matches StageActionPopup)
+const STAGE_STATUS_LABELS: Record<StageStatus, string> = {
+    Upcoming: 'Upcoming',
+    Process: 'In Process',
+    Done: 'Done',
+    Undone: 'Undone',
+};
+
+const MONTHS_SHORT = ['JAN', 'FEB', 'MAR', 'APR', 'MAY', 'JUN', 'JUL', 'AUG', 'SEP', 'OCT', 'NOV', 'DEC'];
+const MONTHS_CAL = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 
 export default function LiveFocusView({
     tasks,
@@ -63,14 +87,22 @@ export default function LiveFocusView({
     onUpdateStageLayout,
     onUpdateStages,
     timeOfDaySlots,
+    dailyStartMinutes = DEFAULT_DAILY_START_MINUTES,
+    initialZoom,
+    initialScrollX,
+    onZoomChange,
+    onScrollChange,
+    runningTimer,
+    onOpenRunningTimer,
 }: LiveFocusViewProps) {
     const { width: screenWidth, height: screenHeight } = useWindowDimensions();
     const isLandscape = screenWidth > screenHeight;
     const progressDockHeight = 55; // Fixed ultra-compact height
-    // Use a ref for current time to avoid re-renders - captured once on mount
+    // Ref for live "now" — updated every second with nowHHMMSS so NOW line and getNowPosition stay in sync
     const currentTimeRef = useRef(new Date());
     const DEBUG_LANES = false;
     // Refs to avoid stale state inside PanResponder
+    const tasksRef = useRef<Task[]>([]);
     const minutesPerCellRef = useRef(60);
     const isDraggingRef = useRef(false);
     const isResizingRef = useRef(false);
@@ -86,8 +118,8 @@ export default function LiveFocusView({
     const verticalScrollRef = useRef<ScrollView>(null);
     const verticalScrollLabelsRef = useRef<ScrollView>(null);
 
-    // Zoom state
-    const [minutesPerCell, setMinutesPerCell] = useState(60); // Default to 60 minutes (1 hour)
+    // Zoom state (initial from parent for persistence across unmounts)
+    const [minutesPerCell, setMinutesPerCell] = useState(initialZoom ?? 60);
     const [lastPinchDistance, setLastPinchDistance] = useState(0);
 
     // Editing state
@@ -103,6 +135,7 @@ export default function LiveFocusView({
     const [resizeModeStage, setResizeModeStage] = useState<{ taskId: number, stageId: number } | null>(null);
     const resizeHandleSideRef = useRef<'left' | 'right' | null>(null);
     const resizeModeStageRef = useRef<{ taskId: number, stageId: number } | null>(null);
+    const commitLayoutChangeRef = useRef<() => void>(() => {});
 
     // Dynamic height tracking for each task
     const [taskHeights, setTaskHeights] = useState<Map<number, number>>(new Map());
@@ -118,10 +151,20 @@ export default function LiveFocusView({
     const [pendingLayoutsVersion, setPendingLayoutsVersion] = useState(0);
 
     // Add subtask modal state
-    const [addSubtaskModal, setAddSubtaskModal] = useState<{ visible: boolean; taskId: number | null; startTimeMinutes: number }>({
+    const [addSubtaskModal, setAddSubtaskModal] = useState<{ 
+        visible: boolean; 
+        taskId: number | null; 
+        startTimeMinutes: number;
+        mode?: 'add' | 'edit';
+        stageId?: number | null;
+        existingText?: string;
+        existingStartTime?: number;
+        existingDuration?: number;
+    }>({
         visible: false,
         taskId: null,
         startTimeMinutes: 0,
+        mode: 'add',
     });
 
     // Floating progress bar state (UI-only; resets safely on unmount)
@@ -131,6 +174,8 @@ export default function LiveFocusView({
 
     // Task column visibility toggle
     const [isTaskColumnVisible, setIsTaskColumnVisible] = useState(true);
+    // 1 = open, 0 = closed; drives smooth width animation and button position
+    const taskColumnWidthAnim = useRef(new Animated.Value(1)).current;
 
     // Auto-scroll during drag/resize
     const autoScrollIntervalRef = useRef<NodeJS.Timeout | null>(null);
@@ -145,6 +190,15 @@ export default function LiveFocusView({
     const [approvalPopupVisible, setApprovalPopupVisible] = useState(false);
     const approvalButtonScale = useRef(new Animated.Value(1)).current;
 
+    // Stage status popup (reuses timer subtask status popup) — when a stage is selected in the dock
+    const [stageStatusPopupVisible, setStageStatusPopupVisible] = useState(false);
+    const [stageStatusPopupPosition, setStageStatusPopupPosition] = useState({ x: 0, y: 0 });
+    const statusButtonRef = useRef<View>(null);
+
+    // Dock calendar: clickable date line (e.g. 21 JAN) opens small calendar to pick date and switch live view
+    const [showDockCalendar, setShowDockCalendar] = useState(false);
+    const [viewDate, setViewDate] = useState(() => new Date());
+
     // Simple timer state (counts up from 00:00:00)
     const [timerSeconds, setTimerSeconds] = useState(0);
     const [isTimerRunning, setIsTimerRunning] = useState(false);
@@ -158,6 +212,14 @@ export default function LiveFocusView({
             useNativeDriver: true, // translateY animation
         }).start();
     }, [isProgressExpanded, progressAnim]);
+
+    // Prevent phone from auto-locking while LiveFocusView is open
+    useEffect(() => {
+        activateKeepAwakeAsync();
+        return () => {
+            deactivateKeepAwake();
+        };
+    }, []);
 
     // Timer count-up logic
     useEffect(() => {
@@ -178,6 +240,44 @@ export default function LiveFocusView({
             }
         };
     }, [isTimerRunning]);
+
+    // Live current time HH:MM:SS for the Now button; also updates currentTimeRef so NOW line moves in real time.
+    // Date rollover: when the clock crosses the daily start time, switch to the new logical day.
+    // IMPORTANT: Only auto-update date when viewing today (to handle date rollover). Don't override user-selected past/future dates.
+    const [nowHHMMSS, setNowHHMMSS] = useState('');
+    const wasViewingTodayRef = useRef(false); // Track if we were viewing today in the previous tick
+    useEffect(() => {
+        const tick = () => {
+            const d = new Date();
+            currentTimeRef.current = d;
+            setNowHHMMSS(
+                `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}:${String(d.getSeconds()).padStart(2, '0')}`
+            );
+            const logicalNow = getLogicalDate(d, dailyStartMinutes);
+            const logicalSel = getLogicalDate(selectedDate, dailyStartMinutes);
+            
+            // Only auto-update if:
+            // 1. We were viewing today in the previous tick (wasViewingTodayRef.current === true)
+            // 2. AND now the logical day has changed (rollover occurred)
+            // This handles date rollover when viewing today, but doesn't override user-selected past/future dates
+            if (wasViewingTodayRef.current && logicalNow !== logicalSel) {
+                // We were viewing today, and now the day has rolled over - update to new day
+                onDateChange(getStartOfLogicalDay(d, dailyStartMinutes));
+            }
+            
+            // Update the ref for next tick: are we viewing today now?
+            wasViewingTodayRef.current = (logicalNow === logicalSel);
+        };
+        // Initialize: check if we're viewing today on mount
+        const initialD = new Date();
+        const initialLogicalNow = getLogicalDate(initialD, dailyStartMinutes);
+        const initialLogicalSel = getLogicalDate(selectedDate, dailyStartMinutes);
+        wasViewingTodayRef.current = (initialLogicalNow === initialLogicalSel);
+        
+        tick();
+        const t = setInterval(tick, 1000);
+        return () => clearInterval(t);
+    }, [dailyStartMinutes, selectedDate, onDateChange]);
 
     const debugLog = useCallback((...args: any[]) => {
         if (!DEBUG_LANES) return;
@@ -226,9 +326,12 @@ export default function LiveFocusView({
         const temp = tempStageLayoutRef.current;
         const mpc = minutesPerCellRef.current;
 
-        // Persist whenever we have a temp layout (meaning user was dragging or resizing)
+        // Persist whenever we have a temp layout (meaning user was dragging or resizing).
+        // temp.left is in display space (0 = daily start). Convert to minutes-from-midnight:
+        // startTimeMinutes = (displayStart + dailyStartMinutes) % 1440
         if (a && temp && (onUpdateStages || onUpdateStageLayout)) {
-            const startTime = Math.round((temp.left / CELL_WIDTH) * mpc);
+            const displayStart = (temp.left / CELL_WIDTH) * mpc;
+            const startTime = (Math.round(displayStart) + dailyStartMinutes) % 1440;
             const duration = Math.round((temp.width / CELL_WIDTH) * mpc);
 
             // 1. Synchronously update pending layouts REF
@@ -238,7 +341,9 @@ export default function LiveFocusView({
             });
 
             // 2. Batch Update: Merge ALL pending layouts for this task
-            const targetTask = tasks.find(t => t.id === a.taskId);
+            // Use tasksRef so we always have latest tasks (e.g. after approval) without
+            // commitLayoutChange depending on [tasks], which would recreate it and could reset state.
+            const targetTask = tasksRef.current.find(t => t.id === a.taskId);
             if (targetTask && onUpdateStages) {
                 // If we have onUpdateStages, we can send the full list of updated stages
                 // which prevents race conditions in the parent component
@@ -289,6 +394,7 @@ export default function LiveFocusView({
         setInitialStageLayout(null);
         setTempStageLayout(null);
         setLastPinchDistance(0);
+        setResizeModeStage(null);
 
         // Also clear refs immediately for synchronous access during next render cycle
         activeStageRef.current = null;
@@ -297,7 +403,11 @@ export default function LiveFocusView({
         initialStageLayoutRef.current = null;
         tempStageLayoutRef.current = null;
         resizeModeStageRef.current = null;
-    }, [onUpdateStageLayout, onUpdateStages, tasks, stopAutoScroll, debugLog, minutesPerCell]);
+    }, [onUpdateStageLayout, onUpdateStages, stopAutoScroll, debugLog, dailyStartMinutes]);
+
+    useEffect(() => {
+        commitLayoutChangeRef.current = commitLayoutChange;
+    }, [commitLayoutChange]);
 
     const resetScrollTracking = useCallback(() => {
         dragStartScrollXRef.current = timelineScrollXRef.current;
@@ -386,20 +496,21 @@ export default function LiveFocusView({
     }, [isTaskColumnVisible, screenWidth, startAutoScroll, stopAutoScroll]);
 
 
-    // Calculate timeline based on zoom level
+    // Calculate timeline based on zoom level.
+    // Timeline runs from daily start (e.g. 06:00) to next daily start (06:00) — 1440 display minutes.
     const CELL_WIDTH = 80; // Fixed width per cell
-    const START_HOUR = 0;
-    const END_HOUR = 24;
-    const TOTAL_MINUTES = (END_HOUR - START_HOUR) * 60;
+    const TOTAL_MINUTES = 1440;
     const TOTAL_CELLS = Math.ceil(TOTAL_MINUTES / minutesPerCell);
     const TRACK_HEIGHT = 80; // Reduced for compact design
     const TRACK_LABEL_WIDTH = 150;
+    /** Same as BASE_TOP: space between the last card and the horizontal separator below, so it matches the gap between the top separator and the first card. */
+    const TRACK_BOTTOM_PADDING = 7;
     const TIMELINE_WIDTH = TRACK_LABEL_WIDTH + TOTAL_CELLS * CELL_WIDTH + 100;
 
-    // Generate time labels based on zoom level
+    // Generate time labels based on zoom level.
+    // Display axis 0..1440; label shows wall clock: (displayMinutes + dailyStartMinutes) % 1440.
     const getTimeLabels = () => {
         const labels = [];
-        // Determine label frequency based on zoom to prevent overlap
         let labelStep = minutesPerCell;
         if (minutesPerCell < 15) labelStep = 15;
         else if (minutesPerCell < 30) labelStep = 30;
@@ -407,11 +518,12 @@ export default function LiveFocusView({
         else if (minutesPerCell < 120) labelStep = 120;
 
         for (let minutes = 0; minutes <= TOTAL_MINUTES; minutes += labelStep) {
-            const hours = Math.floor(minutes / 60);
-            const mins = minutes % 60;
+            const wallMinutes = (minutes + dailyStartMinutes) % 1440;
+            const hours = Math.floor(wallMinutes / 60);
+            const mins = wallMinutes % 60;
             labels.push({
                 text: `${String(hours).padStart(2, '0')}:${String(mins).padStart(2, '0')}`,
-                left: (minutes / minutesPerCell) * CELL_WIDTH, // No TRACK_LABEL_WIDTH offset for timeline-only labels
+                left: (minutes / minutesPerCell) * CELL_WIDTH,
             });
         }
         return labels;
@@ -434,17 +546,20 @@ export default function LiveFocusView({
                 const newMinutesPerCell = minutesPerCell * ratio;
 
                 // Clamp minutesPerCell between 5 minutes and 240 minutes (4 hours)
-                setMinutesPerCell(Math.max(5, Math.min(240, newMinutesPerCell)));
+                const clamped = Math.max(5, Math.min(240, newMinutesPerCell));
+                setMinutesPerCell(clamped);
+                onZoomChange?.(clamped);
             }
             setLastPinchDistance(distance);
         }
-    }, [lastPinchDistance, minutesPerCell, activeStage]);
+    }, [lastPinchDistance, minutesPerCell, activeStage, onZoomChange]);
 
     const handleTouchEnd = useCallback(() => {
         setLastPinchDistance(0);
     }, []);
 
     // Keep refs in sync
+    useEffect(() => { tasksRef.current = tasks; }, [tasks]);
     useEffect(() => { minutesPerCellRef.current = minutesPerCell; }, [minutesPerCell]);
     useEffect(() => { isDraggingRef.current = isDragging; }, [isDragging]);
     useEffect(() => { isResizingRef.current = isResizing; }, [isResizing]);
@@ -454,6 +569,29 @@ export default function LiveFocusView({
     useEffect(() => { lastPinchDistanceRef.current = lastPinchDistance; }, [lastPinchDistance]);
     useEffect(() => { resizeModeStageRef.current = resizeModeStage; }, [resizeModeStage]);
     useEffect(() => { checkAndUpdateAutoScrollRef.current = checkAndUpdateAutoScroll; }, [checkAndUpdateAutoScroll]);
+
+    // Apply initialZoom when it changes (e.g. parent restored from AsyncStorage after mount).
+    // Skip if already the same to avoid echo-updates and flicker when we caused the change.
+    useEffect(() => {
+        const target = initialZoom ?? 60;
+        if (Math.abs(target - minutesPerCellRef.current) <= 0.5) return;
+        setMinutesPerCell(target);
+    }, [initialZoom]);
+
+    // Apply initialScrollX when it changes (e.g. parent restored from AsyncStorage after mount).
+    // Skip if already at that position to avoid programmatic scroll that causes flicker.
+    // Set isScrollingHorizontally before programmatic scrollTo so scroll handlers skip onScrollChange.
+    useEffect(() => {
+        const x = initialScrollX ?? 0;
+        if (Math.abs(x - timelineScrollXRef.current) <= 2) return;
+        timelineScrollXRef.current = x;
+        isScrollingHorizontally.current = true;
+        horizontalScrollTimelineRef.current?.scrollTo({ x, animated: false });
+        horizontalScrollHeaderRef.current?.scrollTo({ x, animated: false });
+        requestAnimationFrame(() => {
+            isScrollingHorizontally.current = false;
+        });
+    }, [initialScrollX]);
 
     // Cleanup auto-scroll on unmount
     useEffect(() => {
@@ -602,10 +740,10 @@ export default function LiveFocusView({
                 }
             },
             onPanResponderRelease: () => {
-                commitLayoutChange();
+                commitLayoutChangeRef.current?.();
             },
             onPanResponderTerminate: () => {
-                commitLayoutChange();
+                commitLayoutChangeRef.current?.();
             },
         })
     ).current;
@@ -631,10 +769,6 @@ export default function LiveFocusView({
         }
     }, [tasks.length]);
 
-    // Track if we've centered on initial mount to prevent re-centering on updates
-    const hasCenteredOnMountRef = useRef(false);
-    const initialScrollXRef = useRef<number | null>(null);
-
     // NOTE: Removed the cleanup effect for pendingLayoutsRef
     // Pending layouts now persist for the lifetime of the component
     // This prevents any race conditions where A1 reverts when A2 is edited
@@ -656,52 +790,33 @@ export default function LiveFocusView({
     // Track if we're programmatically scrolling to prevent infinite loops
     const isScrollingVertically = useRef(false);
     const isScrollingHorizontally = useRef(false);
-    const lastVerticalScrollTime = useRef(0);
     const lastHorizontalScrollTime = useRef(0);
 
-    // Sync vertical scrolling from timeline to labels - optimized for smooth scrolling
+    // Sync vertical scrolling from timeline to labels – smooth, bidirectional
     const handleVerticalScroll = useCallback((event: NativeSyntheticEvent<NativeScrollEvent>) => {
         if (isScrollingVertically.current) return;
-
-        const now = Date.now();
-        // Throttle to ~60fps for smoother performance
-        if (now - lastVerticalScrollTime.current < 16) return;
-        lastVerticalScrollTime.current = now;
-
         const offsetY = event.nativeEvent.contentOffset.y;
-
         if (verticalScrollLabelsRef.current) {
             isScrollingVertically.current = true;
             verticalScrollLabelsRef.current.scrollTo({ y: offsetY, animated: false });
-            // Reset flag immediately using requestAnimationFrame for next frame
-            requestAnimationFrame(() => {
-                isScrollingVertically.current = false;
-            });
+            setTimeout(() => { isScrollingVertically.current = false; }, 50);
         }
     }, []);
 
-    // Sync vertical scrolling from labels to timeline - bidirectional sync
+    // Sync vertical scrolling from labels to timeline – smooth, bidirectional
     const handleVerticalScrollLabels = useCallback((event: NativeSyntheticEvent<NativeScrollEvent>) => {
         if (isScrollingVertically.current) return;
-
-        const now = Date.now();
-        // Throttle to ~60fps for smoother performance
-        if (now - lastVerticalScrollTime.current < 16) return;
-        lastVerticalScrollTime.current = now;
-
         const offsetY = event.nativeEvent.contentOffset.y;
-
         if (verticalScrollRef.current) {
             isScrollingVertically.current = true;
             verticalScrollRef.current.scrollTo({ y: offsetY, animated: false });
-            // Reset flag immediately using requestAnimationFrame for next frame
-            requestAnimationFrame(() => {
-                isScrollingVertically.current = false;
-            });
+            setTimeout(() => { isScrollingVertically.current = false; }, 50);
         }
     }, []);
 
     // Sync horizontal scrolling between header and timeline - optimized to reduce flickering
+    // onScrollChange is only called for user-initiated scrolls; programmatic sync (from the
+    // other ScrollView) returns early via isScrollingHorizontally and does not call onScrollChange.
     const handleHorizontalScroll = useCallback((event: NativeSyntheticEvent<NativeScrollEvent>) => {
         if (isScrollingHorizontally.current) return;
 
@@ -712,6 +827,7 @@ export default function LiveFocusView({
 
         const offsetX = event.nativeEvent.contentOffset.x;
         timelineScrollXRef.current = offsetX;
+        onScrollChange?.(offsetX);
 
         if (horizontalScrollHeaderRef.current) {
             isScrollingHorizontally.current = true;
@@ -721,7 +837,7 @@ export default function LiveFocusView({
                 isScrollingHorizontally.current = false;
             });
         }
-    }, []);
+    }, [onScrollChange]);
 
     const handleHorizontalScrollHeader = useCallback((event: NativeSyntheticEvent<NativeScrollEvent>) => {
         if (isScrollingHorizontally.current) return;
@@ -733,6 +849,7 @@ export default function LiveFocusView({
 
         const offsetX = event.nativeEvent.contentOffset.x;
         timelineScrollXRef.current = offsetX;
+        onScrollChange?.(offsetX);
 
         if (horizontalScrollTimelineRef.current) {
             isScrollingHorizontally.current = true;
@@ -742,93 +859,34 @@ export default function LiveFocusView({
                 isScrollingHorizontally.current = false;
             });
         }
-    }, []);
+    }, [onScrollChange]);
 
-    // NOW position (relative to timeline, not including label width)
-    // Uses ref to avoid re-renders
+    // NOW position (relative to timeline). Display axis: 0 = daily start, 1440 = next daily start.
+    // displayMinutes = (minutesFromMidnight - dailyStartMinutes + 1440) % 1440
     const getNowPosition = () => {
         const totalMinutesNow = currentTimeRef.current.getHours() * 60 + currentTimeRef.current.getMinutes();
-        if (totalMinutesNow < START_HOUR * 60) return 0;
-        if (totalMinutesNow > END_HOUR * 60) return TOTAL_CELLS * CELL_WIDTH;
-        return (totalMinutesNow / minutesPerCell) * CELL_WIDTH;
+        const displayMinutes = (totalMinutesNow - dailyStartMinutes + 1440) % 1440;
+        return (displayMinutes / minutesPerCell) * CELL_WIDTH;
     };
 
-    // Calculate and set initial scroll position to center NOW line
-    const calculateAndSetScrollPosition = useCallback(() => {
-        if (screenWidth === 0) return null; // Wait for screen dimensions
-
-        const nowPosition = getNowPosition();
-        const timelineVisibleWidth = screenWidth - TRACK_LABEL_WIDTH;
-        const centerOffset = timelineVisibleWidth / 2;
-        const scrollX = Math.max(0, nowPosition - centerOffset);
-
-        return scrollX;
-    }, [screenWidth, minutesPerCell]); // Removed currentTime dependency
-
-    // Calculate initial scroll position on mount
-    useLayoutEffect(() => {
-        if (hasCenteredOnMountRef.current) return;
-
-        const scrollX = calculateAndSetScrollPosition();
-        if (scrollX === null) return;
-
-        initialScrollXRef.current = scrollX;
-        timelineScrollXRef.current = scrollX;
-        hasCenteredOnMountRef.current = true;
-
-        // Set scroll position immediately if refs are already available
-        if (horizontalScrollTimelineRef.current) {
-            horizontalScrollTimelineRef.current.scrollTo({ x: scrollX, animated: false });
-        }
-        if (horizontalScrollHeaderRef.current) {
-            horizontalScrollHeaderRef.current.scrollTo({ x: scrollX, animated: false });
-        }
-    }, [calculateAndSetScrollPosition]);
-
-    // Ref callback to set scroll position immediately when ScrollView mounts
+    // Ref callbacks: apply initialScrollX (from parent) when ScrollView mounts
     const setTimelineScrollRef = useCallback((ref: ScrollView | null) => {
         horizontalScrollTimelineRef.current = ref;
         if (ref) {
-            let scrollX = initialScrollXRef.current;
-
-            // Calculate scroll position if not already calculated
-            if (scrollX === null && !hasCenteredOnMountRef.current) {
-                scrollX = calculateAndSetScrollPosition();
-                if (scrollX !== null) {
-                    initialScrollXRef.current = scrollX;
-                    timelineScrollXRef.current = scrollX;
-                    hasCenteredOnMountRef.current = true;
-                }
-            }
-
-            if (scrollX !== null) {
-                // Set scroll position immediately - ref callback runs during render, before paint
-                ref.scrollTo({ x: scrollX, animated: false });
-            }
+            const x = initialScrollX ?? 0;
+            timelineScrollXRef.current = x;
+            ref.scrollTo({ x, animated: false });
         }
-    }, [calculateAndSetScrollPosition]);
+    }, [initialScrollX]);
 
     const setHeaderScrollRef = useCallback((ref: ScrollView | null) => {
         horizontalScrollHeaderRef.current = ref;
         if (ref) {
-            let scrollX = initialScrollXRef.current;
-
-            // Calculate scroll position if not already calculated
-            if (scrollX === null && !hasCenteredOnMountRef.current) {
-                scrollX = calculateAndSetScrollPosition();
-                if (scrollX !== null) {
-                    initialScrollXRef.current = scrollX;
-                    timelineScrollXRef.current = scrollX;
-                    hasCenteredOnMountRef.current = true;
-                }
-            }
-
-            if (scrollX !== null) {
-                // Set scroll position immediately - ref callback runs during render, before paint
-                ref.scrollTo({ x: scrollX, animated: false });
-            }
+            const x = initialScrollX ?? 0;
+            timelineScrollXRef.current = x;
+            ref.scrollTo({ x, animated: false });
         }
-    }, [calculateAndSetScrollPosition]);
+    }, [initialScrollX]);
 
     // Check if two stages overlap
     const checkStagesOverlap = useCallback((stage1: TaskStage, stage2: TaskStage): boolean => {
@@ -845,68 +903,57 @@ export default function LiveFocusView({
         return start1 < end2 && start2 < end1;
     }, []);
 
-    // Calculate lane assignment using the "previous-only" rule (matches the table example):
-    // - Sort by start time ascending.
-    // - For each stage, compare ONLY with the immediately previous stage in this sorted order.
-    // - Overlap check is: current.start < previous.end
-    // - If overlap: current goes one line BELOW previous (prevLane + 1)
-    // - If no overlap: current stays on the SAME line as previous (prevLane)
-    // This guarantees:
-    // - D aligns with C if D.start >= C.end
-    // - E goes below D if E.start < D.end
-    // - No stage ever "jumps upward" to an unrelated earlier line
-    // - Layout grows only when overlap exists (with the previous stage)
-    // IMPORTANT: Uses pending layouts to get correct positions for edited stages
+    // Lane assignment: 6-to-6 as a single day (display 0–1440). Overlap in DISPLAY space so overnight aligns when it doesn’t overlap last today.
+    // - Overlap (in display) => next lane down; no overlap => same lane as previous (align with last card).
+    // - Single pass: today (start>=dailyStart) first by start, then overnight (start<dailyStart) by start. No reset: first overnight’s “previous” is last today.
+    // - Overlap: (curDisplayStart < prevDisplayEnd) && (prevDisplayStart < curDisplayEnd). Uses pending layouts.
     const calculateStageLanes = useCallback((stages: TaskStage[]): Map<number, number> => {
         if (stages.length === 0) return new Map();
 
-        const laneMap = new Map<number, number>(); // stageId -> lane number
-
-        // Helper to get effective start/duration (pending or props)
         const getEffectiveTime = (stage: TaskStage) => {
             const pending = pendingLayoutsRef.current.get(stage.id);
-            if (pending) {
-                return { start: pending.startTimeMinutes, duration: pending.durationMinutes };
-            }
-            return {
-                start: stage.startTimeMinutes ?? 0,
-                duration: stage.durationMinutes ?? 180
-            };
+            if (pending) return { start: pending.startTimeMinutes, duration: pending.durationMinutes };
+            return { start: stage.startTimeMinutes ?? 0, duration: stage.durationMinutes ?? 180 };
         };
 
-        // Sort by start time asc (using effective time), tie-breaker id asc (stable)
+        const getDisplayBounds = (stage: TaskStage) => {
+            const { start, duration } = getEffectiveTime(stage);
+            const displayStart = (start - dailyStartMinutes + 1440) % 1440;
+            const displayEnd = Math.min(displayStart + duration, 1440);
+            return { displayStart, displayEnd };
+        };
+
+        // Order: today (start>=dailyStart) by start, then overnight (start<dailyStart) by start
         const sortedStages = [...stages].sort((a, b) => {
             const timeA = getEffectiveTime(a);
             const timeB = getEffectiveTime(b);
+            const inTodayA = timeA.start >= dailyStartMinutes ? 0 : 1;
+            const inTodayB = timeB.start >= dailyStartMinutes ? 0 : 1;
+            if (inTodayA !== inTodayB) return inTodayA - inTodayB;
             if (timeA.start !== timeB.start) return timeA.start - timeB.start;
             return a.id - b.id;
         });
 
-        // First stage always starts at lane 0
-        const firstTime = getEffectiveTime(sortedStages[0]);
+        const laneMap = new Map<number, number>();
+        const b0 = getDisplayBounds(sortedStages[0]);
         let prevLane = 0;
-        let prevEnd = firstTime.start + firstTime.duration;
+        let prevDisplayStart = b0.displayStart;
+        let prevDisplayEnd = b0.displayEnd;
         laneMap.set(sortedStages[0].id, 0);
 
         for (let i = 1; i < sortedStages.length; i++) {
             const cur = sortedStages[i];
-            const curTime = getEffectiveTime(cur);
-            const curStart = curTime.start;
-            const curDuration = curTime.duration;
-            const curEnd = curStart + curDuration;
-
-            const overlapsPrev = curStart < prevEnd;
+            const cb = getDisplayBounds(cur);
+            // Overlap in 6–6 display: both intervals share some time
+            const overlapsPrev = (cb.displayStart < prevDisplayEnd) && (prevDisplayStart < cb.displayEnd);
             const curLane = overlapsPrev ? prevLane + 1 : prevLane;
-
             laneMap.set(cur.id, curLane);
-
-            // Advance "previous" pointer for next comparison (previous-only rule)
             prevLane = curLane;
-            prevEnd = curEnd;
+            prevDisplayStart = cb.displayStart;
+            prevDisplayEnd = cb.displayEnd;
         }
-
         return laneMap;
-    }, []);
+    }, [dailyStartMinutes]);
 
     // Stage position based on zoom level (relative to timeline start, not including label width)
     const getStageLayout = (stage: TaskStage, stageIndex: number, lane?: number): { left: number; width: number; top: number } => {
@@ -926,36 +973,35 @@ export default function LiveFocusView({
 
         const top = lane !== undefined ? BASE_TOP + (lane * (CARD_HEIGHT + LANE_SPACING)) : BASE_TOP;
 
-        // Check pending layouts REF first - these are committed changes waiting for props to update
+        // Check pending layouts REF first - these are committed changes waiting for props to update.
+        // startTimeMinutes is minutes-from-midnight; convert to display: (start - dailyStart + 1440) % 1440
         const pending = pendingLayoutsRef.current.get(stage.id);
         if (pending) {
-            const pendingLeft = (pending.startTimeMinutes / minutesPerCell) * CELL_WIDTH;
+            const displayStart = (pending.startTimeMinutes - dailyStartMinutes + 1440) % 1440;
+            const pendingLeft = (displayStart / minutesPerCell) * CELL_WIDTH;
             const pendingWidth = (pending.durationMinutes / minutesPerCell) * CELL_WIDTH;
             return { left: pendingLeft, width: Math.max(pendingWidth, 60), top };
         }
 
         // Default values: startTime = 0 (00:00), duration = 180 minutes (3 hours)
         const startTime = stage.startTimeMinutes ?? 0;
-        const duration = stage.durationMinutes ?? 180; // Default: 3 hours
-
-        const left = (startTime / minutesPerCell) * CELL_WIDTH; // No TRACK_LABEL_WIDTH offset
+        const duration = stage.durationMinutes ?? 180;
+        const displayStart = (startTime - dailyStartMinutes + 1440) % 1440;
+        const left = (displayStart / minutesPerCell) * CELL_WIDTH;
         const width = (duration / minutesPerCell) * CELL_WIDTH;
 
-        return { left, width: Math.max(width, 60), top }; // Minimum width of 60
+        return { left, width: Math.max(width, 60), top };
     };
 
-    // Get effective stage time (live during drag/resize, or from pending layouts, or from props)
-    // This function returns real-time values during dragging for live time display
+    // Get effective stage time (live during drag/resize, or from pending layouts, or from props).
+    // Returns minutes-from-midnight for display (formatTimeCompact etc).
     const getEffectiveStageTime = useCallback((stage: TaskStage): { startTimeMinutes: number; durationMinutes: number } => {
-        // LIVE MODE: If this stage is being actively dragged or resized, calculate from tempStageLayout
+        // LIVE MODE: tempStageLayout.left is in display space; convert to minutes-from-midnight
         if (activeStage?.stageId === stage.id && tempStageLayout) {
-            // Calculate live time from the current visual position
-            const liveStartTime = (tempStageLayout.left / CELL_WIDTH) * minutesPerCell;
-            const liveDuration = (tempStageLayout.width / CELL_WIDTH) * minutesPerCell;
-            return {
-                startTimeMinutes: Math.round(liveStartTime),
-                durationMinutes: Math.round(liveDuration),
-            };
+            const displayStart = (tempStageLayout.left / CELL_WIDTH) * minutesPerCell;
+            const startTimeMinutes = (Math.round(displayStart) + dailyStartMinutes) % 1440;
+            const durationMinutes = Math.round((tempStageLayout.width / CELL_WIDTH) * minutesPerCell);
+            return { startTimeMinutes, durationMinutes };
         }
 
         // Check pending layouts REF (synchronous access)
@@ -969,7 +1015,7 @@ export default function LiveFocusView({
             startTimeMinutes: stage.startTimeMinutes ?? 0,
             durationMinutes: stage.durationMinutes ?? 180,
         };
-    }, [activeStage, tempStageLayout, minutesPerCell, pendingLayoutsVersion]);
+    }, [activeStage, tempStageLayout, minutesPerCell, pendingLayoutsVersion, dailyStartMinutes]);
 
     // Format time for compact display (e.g., "09:00" or "2h30m")
     const formatTimeCompact = (minutes: number): string => {
@@ -1003,18 +1049,164 @@ export default function LiveFocusView({
         return `${String(startHour % 24).padStart(2, '0')}:${String(startMin).padStart(2, '0')} - ${String(endHour % 24).padStart(2, '0')}:${String(endMin).padStart(2, '0')}`;
     };
 
+    // Date line for dock: "21 JAN"
+    const formatDateLabel = (d: Date) => `${d.getDate()} ${MONTHS_SHORT[d.getMonth()]}`;
+
+    // Calendar helpers (small popup, same design as AddTaskModal)
+    const getDaysInMonth = (year: number, month: number) => new Date(year, month + 1, 0).getDate();
+    const getFirstDayOfMonth = (year: number, month: number) => new Date(year, month, 1).getDay();
+    const changeMonth = (delta: number) => {
+        setViewDate(prev => new Date(prev.getFullYear(), prev.getMonth() + delta, 1));
+        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    };
+
+    const renderDockCalendar = () => {
+        const days = getDaysInMonth(viewDate.getFullYear(), viewDate.getMonth());
+        const firstDay = getFirstDayOfMonth(viewDate.getFullYear(), viewDate.getMonth());
+        const daysArray: { day: number; current: boolean }[] = [];
+        const prevMonthDays = getDaysInMonth(viewDate.getFullYear(), viewDate.getMonth() - 1);
+        for (let i = firstDay - 1; i >= 0; i--) {
+            daysArray.push({ day: prevMonthDays - i, current: false });
+        }
+        for (let i = 1; i <= days; i++) {
+            daysArray.push({ day: i, current: true });
+        }
+        const remaining = 42 - daysArray.length;
+        for (let i = 1; i <= remaining; i++) {
+            daysArray.push({ day: i, current: false });
+        }
+        const weekDays = ['S', 'M', 'T', 'W', 'T', 'F', 'S'];
+        const todayLogical = getLogicalDate(new Date(), dailyStartMinutes);
+
+        return (
+            <View style={styles.calendarMini}>
+                <View style={styles.calHeader}>
+                    <TouchableOpacity onPress={() => { setShowDockCalendar(false); Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); }} style={styles.calBack}>
+                        <MaterialIcons name="arrow-back" size={20} color="#fff" />
+                    </TouchableOpacity>
+                    <Text style={styles.calTitle}>{MONTHS_CAL[viewDate.getMonth()]} {viewDate.getFullYear()}</Text>
+                    <View style={styles.calNav}>
+                        <TouchableOpacity onPress={() => changeMonth(-1)} style={styles.calNavBtn}>
+                            <MaterialIcons name="chevron-left" size={20} color="#fff" />
+                        </TouchableOpacity>
+                        <TouchableOpacity onPress={() => changeMonth(1)} style={styles.calNavBtn}>
+                            <MaterialIcons name="chevron-right" size={20} color="#fff" />
+                        </TouchableOpacity>
+                    </View>
+                </View>
+                <View style={styles.weekRow}>
+                    {weekDays.map((d, i) => <Text key={i} style={styles.weekText}>{d}</Text>)}
+                </View>
+                <View style={styles.daysGrid}>
+                    {daysArray.map((item, i) => {
+                        // Use calendar YYYY-MM-DD for the tapped day (avoid midnight rollback: getLogicalDate(00:00) would yield previous day when dailyStart > 0)
+                        const cellLogical = item.current
+                            ? `${viewDate.getFullYear()}-${String(viewDate.getMonth() + 1).padStart(2, '0')}-${String(item.day).padStart(2, '0')}`
+                            : '';
+                        const isSelected = item.current && cellLogical === getLogicalDate(selectedDate, dailyStartMinutes);
+                        const isToday = item.current && cellLogical === todayLogical;
+
+                        return (
+                            <TouchableOpacity
+                                key={i}
+                                style={styles.dayCell}
+                                disabled={!item.current}
+                                onPress={() => {
+                                    if (item.current && cellLogical) {
+                                        onDateChange(getStartOfLogicalDayFromString(cellLogical, dailyStartMinutes));
+                                        setShowDockCalendar(false);
+                                        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+                                    }
+                                }}
+                            >
+                                <View style={[
+                                    styles.dayCircle,
+                                    !item.current && { opacity: 0.2 },
+                                    isToday && styles.todayCircle,
+                                    isSelected && styles.selectedFutureCircle,
+                                ]}>
+                                    <Text style={[
+                                        styles.dayText,
+                                        isToday && { color: '#000' },
+                                        isSelected && { color: '#4CAF50', fontWeight: '800' },
+                                    ]}>{item.day}</Text>
+                                </View>
+                            </TouchableOpacity>
+                        );
+                    })}
+                </View>
+            </View>
+        );
+    };
+
     const TIMELINE_ONLY_WIDTH = TOTAL_CELLS * CELL_WIDTH + 100; // Width without label column
 
-    // Time-of-day sliding background segments (timeline-level, derived from time ranges only)
-    // Recomputes automatically when zoom level changes or config changes.
+    // Scroll timeline so the NOW line is centered when viewing the current logical day; otherwise scroll to start (daily start).
+    const scrollToNow = useCallback(() => {
+        const now = new Date();
+        const timelineVisibleWidth = screenWidth - (isTaskColumnVisible ? TRACK_LABEL_WIDTH : 0);
+        const maxScrollX = Math.max(0, TIMELINE_ONLY_WIDTH - timelineVisibleWidth);
+
+        let scrollX: number;
+        if (isSameLogicalDay(selectedDate, now, dailyStartMinutes)) {
+            const totalMinutesNow = now.getHours() * 60 + now.getMinutes();
+            const displayMinutes = (totalMinutesNow - dailyStartMinutes + 1440) % 1440;
+            const nowPosition = (displayMinutes / minutesPerCell) * CELL_WIDTH;
+            scrollX = Math.max(0, Math.min(nowPosition - timelineVisibleWidth / 2, maxScrollX));
+        } else {
+            scrollX = 0; // Start of logical day
+        }
+
+        isScrollingHorizontally.current = true;
+        timelineScrollXRef.current = scrollX;
+        onScrollChange?.(scrollX);
+        horizontalScrollTimelineRef.current?.scrollTo({ x: scrollX, animated: true });
+        horizontalScrollHeaderRef.current?.scrollTo({ x: scrollX, animated: true });
+        requestAnimationFrame(() => {
+            isScrollingHorizontally.current = false;
+        });
+    }, [screenWidth, isTaskColumnVisible, minutesPerCell, onScrollChange, selectedDate, dailyStartMinutes]);
+
+    // When selectedDate changes, update scroll position: scroll to NOW if viewing today, otherwise scroll to start
+    useEffect(() => {
+        const now = new Date();
+        const timelineVisibleWidth = screenWidth - (isTaskColumnVisible ? TRACK_LABEL_WIDTH : 0);
+        const timelineOnlyWidth = TOTAL_CELLS * CELL_WIDTH + 100; // Recalculate since it depends on minutesPerCell
+        const maxScrollX = Math.max(0, timelineOnlyWidth - timelineVisibleWidth);
+
+        let scrollX: number;
+        if (isSameLogicalDay(selectedDate, now, dailyStartMinutes)) {
+            // Viewing today: center the NOW line
+            const totalMinutesNow = now.getHours() * 60 + now.getMinutes();
+            const displayMinutes = (totalMinutesNow - dailyStartMinutes + 1440) % 1440;
+            const nowPosition = (displayMinutes / minutesPerCell) * CELL_WIDTH;
+            scrollX = Math.max(0, Math.min(nowPosition - timelineVisibleWidth / 2, maxScrollX));
+        } else {
+            // Viewing past/future day: scroll to start (daily start time)
+            scrollX = 0;
+        }
+
+        // Update scroll position
+        timelineScrollXRef.current = scrollX;
+        onScrollChange?.(scrollX);
+        if (horizontalScrollTimelineRef.current) {
+            horizontalScrollTimelineRef.current.scrollTo({ x: scrollX, animated: true });
+        }
+        if (horizontalScrollHeaderRef.current) {
+            horizontalScrollHeaderRef.current.scrollTo({ x: scrollX, animated: true });
+        }
+    }, [selectedDate, screenWidth, isTaskColumnVisible, minutesPerCell, onScrollChange, dailyStartMinutes]);
+
+    // Time-of-day sliding background segments (timeline-level). Uses dailyStartMinutes so 0 = daily start.
     const timeOfDayBackgroundSegments = useMemo(() => {
         return buildTimeOfDayBackgroundSegments(
             timeOfDaySlots ?? DEFAULT_TIME_OF_DAY_SLOTS,
             minutesPerCell,
             CELL_WIDTH,
-            TOTAL_MINUTES
+            TOTAL_MINUTES,
+            dailyStartMinutes
         );
-    }, [timeOfDaySlots, minutesPerCell, CELL_WIDTH, TOTAL_MINUTES]);
+    }, [timeOfDaySlots, minutesPerCell, CELL_WIDTH, TOTAL_MINUTES, dailyStartMinutes]);
 
     const progressSummary = useMemo(() => {
         const totals = tasks.reduce(
@@ -1118,17 +1310,19 @@ export default function LiveFocusView({
                 const LANE_SPACING = 10; // 4px gap between consecutive subtasks
                 const BASE_TOP = 7;
                 const timedStagesHeight = maxLane >= 0
-                    ? BASE_TOP + ((maxLane + 1) * (CARD_HEIGHT + LANE_SPACING)) - LANE_SPACING + 7 // +7 for bottom padding
+                    ? BASE_TOP + ((maxLane + 1) * (CARD_HEIGHT + LANE_SPACING)) - LANE_SPACING + TRACK_BOTTOM_PADDING
                     : 0;
 
                 const trackHeight = Math.max(TRACK_HEIGHT, untimedListHeight, timedStagesHeight);
-                totalHeight += trackHeight + 1; // +1 for separator
+                totalHeight += trackHeight + 1 + TRACK_BOTTOM_PADDING; // +1 separator, +marginBottom so scroll height matches
             }
         });
         return totalHeight + 30; // +30 for extra padding at bottom
     }, [tasks, taskHeights, calculateStageLanes]);
 
     const contentHeight = calculateContentHeight();
+    // Keep timeline background full-screen when 0 or 1 task (min height = viewport)
+    const minScrollHeight = Math.max(contentHeight, screenHeight - 100);
 
     // Handler to update task height when measured
     const handleTaskHeightMeasured = useCallback((taskId: number, height: number) => {
@@ -1207,9 +1401,10 @@ export default function LiveFocusView({
         );
     }, [tasks, onUpdateStages]);
 
+    // 6-to-6 day as one: use toDisplayMinutes so 23:55→00:25 and "now" 01:30 compare correctly across midnight.
     const getApprovalCount = useCallback(() => {
-        const now = new Date();
-        const currentMinutes = now.getHours() * 60 + now.getMinutes();
+        const currentMinutes = currentTimeRef.current.getHours() * 60 + currentTimeRef.current.getMinutes();
+        const nowD = toDisplayMinutes(currentMinutes, dailyStartMinutes);
         let count = 0;
 
         tasks.forEach(task => {
@@ -1218,11 +1413,11 @@ export default function LiveFocusView({
                 const duration = stage.durationMinutes ?? 0;
                 const endTime = startTime + duration;
 
-                // 1. Approval for FINISHING: Process status and now past end time
-                const needsFinishApproval = stage.status === 'Process' && endTime <= currentMinutes;
+                const startD = toDisplayMinutes(startTime, dailyStartMinutes);
+                const endD = toDisplayMinutes(endTime >= 1440 ? endTime - 1440 : endTime, dailyStartMinutes);
 
-                // 2. Approval for STARTING: Upcoming status and now past or at start time
-                const needsStartApproval = stage.status === 'Upcoming' && startTime <= currentMinutes;
+                const needsFinishApproval = stage.status === 'Process' && endD <= nowD;
+                const needsStartApproval = stage.status === 'Upcoming' && startD <= nowD;
 
                 if (needsFinishApproval || needsStartApproval) {
                     count++;
@@ -1230,57 +1425,101 @@ export default function LiveFocusView({
             });
         });
         return count;
-    }, [tasks]);
+    }, [tasks, dailyStartMinutes]);
 
     const approvalCount = getApprovalCount();
+
+    // Same 6-to-6 display comparison as getApprovalCount/ApprovalPopup.
+    const stageNeedsApproval = useCallback((stage: TaskStage): 'START' | 'FINISH' | null => {
+        const currentMinutes = currentTimeRef.current.getHours() * 60 + currentTimeRef.current.getMinutes();
+        const nowD = toDisplayMinutes(currentMinutes, dailyStartMinutes);
+        const startTime = stage.startTimeMinutes ?? 0;
+        const duration = stage.durationMinutes ?? 0;
+        const endTime = startTime + duration;
+        const startD = toDisplayMinutes(startTime, dailyStartMinutes);
+        const endD = toDisplayMinutes(endTime >= 1440 ? endTime - 1440 : endTime, dailyStartMinutes);
+        if (stage.status === 'Process' && endD <= nowD) return 'FINISH';
+        if (stage.status === 'Upcoming' && startD <= nowD) return 'START';
+        return null;
+    }, [dailyStartMinutes]);
 
     return (
         <View style={styles.container}>
 
-            {/* Main Container: Fixed Labels + Scrollable Timeline */}
-            <View style={styles.mainContainer}>
-                {/* Toggle Button for Task Column (Pull-Handle style) */}
-                <TouchableOpacity
+            {/* Main Container: Fixed Labels + Scrollable Timeline. When progress dock is open, reserve bottom space so nothing is hidden. */}
+            <View style={[styles.mainContainer, isProgressExpanded && { paddingBottom: progressDockHeight }]}>
+                {/* Toggle Button for Task Column — smooth pill on the column edge */}
+                <Animated.View
                     style={[
-                        styles.taskColumnToggle,
-                        { left: isTaskColumnVisible ? TRACK_LABEL_WIDTH : 0 }
+                        styles.taskColumnToggleWrapper,
+                        {
+                            left: taskColumnWidthAnim.interpolate({
+                                inputRange: [0, 1],
+                                outputRange: [0, TRACK_LABEL_WIDTH - 12],
+                            }),
+                        },
                     ]}
-                    onPress={() => {
-                        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-                        setIsTaskColumnVisible(!isTaskColumnVisible);
-                    }}
-                    activeOpacity={0.8}
                 >
-                    <View style={styles.taskColumnToggleLine} />
-                    <MaterialIcons
-                        name={isTaskColumnVisible ? 'chevron-left' : 'chevron-right'}
-                        size={14}
-                        color="#FFFFFF"
-                    />
-                </TouchableOpacity>
+                    <TouchableOpacity
+                        style={styles.taskColumnToggle}
+                        onPress={() => {
+                            Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+                            const next = !isTaskColumnVisible;
+                            setIsTaskColumnVisible(next);
+                            Animated.timing(taskColumnWidthAnim, {
+                                toValue: next ? 1 : 0,
+                                duration: 280,
+                                useNativeDriver: false,
+                            }).start();
+                        }}
+                        activeOpacity={0.85}
+                    >
+                        <MaterialIcons
+                            name={isTaskColumnVisible ? 'chevron-left' : 'chevron-right'}
+                            size={16}
+                            color="rgba(255,255,255,0.9)"
+                        />
+                    </TouchableOpacity>
+                </Animated.View>
 
-                {/* Fixed Left Column - Task Labels */}
-                {isTaskColumnVisible && (
-                    <View style={styles.fixedLabelsColumn}>
-                        {/* Sticky Time Axis Header (empty space for alignment) */}
-                        <View style={[styles.stickyHeaderFixed, { width: TRACK_LABEL_WIDTH, height: 25 }]} />
+                {/* Fixed Left Column - Task Labels (always mounted; width animates for smooth open/close) */}
+                <Animated.View
+                    style={[
+                        styles.fixedLabelsColumn,
+                        styles.mainColumnWhenDockOpen,
+                        {
+                            width: taskColumnWidthAnim.interpolate({
+                                inputRange: [0, 1],
+                                outputRange: [0, TRACK_LABEL_WIDTH],
+                            }),
+                            overflow: 'hidden',
+                        },
+                    ]}
+                >
+                        {/* Task list heading: TASKS + count badge (aligns with timeline time-axis header) */}
+                        <View style={[styles.stickyHeaderFixed, styles.taskListHeader, { width: TRACK_LABEL_WIDTH, height: 25 }]}>
+                            <Text style={styles.taskListHeaderTitle}>TASKS</Text>
+                            <View style={styles.taskListHeaderBadge}>
+                                <Text style={styles.taskListHeaderBadgeText}>{tasks.length}</Text>
+                            </View>
+                        </View>
 
                         {/* Vertical Scroll for Labels (synced with timeline) */}
                         <ScrollView
                             ref={verticalScrollLabelsRef}
                             style={styles.verticalScrollLabels}
                             contentContainerStyle={{
-                                minHeight: contentHeight,
-                                paddingBottom: isProgressExpanded ? progressDockHeight : 20,
+                                minHeight: minScrollHeight,
+                                paddingBottom: 20,
                             }}
                             showsVerticalScrollIndicator={false}
-                            scrollEnabled={!activeStage} // Now scrollable, synced with timeline
+                            scrollEnabled={!activeStage}
                             onScroll={handleVerticalScrollLabels}
-                            scrollEventThrottle={16}
+                            scrollEventThrottle={8}
                             bounces={true}
                             bouncesZoom={false}
                             alwaysBounceVertical={true}
-                            removeClippedSubviews={Platform.OS === 'android'}
+                            removeClippedSubviews={false}
                             overScrollMode="never"
                         >
                             <View>
@@ -1316,7 +1555,7 @@ export default function LiveFocusView({
                                     const LANE_SPACING = 10; // 4px gap between consecutive subtasks
                                     const BASE_TOP = 7;
                                     const timedStagesHeight = maxLane >= 0
-                                        ? BASE_TOP + ((maxLane + 1) * (CARD_HEIGHT + LANE_SPACING)) - LANE_SPACING + 7
+                                        ? BASE_TOP + ((maxLane + 1) * (CARD_HEIGHT + LANE_SPACING)) - LANE_SPACING + TRACK_BOTTOM_PADDING
                                         : 0;
 
                                     const computedHeight = Math.max(TRACK_HEIGHT, untimedListHeight, timedStagesHeight);
@@ -1336,77 +1575,80 @@ export default function LiveFocusView({
                                         <View key={task.id}>
                                             <View style={styles.trackSeparator} />
                                             <View
-                                                style={[styles.trackLabelContainer, { height: trackHeight }]}
+                                                style={[styles.trackLabelContainer, { height: trackHeight, marginBottom: TRACK_BOTTOM_PADDING }]}
                                                 onLayout={handleLabelLayout}
                                             >
                                                 <TouchableOpacity
                                                     activeOpacity={1}
-                                                    onPress={() => {
-                                                        // Do nothing as requested by user to prevent page close
-                                                    }}
-                                                    style={[styles.trackLabel, { width: TRACK_LABEL_WIDTH }, isActive && styles.trackLabelActive]}
+                                                    onPress={() => {}}
+                                                    style={[
+                                                        styles.trackLabel,
+                                                        { width: TRACK_LABEL_WIDTH, borderLeftWidth: 3, borderLeftColor: category?.color || 'rgba(255,255,255,0.12)' },
+                                                        isActive && styles.trackLabelActive,
+                                                    ]}
                                                 >
-                                                    <View style={[styles.categoryAccent, { backgroundColor: category?.color || '#333' }]} />
-                                                    <View style={{ flex: 1, paddingLeft: 10 }}>
-                                                        <View style={styles.titleRow}>
-                                                            <Text style={[styles.trackTitle, isActive && styles.trackTitleActive]} numberOfLines={1}>
-                                                                {task.title}
-                                                            </Text>
-                                                            {isActive && <View style={styles.activeDot} />}
-                                                        </View>
-                                                        <View style={styles.subtitleRow}>
+                                                    <View style={styles.trackLabelInner}>
+                                                        {/* Category pill: icon + name */}
+                                                        <View style={[styles.categoryPill, { borderLeftColor: category?.color || 'rgba(255,255,255,0.2)' }]}>
                                                             {category && (
-                                                                <MaterialIcons
-                                                                    name={category.icon as any}
-                                                                    size={10}
-                                                                    color={category.color}
-                                                                    style={{ marginRight: 4 }}
-                                                                />
+                                                                <MaterialIcons name={category.icon as any} size={9} color={category.color} style={styles.categoryPillIcon} />
                                                             )}
-                                                            <Text style={[styles.trackSubtitle, { color: category ? category.color : 'rgba(255,255,255,0.4)' }]} numberOfLines={1}>
+                                                            <Text style={[styles.categoryPillText, { color: category ? category.color : 'rgba(255,255,255,0.5)' }]} numberOfLines={1}>
                                                                 {category ? category.name.toUpperCase() : 'GENERAL'}
                                                             </Text>
                                                         </View>
 
-                                                        {/* Stage Status Statistics */}
-                                                        <View style={styles.stageStatsRow}>
-                                                            {(() => {
-                                                                const s = task.stages || [];
-                                                                const up = s.filter(i => i.status === 'Upcoming').length;
-                                                                const proc = s.filter(i => i.status === 'Process').length;
-                                                                const done = s.filter(i => i.status === 'Done').length;
-                                                                const undon = s.filter(i => i.status === 'Undone').length;
-
-                                                                return (
-                                                                    <>
-                                                                        {up > 0 && (
-                                                                            <View style={styles.stageStatItem}>
-                                                                                <View style={[styles.miniStatusDot, { backgroundColor: 'rgba(255,255,255,0.3)' }]} />
-                                                                                <Text style={styles.stageStatText}>{up}</Text>
-                                                                            </View>
-                                                                        )}
-                                                                        {proc > 0 && (
-                                                                            <View style={styles.stageStatItem}>
-                                                                                <View style={[styles.miniStatusDot, { backgroundColor: '#FFB74D' }]} />
-                                                                                <Text style={styles.stageStatText}>{proc}</Text>
-                                                                            </View>
-                                                                        )}
-                                                                        {done > 0 && (
-                                                                            <View style={styles.stageStatItem}>
-                                                                                <View style={[styles.miniStatusDot, { backgroundColor: '#4CAF50' }]} />
-                                                                                <Text style={styles.stageStatText}>{done}</Text>
-                                                                            </View>
-                                                                        )}
-                                                                        {undon > 0 && (
-                                                                            <View style={styles.stageStatItem}>
-                                                                                <View style={[styles.miniStatusDot, { backgroundColor: '#FF5252' }]} />
-                                                                                <Text style={styles.stageStatText}>{undon}</Text>
-                                                                            </View>
-                                                                        )}
-                                                                    </>
-                                                                );
-                                                            })()}
+                                                        {/* Task title + active indicator + add button */}
+                                                        <View style={styles.titleRow}>
+                                                            <Text style={[styles.trackTitle, isActive && styles.trackTitleActive]} numberOfLines={1}>
+                                                                {task.title}
+                                                            </Text>
+                                                            <View style={styles.titleRowRight}>
+                                                                {isActive && <View style={styles.activeDot} />}
+                                                                <TouchableOpacity
+                                                                    style={styles.taskAddSubtaskBtn}
+                                                                    onPress={() => {
+                                                                        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                                                                        const nowMinutes = currentTimeRef.current.getHours() * 60 + currentTimeRef.current.getMinutes();
+                                                                        setAddSubtaskModal({
+                                                                            visible: true,
+                                                                            taskId: task.id,
+                                                                            startTimeMinutes: nowMinutes,
+                                                                            mode: 'add',
+                                                                        });
+                                                                    }}
+                                                                    activeOpacity={0.7}
+                                                                >
+                                                                    <MaterialIcons name="add" size={14} color="rgba(255,255,255,0.6)" />
+                                                                </TouchableOpacity>
+                                                            </View>
                                                         </View>
+
+                                                        {/* Progress bar: Done (green) | Undone (red) | Pending (grey) + count */}
+                                                        {(() => {
+                                                            const s = task.stages || [];
+                                                            const total = s.length;
+                                                            const doneCount = s.filter(i => i.status === 'Done' || i.isCompleted).length;
+                                                            const undoneCount = s.filter(i => i.status === 'Undone').length;
+                                                            const pendingCount = Math.max(0, total - doneCount - undoneCount);
+                                                            const den = total || 1;
+                                                            return (
+                                                                <View style={styles.progressBarWrap}>
+                                                                    <View style={styles.progressBarTrack}>
+                                                                        {total > 0 ? (
+                                                                            <>
+                                                                                <View style={[styles.progressBarSegment, styles.progressBarDone, { flex: doneCount / den }]} />
+                                                                                <View style={[styles.progressBarSegment, styles.progressBarUndone, { flex: undoneCount / den }]} />
+                                                                                <View style={[styles.progressBarSegment, styles.progressBarPending, { flex: pendingCount / den }]} />
+                                                                            </>
+                                                                        ) : (
+                                                                            <View style={[styles.progressBarSegment, styles.progressBarPending, { flex: 1 }]} />
+                                                                        )}
+                                                                    </View>
+                                                                    <Text style={styles.progressBarLabel}>{doneCount}/{total}</Text>
+                                                                </View>
+                                                            );
+                                                        })()}
                                                     </View>
                                                 </TouchableOpacity>
                                             </View>
@@ -1421,11 +1663,10 @@ export default function LiveFocusView({
                                 )}
                             </View>
                         </ScrollView>
-                    </View>
-                )}
+                </Animated.View>
 
-                {/* Scrollable Timeline Section */}
-                <View style={styles.timelineSection}>
+                {/* Scrollable Timeline Section (subtask cards). Same height as task column when dock is open. */}
+                <View style={[styles.timelineSection, styles.mainColumnWhenDockOpen]}>
                     {/* Sticky Time Axis Header */}
                     <View style={styles.stickyHeaderContainer}>
                         <ScrollView
@@ -1464,8 +1705,8 @@ export default function LiveFocusView({
                                     </View>
                                 ))}
 
-                                {/* NOW Line Dot (Top portion) */}
-                                {currentTimeRef.current.getHours() >= START_HOUR && currentTimeRef.current.getHours() <= END_HOUR && (
+                                {/* NOW Line Dot (Top portion) — only when selected date is the current logical day (today) */}
+                                {isSameLogicalDay(selectedDate, new Date(), dailyStartMinutes) && (
                                     <View style={[styles.nowLineSticky, { left: getNowPosition() }]}>
                                         <View style={styles.nowDot} />
                                     </View>
@@ -1479,30 +1720,31 @@ export default function LiveFocusView({
                         ref={verticalScrollRef}
                         style={styles.verticalScroll}
                         contentContainerStyle={{
-                            minHeight: contentHeight,
-                            paddingBottom: isProgressExpanded ? progressDockHeight : 20,
+                            minHeight: minScrollHeight,
+                            paddingBottom: 20,
                         }}
                         showsVerticalScrollIndicator={true}
                         scrollEnabled={!activeStage}
                         onScroll={handleVerticalScroll}
-                        scrollEventThrottle={16}
+                        scrollEventThrottle={8}
                         bounces={true}
                         bouncesZoom={false}
                         alwaysBounceVertical={true}
-                        removeClippedSubviews={Platform.OS === 'android'}
+                        removeClippedSubviews={false}
                         overScrollMode="never"
                     >
                         <View
                             onTouchMove={handleTouchMove}
                             onTouchEnd={handleTouchEnd}
-                            style={{ flex: 1 }}
+                            style={{ flex: 1, minHeight: minScrollHeight }}
                         >
                             <ScrollView
                                 horizontal
                                 ref={setTimelineScrollRef}
                                 showsHorizontalScrollIndicator={true}
                                 scrollEnabled={!activeStage && !isDragging}
-                                contentContainerStyle={{ width: TIMELINE_ONLY_WIDTH }}
+                                directionalLockEnabled={true}
+                                contentContainerStyle={{ width: TIMELINE_ONLY_WIDTH, minHeight: minScrollHeight }}
                                 nestedScrollEnabled={true}
                                 onScroll={handleHorizontalScroll}
                                 scrollEventThrottle={16}
@@ -1513,7 +1755,7 @@ export default function LiveFocusView({
                                 style={{ flex: 1 }}
                                 overScrollMode="never"
                             >
-                                <View style={[styles.timelineContent, { width: TIMELINE_ONLY_WIDTH }]}>
+                                <View style={[styles.timelineContent, { width: TIMELINE_ONLY_WIDTH, minHeight: minScrollHeight }]}>
                                     {/* Time-of-day background layer (behind grid lines & cards) */}
                                     <View pointerEvents="none" style={styles.timeOfDayBackgroundLayer}>
                                         {timeOfDayBackgroundSegments.map((seg, i) => (
@@ -1534,13 +1776,18 @@ export default function LiveFocusView({
                                         </View>
                                     ))}
 
-                                    {/* NOW Line - Vertical segment */}
-                                    {currentTimeRef.current.getHours() >= START_HOUR && currentTimeRef.current.getHours() <= END_HOUR && (
+                                    {/* NOW Line - Vertical segment — only when selected date is the current logical day (today) */}
+                                    {isSameLogicalDay(selectedDate, new Date(), dailyStartMinutes) && (
                                         <View style={[styles.nowLine, { left: getNowPosition() }]} />
                                     )}
 
                                     {/* Tracks Container */}
                                     <View style={styles.tracksContainer}>
+                                        {tasks.length === 0 && (
+                                            <View style={styles.timelineEmptyState}>
+                                                <Text style={styles.timelineEmptyText}>No tasks for this day</Text>
+                                            </View>
+                                        )}
                                         {tasks.map((task, taskIndex) => {
                                             const stages = task.stages || [];
                                             const liveStatus = getTaskLiveStatus(task);
@@ -1558,17 +1805,19 @@ export default function LiveFocusView({
                                                 (s.durationMinutes === undefined || s.durationMinutes === null)
                                             );
 
-                                            // Sort timed subtasks by startTimeMinutes (ascending)
-                                            // Uses pending layouts for edited stages
+                                            // Sort timed subtasks: 6–6 day. First: start >= dailyStart (today 6am–midnight); then: start < dailyStart (00:00–6am "overnight" at bottom). Within each, by start asc.
+                                            // Uses pending layouts for edited stages. dailyStartMinutes from settings.
                                             const sortedTimedStages = [...timedStages].sort((a, b) => {
-                                                // Get effective start time from pending or props
                                                 const pendingA = pendingLayoutsRef.current.get(a.id);
                                                 const pendingB = pendingLayoutsRef.current.get(b.id);
                                                 const startA = pendingA ? pendingA.startTimeMinutes : (a.startTimeMinutes || 0);
                                                 const startB = pendingB ? pendingB.startTimeMinutes : (b.startTimeMinutes || 0);
-                                                const timeDiff = startA - startB;
-                                                if (timeDiff !== 0) return timeDiff;
-                                                // Tie-breaker: use id for consistent ordering
+                                                // 1) Today (start >= dailyStart) first; overnight (start < dailyStart) at bottom
+                                                const inTodayA = startA >= dailyStartMinutes ? 0 : 1;
+                                                const inTodayB = startB >= dailyStartMinutes ? 0 : 1;
+                                                if (inTodayA !== inTodayB) return inTodayA - inTodayB;
+                                                // 2) By start ascending
+                                                if (startA !== startB) return startA - startB;
                                                 return a.id - b.id;
                                             });
 
@@ -1584,15 +1833,19 @@ export default function LiveFocusView({
 
                                             // Calculate max lanes needed for timed stages (infinite lanes supported)
                                             const timedStageLanes = calculateStageLanes(sortedTimedStages);
-                                            const maxLane = sortedTimedStages.length > 0
+                                            let maxLane = sortedTimedStages.length > 0
                                                 ? Math.max(...Array.from(timedStageLanes.values()), -1)
                                                 : -1;
+                                            // During drag in this task, include temp lane so track height fits the dragged card
+                                            if (activeStage?.taskId === task.id && tempStageLayout?.lane != null) {
+                                                maxLane = Math.max(maxLane, tempStageLayout.lane);
+                                            }
                                             const CARD_HEIGHT = 21;
                                             const LANE_SPACING = 10; // 4px gap between consecutive subtasks
                                             const BASE_TOP = 7;
-                                            // Calculate height for all lanes: base + (number of lanes * (card height + spacing)) - last spacing + bottom padding
+                                            // Calculate height for all lanes: base + (number of lanes * (card height + spacing)) - last spacing + bottom padding (matches top)
                                             const timedStagesHeight = maxLane >= 0
-                                                ? BASE_TOP + ((maxLane + 1) * (CARD_HEIGHT + LANE_SPACING)) - LANE_SPACING + 7 // +7 for bottom padding
+                                                ? BASE_TOP + ((maxLane + 1) * (CARD_HEIGHT + LANE_SPACING)) - LANE_SPACING + TRACK_BOTTOM_PADDING
                                                 : 0;
 
                                             // Dynamic track height: ALWAYS allow growth when new lanes appear
@@ -1609,8 +1862,10 @@ export default function LiveFocusView({
                                                 }
                                             };
 
+                                            const isTrackActive = activeStage?.taskId === task.id; // dragging or resizing a card in this task
+
                                             return (
-                                                <View key={task.id}>
+                                                <View key={task.id} style={isTrackActive ? { zIndex: 10000, elevation: 10000 } : undefined}>
                                                     <View style={styles.trackSeparator} />
                                                     <TouchableOpacity
                                                         activeOpacity={1}
@@ -1620,7 +1875,11 @@ export default function LiveFocusView({
                                                                 setResizeModeStage(null);
                                                             }
                                                         }}
-                                                        style={[styles.track, { height: trackHeight }]}
+                                                        style={[
+                                                            styles.track,
+                                                            { height: trackHeight, marginBottom: TRACK_BOTTOM_PADDING },
+                                                            isTrackActive && { overflow: 'visible' as const },
+                                                        ]}
                                                         onLayout={handleTrackLayout}
                                                     >
                                                         {/* Untimed Subtasks List (on the left) - Draggable */}
@@ -1633,12 +1892,14 @@ export default function LiveFocusView({
                                                                 trackLabelWidth={TRACK_LABEL_WIDTH}
                                                                 getTimelineScrollX={() => timelineScrollXRef.current}
                                                                 isLandscape={isLandscape}
+                                                                getStageNeedsApproval={stageNeedsApproval}
                                                                 checkAndUpdateAutoScroll={checkAndUpdateAutoScroll}
                                                                 stopAutoScroll={stopAutoScroll}
                                                                 onDropOnTimeline={(stageId, xPosition) => {
                                                                     if (!onUpdateStages) return;
-                                                                    // Calculate startTimeMinutes from X position
-                                                                    const startTimeMinutes = Math.max(0, Math.round((xPosition / CELL_WIDTH) * minutesPerCell));
+                                                                    // xPosition is in display space (0 = daily start). Convert to minutes-from-midnight.
+                                                                    const displayStart = (xPosition / CELL_WIDTH) * minutesPerCell;
+                                                                    const startTimeMinutes = (Math.round(displayStart) + dailyStartMinutes) % 1440;
                                                                     const durationMinutes = 180; // Default duration: 3 hours
 
                                                                     // Synchronously update pending layouts REF to include this drop
@@ -1865,19 +2126,13 @@ export default function LiveFocusView({
                                                                                         </View>
                                                                                     );
                                                                                 })()}
-                                                                                {/* Status Indicator */}
-                                                                                {(() => {
-                                                                                    const status = stage.status || 'Upcoming';
-                                                                                    const config = STAGE_STATUS_CONFIG[status];
-                                                                                    return (
-                                                                                        <MaterialIcons
-                                                                                            name={config.icon}
-                                                                                            size={12}
-                                                                                            color="#FFFFFF" // White icons for status backgrounds
-                                                                                            style={{ marginLeft: 4, flexShrink: 0 }}
-                                                                                        />
-                                                                                    );
-                                                                                })()}
+                                                                                {/* REQUEST badge when stage is in the approval/notification list */}
+                                                                                {stageNeedsApproval(stage) != null && (
+                                                                                    <View style={styles.stageRequestBadge}>
+                                                                                        <MaterialIcons name="notification-important" size={10} color="#FFFFFF" />
+                                                                                        {/* <Text style={styles.stageRequestBadgeText}>REQUEST</Text> */}
+                                                                                    </View>
+                                                                                )}
                                                                             </TouchableOpacity>
 
                                                                             {/* Right Resize Handle - simple vertical line */}
@@ -1942,31 +2197,37 @@ export default function LiveFocusView({
                                                             });
                                                         })()}
 
-                                                        {/* Add Subtask Plus Button */}
+                                                        {/* Add Subtask Plus Button — placed after the "last" card in the 6-to-6 day (max displayEnd; dailyStart from settings) */}
                                                         {(() => {
-                                                            // Calculate position after the last timed stage, aligned with the last card
-                                                            const lastStage = sortedTimedStages[sortedTimedStages.length - 1];
-                                                            let buttonLeft = 10; // Default position if no stages
-                                                            let buttonTop = 7; // Default top position (BASE_TOP)
+                                                            let buttonLeft = 10; // Default if no stages
+                                                            let buttonTop = 7;
+
+                                                            // Last card = the one that ends latest in the 6-to-6 display (0=dailyStart, 1440=next dailyStart)
+                                                            let lastStage: TaskStage | undefined;
+                                                            let maxDisplayEnd = -1;
+                                                            let maxDisplayStart = -1;
+                                                            for (const s of sortedTimedStages) {
+                                                                const { startTimeMinutes: start, durationMinutes: dur } = getEffectiveStageTime(s);
+                                                                const displayStart = (start - dailyStartMinutes + 1440) % 1440;
+                                                                const displayEnd = Math.min(displayStart + dur, 1440);
+                                                                if (displayEnd > maxDisplayEnd || (displayEnd === maxDisplayEnd && displayStart > maxDisplayStart)) {
+                                                                    maxDisplayEnd = displayEnd;
+                                                                    maxDisplayStart = displayStart;
+                                                                    lastStage = s;
+                                                                }
+                                                            }
 
                                                             if (lastStage) {
-                                                                // Get the lane for the last stage
                                                                 const isLastActive = activeStage?.taskId === task.id && activeStage?.stageId === lastStage.id;
                                                                 const lastLane = isLastActive && tempStageLayout?.lane !== undefined
                                                                     ? tempStageLayout.lane
                                                                     : (calculateStageLanes(sortedTimedStages).get(lastStage.id) ?? 0);
-
-                                                                // Get layout of the last card
-                                                                const { left, width, top } = getStageLayout(lastStage, sortedTimedStages.length - 1, lastLane);
-
-                                                                // Position button right after the last card with small spacing
-                                                                buttonLeft = left + width + 8; // 8px spacing after the card
-                                                                buttonTop = top; // Align vertically with the last card
+                                                                const { left, width, top } = getStageLayout(lastStage, 0, lastLane);
+                                                                buttonLeft = left + width + 8;
+                                                                buttonTop = top;
                                                             }
 
-                                                            // Calculate the start time for the new subtask (Now)
                                                             const nowMinutes = currentTimeRef.current.getHours() * 60 + currentTimeRef.current.getMinutes();
-                                                            const newStartTime = nowMinutes;
 
                                                             return (
                                                                 <TouchableOpacity
@@ -1976,7 +2237,8 @@ export default function LiveFocusView({
                                                                         setAddSubtaskModal({
                                                                             visible: true,
                                                                             taskId: task.id,
-                                                                            startTimeMinutes: newStartTime,
+                                                                            startTimeMinutes: nowMinutes,
+                                                                            mode: 'add',
                                                                         });
                                                                     }}
                                                                     activeOpacity={0.7}
@@ -2018,11 +2280,6 @@ export default function LiveFocusView({
             >
                 {/* Bar header (improved progress) */}
                 <View style={styles.bottomDockBar}>
-                    <View style={styles.bottomDockProgressTrack}>
-                        <View style={[styles.bottomDockProgressFill, { width: `${progressSummary.pct}%` }]} />
-                        <View style={[styles.bottomDockProgressUndone, { width: `${progressSummary.undonePct}%`, left: `${progressSummary.pct}%` }]} />
-                    </View>
-
                     {/* Time progress bar (TOTAL split by Done / Pending / Undone) */}
                     <View style={styles.bottomDockTimeBarTrack}>
                         {progressSummary.totalMinutes > 0 ? (
@@ -2087,29 +2344,65 @@ export default function LiveFocusView({
                                     const status = selectedStage.status || 'Upcoming';
                                     const statusConfig = STAGE_STATUS_CONFIG[status];
                                     return (
-                                        <View style={styles.bottomDockTimeSummary}>
-                                            <Text numberOfLines={1} style={styles.bottomDockTimeSummaryTop}>
-                                                <Text style={styles.bottomDockTimeSummaryLabel}>{selectedTask?.title?.toUpperCase() || 'TASK'} </Text>
-                                                <Text style={styles.bottomDockTimeSummaryValue}>
-                                                    {selectedStage.text}
+                                        <View style={[styles.bottomDockSummaryRow, { flex: 1 }]}>
+                                            <View style={[styles.bottomDockTimeSummary, { flex: 1, minWidth: 0 }]}>
+                                                <Text numberOfLines={1} style={styles.bottomDockTimeSummaryTop}>
+                                                    <Text style={styles.bottomDockTimeSummaryLabel}>{selectedTask?.title?.toUpperCase() || 'TASK'} </Text>
+                                                    <Text style={styles.bottomDockTimeSummaryValue}>
+                                                        {selectedStage.text}
+                                                    </Text>
                                                 </Text>
-                                            </Text>
-                                            <Text numberOfLines={1} style={styles.bottomDockTimeSummaryBottom}>
-                                                <Text style={styles.bottomDockTimeSummaryK}>START </Text>
-                                                <Text style={styles.bottomDockTimeSummaryV}>
-                                                    {formatTimeCompact(effectiveTime.startTimeMinutes)}
+                                                <Text numberOfLines={1} style={styles.bottomDockTimeSummaryBottom}>
+                                                    <Text style={styles.bottomDockTimeSummaryK}>START </Text>
+                                                    <Text style={styles.bottomDockTimeSummaryV}>
+                                                        {formatTimeCompact(effectiveTime.startTimeMinutes)}
+                                                    </Text>
+                                                    <Text style={styles.bottomDockTimeSummarySep}>  ·  </Text>
+                                                    <Text style={styles.bottomDockTimeSummaryK}>DUR </Text>
+                                                    <Text style={styles.bottomDockTimeSummaryV}>
+                                                        {formatDurationCompact(effectiveTime.durationMinutes)}
+                                                    </Text>
                                                 </Text>
-                                                <Text style={styles.bottomDockTimeSummarySep}>  ·  </Text>
-                                                <Text style={styles.bottomDockTimeSummaryK}>DUR </Text>
-                                                <Text style={styles.bottomDockTimeSummaryV}>
-                                                    {formatDurationCompact(effectiveTime.durationMinutes)}
-                                                </Text>
-                                                <Text style={styles.bottomDockTimeSummarySep}>  ·  </Text>
-                                                <Text style={styles.bottomDockTimeSummaryK}>STATUS </Text>
-                                                <Text style={[styles.bottomDockTimeSummaryV, { color: statusConfig.color }]}>
-                                                    {status.toUpperCase()}
-                                                </Text>
-                                            </Text>
+                                            </View>
+                                            <View style={{ flexDirection: 'row', gap: 6, alignItems: 'center' }}>
+                                                <View ref={statusButtonRef} collapsable={false}>
+                                                    <TouchableOpacity
+                                                        style={styles.dockStatusBtn}
+                                                        onPress={() => {
+                                                            Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                                                            statusButtonRef.current?.measureInWindow((x, y, w, h) => {
+                                                                setStageStatusPopupPosition({ x: x + w / 2, y: y + h });
+                                                                setStageStatusPopupVisible(true);
+                                                            });
+                                                        }}
+                                                        activeOpacity={0.7}
+                                                    >
+                                                        <MaterialIcons name={statusConfig.icon} size={14} color={statusConfig.color} />
+                                                        <Text style={[styles.dockStatusBtnText, { color: statusConfig.color }]}>
+                                                            {STAGE_STATUS_LABELS[status]}
+                                                        </Text>
+                                                    </TouchableOpacity>
+                                                </View>
+                                                <TouchableOpacity
+                                                    style={styles.dockEditBtn}
+                                                    onPress={() => {
+                                                        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                                                        setAddSubtaskModal({
+                                                            visible: true,
+                                                            taskId: resizeModeStage.taskId,
+                                                            startTimeMinutes: effectiveTime.startTimeMinutes,
+                                                            mode: 'edit',
+                                                            stageId: resizeModeStage.stageId,
+                                                            existingText: selectedStage.text,
+                                                            existingStartTime: effectiveTime.startTimeMinutes,
+                                                            existingDuration: effectiveTime.durationMinutes,
+                                                        });
+                                                    }}
+                                                    activeOpacity={0.7}
+                                                >
+                                                    <MaterialIcons name="edit" size={14} color="rgba(255,255,255,0.8)" />
+                                                </TouchableOpacity>
+                                            </View>
                                         </View>
                                     );
                                 }
@@ -2146,6 +2439,27 @@ export default function LiveFocusView({
                                 </View>
                             );
                         })()}
+
+                        {/* Running timer from TimerList: name above, time below; tap opens Timer view (portrait running timer) */}
+                        <View style={styles.bottomDockDivider} />
+                        <TouchableOpacity
+                            style={styles.liveRunningTimerSection}
+                            onPress={() => {
+                                Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                                onOpenRunningTimer?.(runningTimer ?? null);
+                            }}
+                            activeOpacity={0.7}
+                        >
+                            {runningTimer != null ? (
+                                <>
+                                    <Text style={styles.liveRunningTimerName} numberOfLines={1}>{runningTimer.title}</Text>
+                                    <Text style={styles.liveRunningTimerValue}>{runningTimer.time}</Text>
+                                </>
+                            ) : (
+                                <Text style={styles.liveRunningTimerInactive}>Not active timer</Text>
+                            )}
+                        </TouchableOpacity>
+                        <View style={styles.bottomDockDivider} />
 
                         <View style={styles.bottomDockSpacer} />
 
@@ -2189,21 +2503,58 @@ export default function LiveFocusView({
                         {/* Horizontal divider */}
                         <View style={styles.bottomDockDivider} />
 
-                        {/* Approvals button integrated */}
-                        {approvalCount > 0 && (
-                            <TouchableOpacity
-                                style={styles.dockApprovalsBtn}
-                                onPress={() => {
-                                    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-                                    setApprovalPopupVisible(true);
-                                }}
-                            >
-                                <MaterialIcons name="notification-important" size={18} color="#FFFFFF" />
+                        {/* Date line (e.g. 21 JAN): clickable, opens calendar to pick date and switch live view */}
+                        <TouchableOpacity
+                            style={styles.dockDateBtn}
+                            onPress={() => {
+                                setViewDate(new Date(selectedDate.getFullYear(), selectedDate.getMonth(), 1));
+                                setShowDockCalendar(true);
+                                Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                            }}
+                            activeOpacity={0.7}
+                        >
+                            <MaterialIcons name="calendar-today" size={12} color="rgba(255,255,255,0.7)" />
+                            <Text style={styles.dockDateValue}>{formatDateLabel(selectedDate)}</Text>
+                        </TouchableOpacity>
+
+                        <View style={styles.bottomDockDivider} />
+
+                        {/* Now: scroll to center NOW line; shows current time HH:MM:SS */}
+                        <TouchableOpacity
+                            style={styles.dockNowBtn}
+                            onPress={() => {
+                                Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                                scrollToNow();
+                            }}
+                            activeOpacity={0.7}
+                        >
+                            <MaterialIcons name="schedule" size={14} color="rgba(255,255,255,0.7)" />
+                            <Text style={styles.dockNowValue}>{nowHHMMSS || '--:--:--'}</Text>
+                        </TouchableOpacity>
+
+                        <View style={styles.bottomDockDivider} />
+
+                        {/* Notifications: one list (To START + To FINISH), one count, one popup */}
+                        <TouchableOpacity
+                            style={[styles.dockApprovalsBtn, approvalCount === 0 && styles.dockApprovalsBtnDisabled]}
+                            onPress={approvalCount > 0 ? () => {
+                                Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+                                setApprovalPopupVisible(true);
+                            } : undefined}
+                            disabled={approvalCount === 0}
+                            activeOpacity={0.7}
+                        >
+                            <MaterialIcons
+                                name="notification-important"
+                                size={18}
+                                color={approvalCount > 0 ? '#FFFFFF' : 'rgba(255,255,255,0.4)'}
+                            />
+                            {approvalCount > 0 && (
                                 <View style={styles.dockApprovalBadge}>
                                     <Text style={styles.dockApprovalBadgeText}>{approvalCount}</Text>
                                 </View>
-                            </TouchableOpacity>
-                        )}
+                            )}
+                        </TouchableOpacity>
 
                         {/* Vertical divider */}
                         <View style={styles.bottomDockDivider} />
@@ -2245,7 +2596,12 @@ export default function LiveFocusView({
                 visible={addSubtaskModal.visible}
                 taskId={addSubtaskModal.taskId}
                 startTimeMinutes={addSubtaskModal.startTimeMinutes}
-                onClose={() => setAddSubtaskModal({ visible: false, taskId: null, startTimeMinutes: 0 })}
+                mode={addSubtaskModal.mode || 'add'}
+                stageId={addSubtaskModal.stageId || null}
+                existingText={addSubtaskModal.existingText}
+                existingStartTime={addSubtaskModal.existingStartTime}
+                existingDuration={addSubtaskModal.existingDuration}
+                onClose={() => setAddSubtaskModal({ visible: false, taskId: null, startTimeMinutes: 0, mode: 'add' })}
                 onAdd={(taskId, text, startTime, duration) => {
                     if (!onUpdateStages) return;
                     const task = tasks.find(t => t.id === taskId);
@@ -2262,8 +2618,8 @@ export default function LiveFocusView({
                         isCompleted: false,
                         status: 'Upcoming',
                         createdAt: new Date().toISOString(),
-                        // Ensure defaults exist at creation time (no UI-side effects later)
-                        startTimeMinutes: startTime ?? 0,
+                        // 6-to-6: default start to beginning of logical day (e.g. 06:00) when missing
+                        startTimeMinutes: startTime ?? dailyStartMinutes,
                         durationMinutes: duration ?? 180,
                     };
 
@@ -2271,7 +2627,29 @@ export default function LiveFocusView({
                     onUpdateStages(task, updatedStages);
 
                     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-                    setAddSubtaskModal({ visible: false, taskId: null, startTimeMinutes: 0 });
+                    setAddSubtaskModal({ visible: false, taskId: null, startTimeMinutes: 0, mode: 'add' });
+                }}
+                onUpdate={(taskId, stageId, text, startTime, duration) => {
+                    if (!onUpdateStages) return;
+                    const task = tasks.find(t => t.id === taskId);
+                    if (!task) return;
+
+                    const updatedStages = (task.stages || []).map(s =>
+                        s.id === stageId
+                            ? {
+                                ...s,
+                                text: text,
+                                startTimeMinutes: startTime,
+                                durationMinutes: duration,
+                            }
+                            : s
+                    );
+                    onUpdateStages(task, updatedStages);
+
+                    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+                    setAddSubtaskModal({ visible: false, taskId: null, startTimeMinutes: 0, mode: 'add' });
+                    // Exit resize mode after update
+                    setResizeModeStage(null);
                 }}
             />
 
@@ -2280,10 +2658,48 @@ export default function LiveFocusView({
                 onClose={() => setApprovalPopupVisible(false)}
                 tasks={tasks}
                 categories={categories}
+                dailyStartMinutes={dailyStartMinutes}
+                currentMinutes={currentTimeRef.current.getHours() * 60 + currentTimeRef.current.getMinutes()}
                 onUpdateStageStatus={handleUpdateStageStatus}
                 onDeleteStage={handleDeleteStage}
                 onApproveAll={handleApproveAll}
             />
+
+            <StageActionPopup
+                visible={stageStatusPopupVisible}
+                position={stageStatusPopupPosition}
+                onSelectStatus={(status) => {
+                    if (resizeModeStage) {
+                        handleUpdateStageStatus(resizeModeStage.taskId, resizeModeStage.stageId, status);
+                    }
+                    setStageStatusPopupVisible(false);
+                }}
+                onClose={() => setStageStatusPopupVisible(false)}
+                currentStatus={(() => {
+                    if (!resizeModeStage) return 'Upcoming';
+                    const t = tasks.find(t_ => t_.id === resizeModeStage.taskId);
+                    const s = t?.stages?.find(s_ => s_.id === resizeModeStage.stageId);
+                    return (s?.status ?? 'Upcoming') as StageStatus;
+                })()}
+            />
+
+            {/* Small calendar popup: tap date line (21 JAN) in dock to pick date and move live view */}
+            <Modal
+                visible={showDockCalendar}
+                transparent
+                animationType="fade"
+                supportedOrientations={['portrait', 'landscape', 'landscape-left', 'landscape-right']}
+                onRequestClose={() => setShowDockCalendar(false)}
+            >
+                <View style={styles.calendarModalBackdrop}>
+                    <TouchableWithoutFeedback onPress={() => setShowDockCalendar(false)}>
+                        <View style={styles.calendarModalTouchable} />
+                    </TouchableWithoutFeedback>
+                    <View style={styles.calendarPopup}>
+                        {renderDockCalendar()}
+                    </View>
+                </View>
+            </Modal>
 
         </View >
     );
@@ -2298,6 +2714,7 @@ interface UntimedStagesDraggableListProps {
     trackLabelWidth: number;
     getTimelineScrollX: () => number;
     isLandscape: boolean;
+    getStageNeedsApproval?: (stage: TaskStage) => 'START' | 'FINISH' | null;
     onDeleteStage: (stageId: number) => void;
     onDropOnTimeline: (stageId: number, xPosition: number) => void;
     onHeightChange?: (height: number) => void; // Callback when list height changes
@@ -2313,6 +2730,7 @@ function UntimedStagesDraggableList({
     trackLabelWidth,
     getTimelineScrollX,
     isLandscape,
+    getStageNeedsApproval,
     onDeleteStage,
     onDropOnTimeline,
     onHeightChange,
@@ -2468,6 +2886,13 @@ function UntimedStagesDraggableList({
                     >
                         {item.text}
                     </Text>
+                    {/* REQUEST badge when stage is in the approval/notification list */}
+                    {getStageNeedsApproval?.(item) != null && (
+                        <View style={styles.stageRequestBadge}>
+                            <MaterialIcons name="notification-important" size={10} color="#FFFFFF" />
+                            {/* <Text style={styles.stageRequestBadgeText}>REQUEST</Text> */}
+                        </View>
+                    )}
                 </TouchableOpacity>
 
                 {/* Delete Button */}
@@ -2498,7 +2923,7 @@ function UntimedStagesDraggableList({
                 </TouchableOpacity>
             </View>
         );
-    }, [handleCardLayout, getTimePosition, onDeleteStage, drag2DStage, start2DDrag]);
+    }, [handleCardLayout, getTimePosition, getStageNeedsApproval, onDeleteStage, drag2DStage, start2DDrag]);
 
     // Calculate dynamic width based on measured card widths
     const calculateListWidth = useCallback(() => {
@@ -2685,8 +3110,9 @@ const styles = StyleSheet.create({
         flex: 1,
     },
     bottomDockProgressTrack: {
-        height: 1,
+        height: 3,
         backgroundColor: 'rgba(255,255,255,0.06)',
+        marginBottom: 2,
     },
     bottomDockProgressFill: {
         position: 'absolute',
@@ -2734,6 +3160,12 @@ const styles = StyleSheet.create({
         width: 1,
         height: 24,
         backgroundColor: 'rgba(255,255,255,0.10)',
+    },
+    bottomDockSummaryRow: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 8,
+        minWidth: 0,
     },
     bottomDockTimeSummary: {
         minWidth: 240,
@@ -2783,6 +3215,30 @@ const styles = StyleSheet.create({
         color: 'rgba(255,255,255,0.25)',
         fontSize: 10,
         fontWeight: '900',
+    },
+    liveRunningTimerSection: {
+        flexDirection: 'column',
+        alignItems: 'flex-start',
+        justifyContent: 'center',
+        gap: 2,
+        minWidth: 0,
+        maxWidth: 200,
+    },
+    liveRunningTimerName: {
+        fontSize: 11,
+        fontWeight: '800',
+        color: '#FFFFFF',
+        minWidth: 0,
+    },
+    liveRunningTimerValue: {
+        fontSize: 10,
+        fontWeight: '900',
+        color: '#00E5FF',
+    },
+    liveRunningTimerInactive: {
+        fontSize: 9,
+        fontWeight: '700',
+        color: 'rgba(255,255,255,0.5)',
     },
     bottomDockTimerSection: {
         flexDirection: 'row',
@@ -2888,6 +3344,10 @@ const styles = StyleSheet.create({
         borderRightColor: 'rgba(255,255,255,0.06)',
         overflow: 'hidden',
     },
+    /** So task column and timeline get the same height and collapse equally when progress dock is open. */
+    mainColumnWhenDockOpen: {
+        alignSelf: 'stretch',
+    },
     timelineSection: {
         flex: 1,
         flexDirection: 'column',
@@ -2896,6 +3356,32 @@ const styles = StyleSheet.create({
         backgroundColor: '#0C0C0C',
         borderBottomWidth: 1,
         borderBottomColor: 'rgba(76, 175, 80, 0.3)', // Semi-transparent green
+    },
+    taskListHeader: {
+        flexDirection: 'row',
+        paddingLeft: 55,
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        paddingHorizontal: 10,
+    },
+    taskListHeaderTitle: {
+        fontSize: 10,
+        fontWeight: '900',
+        letterSpacing: 1.5,
+        color: 'rgba(255,255,255,0.6)',
+    },
+    taskListHeaderBadge: {
+        backgroundColor: 'rgba(255,255,255,0.1)',
+        paddingHorizontal: 6,
+        paddingVertical: 2,
+        borderRadius: 8,
+        minWidth: 20,
+        alignItems: 'center',
+    },
+    taskListHeaderBadgeText: {
+        fontSize: 9,
+        fontWeight: '900',
+        color: 'rgba(255,255,255,0.7)',
     },
     stickyHeaderContainer: {
         height: 25,
@@ -3032,6 +3518,17 @@ const styles = StyleSheet.create({
         paddingBottom: 0,
         marginBottom: 0,
     },
+    timelineEmptyState: {
+        minHeight: 120,
+        justifyContent: 'center',
+        alignItems: 'center',
+        paddingVertical: 40,
+    },
+    timelineEmptyText: {
+        fontSize: 14,
+        fontWeight: '600',
+        color: 'rgba(255,255,255,0.35)',
+    },
     trackSeparator: {
         height: 1,
         backgroundColor: 'rgba(76, 175, 80, 0.4)', // Slightly more visible green
@@ -3047,13 +3544,73 @@ const styles = StyleSheet.create({
     trackLabel: {
         flex: 1,
         flexDirection: 'row',
-        alignItems: 'center',
-        paddingRight: 12,
+        alignItems: 'stretch',
+        paddingRight: 8,
         backgroundColor: '#0C0C0C',
         height: '100%',
     },
     trackLabelActive: {
-        backgroundColor: 'rgba(255, 255, 255, 0.03)',
+        backgroundColor: 'rgba(255, 255, 255, 0.04)',
+    },
+    trackLabelInner: {
+        flex: 1,
+        paddingVertical: 8,
+        paddingHorizontal: 8,
+        justifyContent: 'flex-start',
+        minWidth: 0,
+    },
+    categoryPill: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        alignSelf: 'flex-start',
+        paddingVertical: 2,
+        paddingHorizontal: 6,
+        paddingLeft: 6,
+        borderLeftWidth: 2,
+        borderRadius: 4,
+        backgroundColor: 'rgba(255,255,255,0.06)',
+        marginBottom: 4,
+        maxWidth: '100%',
+    },
+    categoryPillIcon: {
+        marginRight: 4,
+    },
+    categoryPillText: {
+        fontSize: 8,
+        fontWeight: '800',
+        letterSpacing: 0.8,
+    },
+    progressBarWrap: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        marginTop: 4,
+        gap: 6,
+    },
+    progressBarTrack: {
+        flex: 1,
+        height: 4,
+        borderRadius: 2,
+        flexDirection: 'row',
+        overflow: 'hidden',
+        backgroundColor: 'rgba(255,255,255,0.08)',
+        minWidth: 0,
+    },
+    progressBarSegment: {
+        minWidth: 0,
+    },
+    progressBarDone: {
+        backgroundColor: '#4CAF50',
+    },
+    progressBarUndone: {
+        backgroundColor: '#FF5252',
+    },
+    progressBarPending: {
+        backgroundColor: 'rgba(255,255,255,0.15)',
+    },
+    progressBarLabel: {
+        fontSize: 8,
+        fontWeight: '800',
+        color: 'rgba(255,255,255,0.5)',
     },
     categoryAccent: {
         width: 4,
@@ -3067,6 +3624,21 @@ const styles = StyleSheet.create({
         alignItems: 'center',
         justifyContent: 'space-between',
         marginBottom: 2,
+    },
+    titleRowRight: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 6,
+    },
+    taskAddSubtaskBtn: {
+        width: 20,
+        height: 20,
+        borderRadius: 10,
+        backgroundColor: 'rgba(255,255,255,0.08)',
+        borderWidth: 1,
+        borderColor: 'rgba(255,255,255,0.12)',
+        alignItems: 'center',
+        justifyContent: 'center',
     },
     subtitleRow: {
         flexDirection: 'row',
@@ -3145,7 +3717,7 @@ const styles = StyleSheet.create({
         shadowRadius: 2,
         elevation: 2,
     },
-        stageBlock: {
+    stageBlock: {
         position: 'absolute',
         top: 15,
         height: 30,
@@ -3368,6 +3940,17 @@ const styles = StyleSheet.create({
         color: '#000000',
         fontWeight: '900',
     },
+    stageRequestBadge: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 2,
+        marginLeft: 4,
+        paddingHorizontal: 4,
+        paddingVertical: 2,
+        borderRadius: 4,
+        backgroundColor: '#FF9800',
+        flexShrink: 0,
+    },
     stageDeleteButton: {
         padding: 2.8, // 4 * 0.7 = 2.8 (compressed by 30%)
         opacity: 0.6,
@@ -3455,31 +4038,29 @@ const styles = StyleSheet.create({
     stageTimeTextEditing: {
         color: 'rgba(0, 0, 0, 0.7)',
     },
-    // Task column toggle button styles (Long, Thin, Black & White Design)
-    taskColumnToggle: {
+    // Task column toggle — compact pill on the column edge; left is animated in wrapper
+    taskColumnToggleWrapper: {
         position: 'absolute',
         top: '40%',
-        width: 10,
-        height: 96,
-        backgroundColor: 'rgba(126, 203, 161, 0.9)',
-        borderTopRightRadius: 6,
-        borderBottomRightRadius: 6,
+        marginTop: -40,
+        zIndex: 5000,
+    },
+    taskColumnToggle: {
+        width: 19,
+        height: 200,
+        backgroundColor: 'rgba(255,255,255,0.08)',
+        borderWidth: 1,
+        borderLeftWidth: 0,
+        borderColor: 'rgba(255,255,255,0.12)',
+        borderTopRightRadius: 8,
+        borderBottomRightRadius: 8,
         alignItems: 'center',
         justifyContent: 'center',
-        zIndex: 5000,
         shadowColor: '#000',
         shadowOffset: { width: 1, height: 0 },
-        shadowOpacity: 0.15,
+        shadowOpacity: 0.12,
         shadowRadius: 2,
-        elevation: 6,
-    },
-
-    taskColumnToggleLine: {
-        width: 2,
-        height: 32,
-        backgroundColor: '#000',
-        borderRadius: 1,
-        opacity: 0.6,
+        elevation: 4,
     },
     dockExitBtn: {
         paddingHorizontal: 5,
@@ -3491,6 +4072,35 @@ const styles = StyleSheet.create({
         alignItems: 'center',
         justifyContent: 'center',
     },
+    dockStatusBtn: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 4,
+        paddingHorizontal: 8,
+        paddingVertical: 6,
+        borderRadius: 8,
+        backgroundColor: 'rgba(255,255,255,0.08)',
+        borderWidth: 1,
+        borderColor: 'rgba(255,255,255,0.12)',
+    },
+    dockStatusBtnText: {
+        fontSize: 9,
+        fontWeight: '900',
+        letterSpacing: 1.5,
+        color: 'rgba(255,255,255,0.8)',
+    },
+    dockEditBtn: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'center',
+        paddingHorizontal: 8,
+        paddingVertical: 6,
+        borderRadius: 8,
+        backgroundColor: 'rgba(255,255,255,0.08)',
+        borderWidth: 1,
+        borderColor: 'rgba(255,255,255,0.12)',
+        minWidth: 32,
+    },
     dockApprovalsBtn: {
         flexDirection: 'row',
         alignItems: 'center',
@@ -3501,6 +4111,11 @@ const styles = StyleSheet.create({
         borderWidth: 1,
         borderColor: 'rgba(76, 175, 80, 0.3)',
         gap: 3,
+    },
+    dockApprovalsBtnDisabled: {
+        backgroundColor: 'rgba(255,255,255,0.06)',
+        borderColor: 'rgba(255,255,255,0.1)',
+        opacity: 0.7,
     },
     dockApprovalBadge: {
         backgroundColor: '#4CAF50',
@@ -3516,6 +4131,38 @@ const styles = StyleSheet.create({
         fontSize: 9,
         fontWeight: '900',
     },
+    dockDateBtn: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 4,
+        paddingHorizontal: 6,
+        paddingVertical: 5,
+        borderRadius: 8,
+        backgroundColor: 'rgba(255,255,255,0.08)',
+        borderWidth: 1,
+        borderColor: 'rgba(255,255,255,0.12)',
+    },
+    dockDateValue: {
+        fontSize: 10,
+        fontWeight: '900',
+        color: 'rgba(255,255,255,0.9)',
+    },
+    dockNowBtn: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 4,
+        paddingHorizontal: 8,
+        paddingVertical: 5,
+        borderRadius: 10,
+        backgroundColor: 'rgba(255,255,255,0.1)',
+        borderWidth: 1,
+        borderColor: 'rgba(255,255,255,0.15)',
+    },
+    dockNowValue: {
+        fontSize: 10,
+        fontWeight: '900',
+        color: '#00E5FF',
+    },
     dockCancelBtn: {
         paddingHorizontal: 5,
         paddingVertical: 5,
@@ -3525,5 +4172,102 @@ const styles = StyleSheet.create({
         borderColor: 'rgba(255, 255, 255, 0.12)',
         alignItems: 'center',
         justifyContent: 'center',
+    },
+    // Small calendar popup (same design as AddTaskModal)
+    calendarModalBackdrop: {
+        flex: 1,
+        backgroundColor: 'rgba(0,0,0,0.5)',
+        justifyContent: 'center',
+        alignItems: 'center',
+    },
+    calendarModalTouchable: {
+        position: 'absolute',
+        top: 0,
+        left: 0,
+        right: 0,
+        bottom: 0,
+    },
+    calendarPopup: {
+        width: 280,
+        backgroundColor: 'rgba(20,20,20,0.98)',
+        borderRadius: 12,
+        borderWidth: 1,
+        borderColor: 'rgba(255,255,255,0.12)',
+        padding: 12,
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 4 },
+        shadowOpacity: 0.3,
+        shadowRadius: 8,
+        elevation: 8,
+    },
+    calendarMini: {
+        paddingBottom: 4,
+    },
+    calHeader: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        marginBottom: 8,
+    },
+    calBack: {
+        padding: 4,
+    },
+    calTitle: {
+        color: '#fff',
+        fontSize: 15,
+        fontWeight: '700',
+    },
+    calNav: {
+        flexDirection: 'row',
+        gap: 10,
+    },
+    calNavBtn: {
+        padding: 4,
+    },
+    weekRow: {
+        flexDirection: 'row',
+        justifyContent: 'space-between',
+        marginBottom: 4,
+    },
+    weekText: {
+        width: '14.2%',
+        textAlign: 'center',
+        color: 'rgba(255,255,255,0.4)',
+        fontSize: 10,
+        fontWeight: '600',
+    },
+    daysGrid: {
+        flexDirection: 'row',
+        flexWrap: 'wrap',
+    },
+    dayCell: {
+        width: '14.28%',
+        height: 28,
+        alignItems: 'center',
+        justifyContent: 'center',
+        marginBottom: 2,
+    },
+    dayCircle: {
+        width: 22,
+        height: 22,
+        borderRadius: 11,
+        alignItems: 'center',
+        justifyContent: 'center',
+    },
+    dayText: {
+        color: 'rgba(255,255,255,0.8)',
+        fontSize: 10,
+        fontWeight: '500',
+    },
+    todayCircle: {
+        backgroundColor: '#fff',
+    },
+    selectedFutureCircle: {
+        borderWidth: 2,
+        borderColor: '#4CAF50',
+    },
+    selectedPastCircle: {
+        borderWidth: 2,
+        borderColor: '#FF5050',
     },
 });

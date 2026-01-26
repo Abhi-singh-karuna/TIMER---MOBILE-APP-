@@ -19,7 +19,7 @@
     "@types/react": "~19.1.10",
     "@types/react-native": "^0.72.8",
     "babel-preset-expo": "~54.0.9",
-    "expo": "~54.0.31",
+    "expo": "~54.0.32",
     "expo-asset": "~12.0.12",
     "expo-av": "~16.0.8",
     "expo-blur": "~15.0.8",

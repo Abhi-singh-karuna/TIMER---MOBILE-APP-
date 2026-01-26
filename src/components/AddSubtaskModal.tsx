@@ -20,7 +20,7 @@ import { MaterialIcons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
-const ITEM_HEIGHT = 44;
+const ITEM_HEIGHT = 39.6; // 44 * 0.9
 
 const generateNumbers = (max: number) => Array.from({ length: max + 1 }, (_, i) => i);
 const HOURS_DATA = generateNumbers(23);
@@ -66,15 +66,16 @@ const WheelPicker = ({ data, value, onChange }: { data: number[]; value: number;
                 ref={scrollRef}
                 showsVerticalScrollIndicator={false}
                 snapToInterval={ITEM_HEIGHT}
-                decelerationRate={0.92}
+                decelerationRate={0.98}
                 bounces={true}
-                scrollEventThrottle={16}
+                scrollEventThrottle={8}
                 onScroll={handleScroll}
                 onMomentumScrollEnd={handleEnd}
                 onScrollEndDrag={(e) => { if (e.nativeEvent.velocity?.y === 0) handleEnd(e); }}
                 contentContainerStyle={{ paddingVertical: ITEM_HEIGHT }}
                 nestedScrollEnabled={true}
                 canCancelContentTouches={false}
+                pagingEnabled={false}
             >
                 {data.map((item) => (
                     <View key={item} style={pickerStyles.item}>
@@ -92,6 +93,13 @@ interface AddSubtaskModalProps {
     startTimeMinutes: number;
     onClose: () => void;
     onAdd: (taskId: number, title: string, startTimeMinutes: number, durationMinutes: number) => void;
+    // Edit mode props
+    mode?: 'add' | 'edit';
+    stageId?: number | null;
+    existingText?: string;
+    existingStartTime?: number;
+    existingDuration?: number;
+    onUpdate?: (taskId: number, stageId: number, title: string, startTimeMinutes: number, durationMinutes: number) => void;
 }
 
 export default function AddSubtaskModal({
@@ -100,6 +108,12 @@ export default function AddSubtaskModal({
     startTimeMinutes,
     onClose,
     onAdd,
+    mode = 'add',
+    stageId = null,
+    existingText = '',
+    existingStartTime,
+    existingDuration,
+    onUpdate,
 }: AddSubtaskModalProps) {
     const { width: screenWidth, height: screenHeight } = useWindowDimensions();
     const isLandscape = screenWidth > screenHeight;
@@ -112,13 +126,21 @@ export default function AddSubtaskModal({
 
     useEffect(() => {
         if (visible) {
-            setText('');
-            setSelectedStartMinutes(startTimeMinutes);
-            setSelectedDurationMinutes(60);
+            if (mode === 'edit' && existingText && existingStartTime !== undefined && existingDuration !== undefined) {
+                // Edit mode: pre-fill with existing data
+                setText(existingText);
+                setSelectedStartMinutes(existingStartTime);
+                setSelectedDurationMinutes(existingDuration);
+            } else {
+                // Add mode: use defaults
+                setText('');
+                setSelectedStartMinutes(startTimeMinutes);
+                setSelectedDurationMinutes(60);
+            }
             setActivePicker('start');
             setErrorName(false);
         }
-    }, [visible, startTimeMinutes]);
+    }, [visible, startTimeMinutes, mode, existingText, existingStartTime, existingDuration]);
 
     const handleConfirm = () => {
         const hasName = text.trim().length > 0;
@@ -126,7 +148,11 @@ export default function AddSubtaskModal({
 
         if (hasName && taskId !== null) {
             Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-            onAdd(taskId, text.trim(), selectedStartMinutes, selectedDurationMinutes);
+            if (mode === 'edit' && stageId !== null && onUpdate) {
+                onUpdate(taskId, stageId, text.trim(), selectedStartMinutes, selectedDurationMinutes);
+            } else {
+                onAdd(taskId, text.trim(), selectedStartMinutes, selectedDurationMinutes);
+            }
         } else {
             Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
         }
@@ -143,15 +169,18 @@ export default function AddSubtaskModal({
             visible={visible}
             transparent
             animationType="fade"
-            onRequestClose={onClose}
+            onRequestClose={() => {
+                // Prevent closing on back button - only allow Cancel button
+                Keyboard.dismiss();
+            }}
             supportedOrientations={['portrait', 'landscape-left', 'landscape-right']}
         >
             <GestureHandlerRootView style={{ flex: 1 }}>
                 <Pressable
                     style={styles.overlay}
                     onPress={() => {
+                        // Prevent closing on backdrop press - only dismiss keyboard
                         Keyboard.dismiss();
-                        onClose();
                     }}
                 >
                     {Platform.OS !== 'web' && <BlurView intensity={60} tint="dark" style={StyleSheet.absoluteFill} pointerEvents="none" />}
@@ -161,7 +190,7 @@ export default function AddSubtaskModal({
                         style={[styles.modal, isLandscape ? styles.modalLandscape : styles.modalPortrait]}
                         onPress={(e) => e.stopPropagation()}
                     >
-                        <Text style={styles.title}>ADD SUBTASK</Text>
+                        <Text style={styles.title}>{mode === 'edit' ? 'EDIT SUBTASK' : 'ADD SUBTASK'}</Text>
 
                         {isLandscape ? (
                             <View style={styles.landscapeContainer}>
@@ -215,7 +244,7 @@ export default function AddSubtaskModal({
                                     </View>
 
                                     <View style={styles.schedulerHint}>
-                                        <MaterialIcons name="auto-awesome" size={14} color="rgba(255,255,255,0.4)" />
+                                        <MaterialIcons name="auto-awesome" size={12.6} color="rgba(255,255,255,0.4)" />
                                         <Text style={styles.timeText}>
                                             At {String(startHours).padStart(2, '0')}:{String(startMins).padStart(2, '0')} for {durationHours}h {durationMins}m
                                         </Text>
@@ -261,7 +290,7 @@ export default function AddSubtaskModal({
                                             style={styles.addBtn}
                                             onPress={handleConfirm}
                                         >
-                                            <Text style={styles.addBtnText}>Add</Text>
+                                            <Text style={styles.addBtnText}>{mode === 'edit' ? 'Update' : 'Add'}</Text>
                                         </Pressable>
                                         <Pressable onPress={onClose} style={styles.landscapeCancel}>
                                             <Text style={styles.cancelText}>Cancel</Text>
@@ -335,7 +364,7 @@ export default function AddSubtaskModal({
                                 </View>
 
                                 <View style={styles.timeInfo}>
-                                    <MaterialIcons name="schedule" size={16} color="rgba(255,255,255,0.5)" />
+                                    <MaterialIcons name="schedule" size={14.4} color="rgba(255,255,255,0.5)" />
                                     <Text style={styles.timeText}>
                                         {durationHours > 0 ? `${durationHours}h ` : ''}{durationMins}m from {String(startHours).padStart(2, '0')}:{String(startMins).padStart(2, '0')}
                                     </Text>
@@ -353,7 +382,9 @@ export default function AddSubtaskModal({
                                         style={[styles.button, styles.confirmButton]}
                                         onPress={handleConfirm}
                                     >
-                                        <Text style={[styles.buttonText, styles.confirmText]}>ADD SUBTASK</Text>
+                                        <Text style={[styles.buttonText, styles.confirmText]}>
+                                            {mode === 'edit' ? 'UPDATE SUBTASK' : 'ADD SUBTASK'}
+                                        </Text>
                                     </Pressable>
                                 </View>
                             </>
@@ -368,18 +399,18 @@ export default function AddSubtaskModal({
 const pickerStyles = StyleSheet.create({
     container: {
         height: ITEM_HEIGHT * 3,
-        width: 70,
-        borderRadius: 14,
+        width: 63, // 70 * 0.9
+        borderRadius: 12.6, // 14 * 0.9
         overflow: 'hidden',
         backgroundColor: 'rgba(30,30,30,0.4)',
     },
     highlight: {
         position: 'absolute',
         top: ITEM_HEIGHT,
-        left: 3,
-        right: 3,
+        left: 2.7, // 3 * 0.9
+        right: 2.7, // 3 * 0.9
         height: ITEM_HEIGHT,
-        borderRadius: 11,
+        borderRadius: 9.9, // 11 * 0.9
         backgroundColor: 'rgba(255, 255, 255, 0.05)',
         borderWidth: 1,
         borderColor: 'rgba(255, 255, 255, 0.3)',
@@ -392,7 +423,7 @@ const pickerStyles = StyleSheet.create({
         justifyContent: 'center',
     },
     text: {
-        fontSize: 24,
+        fontSize: 21.6, // 24 * 0.9
         fontWeight: '400',
         color: '#FFFFFF',
     },
@@ -403,7 +434,7 @@ const styles = StyleSheet.create({
         flex: 1,
         justifyContent: 'center',
         alignItems: 'center',
-        padding: 20,
+        padding: 18, // 20 * 0.9
     },
     dimLayer: {
         ...StyleSheet.absoluteFillObject,
@@ -411,18 +442,18 @@ const styles = StyleSheet.create({
     },
     modal: {
         width: SCREEN_WIDTH * 0.88,
-        maxWidth: 400,
+        maxWidth: 360, // 400 * 0.9
         backgroundColor: '#000',
-        borderRadius: 28,
-        paddingTop: 20,
-        paddingBottom: 20,
-        paddingHorizontal: 20,
+        borderRadius: 25.2, // 28 * 0.9
+        paddingTop: 18, // 20 * 0.9
+        paddingBottom: 18, // 20 * 0.9
+        paddingHorizontal: 18, // 20 * 0.9
         borderWidth: 1,
         borderColor: 'rgba(255,255,255,0.08)',
         shadowColor: '#000',
-        shadowOffset: { width: 0, height: 10 },
+        shadowOffset: { width: 0, height: 9 }, // 10 * 0.9
         shadowOpacity: 0.5,
-        shadowRadius: 20,
+        shadowRadius: 18, // 20 * 0.9
         elevation: 20,
         ...(Platform.OS !== 'web' && { maxHeight: '90%' }),
     },
@@ -431,14 +462,14 @@ const styles = StyleSheet.create({
     },
     modalLandscape: {
         width: '90%',
-        maxWidth: 650,
-        paddingTop: 28,
-        paddingBottom: 24,
-        paddingHorizontal: 24,
+        maxWidth: 585, // 650 * 0.9
+        paddingTop: 25.2, // 28 * 0.9
+        paddingBottom: 21.6, // 24 * 0.9
+        paddingHorizontal: 21.6, // 24 * 0.9
     },
     landscapeContainer: {
         flexDirection: 'row',
-        gap: 40,
+        gap: 36, // 40 * 0.9
         alignItems: 'center',
     },
     leftColumn: {
@@ -450,33 +481,33 @@ const styles = StyleSheet.create({
         justifyContent: 'center',
     },
     fieldGroup: {
-        marginBottom: 20,
+        marginBottom: 18, // 20 * 0.9
         width: '100%',
     },
     compactInput: {
         marginBottom: 0,
-        paddingVertical: 12,
+        paddingVertical: 10.8, // 12 * 0.9
         width: '100%',
     },
     infoSelectors: {
-        gap: 12,
-        marginBottom: 20,
+        gap: 10.8, // 12 * 0.9
+        marginBottom: 18, // 20 * 0.9
     },
     infoSelectorsLandscape: {
         flexDirection: 'row',
-        gap: 12,
-        marginBottom: 24,
+        gap: 10.8, // 12 * 0.9
+        marginBottom: 21.6, // 24 * 0.9
     },
     schedulerHint: {
         flexDirection: 'row',
         alignItems: 'center',
-        marginTop: 10,
+        marginTop: 9, // 10 * 0.9
     },
     infoCard: {
         flex: 1,
         backgroundColor: 'rgba(255,255,255,0.03)',
-        borderRadius: 16,
-        padding: 16,
+        borderRadius: 14.4, // 16 * 0.9
+        padding: 14.4, // 16 * 0.9
         borderWidth: 1,
         borderColor: 'rgba(255,255,255,0.05)',
         alignItems: 'center',
@@ -486,15 +517,15 @@ const styles = StyleSheet.create({
         borderColor: 'rgba(255,255,255,0.2)',
     },
     infoCardLabel: {
-        fontSize: 9,
+        fontSize: 8.1, // 9 * 0.9
         fontWeight: '800',
         color: 'rgba(255,255,255,0.4)',
-        letterSpacing: 1.5,
-        marginBottom: 6,
+        letterSpacing: 1.35, // 1.5 * 0.9
+        marginBottom: 5.4, // 6 * 0.9
         textAlign: 'center',
     },
     infoCardValue: {
-        fontSize: 18,
+        fontSize: 16.2, // 18 * 0.9
         fontWeight: '700',
         color: 'rgba(255,255,255,0.5)',
     },
@@ -502,28 +533,28 @@ const styles = StyleSheet.create({
         color: '#FFFFFF',
     },
     title: {
-        fontSize: 14,
+        fontSize: 12.6, // 14 * 0.9
         fontWeight: '800',
         color: '#FFFFFF',
-        marginBottom: 24,
+        marginBottom: 21.6, // 24 * 0.9
         textAlign: 'center',
-        letterSpacing: 2,
+        letterSpacing: 1.8, // 2 * 0.9
     },
     label: {
-        fontSize: 11,
+        fontSize: 9.9, // 11 * 0.9
         fontWeight: '600',
         color: 'rgba(255,255,255,0.4)',
-        letterSpacing: 1.5,
-        marginBottom: 10,
+        letterSpacing: 1.35, // 1.5 * 0.9
+        marginBottom: 9, // 10 * 0.9
     },
     input: {
         backgroundColor: 'rgba(20,20,20,0.5)',
-        borderRadius: 16,
-        paddingHorizontal: 18,
-        paddingVertical: 16,
-        fontSize: 16,
+        borderRadius: 14.4, // 16 * 0.9
+        paddingHorizontal: 16.2, // 18 * 0.9
+        paddingVertical: 14.4, // 16 * 0.9
+        fontSize: 14.4, // 16 * 0.9
         color: '#FFFFFF',
-        marginBottom: 16,
+        marginBottom: 14.4, // 16 * 0.9
         borderWidth: 1,
         borderColor: 'rgba(255,255,255,0.06)',
         width: '100%',
@@ -533,23 +564,23 @@ const styles = StyleSheet.create({
         backgroundColor: 'rgba(255, 80, 80, 0.05)',
     },
     pickerContainer: {
-        marginBottom: 20,
+        marginBottom: 18, // 20 * 0.9
     },
     pickerContainerLandscape: {
-        marginBottom: 12,
+        marginBottom: 10.8, // 12 * 0.9
     },
     toggleContainer: {
         flexDirection: 'row',
         backgroundColor: 'rgba(255,255,255,0.05)',
-        borderRadius: 12,
-        padding: 4,
-        marginBottom: 16,
+        borderRadius: 10.8, // 12 * 0.9
+        padding: 3.6, // 4 * 0.9
+        marginBottom: 14.4, // 16 * 0.9
     },
     toggleBtn: {
         flex: 1,
-        paddingVertical: 8,
+        paddingVertical: 7.2, // 8 * 0.9
         alignItems: 'center',
-        borderRadius: 8,
+        borderRadius: 7.2, // 8 * 0.9
     },
     toggleBtnActive: {
         backgroundColor: 'rgba(255,255,255,0.1)',
@@ -557,10 +588,10 @@ const styles = StyleSheet.create({
         borderColor: 'rgba(255,255,255,0.1)',
     },
     toggleText: {
-        fontSize: 10,
+        fontSize: 9, // 10 * 0.9
         fontWeight: '700',
         color: 'rgba(255,255,255,0.3)',
-        letterSpacing: 1,
+        letterSpacing: 0.9, // 1 * 0.9
     },
     toggleTextActive: {
         color: '#FFFFFF',
@@ -574,69 +605,69 @@ const styles = StyleSheet.create({
         flexDirection: 'row',
         alignItems: 'center',
         justifyContent: 'center',
-        marginBottom: 16,
-        padding: 4,
-        borderRadius: 18,
+        marginBottom: 14.4, // 16 * 0.9
+        padding: 3.6, // 4 * 0.9
+        borderRadius: 16.2, // 18 * 0.9
         borderWidth: 1,
         borderColor: 'transparent',
     },
     pickerRowLandscape: {
-        marginBottom: 12,
-        paddingHorizontal: 12,
-        paddingVertical: 2,
+        marginBottom: 10.8, // 12 * 0.9
+        paddingHorizontal: 10.8, // 12 * 0.9
+        paddingVertical: 1.8, // 2 * 0.9
     },
     pickerGroup: {
         alignItems: 'center',
     },
     pickerLabel: {
-        fontSize: 11,
+        fontSize: 9.9, // 11 * 0.9
         color: 'rgba(255,255,255,0.4)',
-        marginTop: 8,
+        marginTop: 7.2, // 8 * 0.9
         fontWeight: '500',
-        letterSpacing: 1,
+        letterSpacing: 0.9, // 1 * 0.9
     },
     colon: {
-        fontSize: 28,
+        fontSize: 25.2, // 28 * 0.9
         color: 'rgba(255, 255, 255, 0.45)',
-        marginHorizontal: 10,
-        marginBottom: 24,
+        marginHorizontal: 9, // 10 * 0.9
+        marginBottom: 21.6, // 24 * 0.9
     },
     colonLandscape: {
-        marginHorizontal: 6,
-        marginBottom: 14,
+        marginHorizontal: 5.4, // 6 * 0.9
+        marginBottom: 12.6, // 14 * 0.9
     },
     timeInfo: {
         flexDirection: 'row',
         alignItems: 'center',
-        marginBottom: 24,
+        marginBottom: 21.6, // 24 * 0.9
         justifyContent: 'center',
     },
     timeText: {
-        fontSize: 12,
+        fontSize: 10.8, // 12 * 0.9
         fontWeight: '500',
         color: 'rgba(255,255,255,0.35)',
-        marginLeft: 6,
-        letterSpacing: 1,
+        marginLeft: 5.4, // 6 * 0.9
+        letterSpacing: 0.9, // 1 * 0.9
     },
     actions: {
         flexDirection: 'row',
         justifyContent: 'space-between',
-        gap: 12,
+        gap: 10.8, // 12 * 0.9
     },
     landscapeActions: {
         flexDirection: 'row',
         width: '100%',
         alignItems: 'center',
-        gap: 16,
-        marginTop: 8,
+        gap: 14.4, // 16 * 0.9
+        marginTop: 7.2, // 8 * 0.9
     },
     landscapeCancel: {
-        paddingHorizontal: 12,
+        paddingHorizontal: 10.8, // 12 * 0.9
     },
     button: {
         flex: 1,
-        paddingVertical: 14,
-        borderRadius: 14,
+        paddingVertical: 12.6, // 14 * 0.9
+        borderRadius: 12.6, // 14 * 0.9
         alignItems: 'center',
         justifyContent: 'center',
     },
@@ -652,10 +683,10 @@ const styles = StyleSheet.create({
         opacity: 0.5,
     },
     buttonText: {
-        fontSize: 12,
+        fontSize: 10.8, // 12 * 0.9
         fontWeight: '700',
         color: 'rgba(255,255,255,0.6)',
-        letterSpacing: 1.2,
+        letterSpacing: 1.08, // 1.2 * 0.9
     },
     confirmText: {
         color: '#000',
@@ -663,21 +694,21 @@ const styles = StyleSheet.create({
     },
     addBtn: {
         flex: 1,
-        borderRadius: 16,
+        borderRadius: 14.4, // 16 * 0.9
         backgroundColor: '#FFFFFF',
-        paddingVertical: 14,
+        paddingVertical: 12.6, // 14 * 0.9
         alignItems: 'center',
     },
     addBtnDisabled: {
         opacity: 0.5,
     },
     addBtnText: {
-        fontSize: 16,
+        fontSize: 14.4, // 16 * 0.9
         fontWeight: '700',
         color: '#000000',
     },
     cancelText: {
-        fontSize: 15,
+        fontSize: 13.5, // 15 * 0.9
         fontWeight: '500',
         color: 'rgba(255,255,255,0.45)',
         textAlign: 'center',

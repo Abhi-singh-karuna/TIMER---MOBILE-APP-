@@ -52,6 +52,8 @@ export default function SettingsScreen({
     onPastTimersDisabledChange,
     isPastTasksDisabled,
     onPastTasksDisabledChange,
+    dailyStartMinutes,
+    onDailyStartMinutesChange,
     quickMessages,
     onQuickMessagesChange,
     timeOfDayBackgroundConfig,
@@ -140,13 +142,15 @@ export default function SettingsScreen({
             </View>
             <View style={styles.section}>
                 <Text style={styles.sectionTitle}>GENERAL SETTINGS</Text>
-                <GeneralSection
-                    isLandscape={false}
-                    isPastTimersDisabled={isPastTimersDisabled}
-                    onPastTimersDisabledChange={onPastTimersDisabledChange}
-                    isPastTasksDisabled={isPastTasksDisabled}
-                    onPastTasksDisabledChange={onPastTasksDisabledChange}
-                />
+                        <GeneralSection
+                                isLandscape={false}
+                                isPastTimersDisabled={isPastTimersDisabled}
+                                onPastTimersDisabledChange={onPastTimersDisabledChange}
+                                isPastTasksDisabled={isPastTasksDisabled}
+                                onPastTasksDisabledChange={onPastTasksDisabledChange}
+                                dailyStartMinutes={dailyStartMinutes}
+                                onDailyStartMinutesChange={onDailyStartMinutesChange}
+                            />
             </View>
             <View style={styles.section}>
                 <Text style={styles.sectionTitle}>TIMELINE</Text>
@@ -323,6 +327,8 @@ export default function SettingsScreen({
                                 onPastTimersDisabledChange={onPastTimersDisabledChange}
                                 isPastTasksDisabled={isPastTasksDisabled}
                                 onPastTasksDisabledChange={onPastTasksDisabledChange}
+                                dailyStartMinutes={dailyStartMinutes}
+                                onDailyStartMinutesChange={onDailyStartMinutesChange}
                             />
                         )}
 

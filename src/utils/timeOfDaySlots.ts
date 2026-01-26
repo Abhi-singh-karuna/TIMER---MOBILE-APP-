@@ -248,12 +248,17 @@ export const saveTimeOfDaySlots = async (slots: TimeOfDaySlotConfigList): Promis
  *
  * - leftPx = (minute / minutesPerCell) * cellWidth
  * - widthPx = (durationMinutes / minutesPerCell) * cellWidth
+ *
+ * When dailyStartMinutes is provided, the timeline runs from daily start (e.g. 06:00)
+ * to the next day's daily start. Slot times (startMinute/endMinute in midnight) are
+ * converted to this "display" space: displayM = (midnightM - dailyStartMinutes + 1440) % 1440.
  */
 export const buildTimeOfDayBackgroundSegments = (
   config: TimeOfDaySlotConfigList,
   minutesPerCell: number,
   cellWidth: number,
-  dayMinutes = 1440
+  dayMinutes = 1440,
+  dailyStartMinutes?: number
 ) => {
   const normalized = normalizeTimeOfDaySlotConfig(config);
   const mpc = Math.max(1, minutesPerCell);
@@ -262,11 +267,23 @@ export const buildTimeOfDayBackgroundSegments = (
   const toLeft = (minute: number) => (minute / mpc) * cw;
   const toWidth = (duration: number) => (duration / mpc) * cw;
 
+  const toDisplay = (midnightM: number) => ((midnightM - (dailyStartMinutes ?? 0) + 1440) % 1440);
+
   const segments: Array<{ key: TimeOfDaySlotKey; label: string; colorHex: string; left: number; width: number }> = [];
 
   for (const slot of normalized) {
-    const start = Math.max(0, Math.min(dayMinutes, slot.startMinute));
-    const end = Math.max(0, Math.min(dayMinutes, slot.endMinute));
+    let start: number;
+    let end: number;
+
+    if (dailyStartMinutes != null) {
+      // Convert from midnight to display (0 = daily start, 1440 = next daily start)
+      start = toDisplay(slot.startMinute);
+      // endMinute can be 1440; (1440 - d + 1440) % 1440 gives right edge in display
+      end = toDisplay(slot.endMinute === 1440 ? 1440 : slot.endMinute);
+    } else {
+      start = Math.max(0, Math.min(dayMinutes, slot.startMinute));
+      end = Math.max(0, Math.min(dayMinutes, slot.endMinute));
+    }
 
     if (start < end) {
       segments.push({
@@ -280,7 +297,7 @@ export const buildTimeOfDayBackgroundSegments = (
     }
 
     if (start > end) {
-      // Cross-midnight: [0..end) and [start..dayMinutes)
+      // Cross boundary: [0..end) and [start..1440)
       if (end > 0) {
         segments.push({
           key: slot.key,
@@ -290,13 +307,13 @@ export const buildTimeOfDayBackgroundSegments = (
           width: toWidth(end),
         });
       }
-      if (start < dayMinutes) {
+      if (start < 1440) {
         segments.push({
           key: slot.key,
           label: slot.label,
           colorHex: slot.colorHex,
           left: toLeft(start),
-          width: toWidth(dayMinutes - start),
+          width: toWidth(1440 - start),
         });
       }
       continue;
