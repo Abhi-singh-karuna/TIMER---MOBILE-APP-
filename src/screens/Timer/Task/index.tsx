@@ -1701,7 +1701,7 @@ export default function TaskList({
         };
     }, []);
 
-    if (isLandscape && showLive) {
+    if (showLive) {
         return (
             <View style={styles.container}>
                 <LiveFocusView
@@ -2578,8 +2578,8 @@ function TaskCard({
             isCompleted: false,
             status: 'Upcoming',
             createdAt: nowIso,
-            // Assign defaults at creation time (so persistence never relies on UI-side effects)
-            startTimeMinutes: 0,
+            // 6-to-6 day: start at beginning of logical day (e.g. 06:00), not 00:00
+            startTimeMinutes: dailyStartMinutes,
             durationMinutes: 180,
         };
         const updatedStages = [...(task.stages || []), newStage];

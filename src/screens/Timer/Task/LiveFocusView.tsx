@@ -4,6 +4,7 @@ import {
     Text,
     StyleSheet,
     TouchableOpacity,
+    TouchableWithoutFeedback,
     ScrollView,
     useWindowDimensions,
     GestureResponderEvent,
@@ -24,7 +25,7 @@ import AddSubtaskModal from '../../../components/AddSubtaskModal';
 import ApprovalPopup from './ApprovalPopup';
 import StageActionPopup from './StageActionPopup';
 import { buildTimeOfDayBackgroundSegments, DEFAULT_TIME_OF_DAY_SLOTS, TimeOfDaySlotConfigList } from '../../../utils/timeOfDaySlots';
-import { getLogicalDate, getStartOfLogicalDay, isSameLogicalDay, toDisplayMinutes, DEFAULT_DAILY_START_MINUTES } from '../../../utils/dailyStartTime';
+import { getLogicalDate, getStartOfLogicalDay, getStartOfLogicalDayFromString, isSameLogicalDay, toDisplayMinutes, DEFAULT_DAILY_START_MINUTES } from '../../../utils/dailyStartTime';
 
 interface LiveFocusViewProps {
     tasks: Task[];
@@ -71,6 +72,9 @@ const STAGE_STATUS_LABELS: Record<StageStatus, string> = {
     Done: 'Done',
     Undone: 'Undone',
 };
+
+const MONTHS_SHORT = ['JAN', 'FEB', 'MAR', 'APR', 'MAY', 'JUN', 'JUL', 'AUG', 'SEP', 'OCT', 'NOV', 'DEC'];
+const MONTHS_CAL = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 
 export default function LiveFocusView({
     tasks,
@@ -181,6 +185,10 @@ export default function LiveFocusView({
     const [stageStatusPopupPosition, setStageStatusPopupPosition] = useState({ x: 0, y: 0 });
     const statusButtonRef = useRef<View>(null);
 
+    // Dock calendar: clickable date line (e.g. 21 JAN) opens small calendar to pick date and switch live view
+    const [showDockCalendar, setShowDockCalendar] = useState(false);
+    const [viewDate, setViewDate] = useState(() => new Date());
+
     // Simple timer state (counts up from 00:00:00)
     const [timerSeconds, setTimerSeconds] = useState(0);
     const [isTimerRunning, setIsTimerRunning] = useState(false);
@@ -225,7 +233,9 @@ export default function LiveFocusView({
 
     // Live current time HH:MM:SS for the Now button; also updates currentTimeRef so NOW line moves in real time.
     // Date rollover: when the clock crosses the daily start time, switch to the new logical day.
+    // IMPORTANT: Only auto-update date when viewing today (to handle date rollover). Don't override user-selected past/future dates.
     const [nowHHMMSS, setNowHHMMSS] = useState('');
+    const wasViewingTodayRef = useRef(false); // Track if we were viewing today in the previous tick
     useEffect(() => {
         const tick = () => {
             const d = new Date();
@@ -235,10 +245,25 @@ export default function LiveFocusView({
             );
             const logicalNow = getLogicalDate(d, dailyStartMinutes);
             const logicalSel = getLogicalDate(selectedDate, dailyStartMinutes);
-            if (logicalNow !== logicalSel) {
+            
+            // Only auto-update if:
+            // 1. We were viewing today in the previous tick (wasViewingTodayRef.current === true)
+            // 2. AND now the logical day has changed (rollover occurred)
+            // This handles date rollover when viewing today, but doesn't override user-selected past/future dates
+            if (wasViewingTodayRef.current && logicalNow !== logicalSel) {
+                // We were viewing today, and now the day has rolled over - update to new day
                 onDateChange(getStartOfLogicalDay(d, dailyStartMinutes));
             }
+            
+            // Update the ref for next tick: are we viewing today now?
+            wasViewingTodayRef.current = (logicalNow === logicalSel);
         };
+        // Initialize: check if we're viewing today on mount
+        const initialD = new Date();
+        const initialLogicalNow = getLogicalDate(initialD, dailyStartMinutes);
+        const initialLogicalSel = getLogicalDate(selectedDate, dailyStartMinutes);
+        wasViewingTodayRef.current = (initialLogicalNow === initialLogicalSel);
+        
         tick();
         const t = setInterval(tick, 1000);
         return () => clearInterval(t);
@@ -1014,6 +1039,96 @@ export default function LiveFocusView({
         return `${String(startHour % 24).padStart(2, '0')}:${String(startMin).padStart(2, '0')} - ${String(endHour % 24).padStart(2, '0')}:${String(endMin).padStart(2, '0')}`;
     };
 
+    // Date line for dock: "21 JAN"
+    const formatDateLabel = (d: Date) => `${d.getDate()} ${MONTHS_SHORT[d.getMonth()]}`;
+
+    // Calendar helpers (small popup, same design as AddTaskModal)
+    const getDaysInMonth = (year: number, month: number) => new Date(year, month + 1, 0).getDate();
+    const getFirstDayOfMonth = (year: number, month: number) => new Date(year, month, 1).getDay();
+    const changeMonth = (delta: number) => {
+        setViewDate(prev => new Date(prev.getFullYear(), prev.getMonth() + delta, 1));
+        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    };
+
+    const renderDockCalendar = () => {
+        const days = getDaysInMonth(viewDate.getFullYear(), viewDate.getMonth());
+        const firstDay = getFirstDayOfMonth(viewDate.getFullYear(), viewDate.getMonth());
+        const daysArray: { day: number; current: boolean }[] = [];
+        const prevMonthDays = getDaysInMonth(viewDate.getFullYear(), viewDate.getMonth() - 1);
+        for (let i = firstDay - 1; i >= 0; i--) {
+            daysArray.push({ day: prevMonthDays - i, current: false });
+        }
+        for (let i = 1; i <= days; i++) {
+            daysArray.push({ day: i, current: true });
+        }
+        const remaining = 42 - daysArray.length;
+        for (let i = 1; i <= remaining; i++) {
+            daysArray.push({ day: i, current: false });
+        }
+        const weekDays = ['S', 'M', 'T', 'W', 'T', 'F', 'S'];
+        const todayLogical = getLogicalDate(new Date(), dailyStartMinutes);
+
+        return (
+            <View style={styles.calendarMini}>
+                <View style={styles.calHeader}>
+                    <TouchableOpacity onPress={() => { setShowDockCalendar(false); Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); }} style={styles.calBack}>
+                        <MaterialIcons name="arrow-back" size={20} color="#fff" />
+                    </TouchableOpacity>
+                    <Text style={styles.calTitle}>{MONTHS_CAL[viewDate.getMonth()]} {viewDate.getFullYear()}</Text>
+                    <View style={styles.calNav}>
+                        <TouchableOpacity onPress={() => changeMonth(-1)} style={styles.calNavBtn}>
+                            <MaterialIcons name="chevron-left" size={20} color="#fff" />
+                        </TouchableOpacity>
+                        <TouchableOpacity onPress={() => changeMonth(1)} style={styles.calNavBtn}>
+                            <MaterialIcons name="chevron-right" size={20} color="#fff" />
+                        </TouchableOpacity>
+                    </View>
+                </View>
+                <View style={styles.weekRow}>
+                    {weekDays.map((d, i) => <Text key={i} style={styles.weekText}>{d}</Text>)}
+                </View>
+                <View style={styles.daysGrid}>
+                    {daysArray.map((item, i) => {
+                        // Use calendar YYYY-MM-DD for the tapped day (avoid midnight rollback: getLogicalDate(00:00) would yield previous day when dailyStart > 0)
+                        const cellLogical = item.current
+                            ? `${viewDate.getFullYear()}-${String(viewDate.getMonth() + 1).padStart(2, '0')}-${String(item.day).padStart(2, '0')}`
+                            : '';
+                        const isSelected = item.current && cellLogical === getLogicalDate(selectedDate, dailyStartMinutes);
+                        const isToday = item.current && cellLogical === todayLogical;
+
+                        return (
+                            <TouchableOpacity
+                                key={i}
+                                style={styles.dayCell}
+                                disabled={!item.current}
+                                onPress={() => {
+                                    if (item.current && cellLogical) {
+                                        onDateChange(getStartOfLogicalDayFromString(cellLogical, dailyStartMinutes));
+                                        setShowDockCalendar(false);
+                                        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+                                    }
+                                }}
+                            >
+                                <View style={[
+                                    styles.dayCircle,
+                                    !item.current && { opacity: 0.2 },
+                                    isToday && styles.todayCircle,
+                                    isSelected && styles.selectedFutureCircle,
+                                ]}>
+                                    <Text style={[
+                                        styles.dayText,
+                                        isToday && { color: '#000' },
+                                        isSelected && { color: '#4CAF50', fontWeight: '800' },
+                                    ]}>{item.day}</Text>
+                                </View>
+                            </TouchableOpacity>
+                        );
+                    })}
+                </View>
+            </View>
+        );
+    };
+
     const TIMELINE_ONLY_WIDTH = TOTAL_CELLS * CELL_WIDTH + 100; // Width without label column
 
     // Scroll timeline so the NOW line is centered when viewing the current logical day; otherwise scroll to start (daily start).
@@ -1041,6 +1156,36 @@ export default function LiveFocusView({
             isScrollingHorizontally.current = false;
         });
     }, [screenWidth, isTaskColumnVisible, minutesPerCell, onScrollChange, selectedDate, dailyStartMinutes]);
+
+    // When selectedDate changes, update scroll position: scroll to NOW if viewing today, otherwise scroll to start
+    useEffect(() => {
+        const now = new Date();
+        const timelineVisibleWidth = screenWidth - (isTaskColumnVisible ? TRACK_LABEL_WIDTH : 0);
+        const timelineOnlyWidth = TOTAL_CELLS * CELL_WIDTH + 100; // Recalculate since it depends on minutesPerCell
+        const maxScrollX = Math.max(0, timelineOnlyWidth - timelineVisibleWidth);
+
+        let scrollX: number;
+        if (isSameLogicalDay(selectedDate, now, dailyStartMinutes)) {
+            // Viewing today: center the NOW line
+            const totalMinutesNow = now.getHours() * 60 + now.getMinutes();
+            const displayMinutes = (totalMinutesNow - dailyStartMinutes + 1440) % 1440;
+            const nowPosition = (displayMinutes / minutesPerCell) * CELL_WIDTH;
+            scrollX = Math.max(0, Math.min(nowPosition - timelineVisibleWidth / 2, maxScrollX));
+        } else {
+            // Viewing past/future day: scroll to start (daily start time)
+            scrollX = 0;
+        }
+
+        // Update scroll position
+        timelineScrollXRef.current = scrollX;
+        onScrollChange?.(scrollX);
+        if (horizontalScrollTimelineRef.current) {
+            horizontalScrollTimelineRef.current.scrollTo({ x: scrollX, animated: true });
+        }
+        if (horizontalScrollHeaderRef.current) {
+            horizontalScrollHeaderRef.current.scrollTo({ x: scrollX, animated: true });
+        }
+    }, [selectedDate, screenWidth, isTaskColumnVisible, minutesPerCell, onScrollChange, dailyStartMinutes]);
 
     // Time-of-day sliding background segments (timeline-level). Uses dailyStartMinutes so 0 = daily start.
     const timeOfDayBackgroundSegments = useMemo(() => {
@@ -1532,8 +1677,8 @@ export default function LiveFocusView({
                                     </View>
                                 ))}
 
-                                {/* NOW Line Dot (Top portion) — only when selected date is the current logical day */}
-                                {isSameLogicalDay(selectedDate, currentTimeRef.current, dailyStartMinutes) && (
+                                {/* NOW Line Dot (Top portion) — only when selected date is the current logical day (today) */}
+                                {isSameLogicalDay(selectedDate, new Date(), dailyStartMinutes) && (
                                     <View style={[styles.nowLineSticky, { left: getNowPosition() }]}>
                                         <View style={styles.nowDot} />
                                     </View>
@@ -1603,8 +1748,8 @@ export default function LiveFocusView({
                                         </View>
                                     ))}
 
-                                    {/* NOW Line - Vertical segment — only when selected date is the current logical day */}
-                                    {isSameLogicalDay(selectedDate, currentTimeRef.current, dailyStartMinutes) && (
+                                    {/* NOW Line - Vertical segment — only when selected date is the current logical day (today) */}
+                                    {isSameLogicalDay(selectedDate, new Date(), dailyStartMinutes) && (
                                         <View style={[styles.nowLine, { left: getNowPosition() }]} />
                                     )}
 
@@ -2313,6 +2458,22 @@ export default function LiveFocusView({
                         {/* Horizontal divider */}
                         <View style={styles.bottomDockDivider} />
 
+                        {/* Date line (e.g. 21 JAN): clickable, opens calendar to pick date and switch live view */}
+                        <TouchableOpacity
+                            style={styles.dockDateBtn}
+                            onPress={() => {
+                                setViewDate(new Date(selectedDate.getFullYear(), selectedDate.getMonth(), 1));
+                                setShowDockCalendar(true);
+                                Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                            }}
+                            activeOpacity={0.7}
+                        >
+                            <MaterialIcons name="calendar-today" size={12} color="rgba(255,255,255,0.7)" />
+                            <Text style={styles.dockDateValue}>{formatDateLabel(selectedDate)}</Text>
+                        </TouchableOpacity>
+
+                        <View style={styles.bottomDockDivider} />
+
                         {/* Now: scroll to center NOW line; shows current time HH:MM:SS */}
                         <TouchableOpacity
                             style={styles.dockNowBtn}
@@ -2407,8 +2568,8 @@ export default function LiveFocusView({
                         isCompleted: false,
                         status: 'Upcoming',
                         createdAt: new Date().toISOString(),
-                        // Ensure defaults exist at creation time (no UI-side effects later)
-                        startTimeMinutes: startTime ?? 0,
+                        // 6-to-6: default start to beginning of logical day (e.g. 06:00) when missing
+                        startTimeMinutes: startTime ?? dailyStartMinutes,
                         durationMinutes: duration ?? 180,
                     };
 
@@ -2449,6 +2610,24 @@ export default function LiveFocusView({
                     return (s?.status ?? 'Upcoming') as StageStatus;
                 })()}
             />
+
+            {/* Small calendar popup: tap date line (21 JAN) in dock to pick date and move live view */}
+            <Modal
+                visible={showDockCalendar}
+                transparent
+                animationType="fade"
+                supportedOrientations={['portrait', 'landscape', 'landscape-left', 'landscape-right']}
+                onRequestClose={() => setShowDockCalendar(false)}
+            >
+                <View style={styles.calendarModalBackdrop}>
+                    <TouchableWithoutFeedback onPress={() => setShowDockCalendar(false)}>
+                        <View style={styles.calendarModalTouchable} />
+                    </TouchableWithoutFeedback>
+                    <View style={styles.calendarPopup}>
+                        {renderDockCalendar()}
+                    </View>
+                </View>
+            </Modal>
 
         </View >
     );
@@ -3852,6 +4031,22 @@ const styles = StyleSheet.create({
         fontSize: 9,
         fontWeight: '900',
     },
+    dockDateBtn: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 4,
+        paddingHorizontal: 6,
+        paddingVertical: 5,
+        borderRadius: 8,
+        backgroundColor: 'rgba(255,255,255,0.08)',
+        borderWidth: 1,
+        borderColor: 'rgba(255,255,255,0.12)',
+    },
+    dockDateValue: {
+        fontSize: 10,
+        fontWeight: '900',
+        color: 'rgba(255,255,255,0.9)',
+    },
     dockNowBtn: {
         flexDirection: 'row',
         alignItems: 'center',
@@ -3877,5 +4072,102 @@ const styles = StyleSheet.create({
         borderColor: 'rgba(255, 255, 255, 0.12)',
         alignItems: 'center',
         justifyContent: 'center',
+    },
+    // Small calendar popup (same design as AddTaskModal)
+    calendarModalBackdrop: {
+        flex: 1,
+        backgroundColor: 'rgba(0,0,0,0.5)',
+        justifyContent: 'center',
+        alignItems: 'center',
+    },
+    calendarModalTouchable: {
+        position: 'absolute',
+        top: 0,
+        left: 0,
+        right: 0,
+        bottom: 0,
+    },
+    calendarPopup: {
+        width: 280,
+        backgroundColor: 'rgba(20,20,20,0.98)',
+        borderRadius: 12,
+        borderWidth: 1,
+        borderColor: 'rgba(255,255,255,0.12)',
+        padding: 12,
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 4 },
+        shadowOpacity: 0.3,
+        shadowRadius: 8,
+        elevation: 8,
+    },
+    calendarMini: {
+        paddingBottom: 4,
+    },
+    calHeader: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        marginBottom: 8,
+    },
+    calBack: {
+        padding: 4,
+    },
+    calTitle: {
+        color: '#fff',
+        fontSize: 15,
+        fontWeight: '700',
+    },
+    calNav: {
+        flexDirection: 'row',
+        gap: 10,
+    },
+    calNavBtn: {
+        padding: 4,
+    },
+    weekRow: {
+        flexDirection: 'row',
+        justifyContent: 'space-between',
+        marginBottom: 4,
+    },
+    weekText: {
+        width: '14.2%',
+        textAlign: 'center',
+        color: 'rgba(255,255,255,0.4)',
+        fontSize: 10,
+        fontWeight: '600',
+    },
+    daysGrid: {
+        flexDirection: 'row',
+        flexWrap: 'wrap',
+    },
+    dayCell: {
+        width: '14.28%',
+        height: 28,
+        alignItems: 'center',
+        justifyContent: 'center',
+        marginBottom: 2,
+    },
+    dayCircle: {
+        width: 22,
+        height: 22,
+        borderRadius: 11,
+        alignItems: 'center',
+        justifyContent: 'center',
+    },
+    dayText: {
+        color: 'rgba(255,255,255,0.8)',
+        fontSize: 10,
+        fontWeight: '500',
+    },
+    todayCircle: {
+        backgroundColor: '#fff',
+    },
+    selectedFutureCircle: {
+        borderWidth: 2,
+        borderColor: '#4CAF50',
+    },
+    selectedPastCircle: {
+        borderWidth: 2,
+        borderColor: '#FF5050',
     },
 });
