@@ -151,10 +151,20 @@ export default function LiveFocusView({
     const [pendingLayoutsVersion, setPendingLayoutsVersion] = useState(0);
 
     // Add subtask modal state
-    const [addSubtaskModal, setAddSubtaskModal] = useState<{ visible: boolean; taskId: number | null; startTimeMinutes: number }>({
+    const [addSubtaskModal, setAddSubtaskModal] = useState<{ 
+        visible: boolean; 
+        taskId: number | null; 
+        startTimeMinutes: number;
+        mode?: 'add' | 'edit';
+        stageId?: number | null;
+        existingText?: string;
+        existingStartTime?: number;
+        existingDuration?: number;
+    }>({
         visible: false,
         taskId: null,
         startTimeMinutes: 0,
+        mode: 'add',
     });
 
     // Floating progress bar state (UI-only; resets safely on unmount)
@@ -1588,12 +1598,30 @@ export default function LiveFocusView({
                                                             </Text>
                                                         </View>
 
-                                                        {/* Task title + active indicator */}
+                                                        {/* Task title + active indicator + add button */}
                                                         <View style={styles.titleRow}>
                                                             <Text style={[styles.trackTitle, isActive && styles.trackTitleActive]} numberOfLines={1}>
                                                                 {task.title}
                                                             </Text>
-                                                            {isActive && <View style={styles.activeDot} />}
+                                                            <View style={styles.titleRowRight}>
+                                                                {isActive && <View style={styles.activeDot} />}
+                                                                <TouchableOpacity
+                                                                    style={styles.taskAddSubtaskBtn}
+                                                                    onPress={() => {
+                                                                        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                                                                        const nowMinutes = currentTimeRef.current.getHours() * 60 + currentTimeRef.current.getMinutes();
+                                                                        setAddSubtaskModal({
+                                                                            visible: true,
+                                                                            taskId: task.id,
+                                                                            startTimeMinutes: nowMinutes,
+                                                                            mode: 'add',
+                                                                        });
+                                                                    }}
+                                                                    activeOpacity={0.7}
+                                                                >
+                                                                    <MaterialIcons name="add" size={14} color="rgba(255,255,255,0.6)" />
+                                                                </TouchableOpacity>
+                                                            </View>
                                                         </View>
 
                                                         {/* Progress bar: Done (green) | Undone (red) | Pending (grey) + count */}
@@ -2210,6 +2238,7 @@ export default function LiveFocusView({
                                                                             visible: true,
                                                                             taskId: task.id,
                                                                             startTimeMinutes: nowMinutes,
+                                                                            mode: 'add',
                                                                         });
                                                                     }}
                                                                     activeOpacity={0.7}
@@ -2251,11 +2280,6 @@ export default function LiveFocusView({
             >
                 {/* Bar header (improved progress) */}
                 <View style={styles.bottomDockBar}>
-                    <View style={styles.bottomDockProgressTrack}>
-                        <View style={[styles.bottomDockProgressFill, { width: `${progressSummary.pct}%` }]} />
-                        <View style={[styles.bottomDockProgressUndone, { width: `${progressSummary.undonePct}%`, left: `${progressSummary.pct}%` }]} />
-                    </View>
-
                     {/* Time progress bar (TOTAL split by Done / Pending / Undone) */}
                     <View style={styles.bottomDockTimeBarTrack}>
                         {progressSummary.totalMinutes > 0 ? (
@@ -2340,22 +2364,43 @@ export default function LiveFocusView({
                                                     </Text>
                                                 </Text>
                                             </View>
-                                            <View ref={statusButtonRef} collapsable={false}>
+                                            <View style={{ flexDirection: 'row', gap: 6, alignItems: 'center' }}>
+                                                <View ref={statusButtonRef} collapsable={false}>
+                                                    <TouchableOpacity
+                                                        style={styles.dockStatusBtn}
+                                                        onPress={() => {
+                                                            Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                                                            statusButtonRef.current?.measureInWindow((x, y, w, h) => {
+                                                                setStageStatusPopupPosition({ x: x + w / 2, y: y + h });
+                                                                setStageStatusPopupVisible(true);
+                                                            });
+                                                        }}
+                                                        activeOpacity={0.7}
+                                                    >
+                                                        <MaterialIcons name={statusConfig.icon} size={14} color={statusConfig.color} />
+                                                        <Text style={[styles.dockStatusBtnText, { color: statusConfig.color }]}>
+                                                            {STAGE_STATUS_LABELS[status]}
+                                                        </Text>
+                                                    </TouchableOpacity>
+                                                </View>
                                                 <TouchableOpacity
-                                                    style={styles.dockStatusBtn}
+                                                    style={styles.dockEditBtn}
                                                     onPress={() => {
                                                         Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                                                        statusButtonRef.current?.measureInWindow((x, y, w, h) => {
-                                                            setStageStatusPopupPosition({ x: x + w / 2, y: y + h });
-                                                            setStageStatusPopupVisible(true);
+                                                        setAddSubtaskModal({
+                                                            visible: true,
+                                                            taskId: resizeModeStage.taskId,
+                                                            startTimeMinutes: effectiveTime.startTimeMinutes,
+                                                            mode: 'edit',
+                                                            stageId: resizeModeStage.stageId,
+                                                            existingText: selectedStage.text,
+                                                            existingStartTime: effectiveTime.startTimeMinutes,
+                                                            existingDuration: effectiveTime.durationMinutes,
                                                         });
                                                     }}
                                                     activeOpacity={0.7}
                                                 >
-                                                    <MaterialIcons name={statusConfig.icon} size={14} color={statusConfig.color} />
-                                                    <Text style={[styles.dockStatusBtnText, { color: statusConfig.color }]}>
-                                                        {STAGE_STATUS_LABELS[status]}
-                                                    </Text>
+                                                    <MaterialIcons name="edit" size={14} color="rgba(255,255,255,0.8)" />
                                                 </TouchableOpacity>
                                             </View>
                                         </View>
@@ -2551,7 +2596,12 @@ export default function LiveFocusView({
                 visible={addSubtaskModal.visible}
                 taskId={addSubtaskModal.taskId}
                 startTimeMinutes={addSubtaskModal.startTimeMinutes}
-                onClose={() => setAddSubtaskModal({ visible: false, taskId: null, startTimeMinutes: 0 })}
+                mode={addSubtaskModal.mode || 'add'}
+                stageId={addSubtaskModal.stageId || null}
+                existingText={addSubtaskModal.existingText}
+                existingStartTime={addSubtaskModal.existingStartTime}
+                existingDuration={addSubtaskModal.existingDuration}
+                onClose={() => setAddSubtaskModal({ visible: false, taskId: null, startTimeMinutes: 0, mode: 'add' })}
                 onAdd={(taskId, text, startTime, duration) => {
                     if (!onUpdateStages) return;
                     const task = tasks.find(t => t.id === taskId);
@@ -2577,7 +2627,29 @@ export default function LiveFocusView({
                     onUpdateStages(task, updatedStages);
 
                     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-                    setAddSubtaskModal({ visible: false, taskId: null, startTimeMinutes: 0 });
+                    setAddSubtaskModal({ visible: false, taskId: null, startTimeMinutes: 0, mode: 'add' });
+                }}
+                onUpdate={(taskId, stageId, text, startTime, duration) => {
+                    if (!onUpdateStages) return;
+                    const task = tasks.find(t => t.id === taskId);
+                    if (!task) return;
+
+                    const updatedStages = (task.stages || []).map(s =>
+                        s.id === stageId
+                            ? {
+                                ...s,
+                                text: text,
+                                startTimeMinutes: startTime,
+                                durationMinutes: duration,
+                            }
+                            : s
+                    );
+                    onUpdateStages(task, updatedStages);
+
+                    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+                    setAddSubtaskModal({ visible: false, taskId: null, startTimeMinutes: 0, mode: 'add' });
+                    // Exit resize mode after update
+                    setResizeModeStage(null);
                 }}
             />
 
@@ -3038,8 +3110,9 @@ const styles = StyleSheet.create({
         flex: 1,
     },
     bottomDockProgressTrack: {
-        height: 1,
+        height: 3,
         backgroundColor: 'rgba(255,255,255,0.06)',
+        marginBottom: 2,
     },
     bottomDockProgressFill: {
         position: 'absolute',
@@ -3552,6 +3625,21 @@ const styles = StyleSheet.create({
         justifyContent: 'space-between',
         marginBottom: 2,
     },
+    titleRowRight: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 6,
+    },
+    taskAddSubtaskBtn: {
+        width: 20,
+        height: 20,
+        borderRadius: 10,
+        backgroundColor: 'rgba(255,255,255,0.08)',
+        borderWidth: 1,
+        borderColor: 'rgba(255,255,255,0.12)',
+        alignItems: 'center',
+        justifyContent: 'center',
+    },
     subtitleRow: {
         flexDirection: 'row',
         alignItems: 'center',
@@ -4000,6 +4088,18 @@ const styles = StyleSheet.create({
         fontWeight: '900',
         letterSpacing: 1.5,
         color: 'rgba(255,255,255,0.8)',
+    },
+    dockEditBtn: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'center',
+        paddingHorizontal: 8,
+        paddingVertical: 6,
+        borderRadius: 8,
+        backgroundColor: 'rgba(255,255,255,0.08)',
+        borderWidth: 1,
+        borderColor: 'rgba(255,255,255,0.12)',
+        minWidth: 32,
     },
     dockApprovalsBtn: {
         flexDirection: 'row',
