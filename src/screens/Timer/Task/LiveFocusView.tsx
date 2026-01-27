@@ -245,11 +245,14 @@ export default function LiveFocusView({
     // Date rollover: when the clock crosses the daily start time, switch to the new logical day.
     // IMPORTANT: Only auto-update date when viewing today (to handle date rollover). Don't override user-selected past/future dates.
     const [nowHHMMSS, setNowHHMMSS] = useState('');
+    // State to trigger NOW line re-renders every second for smooth movement
+    const [currentTimeForRender, setCurrentTimeForRender] = useState(new Date());
     const wasViewingTodayRef = useRef(false); // Track if we were viewing today in the previous tick
     useEffect(() => {
         const tick = () => {
             const d = new Date();
             currentTimeRef.current = d;
+            setCurrentTimeForRender(d); // Update state to trigger NOW line re-render
             setNowHHMMSS(
                 `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}:${String(d.getSeconds()).padStart(2, '0')}`
             );
@@ -275,7 +278,8 @@ export default function LiveFocusView({
         wasViewingTodayRef.current = (initialLogicalNow === initialLogicalSel);
         
         tick();
-        const t = setInterval(tick, 1000);
+        // Update every 250ms for smooth NOW line movement (sub-second precision)
+        const t = setInterval(tick, 250);
         return () => clearInterval(t);
     }, [dailyStartMinutes, selectedDate, onDateChange]);
 
@@ -862,9 +866,12 @@ export default function LiveFocusView({
     }, [onScrollChange]);
 
     // NOW position (relative to timeline). Display axis: 0 = daily start, 1440 = next daily start.
+    // Includes seconds for smooth sub-minute movement
     // displayMinutes = (minutesFromMidnight - dailyStartMinutes + 1440) % 1440
     const getNowPosition = () => {
-        const totalMinutesNow = currentTimeRef.current.getHours() * 60 + currentTimeRef.current.getMinutes();
+        const now = currentTimeRef.current;
+        const totalSecondsNow = now.getHours() * 3600 + now.getMinutes() * 60 + now.getSeconds();
+        const totalMinutesNow = totalSecondsNow / 60; // Include seconds as fractional minutes
         const displayMinutes = (totalMinutesNow - dailyStartMinutes + 1440) % 1440;
         return (displayMinutes / minutesPerCell) * CELL_WIDTH;
     };
@@ -2378,9 +2385,6 @@ export default function LiveFocusView({
                                                         activeOpacity={0.7}
                                                     >
                                                         <MaterialIcons name={statusConfig.icon} size={14} color={statusConfig.color} />
-                                                        <Text style={[styles.dockStatusBtnText, { color: statusConfig.color }]}>
-                                                            {STAGE_STATUS_LABELS[status]}
-                                                        </Text>
                                                     </TouchableOpacity>
                                                 </View>
                                                 <TouchableOpacity
@@ -2535,26 +2539,28 @@ export default function LiveFocusView({
                         <View style={styles.bottomDockDivider} />
 
                         {/* Notifications: one list (To START + To FINISH), one count, one popup */}
-                        <TouchableOpacity
-                            style={[styles.dockApprovalsBtn, approvalCount === 0 && styles.dockApprovalsBtnDisabled]}
-                            onPress={approvalCount > 0 ? () => {
-                                Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-                                setApprovalPopupVisible(true);
-                            } : undefined}
-                            disabled={approvalCount === 0}
-                            activeOpacity={0.7}
-                        >
-                            <MaterialIcons
-                                name="notification-important"
-                                size={18}
-                                color={approvalCount > 0 ? '#FFFFFF' : 'rgba(255,255,255,0.4)'}
-                            />
+                        <View style={styles.dockApprovalsBtnContainer}>
+                            <TouchableOpacity
+                                style={[styles.dockApprovalsBtn, approvalCount === 0 && styles.dockApprovalsBtnDisabled]}
+                                onPress={approvalCount > 0 ? () => {
+                                    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+                                    setApprovalPopupVisible(true);
+                                } : undefined}
+                                disabled={approvalCount === 0}
+                                activeOpacity={0.7}
+                            >
+                                <MaterialIcons
+                                    name="notification-important"
+                                    size={14}
+                                    color={approvalCount > 0 ? '#FFFFFF' : 'rgba(255,255,255,0.4)'}
+                                />
+                            </TouchableOpacity>
                             {approvalCount > 0 && (
                                 <View style={styles.dockApprovalBadge}>
                                     <Text style={styles.dockApprovalBadgeText}>{approvalCount}</Text>
                                 </View>
                             )}
-                        </TouchableOpacity>
+                        </View>
 
                         {/* Vertical divider */}
                         <View style={styles.bottomDockDivider} />
@@ -2591,6 +2597,22 @@ export default function LiveFocusView({
                 )
             }
 
+            {/* Back button (visible when progress bar is hidden) */}
+            {
+                !isProgressExpanded && (
+                    <TouchableOpacity
+                        style={styles.dockExitBtnFloating}
+                        onPress={() => {
+                            Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+                            onClose();
+                        }}
+                        activeOpacity={0.7}
+                    >
+                        <MaterialIcons name="arrow-back" size={18} color="rgb(3, 3, 3)" />
+                    </TouchableOpacity>
+                )
+            }
+
             {/* Add Subtask Modal */}
             <AddSubtaskModal
                 visible={addSubtaskModal.visible}
@@ -2601,6 +2623,7 @@ export default function LiveFocusView({
                 existingText={addSubtaskModal.existingText}
                 existingStartTime={addSubtaskModal.existingStartTime}
                 existingDuration={addSubtaskModal.existingDuration}
+                timeOfDaySlots={timeOfDaySlots}
                 onClose={() => setAddSubtaskModal({ visible: false, taskId: null, startTimeMinutes: 0, mode: 'add' })}
                 onAdd={(taskId, text, startTime, duration) => {
                     if (!onUpdateStages) return;
@@ -4072,13 +4095,27 @@ const styles = StyleSheet.create({
         alignItems: 'center',
         justifyContent: 'center',
     },
+    dockExitBtnFloating: {
+        position: 'absolute',
+        left: 19,
+        bottom: 8,
+        paddingHorizontal: 5,
+        paddingVertical: 5,
+        borderRadius: 20,
+        backgroundColor: 'rgb(254, 254, 254)',
+        borderWidth: 1,
+        borderColor: 'rgba(255, 255, 255, 0.2)',
+        alignItems: 'center',
+        justifyContent: 'center',
+        zIndex: 6400,
+    },
     dockStatusBtn: {
         flexDirection: 'row',
         alignItems: 'center',
-        gap: 4,
-        paddingHorizontal: 8,
-        paddingVertical: 6,
-        borderRadius: 8,
+        justifyContent: 'center',
+        width: 28,
+        height: 28,
+        borderRadius: 14,
         backgroundColor: 'rgba(255,255,255,0.08)',
         borderWidth: 1,
         borderColor: 'rgba(255,255,255,0.12)',
@@ -4093,24 +4130,28 @@ const styles = StyleSheet.create({
         flexDirection: 'row',
         alignItems: 'center',
         justifyContent: 'center',
-        paddingHorizontal: 8,
-        paddingVertical: 6,
-        borderRadius: 8,
+        width: 28,
+        height: 28,
+        borderRadius: 14,
         backgroundColor: 'rgba(255,255,255,0.08)',
         borderWidth: 1,
         borderColor: 'rgba(255,255,255,0.12)',
-        minWidth: 32,
+    },
+    dockApprovalsBtnContainer: {
+        position: 'relative',
+        width: 28,
+        height: 28,
     },
     dockApprovalsBtn: {
         flexDirection: 'row',
         alignItems: 'center',
+        justifyContent: 'center',
+        width: 28,
+        height: 28,
+        borderRadius: 14,
         backgroundColor: 'rgba(76, 175, 80, 0.15)',
-        paddingHorizontal: 10,
-        paddingVertical: 6,
-        borderRadius: 10,
         borderWidth: 1,
         borderColor: 'rgba(76, 175, 80, 0.3)',
-        gap: 3,
     },
     dockApprovalsBtnDisabled: {
         backgroundColor: 'rgba(255,255,255,0.06)',
@@ -4118,13 +4159,19 @@ const styles = StyleSheet.create({
         opacity: 0.7,
     },
     dockApprovalBadge: {
+        position: 'absolute',
+        top: -4,
+        right: -4,
         backgroundColor: '#4CAF50',
-        paddingHorizontal: 5,
+        paddingHorizontal: 4,
         paddingVertical: 1,
-        borderRadius: 6,
+        borderRadius: 8,
         minWidth: 16,
+        height: 16,
         alignItems: 'center',
         justifyContent: 'center',
+        borderWidth: 1.5,
+        borderColor: '#000000',
     },
     dockApprovalBadgeText: {
         color: '#FFFFFF',

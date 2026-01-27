@@ -12,12 +12,14 @@ import {
     Keyboard,
     NativeSyntheticEvent,
     NativeScrollEvent,
+    TouchableOpacity,
 } from 'react-native';
 import { ScrollView, GestureHandlerRootView } from 'react-native-gesture-handler';
 import { BlurView } from 'expo-blur';
 import { LinearGradient } from 'expo-linear-gradient';
 import { MaterialIcons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
+import { TimeOfDaySlotConfigList, DEFAULT_TIME_OF_DAY_SLOTS, resolveTimeOfDaySlot } from '../utils/timeOfDaySlots';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const ITEM_HEIGHT = 39.6; // 44 * 0.9
@@ -100,7 +102,10 @@ interface AddSubtaskModalProps {
     existingStartTime?: number;
     existingDuration?: number;
     onUpdate?: (taskId: number, stageId: number, title: string, startTimeMinutes: number, durationMinutes: number) => void;
+    timeOfDaySlots?: TimeOfDaySlotConfigList;
 }
+
+const DURATION_OPTIONS = [10, 20, 30, 40, 50, 60]; // minutes
 
 export default function AddSubtaskModal({
     visible,
@@ -114,6 +119,7 @@ export default function AddSubtaskModal({
     existingStartTime,
     existingDuration,
     onUpdate,
+    timeOfDaySlots = DEFAULT_TIME_OF_DAY_SLOTS,
 }: AddSubtaskModalProps) {
     const { width: screenWidth, height: screenHeight } = useWindowDimensions();
     const isLandscape = screenWidth > screenHeight;
@@ -121,8 +127,12 @@ export default function AddSubtaskModal({
     const [text, setText] = useState('');
     const [selectedStartMinutes, setSelectedStartMinutes] = useState(startTimeMinutes);
     const [selectedDurationMinutes, setSelectedDurationMinutes] = useState(60); // Default 1 hour
-    const [activePicker, setActivePicker] = useState<'start' | 'duration'>('start');
+    const [activePicker, setActivePicker] = useState<'start' | 'duration' | null>(null);
     const [errorName, setErrorName] = useState(false);
+    
+    // Get current time slot based on selected start time
+    const currentTimeSlot = resolveTimeOfDaySlot(selectedStartMinutes, timeOfDaySlots);
+    const selectedTimeSlotKey = currentTimeSlot?.key || 'morning';
 
     useEffect(() => {
         if (visible) {
@@ -137,10 +147,25 @@ export default function AddSubtaskModal({
                 setSelectedStartMinutes(startTimeMinutes);
                 setSelectedDurationMinutes(60);
             }
-            setActivePicker('start');
+            setActivePicker('start'); // Default to start time selected
             setErrorName(false);
         }
     }, [visible, startTimeMinutes, mode, existingText, existingStartTime, existingDuration]);
+    
+    // Handler for time slot selection
+    const handleTimeSlotSelect = (slotKey: string) => {
+        const slot = timeOfDaySlots.find(s => s.key === slotKey);
+        if (slot) {
+            setSelectedStartMinutes(slot.startMinute);
+            Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+        }
+    };
+    
+    // Handler for duration selection
+    const handleDurationSelect = (duration: number) => {
+        setSelectedDurationMinutes(duration);
+        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    };
 
     const handleConfirm = () => {
         const hasName = text.trim().length > 0;
@@ -190,11 +215,9 @@ export default function AddSubtaskModal({
                         style={[styles.modal, isLandscape ? styles.modalLandscape : styles.modalPortrait]}
                         onPress={(e) => e.stopPropagation()}
                     >
-                        <Text style={styles.title}>{mode === 'edit' ? 'EDIT SUBTASK' : 'ADD SUBTASK'}</Text>
-
                         {isLandscape ? (
                             <View style={styles.landscapeContainer}>
-                                {/* Left Column: Input + Selected Times */}
+                                {/* Left Column: Input + Time Slot & Duration Cards */}
                                 <View style={styles.leftColumn}>
                                     <View style={styles.fieldGroup}>
                                         <Text style={styles.label}>SUBTASK NAME</Text>
@@ -215,59 +238,127 @@ export default function AddSubtaskModal({
                                         />
                                     </View>
 
-                                    <View style={styles.infoSelectorsLandscape}>
-                                        <Pressable
-                                            style={[styles.infoCard, activePicker === 'start' && styles.infoCardActive]}
-                                            onPress={() => {
-                                                setActivePicker('start');
-                                                Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                                            }}
-                                        >
-                                            <Text style={styles.infoCardLabel}>START</Text>
-                                            <Text style={[styles.infoCardValue, activePicker === 'start' && styles.infoCardValueActive]}>
-                                                {String(startHours).padStart(2, '0')}:{String(startMins).padStart(2, '0')}
-                                            </Text>
-                                        </Pressable>
+                                    {/* Start Time and Duration Cards in Same Row */}
+                                    <View style={styles.fieldGroup}>
+                                        <View style={styles.timeSlotRow}>
+                                            {/* Start Time Slot Card */}
+                                            <View style={styles.timeSlotCardWrapper}>
+                                                <Text style={styles.label}>START TIME</Text>
+                                                <Pressable
+                                                    style={[styles.timeSlotCard, activePicker === 'start' && styles.timeSlotCardActive]}
+                                                    onPress={() => {
+                                                        setActivePicker(activePicker === 'start' ? null : 'start');
+                                                        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                                                    }}
+                                                >
+                                                    <Text style={styles.timeSlotCardLabel}>START</Text>
+                                                    <Text style={[styles.timeSlotCardValue, activePicker === 'start' && styles.timeSlotCardValueActive]}>
+                                                        {String(startHours).padStart(2, '0')}:{String(startMins).padStart(2, '0')}
+                                                    </Text>
+                                                </Pressable>
+                                            </View>
 
-                                        <Pressable
-                                            style={[styles.infoCard, activePicker === 'duration' && styles.infoCardActive]}
-                                            onPress={() => {
-                                                setActivePicker('duration');
-                                                Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                                            }}
-                                        >
-                                            <Text style={styles.infoCardLabel}>DURATION</Text>
-                                            <Text style={[styles.infoCardValue, activePicker === 'duration' && styles.infoCardValueActive]}>
-                                                {durationHours}h {durationMins}m
-                                            </Text>
-                                        </Pressable>
-                                    </View>
+                                            {/* Duration Card */}
+                                            <View style={styles.timeSlotCardWrapper}>
+                                                <Text style={styles.label}>DURATION</Text>
+                                                <Pressable
+                                                    style={[styles.timeSlotCard, activePicker === 'duration' && styles.timeSlotCardActive]}
+                                                    onPress={() => {
+                                                        setActivePicker(activePicker === 'duration' ? null : 'duration');
+                                                        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                                                    }}
+                                                >
+                                                    <Text style={styles.timeSlotCardLabel}>DURATION</Text>
+                                                    <Text style={[styles.timeSlotCardValue, activePicker === 'duration' && styles.timeSlotCardValueActive]}>
+                                                        {durationHours > 0 ? `${durationHours}h ${durationMins}m` : `${durationMins}m`}
+                                                    </Text>
+                                                </Pressable>
+                                            </View>
+                                        </View>
 
-                                    <View style={styles.schedulerHint}>
-                                        <MaterialIcons name="auto-awesome" size={12.6} color="rgba(255,255,255,0.4)" />
-                                        <Text style={styles.timeText}>
-                                            At {String(startHours).padStart(2, '0')}:{String(startMins).padStart(2, '0')} for {durationHours}h {durationMins}m
-                                        </Text>
+                                        {/* Horizontal Scroller - Shows below when one is selected */}
+                                        {activePicker === 'start' && (
+                                            <ScrollView
+                                                horizontal
+                                                showsHorizontalScrollIndicator={false}
+                                                contentContainerStyle={styles.timeSlotScroll}
+                                                style={styles.timeSlotScrollContainer}
+                                            >
+                                                {timeOfDaySlots.map((slot) => (
+                                                    <TouchableOpacity
+                                                        key={slot.key}
+                                                        style={[
+                                                            styles.timeSlotChip,
+                                                            selectedTimeSlotKey === slot.key && {
+                                                                backgroundColor: `${slot.colorHex}40`,
+                                                                borderColor: slot.colorHex,
+                                                            }
+                                                        ]}
+                                                        onPress={() => {
+                                                            handleTimeSlotSelect(slot.key);
+                                                            // Keep scroller open for quick selection
+                                                        }}
+                                                    >
+                                                        <Text style={[
+                                                            styles.timeSlotChipText,
+                                                            selectedTimeSlotKey === slot.key && { color: slot.colorHex }
+                                                        ]}>
+                                                            {slot.label}
+                                                        </Text>
+                                                    </TouchableOpacity>
+                                                ))}
+                                            </ScrollView>
+                                        )}
+
+                                        {activePicker === 'duration' && (
+                                            <ScrollView
+                                                horizontal
+                                                showsHorizontalScrollIndicator={false}
+                                                contentContainerStyle={styles.timeSlotScroll}
+                                                style={styles.timeSlotScrollContainer}
+                                            >
+                                                {DURATION_OPTIONS.map((duration) => (
+                                                    <TouchableOpacity
+                                                        key={duration}
+                                                        style={[
+                                                            styles.timeSlotChip,
+                                                            selectedDurationMinutes === duration && styles.timeSlotChipSelected
+                                                        ]}
+                                                        onPress={() => {
+                                                            handleDurationSelect(duration);
+                                                            // Keep scroller open for quick selection
+                                                        }}
+                                                    >
+                                                        <Text style={[
+                                                            styles.timeSlotChipText,
+                                                            selectedDurationMinutes === duration && styles.timeSlotChipTextSelected
+                                                        ]}>
+                                                            {duration} MIN
+                                                        </Text>
+                                                    </TouchableOpacity>
+                                                ))}
+                                            </ScrollView>
+                                        )}
                                     </View>
                                 </View>
 
-                                {/* Right Column: Scroller + Actions */}
+                                {/* Right Column: Wheel Picker Scroller + Actions */}
                                 <View style={styles.rightColumn}>
                                     <Text style={[styles.label, { textAlign: 'center' }]}>
-                                        {activePicker === 'start' ? 'START TIME' : 'DURATION'}
+                                        {activePicker === 'duration' ? 'DURATION' : 'START TIME'}
                                     </Text>
 
                                     <View style={[styles.pickerRow, styles.pickerRowLandscape]}>
                                         <View style={styles.pickerGroup}>
                                             <WheelPicker
                                                 data={HOURS_DATA}
-                                                value={activePicker === 'start' ? startHours : durationHours}
+                                                value={activePicker === 'duration' ? durationHours : startHours}
                                                 onChange={(h) => {
-                                                    if (activePicker === 'start') setSelectedStartMinutes(h * 60 + startMins);
-                                                    else setSelectedDurationMinutes(h * 60 + durationMins);
+                                                    if (activePicker === 'duration') setSelectedDurationMinutes(h * 60 + durationMins);
+                                                    else setSelectedStartMinutes(h * 60 + startMins);
                                                 }}
                                             />
-                                            <Text style={styles.pickerLabel}>{activePicker === 'start' ? 'HH' : 'HRS'}</Text>
+                                            <Text style={styles.pickerLabel}>{activePicker === 'duration' ? 'HRS' : 'HH'}</Text>
                                         </View>
 
                                         <Text style={[styles.colon, styles.colonLandscape]}>:</Text>
@@ -275,13 +366,13 @@ export default function AddSubtaskModal({
                                         <View style={styles.pickerGroup}>
                                             <WheelPicker
                                                 data={MINUTES_DATA}
-                                                value={activePicker === 'start' ? startMins : durationMins}
+                                                value={activePicker === 'duration' ? durationMins : startMins}
                                                 onChange={(m) => {
-                                                    if (activePicker === 'start') setSelectedStartMinutes(startHours * 60 + m);
-                                                    else setSelectedDurationMinutes(durationHours * 60 + m);
+                                                    if (activePicker === 'duration') setSelectedDurationMinutes(durationHours * 60 + m);
+                                                    else setSelectedStartMinutes(startHours * 60 + m);
                                                 }}
                                             />
-                                            <Text style={styles.pickerLabel}>{activePicker === 'start' ? 'MM' : 'MIN'}</Text>
+                                            <Text style={styles.pickerLabel}>{activePicker === 'duration' ? 'MIN' : 'MM'}</Text>
                                         </View>
                                     </View>
 
@@ -312,39 +403,125 @@ export default function AddSubtaskModal({
                                     autoFocus
                                 />
 
-                                <View style={[styles.pickerContainer]}>
-                                    <View style={styles.toggleContainer}>
-                                        <Pressable
-                                            style={[styles.toggleBtn, activePicker === 'start' && styles.toggleBtnActive]}
-                                            onPress={() => {
-                                                setActivePicker('start');
-                                                Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                                            }}
-                                        >
-                                            <Text style={[styles.toggleText, activePicker === 'start' && styles.toggleTextActive]}>START TIME</Text>
-                                        </Pressable>
-                                        <Pressable
-                                            style={[styles.toggleBtn, activePicker === 'duration' && styles.toggleBtnActive]}
-                                            onPress={() => {
-                                                setActivePicker('duration');
-                                                Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                                            }}
-                                        >
-                                            <Text style={[styles.toggleText, activePicker === 'duration' && styles.toggleTextActive]}>DURATION</Text>
-                                        </Pressable>
+                                {/* Start Time and Duration Cards in Same Row */}
+                                <View style={styles.fieldGroup}>
+                                    <View style={styles.timeSlotRow}>
+                                        {/* Start Time Slot Card */}
+                                        <View style={styles.timeSlotCardWrapper}>
+                                            <Text style={styles.label}>START TIME</Text>
+                                            <Pressable
+                                                style={[styles.timeSlotCard, activePicker === 'start' && styles.timeSlotCardActive]}
+                                                onPress={() => {
+                                                    setActivePicker(activePicker === 'start' ? null : 'start');
+                                                    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                                                }}
+                                            >
+                                                <Text style={styles.timeSlotCardLabel}>START</Text>
+                                                <Text style={[styles.timeSlotCardValue, activePicker === 'start' && styles.timeSlotCardValueActive]}>
+                                                    {String(startHours).padStart(2, '0')}:{String(startMins).padStart(2, '0')}
+                                                </Text>
+                                            </Pressable>
+                                        </View>
+
+                                        {/* Duration Card */}
+                                        <View style={styles.timeSlotCardWrapper}>
+                                            <Text style={styles.label}>DURATION</Text>
+                                            <Pressable
+                                                style={[styles.timeSlotCard, activePicker === 'duration' && styles.timeSlotCardActive]}
+                                                onPress={() => {
+                                                    setActivePicker(activePicker === 'duration' ? null : 'duration');
+                                                    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                                                }}
+                                            >
+                                                <Text style={styles.timeSlotCardLabel}>DURATION</Text>
+                                                <Text style={[styles.timeSlotCardValue, activePicker === 'duration' && styles.timeSlotCardValueActive]}>
+                                                    {durationHours > 0 ? `${durationHours}h ${durationMins}m` : `${durationMins}m`}
+                                                </Text>
+                                            </Pressable>
+                                        </View>
                                     </View>
 
+                                    {/* Horizontal Scroller - Shows below when one is selected */}
+                                    {activePicker === 'start' && (
+                                        <ScrollView
+                                            horizontal
+                                            showsHorizontalScrollIndicator={false}
+                                            contentContainerStyle={styles.timeSlotScroll}
+                                            style={styles.timeSlotScrollContainer}
+                                        >
+                                            {timeOfDaySlots.map((slot) => (
+                                                <TouchableOpacity
+                                                    key={slot.key}
+                                                    style={[
+                                                        styles.timeSlotChip,
+                                                        selectedTimeSlotKey === slot.key && {
+                                                            backgroundColor: `${slot.colorHex}40`,
+                                                            borderColor: slot.colorHex,
+                                                        }
+                                                    ]}
+                                                    onPress={() => {
+                                                        handleTimeSlotSelect(slot.key);
+                                                        // Keep scroller open for quick selection
+                                                    }}
+                                                >
+                                                    <Text style={[
+                                                        styles.timeSlotChipText,
+                                                        selectedTimeSlotKey === slot.key && { color: slot.colorHex }
+                                                    ]}>
+                                                        {slot.label}
+                                                    </Text>
+                                                </TouchableOpacity>
+                                            ))}
+                                        </ScrollView>
+                                    )}
+
+                                    {activePicker === 'duration' && (
+                                        <ScrollView
+                                            horizontal
+                                            showsHorizontalScrollIndicator={false}
+                                            contentContainerStyle={styles.timeSlotScroll}
+                                            style={styles.timeSlotScrollContainer}
+                                        >
+                                            {DURATION_OPTIONS.map((duration) => (
+                                                <TouchableOpacity
+                                                    key={duration}
+                                                    style={[
+                                                        styles.timeSlotChip,
+                                                        selectedDurationMinutes === duration && styles.timeSlotChipSelected
+                                                    ]}
+                                                    onPress={() => {
+                                                        handleDurationSelect(duration);
+                                                        // Keep scroller open for quick selection
+                                                    }}
+                                                >
+                                                    <Text style={[
+                                                        styles.timeSlotChipText,
+                                                        selectedDurationMinutes === duration && styles.timeSlotChipTextSelected
+                                                    ]}>
+                                                        {duration}min
+                                                    </Text>
+                                                </TouchableOpacity>
+                                            ))}
+                                        </ScrollView>
+                                    )}
+                                </View>
+
+                                {/* Wheel Picker Scroller */}
+                                <View style={[styles.pickerContainer]}>
+                                    <Text style={[styles.label, { textAlign: 'center', marginBottom: 9 }]}>
+                                        {activePicker === 'duration' ? 'DURATION' : 'START TIME'}
+                                    </Text>
                                     <View style={styles.timePickerRow}>
                                         <View style={styles.pickerGroup}>
                                             <WheelPicker
                                                 data={HOURS_DATA}
-                                                value={activePicker === 'start' ? startHours : durationHours}
+                                                value={activePicker === 'duration' ? durationHours : startHours}
                                                 onChange={(h) => {
-                                                    if (activePicker === 'start') setSelectedStartMinutes(h * 60 + startMins);
-                                                    else setSelectedDurationMinutes(h * 60 + durationMins);
+                                                    if (activePicker === 'duration') setSelectedDurationMinutes(h * 60 + durationMins);
+                                                    else setSelectedStartMinutes(h * 60 + startMins);
                                                 }}
                                             />
-                                            <Text style={styles.pickerLabel}>{activePicker === 'start' ? 'HH' : 'HRS'}</Text>
+                                            <Text style={styles.pickerLabel}>{activePicker === 'duration' ? 'HRS' : 'HH'}</Text>
                                         </View>
 
                                         <Text style={styles.colon}>:</Text>
@@ -352,22 +529,15 @@ export default function AddSubtaskModal({
                                         <View style={styles.pickerGroup}>
                                             <WheelPicker
                                                 data={MINUTES_DATA}
-                                                value={activePicker === 'start' ? startMins : durationMins}
+                                                value={activePicker === 'duration' ? durationMins : startMins}
                                                 onChange={(m) => {
-                                                    if (activePicker === 'start') setSelectedStartMinutes(startHours * 60 + m);
-                                                    else setSelectedDurationMinutes(durationHours * 60 + m);
+                                                    if (activePicker === 'duration') setSelectedDurationMinutes(durationHours * 60 + m);
+                                                    else setSelectedStartMinutes(startHours * 60 + m);
                                                 }}
                                             />
-                                            <Text style={styles.pickerLabel}>{activePicker === 'start' ? 'MM' : 'MIN'}</Text>
+                                            <Text style={styles.pickerLabel}>{activePicker === 'duration' ? 'MIN' : 'MM'}</Text>
                                         </View>
                                     </View>
-                                </View>
-
-                                <View style={styles.timeInfo}>
-                                    <MaterialIcons name="schedule" size={14.4} color="rgba(255,255,255,0.5)" />
-                                    <Text style={styles.timeText}>
-                                        {durationHours > 0 ? `${durationHours}h ` : ''}{durationMins}m from {String(startHours).padStart(2, '0')}:{String(startMins).padStart(2, '0')}
-                                    </Text>
                                 </View>
 
                                 <View style={styles.actions}>
@@ -712,5 +882,69 @@ const styles = StyleSheet.create({
         fontWeight: '500',
         color: 'rgba(255,255,255,0.45)',
         textAlign: 'center',
+    },
+    timeSlotRow: {
+        flexDirection: 'row',
+        gap: 7.2, // 8 * 0.9 - reduced
+        marginBottom: 5.4, // 6 * 0.9 - reduced
+    },
+    timeSlotCardWrapper: {
+        flex: 1,
+    },
+    timeSlotCard: {
+        backgroundColor: 'rgba(255,255,255,0.03)',
+        borderRadius: 10.8, // 12 * 0.9 - reduced
+        padding: 9, // 10 * 0.9 - reduced
+        borderWidth: 1,
+        borderColor: 'rgba(255,255,255,0.05)',
+    },
+    timeSlotCardActive: {
+        backgroundColor: 'rgba(255,255,255,0.08)',
+        borderColor: 'rgba(255,255,255,0.2)',
+    },
+    timeSlotCardLabel: {
+        fontSize: 7.2, // 8 * 0.9 - reduced
+        fontWeight: '800',
+        color: 'rgba(255,255,255,0.4)',
+        letterSpacing: 1.08, // 1.2 * 0.9 - reduced
+        marginBottom: 3.6, // 4 * 0.9 - reduced
+    },
+    timeSlotCardValue: {
+        fontSize: 13.5, // 15 * 0.9 - reduced
+        fontWeight: '700',
+        color: 'rgba(255,255,255,0.5)',
+    },
+    timeSlotCardValueActive: {
+        color: '#FFFFFF',
+    },
+    timeSlotScrollContainer: {
+        maxHeight: 45, // reduced from 60
+        marginTop: 5.4, // 6 * 0.9 - reduced
+    },
+    timeSlotScroll: {
+        paddingVertical: 3.6, // 4 * 0.9 - reduced
+        gap: 5.4, // 6 * 0.9 - reduced
+    },
+    timeSlotChip: {
+        paddingHorizontal: 12.6, // 14 * 0.9 - reduced
+        paddingVertical: 6.3, // 7 * 0.9 - reduced
+        borderRadius: 12.6, // 14 * 0.9 - reduced
+        backgroundColor: 'rgba(255,255,255,0.05)',
+        borderWidth: 1,
+        borderColor: 'rgba(255,255,255,0.1)',
+        marginRight: 5.4, // 6 * 0.9 - reduced
+    },
+    timeSlotChipSelected: {
+        backgroundColor: 'rgba(76, 175, 80, 0.2)',
+        borderColor: '#4CAF50',
+    },
+    timeSlotChipText: {
+        fontSize: 10.8, // 12 * 0.9 - reduced
+        fontWeight: '700',
+        color: 'rgba(255,255,255,0.6)',
+    },
+    timeSlotChipTextSelected: {
+        color: '#4CAF50',
+        fontWeight: '800',
     },
 });
