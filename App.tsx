@@ -210,6 +210,7 @@ export default function App() {
   const [isPastTimersDisabled, setIsPastTimersDisabled] = useState(false);
   const [isPastTasksDisabled, setIsPastTasksDisabled] = useState(false);
   const [activeView, setActiveViewState] = useState<'timer' | 'task'>('timer');
+  const [shouldShowLiveView, setShouldShowLiveView] = useState(false);
   const [quickMessages, setQuickMessages] = useState<QuickMessage[]>(DEFAULT_QUICK_MESSAGES);
   const [timeOfDayBackgroundConfig, setTimeOfDayBackgroundConfig] = useState<TimeOfDayBackgroundConfig>(DEFAULT_TIME_OF_DAY_BACKGROUND_CONFIG);
 
@@ -1551,6 +1552,8 @@ export default function App() {
                   setActiveView('timer');
                 }
               }}
+              initialShowLive={shouldShowLiveView}
+              onLiveViewShown={() => setShouldShowLiveView(false)}
             />
           );
         }
@@ -1582,6 +1585,10 @@ export default function App() {
             dailyStartMinutes={dailyStartMinutes}
             activeView={activeView}
             onViewChange={setActiveView}
+            onRequestLiveView={() => {
+              setShouldShowLiveView(true);
+              setActiveView('task');
+            }}
           />
         );
     }

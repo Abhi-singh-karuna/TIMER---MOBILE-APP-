@@ -103,6 +103,8 @@ interface TimerListProps {
     categories: Category[];
     activeView?: 'timer' | 'task';
     onViewChange?: (view: 'timer' | 'task') => void;
+    /** Called when the live button is clicked - should switch to task view and open live view */
+    onRequestLiveView?: () => void;
 }
 
 export default function TimerList({
@@ -123,7 +125,8 @@ export default function TimerList({
     dailyStartMinutes = DEFAULT_DAILY_START_MINUTES,
     categories,
     activeView = 'timer',
-    onViewChange
+    onViewChange,
+    onRequestLiveView
 }: TimerListProps & { selectedDate: Date; onDateChange: (date: Date) => void; dailyStartMinutes?: number }) {
     const [filterCategoryId, setFilterCategoryId] = useState<string>('All');
     const [filterStatus, setFilterStatus] = useState<string>('All');
@@ -689,6 +692,20 @@ export default function TimerList({
                                             </Text>
                                         </TouchableOpacity>
 
+                                        <TouchableOpacity
+                                            style={styles.todayNavBtn}
+                                            onPress={() => {
+                                                if (onRequestLiveView) {
+                                                    onRequestLiveView();
+                                                } else if (onViewChange) {
+                                                    onViewChange('task');
+                                                }
+                                            }}
+                                            activeOpacity={0.7}
+                                        >
+                                            <MaterialIcons name="sensors" size={12} color="#FF3D00" />
+                                        </TouchableOpacity>
+
                                         {/* Today Navigation Button */}
                                         <TouchableOpacity
                                             style={[styles.todayNavBtn, isToday && styles.todayNavBtnActive]}
@@ -892,6 +909,20 @@ export default function TimerList({
                                         size={16}
                                         color="rgba(255,255,255,0.3)"
                                     />
+                                </TouchableOpacity>
+
+                                <TouchableOpacity
+                                    style={styles.todayBtnPortrait}
+                                    onPress={() => {
+                                        if (onRequestLiveView) {
+                                            onRequestLiveView();
+                                        } else if (onViewChange) {
+                                            onViewChange('task');
+                                        }
+                                    }}
+                                    activeOpacity={0.7}
+                                >
+                                    <MaterialIcons name="sensors" size={12} color="#FF3D00" />
                                 </TouchableOpacity>
 
                                 <TouchableOpacity

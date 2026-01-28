@@ -1419,6 +1419,10 @@ interface TaskListProps {
     runningTimer?: Timer | null;
     /** Open the active/expanded running timer (ActiveTimer) or Timer list when the dock live timer is tapped. */
     onOpenActiveTimer?: (timer: Timer | null) => void;
+    /** If true, automatically show LiveFocusView when component mounts or when this prop changes to true */
+    initialShowLive?: boolean;
+    /** Callback to reset initialShowLive after it's been consumed */
+    onLiveViewShown?: () => void;
 }
 
 export default function TaskList({
@@ -1442,6 +1446,8 @@ export default function TaskList({
     timeOfDaySlots,
     runningTimer,
     onOpenActiveTimer,
+    initialShowLive = false,
+    onLiveViewShown,
 }: TaskListProps) {
     const { width: screenWidth, height: screenHeight } = useWindowDimensions();
     const isLandscape = screenWidth > screenHeight;
@@ -1460,8 +1466,20 @@ export default function TaskList({
     const [showFiltersPortrait, setShowFiltersPortrait] = useState(false);
     const [viewDate, setViewDate] = useState(new Date());
     const [showBacklog, setShowBacklog] = useState(false);
-    const [showLive, setShowLive] = useState(false);
+    const [showLive, setShowLive] = useState(initialShowLive);
     const [actionModalVisible, setActionModalVisible] = useState(false);
+    const cameFromTimerView = useRef(false);
+
+    // Handle initialShowLive prop changes
+    useEffect(() => {
+        if (initialShowLive && !showLive) {
+            setShowLive(true);
+            cameFromTimerView.current = true; // Track that we came from timer view
+            if (onLiveViewShown) {
+                onLiveViewShown();
+            }
+        }
+    }, [initialShowLive, showLive, onLiveViewShown]);
     const [selectedActionTask, setSelectedActionTask] = useState<Task | null>(null);
     const [expandedTaskId, setExpandedTaskId] = useState<number | null>(null);
 
@@ -1754,11 +1772,23 @@ export default function TaskList({
                     selectedDate={selectedDate}
                     onDateChange={onDateChange}
                     categories={categories}
-                    onClose={() => setShowLive(false)}
+                    onClose={() => {
+                        setShowLive(false);
+                        // If we came from timer view, switch back to timer view
+                        if (cameFromTimerView.current && onViewChange) {
+                            cameFromTimerView.current = false; // Reset the flag
+                            onViewChange('timer');
+                        }
+                    }}
                     onExpandTask={(task) => {
                         LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
                         setExpandedTaskId(task.id);
                         setShowLive(false);
+                        // If we came from timer view, switch back to timer view
+                        if (cameFromTimerView.current && onViewChange) {
+                            cameFromTimerView.current = false; // Reset the flag
+                            onViewChange('timer');
+                        }
                     }}
                     onUpdateStageLayout={handleUpdateStageLayout}
                     onUpdateStages={onUpdateStages}
@@ -1771,6 +1801,11 @@ export default function TaskList({
                     runningTimer={runningTimer ?? null}
                     onOpenRunningTimer={(timer) => {
                         setShowLive(false);
+                        // If we came from timer view, switch back to timer view
+                        if (cameFromTimerView.current && onViewChange) {
+                            cameFromTimerView.current = false; // Reset the flag
+                            onViewChange('timer');
+                        }
                         onOpenActiveTimer?.(timer);
                     }}
                 />
@@ -1856,6 +1891,14 @@ export default function TaskList({
                                         </TouchableOpacity>
 
                                         <TouchableOpacity
+                                            style={[styles.todayNavBtn, showLive && { backgroundColor: 'rgba(255, 61, 0, 0.08)', borderColor: 'rgba(255, 61, 0, 0.2)' }]}
+                                            onPress={() => setShowLive(!showLive)}
+                                            activeOpacity={0.7}
+                                        >
+                                            <MaterialIcons name="sensors" size={12} color={showLive ? "#FF3D00" : "#FF3D00"} />
+                                        </TouchableOpacity>
+
+                                        <TouchableOpacity
                                             style={[styles.todayNavBtn, isToday && styles.todayNavBtnActive]}
                                             onPress={() => {
                                                 const start = getStartOfLogicalDay(new Date(), dailyStartMinutes);
@@ -1894,21 +1937,6 @@ export default function TaskList({
                                             <View style={styles.filtersSection}>
                                                 <View style={styles.filterHeaderRow}>
                                                     <Text style={styles.filterHeaderLabel}>FILTERS</Text>
-                                                    <TouchableOpacity
-                                                        style={[styles.backlogHeaderBtn, showLive && { backgroundColor: 'rgba(255, 61, 0, 0.1)', borderColor: 'rgba(255, 61, 0, 0.3)' }, { marginRight: 8 }]}
-                                                        onPress={() => setShowLive(!showLive)}
-                                                        activeOpacity={0.7}
-                                                    >
-                                                        <MaterialIcons
-                                                            name="sensors"
-                                                            size={14}
-                                                            color={showLive ? "#FF3D00" : "rgba(255,255,255,0.4)"}
-                                                        />
-                                                        <Text style={[styles.backlogHeaderBtnText, showLive && { color: "#FF3D00" }]}>
-                                                            LIVE
-                                                        </Text>
-                                                    </TouchableOpacity>
-
                                                     <TouchableOpacity
                                                         style={[styles.backlogHeaderBtn, showBacklog && styles.backlogHeaderBtnActive]}
                                                         onPress={() => setShowBacklog(!showBacklog)}
@@ -2215,6 +2243,14 @@ export default function TaskList({
                                             </TouchableOpacity>
 
                                             <TouchableOpacity
+                                                style={[styles.todayBtnPortrait, showLive && { backgroundColor: 'rgba(255, 61, 0, 0.08)', borderColor: 'rgba(255, 61, 0, 0.2)' }]}
+                                                onPress={() => setShowLive(!showLive)}
+                                                activeOpacity={0.7}
+                                            >
+                                                <MaterialIcons name="sensors" size={12} color={showLive ? "#FF3D00" : "#FF3D00"} />
+                                            </TouchableOpacity>
+
+                                            <TouchableOpacity
                                                 style={[styles.todayBtnPortrait, isToday && styles.todayBtnActivePortrait]}
                                                 onPress={() => {
                                                     const start = getStartOfLogicalDay(new Date(), dailyStartMinutes);
@@ -2259,14 +2295,6 @@ export default function TaskList({
                                                     contentContainerStyle={styles.portraitFiltersScroll}
                                                     style={{ flexGrow: 0 }}
                                                 >
-                                                    <TouchableOpacity
-                                                        style={[styles.miniChip, showLive && { backgroundColor: 'rgba(255, 61, 0, 0.15)', borderColor: 'rgba(255, 61, 0, 0.3)' }]}
-                                                        onPress={() => setShowLive(!showLive)}
-                                                    >
-                                                        <MaterialIcons name="sensors" size={10} color={showLive ? "#FF3D00" : "rgba(255,255,255,0.4)"} />
-                                                        <Text style={[styles.miniChipText, showLive && { color: '#FF3D00', fontWeight: '800' }]}> Live</Text>
-                                                    </TouchableOpacity>
-
                                                     <TouchableOpacity
                                                         style={[styles.miniChip, showBacklog && styles.miniChipActive]}
                                                         onPress={() => setShowBacklog(!showBacklog)}
