@@ -32,6 +32,7 @@ import StageActionPopup from './StageActionPopup';
 import * as Haptics from 'expo-haptics';
 import { TimeOfDaySlotConfigList } from '../../../utils/timeOfDaySlots';
 import { getLogicalDate, getStartOfLogicalDay, DEFAULT_DAILY_START_MINUTES, formatDailyStartRangeCompact } from '../../../utils/dailyStartTime';
+import { expandTasksForDate, findOriginalRecurringTask, getRecentRecurringDatesStatus } from '../../../utils/recurrenceUtils';
 
 const { width, height } = Dimensions.get('window');
 
@@ -557,6 +558,44 @@ const styles = StyleSheet.create({
         color: 'rgba(255,255,255,0.6)',
         marginTop: 8,
         lineHeight: 18,
+    },
+    streakContainer: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        marginTop: 4,
+        gap: 1,
+        flexWrap: 'wrap',
+    },
+    streakStar: {
+        position: 'relative',
+        marginRight: -2,
+    },
+    streakStarBadge: {
+        position: 'absolute',
+        top: -6,
+        right: -6,
+        backgroundColor: '#00E5FF',
+        borderRadius: 7,
+        minWidth: 18,
+        height: 14,
+        paddingHorizontal: 3,
+        alignItems: 'center',
+        justifyContent: 'center',
+        borderWidth: 1.5,
+        borderColor: '#000',
+        zIndex: 10,
+    },
+    streakStarBadgeText: {
+        fontSize: 8,
+        fontWeight: '900',
+        color: '#000',
+        lineHeight: 10,
+    },
+    streakText: {
+        fontSize: 12,
+        fontWeight: '700',
+        color: '#FF6B35',
+        letterSpacing: 0.5,
     },
     cardExpandedContent: {
         marginTop: 16,
@@ -1462,12 +1501,15 @@ export default function TaskList({
     const selectedLogical = getLogicalDate(selectedDate, dailyStartMinutes);
 
     // Filter tasks by selected date OR backlog status
-    const dateFilteredTasks = tasks.filter(t =>
-        showBacklog ? !!t.isBacklog : (t.forDate === selectedLogical && !t.isBacklog)
-    );
+    // For recurring tasks, expand them to show instances for the selected date
+    const dateFilteredTasks = showBacklog
+        ? tasks.filter(t => t && !!t.isBacklog)
+        : expandTasksForDate(tasks, selectedLogical).filter(t => t && !t.isBacklog);
 
     // Apply category and status filters
     const filteredTasks = dateFilteredTasks.filter(t => {
+        // Safety check: ensure task exists and has required properties
+        if (!t || !t.id || !t.status || !t.forDate) return false;
         const matchesCategory = filterCategoryId === 'All' || t.categoryId === filterCategoryId;
         const matchesStatus = filterStatus === 'All' || t.status === filterStatus;
         return matchesCategory && matchesStatus;
@@ -1486,10 +1528,11 @@ export default function TaskList({
     });
 
     // Calculate analytics
-    const completedCount = dateFilteredTasks.filter(t => t.status === 'Completed').length;
+    // Safety check: ensure tasks have status property
+    const completedCount = dateFilteredTasks.filter(t => t && t.status === 'Completed').length;
     const totalCount = dateFilteredTasks.length;
-    const pendingCount = dateFilteredTasks.filter(t => t.status === 'Pending').length;
-    const inProgressCount = dateFilteredTasks.filter(t => t.status === 'In Progress').length;
+    const pendingCount = dateFilteredTasks.filter(t => t && t.status === 'Pending').length;
+    const inProgressCount = dateFilteredTasks.filter(t => t && t.status === 'In Progress').length;
 
     // Get current date info
     const dayName = DAYS[selectedDate.getDay()].toUpperCase();
@@ -1662,7 +1705,8 @@ export default function TaskList({
 
 
     const handleUpdateStageLayout = (taskId: number, stageId: number, startTimeMinutes: number, durationMinutes: number) => {
-        const task = tasks.find(t => t.id === taskId);
+        // Find the task from filteredTasks (which includes expanded recurring tasks)
+        const task = filteredTasks.find(t => t.id === taskId);
         if (!task || !task.stages) return;
 
         const updatedStages = task.stages.map(s =>
@@ -1670,6 +1714,7 @@ export default function TaskList({
         );
 
         if (onUpdateStages) {
+            // Pass the expanded task with its forDate so it can be saved to the correct instance
             onUpdateStages(task, updatedStages);
         }
     };
@@ -1996,17 +2041,24 @@ export default function TaskList({
                         <View style={styles.rightPanel}>
                             {isLandscape && expandedTaskId ? (
                                 <View style={styles.expandedTakeoverContainer}>
-                                    <TaskCard
-                                        task={tasks.find(t => t.id === expandedTaskId)!}
-                                        onToggle={() => onToggleTask(tasks.find(t => t.id === expandedTaskId)!)}
-                                        onDelete={() => onDeleteTask(tasks.find(t => t.id === expandedTaskId)!)}
-                                        onEdit={() => onEditTask?.(tasks.find(t => t.id === expandedTaskId)!)}
+                                    {(() => {
+                                        const expandedTask = filteredTasks.find(t => t && t.id === expandedTaskId);
+                                        if (!expandedTask) {
+                                            setExpandedTaskId(null);
+                                            return null;
+                                        }
+                                        return (
+                                            <TaskCard
+                                                task={expandedTask}
+                                        onToggle={() => onToggleTask(filteredTasks.find(t => t.id === expandedTaskId)!)}
+                                        onDelete={() => onDeleteTask(filteredTasks.find(t => t.id === expandedTaskId)!)}
+                                        onEdit={() => onEditTask?.(filteredTasks.find(t => t.id === expandedTaskId)!)}
                                         isLandscape={true}
                                         categories={categories}
                                         dailyStartMinutes={dailyStartMinutes}
                                         isPastTasksDisabled={isPastTasksDisabled}
                                         onOpenMenu={() => {
-                                            const t = tasks.find(tsk => tsk.id === expandedTaskId)!;
+                                            const t = filteredTasks.find(tsk => tsk.id === expandedTaskId)!;
                                             setSelectedActionTask(t);
                                             setActionModalVisible(true);
                                         }}
@@ -2016,7 +2068,10 @@ export default function TaskList({
                                         onUpdateStages={onUpdateStages}
                                         quickMessages={quickMessages}
                                         isFullView={true}
+                                        allTasks={tasks}
                                     />
+                                        );
+                                    })()}
                                 </View>
                             ) : (
                                 <>
@@ -2051,9 +2106,9 @@ export default function TaskList({
                                             }
                                             return (
                                                 <View style={styles.cardRow}>
-                                                    {pair.map((task) => (
+                                                    {pair.filter(t => t && t.id && t.forDate).map((task) => (
                                                         <TaskCard
-                                                            key={task.id}
+                                                            key={`${task.id}-${task.forDate}`}
                                                             task={task}
                                                             onToggle={() => onToggleTask(task)}
                                                             onDelete={() => onDeleteTask(task)}
@@ -2074,6 +2129,7 @@ export default function TaskList({
                                                             onUpdateComment={onUpdateComment}
                                                             onUpdateStages={onUpdateStages}
                                                             quickMessages={quickMessages}
+                                                            allTasks={tasks}
                                                         />
                                                     ))}
                                                     {pair.length === 1 && <View style={styles.cardPlaceholder} />}
@@ -2100,32 +2156,40 @@ export default function TaskList({
                         <FlatList
                             data={filteredTasks}
                             keyExtractor={(item) => String(item.id)}
-                            renderItem={({ item: task }) => (
-                                <View style={{ paddingHorizontal: 16 }}>
-                                    <TaskCard
-                                        task={task}
-                                        onToggle={() => onToggleTask(task)}
-                                        onDelete={() => onDeleteTask(task)}
-                                        onEdit={() => onEditTask?.(task)}
-                                        isLandscape={false}
-                                        categories={categories}
-                                        dailyStartMinutes={dailyStartMinutes}
-                                        isPastTasksDisabled={isPastTasksDisabled}
-                                        onOpenMenu={() => {
-                                            setSelectedActionTask(task);
-                                            setActionModalVisible(true);
-                                        }}
-                                        isExpanded={expandedTaskId === task.id}
-                                        onExpand={() => {
-                                            LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
-                                            setExpandedTaskId(expandedTaskId === task.id ? null : task.id);
-                                        }}
-                                        onUpdateComment={onUpdateComment}
-                                        onUpdateStages={onUpdateStages}
-                                        quickMessages={quickMessages}
-                                    />
-                                </View>
-                            )}
+                            renderItem={({ item: task }) => {
+                                // Safety check: skip null/undefined tasks
+                                if (!task || !task.id || !task.forDate) {
+                                    return null;
+                                }
+                                return (
+                                    <View style={{ paddingHorizontal: 16 }}>
+                                        <TaskCard
+                                            key={`${task.id}-${task.forDate}`}
+                                            task={task}
+                                            onToggle={() => onToggleTask(task)}
+                                            onDelete={() => onDeleteTask(task)}
+                                            onEdit={() => onEditTask?.(task)}
+                                            isLandscape={false}
+                                            categories={categories}
+                                            dailyStartMinutes={dailyStartMinutes}
+                                            isPastTasksDisabled={isPastTasksDisabled}
+                                            onOpenMenu={() => {
+                                                setSelectedActionTask(task);
+                                                setActionModalVisible(true);
+                                            }}
+                                            isExpanded={expandedTaskId === task.id}
+                                            onExpand={() => {
+                                                LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+                                                setExpandedTaskId(expandedTaskId === task.id ? null : task.id);
+                                            }}
+                                            onUpdateComment={onUpdateComment}
+                                            onUpdateStages={onUpdateStages}
+                                            quickMessages={quickMessages}
+                                            allTasks={tasks}
+                                        />
+                                    </View>
+                                );
+                            }}
                             ItemSeparatorComponent={() => <View style={{ height: 12 }} />}
                             ListHeaderComponent={() => (
                                 <View style={{ paddingBottom: 12 }}>
@@ -2336,6 +2400,8 @@ interface TaskCardProps {
     onUpdateStages?: (task: Task, stages: TaskStage[]) => void;
     isFullView?: boolean;
     quickMessages?: QuickMessage[];
+    /** Original tasks array for accessing full recurrence data */
+    allTasks?: Task[];
 }
 
 // Draggable Stages List Props
@@ -2556,12 +2622,15 @@ function TaskCard({
     onUpdateStages,
     isFullView,
     quickMessages,
+    allTasks,
 }: TaskCardProps) {
     const [commentText, setCommentText] = useState('');
     const [stageText, setStageText] = useState('');
     const [activeRightTab, setActiveRightTab] = useState<'comments' | 'stages'>('stages');
-    const isCompleted = task.status === 'Completed';
-    const isInProgress = task.status === 'In Progress';
+    // Safety check: ensure task has status property
+    const taskStatus = task?.status || 'Pending';
+    const isCompleted = taskStatus === 'Completed';
+    const isInProgress = taskStatus === 'In Progress';
 
     const handleAddStage = () => {
         if (!stageText.trim()) return;
@@ -2606,6 +2675,11 @@ function TaskCard({
         onUpdateStages?.(task, newStages);
     };
 
+    // Safety check: ensure task exists and has required properties
+    if (!task || !task.id || !task.forDate) {
+        return null;
+    }
+
     const logicalToday = getLogicalDate(new Date(), dailyStartMinutes);
     const isPast = task.forDate < logicalToday && !task.isBacklog;
     const isLocked = isPast && isPastTasksDisabled;
@@ -2614,7 +2688,7 @@ function TaskCard({
     const categoryColor = category?.color || '#fff';
     const categoryIcon = category?.icon || 'folder';
 
-    const statusConfig = getStatusConfig(task.status);
+    const statusConfig = getStatusConfig(taskStatus);
     const priorityConfig = getPriorityConfig(task.priority);
 
     const cardStyle = [
@@ -2740,7 +2814,76 @@ function TaskCard({
                         )}
                     </View>
 
-                    {task.description && (
+                    {/* Show streak stars for recurring tasks, description for non-recurring */}
+                    {/* In expanded mode, show both streak and description for recurring tasks */}
+                    {(task.recurrence || task.recurrenceInstances) ? (() => {
+                        // Get the original task to access full recurrence data
+                        const originalTask = allTasks ? (findOriginalRecurringTask(allTasks, task) || task) : task;
+                        const recentDates = getRecentRecurringDatesStatus(originalTask, dailyStartMinutes, 7);
+                        const streakCount = originalTask.streak ?? 0;
+                        
+                        return (
+                            <>
+                                <View style={styles.streakContainer}>
+                                    {recentDates.length > 0 ? recentDates.map((dateStatus, index) => {
+                                        const isLast = index === recentDates.length - 1;
+                                        // Color based on status: Cyan for Completed, Yellow for In Progress, Red for Pending
+                                        let starColor = '#FF5252'; // Default: Red for Pending
+                                        if (dateStatus.status === 'Completed') {
+                                            starColor = '#00E5FF'; // Cyan
+                                        } else if (dateStatus.status === 'In Progress') {
+                                            starColor = '#FFB74D'; // Yellow
+                                        }
+                                        
+                                        return (
+                                            <View key={`${dateStatus.date}-${index}`} style={styles.streakStar}>
+                                                <MaterialIcons 
+                                                    name="star" 
+                                                    size={14} 
+                                                    color={starColor}
+                                                />
+                                                {isLast && streakCount > 0 && (
+                                                    <View style={styles.streakStarBadge}>
+                                                        <Text style={styles.streakStarBadgeText}>
+                                                            +{streakCount}
+                                                        </Text>
+                                                    </View>
+                                                )}
+                                            </View>
+                                        );
+                                    }) : (
+                                        <View style={styles.streakStar}>
+                                            <MaterialIcons 
+                                                name="star" 
+                                                size={14} 
+                                                color="rgba(255,255,255,0.3)"
+                                            />
+                                        </View>
+                                    )}
+                                </View>
+                                {/* Show description in expanded mode for recurring tasks */}
+                                {isExpanded && task.description && (
+                                    <View style={isExpanded && !isLandscape ? { maxHeight: 100, width: '100%', marginTop: 8 } : { marginTop: 4 }}>
+                                        {isExpanded && !isLandscape ? (
+                                            <ScrollView
+                                                style={{ flexGrow: 0 }}
+                                                showsVerticalScrollIndicator={true}
+                                                nestedScrollEnabled={true}
+                                            >
+                                                <Text style={[styles.taskDescription, styles.taskDescriptionExpanded]}>
+                                                    {task.description}
+                                                </Text>
+                                            </ScrollView>
+                                        ) : (
+                                            <Text style={styles.taskDescription} numberOfLines={isExpanded ? undefined : 1}>
+                                                {task.description}
+                                            </Text>
+                                        )}
+                                    </View>
+                                )}
+                            </>
+                        );
+                    })() : task.description ? (
                         <View style={isExpanded && !isLandscape ? { maxHeight: 100, width: '100%' } : undefined}>
                             {isExpanded && !isLandscape ? (
                                 <ScrollView
@@ -2758,7 +2901,7 @@ function TaskCard({
                                 </Text>
                             )}
                         </View>
-                    )}
+                    ) : null}
                 </View>
 
                 {!task.isBacklog && !(isExpanded && !isLandscape) && (
@@ -2817,13 +2960,70 @@ function TaskCard({
                             </Text>
                         </View>
 
-                        {task.description && (
+                        {/* Show streak stars for recurring tasks, description for non-recurring in full view */}
+                        {/* In full view, show both streak and description for recurring tasks */}
+                        {(task.recurrence || task.recurrenceInstances) ? (() => {
+                            // Get the original task to access full recurrence data
+                            const originalTask = allTasks ? (findOriginalRecurringTask(allTasks, task) || task) : task;
+                            const recentDates = getRecentRecurringDatesStatus(originalTask, dailyStartMinutes, 7);
+                            const streakCount = originalTask.streak ?? 0;
+                            
+                            return (
+                                <>
+                                    <View style={[styles.streakContainer, { marginBottom: task.description ? 12 : 16 }]}>
+                                        {recentDates.length > 0 ? recentDates.map((dateStatus, index) => {
+                                            const isLast = index === recentDates.length - 1;
+                                            // Color based on status: Cyan for Completed, Yellow for In Progress, Red for Pending
+                                            let starColor = '#FF5252'; // Default: Red for Pending
+                                            if (dateStatus.status === 'Completed') {
+                                                starColor = '#00E5FF'; // Cyan
+                                            } else if (dateStatus.status === 'In Progress') {
+                                                starColor = '#FFB74D'; // Yellow
+                                            }
+                                            
+                                            return (
+                                                <View key={`${dateStatus.date}-${index}`} style={styles.streakStar}>
+                                                    <MaterialIcons 
+                                                        name="star" 
+                                                        size={16} 
+                                                        color={starColor}
+                                                    />
+                                                    {isLast && streakCount > 0 && (
+                                                        <View style={styles.streakStarBadge}>
+                                                            <Text style={styles.streakStarBadgeText}>
+                                                                +{streakCount}
+                                                            </Text>
+                                                        </View>
+                                                    )}
+                                                </View>
+                                            );
+                                        }) : (
+                                            <View style={styles.streakStar}>
+                                                <MaterialIcons 
+                                                    name="star" 
+                                                    size={16} 
+                                                    color="rgba(255,255,255,0.3)"
+                                                />
+                                            </View>
+                                        )}
+                                    </View>
+                                    {/* Show description in full view for recurring tasks */}
+                                    {task.description && (
+                                        <ScrollView style={styles.fullViewDescScroll} showsVerticalScrollIndicator={false}>
+                                            <Text style={[styles.taskDescriptionExpanded, { fontSize: 13, color: 'rgba(255,255,255,0.4)' }]}>
+                                                {task.description}
+                                            </Text>
+                                        </ScrollView>
+                                    )}
+                                </>
+                            );
+                        })() : task.description ? (
                             <ScrollView style={styles.fullViewDescScroll} showsVerticalScrollIndicator={false}>
                                 <Text style={[styles.taskDescriptionExpanded, { fontSize: 13, color: 'rgba(255,255,255,0.4)' }]}>
                                     {task.description}
                                 </Text>
                             </ScrollView>
-                        )}
+                        ) : null}
 
                         <View style={styles.metaDivider} />
 
@@ -3014,10 +3214,10 @@ function TaskCard({
                                         <View style={[styles.metaRow, { marginBottom: 12, paddingHorizontal: 4 }]}>
                                             <Text style={[styles.metaLabel, { width: 'auto', marginRight: 12 }]}>PROGRESS</Text>
                                             <View style={styles.stagesProgressWrapper}>
-                                                <View style={[styles.stagesProgressBar, { width: `${(task.stages?.length || 0) > 0 ? (task.stages?.filter(s => s.status === 'Done').length || 0) / (task.stages?.length || 0) * 100 : 0}%` }]} />
+                                                <View style={[styles.stagesProgressBar, { width: `${(task.stages?.length || 0) > 0 ? (task.stages?.filter(s => s && s.status === 'Done').length || 0) / (task.stages?.length || 0) * 100 : 0}%` }]} />
                                             </View>
                                             <Text style={[styles.sectionSubtitle, { marginLeft: 12 }]}>
-                                                {task.stages?.filter(s => s.status === 'Done').length} / {task.stages?.length}
+                                                {task.stages?.filter(s => s && s.status === 'Done').length || 0} / {task.stages?.length || 0}
                                             </Text>
                                         </View>
                                         {/* Stages List - Draggable */}
@@ -3089,10 +3289,10 @@ function TaskCard({
                                 <View style={[styles.metaRow, { marginTop: 8, marginBottom: 8 }]}>
                                     <Text style={[styles.metaLabel, { width: 'auto', marginRight: 8, fontSize: 9 }]}>PROGRESS</Text>
                                     <View style={[styles.stagesProgressWrapper, { flex: 1 }]}>
-                                        <View style={[styles.stagesProgressBar, { width: `${(task.stages?.filter(s => s.status === 'Done').length || 0) / (task.stages?.length || 1) * 100}%` }]} />
+                                        <View style={[styles.stagesProgressBar, { width: `${(task.stages?.filter(s => s && s.status === 'Done').length || 0) / (task.stages?.length || 1) * 100}%` }]} />
                                     </View>
                                     <Text style={[styles.sectionSubtitle, { marginLeft: 8, fontSize: 10 }]}>
-                                        {task.stages?.filter(s => s.status === 'Done').length}/{task.stages?.length}
+                                        {task.stages?.filter(s => s && s.status === 'Done').length || 0}/{task.stages?.length || 0}
                                     </Text>
                                 </View>
                             )}

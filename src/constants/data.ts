@@ -63,6 +63,40 @@ export interface Comment {
 
 export type StageStatus = 'Upcoming' | 'Process' | 'Done' | 'Undone';
 
+// Recurrence types
+export type RecurrenceType = 'daily' | 'weekly' | 'monthly';
+
+export interface RecurrenceBase {
+  startDate: string; // ISO date, default = today
+  endDate?: string;  // optional
+}
+
+export type Recurrence =
+  | (RecurrenceBase & {
+      type: 'daily';
+    })
+  | (RecurrenceBase & {
+      type: 'weekly';
+      days: number[]; // 0–6 (Sun–Sat)
+    })
+  | (RecurrenceBase & {
+      type: 'monthly';
+      mode: 'date';
+      /** Day-of-month selections (1–31). Multiple allowed. */
+      dates: number[];
+    })
+  | (RecurrenceBase & {
+      type: 'monthly';
+      mode: 'weekday';
+      /**
+       * Week-of-month selections:
+       * 1 = 1st, 2 = 2nd, 3 = 3rd, 4 = 4th, -1 = last
+       */
+      weekOfMonth: Array<1 | 2 | 3 | 4 | -1>;
+      /** 0–6 (Sun–Sat). Multiple allowed. */
+      weekdays: number[];
+    });
+
 export interface TaskStage {
   id: number;
   text: string;
@@ -76,6 +110,18 @@ export interface TaskStage {
   endTimeMinutes?: number;    // End time in minutes from 00:00 (calculated from startTimeMinutes + durationMinutes)
 }
 
+/**
+ * Date-specific instance data for recurring tasks
+ * Stages and comments are stored per date instance, not on the recurring task itself
+ */
+export interface RecurrenceInstance {
+  stages?: TaskStage[];        // Stages for this specific date instance
+  comments?: Comment[];        // Comments for this specific date instance
+  status?: 'Pending' | 'In Progress' | 'Completed'; // Optional: per-instance status override
+  startedAt?: string;         // Optional: per-instance startedAt
+  completedAt?: string;       // Optional: per-instance completedAt
+}
+
 export interface Task {
   id: number;
   title: string;
@@ -83,16 +129,30 @@ export interface Task {
   status: 'Pending' | 'In Progress' | 'Completed';
   priority: 'Low' | 'Medium' | 'High';
   categoryId?: string;
-  forDate: string;             // YYYY-MM-DD format
+  forDate: string;             // YYYY-MM-DD format (for recurring tasks, this is the start date)
   isBacklog?: boolean;         // Whether the task is in the backlog
   createdAt: string;           // ISO string of when task was created
   updatedAt: string;           // ISO string of last update
-  startedAt?: string;          // ISO string when task was first started
-  completedAt?: string;        // ISO string when task was completed
-  comments?: Comment[];        // List of user comments
-  stages?: TaskStage[];        // List of task stages
+  startedAt?: string;          // ISO string when task was first started (for non-recurring or first instance)
+  completedAt?: string;        // ISO string when task was completed (for non-recurring or first instance)
+  comments?: Comment[];        // List of user comments (for non-recurring tasks only)
+  stages?: TaskStage[];        // List of task stages (for non-recurring tasks only)
   isPinned?: boolean;          // Whether the task is pinned
   pinTimestamp?: number | null; // Unix timestamp when pinned
+  recurrence?: Recurrence;      // Optional recurrence configuration
+  /**
+   * Date-specific instances for recurring tasks
+   * Key: date string (YYYY-MM-DD)
+   * Value: instance-specific data (stages, comments, status overrides)
+   * Only used when recurrence is defined
+   */
+  recurrenceInstances?: Record<string, RecurrenceInstance>;
+  /**
+   * Streak count for recurring tasks
+   * Represents consecutive completed instances
+   * Only used when recurrence is defined
+   */
+  streak?: number;
 }
 
 export const SOUND_OPTIONS = [

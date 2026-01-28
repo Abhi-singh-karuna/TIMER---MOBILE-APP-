@@ -25,7 +25,7 @@ import SettingsScreen from './src/screens/Timer/Settings';
 import AddTimerModal from './src/components/AddTimerModal';
 import AddTaskModal from './src/components/AddTaskModal';
 import DeleteModal from './src/components/DeleteModal';
-import { Timer, Task, TaskStage, Category, QuickMessage, DEFAULT_CATEGORIES, DEFAULT_QUICK_MESSAGES, CATEGORIES_KEY, QUICK_MESSAGES_KEY, LANDSCAPE_PRESETS } from './src/constants/data';
+import { Timer, Task, TaskStage, Category, QuickMessage, DEFAULT_CATEGORIES, DEFAULT_QUICK_MESSAGES, CATEGORIES_KEY, QUICK_MESSAGES_KEY, LANDSCAPE_PRESETS, Recurrence } from './src/constants/data';
 import { Alert } from 'react-native';
 import { loadTimers, saveTimers } from './src/utils/storage';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -50,6 +50,22 @@ import {
   getStartOfLogicalDayFromString,
   DEFAULT_DAILY_START_MINUTES,
 } from './src/utils/dailyStartTime';
+import { findOriginalRecurringTask, calculateStreak } from './src/utils/recurrenceUtils';
+
+// Helper to normalize date string (imported from recurrenceUtils logic)
+function normalizeDateString(dateStr: string): string {
+  if (/^\d{4}-\d{2}-\d{2}$/.test(dateStr)) {
+    return dateStr;
+  }
+  const date = new Date(dateStr);
+  if (isNaN(date.getTime())) {
+    return dateStr;
+  }
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+}
 
 const LANDSCAPE_COLOR_KEY = '@timer_app_landscape_color';
 const FILLER_COLOR_KEY = '@timer_filler_color';
@@ -73,6 +89,12 @@ const normalizeStages = (stages: TaskStage[] | undefined, nowIso: string) => {
   const out: TaskStage[] = [];
 
   for (const s of stages || []) {
+    // Safety check: skip null/undefined stages
+    if (!s || !s.id) {
+      didChange = true;
+      continue;
+    }
+
     // Drop duplicates by id (preserve first occurrence)
     if (seen.has(s.id)) {
       didChange = true;
@@ -84,11 +106,14 @@ const normalizeStages = (stages: TaskStage[] | undefined, nowIso: string) => {
     const durationMinutes = s.durationMinutes ?? DEFAULT_STAGE_DURATION_MINUTES;
     if (s.startTimeMinutes == null || s.durationMinutes == null) didChange = true;
 
+    // Safety check: ensure status exists before accessing it
+    const stageStatus = s.status || 'Upcoming';
+
     out.push({
       ...s,
       createdAt: s.createdAt ?? nowIso,
-      status: s.status ?? 'Upcoming',
-      isCompleted: s.isCompleted ?? (s.status === 'Done'),
+      status: stageStatus,
+      isCompleted: s.isCompleted ?? (stageStatus === 'Done'),
       startTimeMinutes,
       durationMinutes,
     });
@@ -97,14 +122,29 @@ const normalizeStages = (stages: TaskStage[] | undefined, nowIso: string) => {
   return { stages: out, didChange };
 };
 
-const normalizeTasks = (tasks: Task[]) => {
+const normalizeTasks = (tasks: Task[], dailyStartMinutes: number = DEFAULT_DAILY_START_MINUTES) => {
   const nowIso = new Date().toISOString();
   let didChange = false;
 
   const out = tasks.map(t => {
     const norm = normalizeStages(t.stages, nowIso);
     if (norm.didChange) didChange = true;
-    return norm.didChange ? { ...t, stages: norm.stages } : t;
+    let updatedTask = norm.didChange ? { ...t, stages: norm.stages } : t;
+    
+    // Recalculate streak for recurring tasks
+    if (updatedTask.recurrence) {
+      const newStreak = calculateStreak(updatedTask, dailyStartMinutes);
+      if (updatedTask.streak !== newStreak) {
+        didChange = true;
+        updatedTask = { ...updatedTask, streak: newStreak };
+      } else if (updatedTask.streak === undefined) {
+        // Initialize streak if it doesn't exist
+        didChange = true;
+        updatedTask = { ...updatedTask, streak: newStreak };
+      }
+    }
+    
+    return updatedTask;
   });
 
   return { tasks: out, didChange };
@@ -345,11 +385,15 @@ export default function App() {
         setQuickMessages(JSON.parse(storedQuickMessages));
       }
 
+      // Daily start time (when the calendar day rolls over) - load before normalizing tasks
+      const loadedStart = await loadDailyStartMinutes();
+      setDailyStartMinutes(loadedStart);
+
       // Load tasks
       const storedTasks = await AsyncStorage.getItem(TASKS_KEY);
       if (storedTasks) {
         const parsed: Task[] = JSON.parse(storedTasks);
-        const norm = normalizeTasks(parsed);
+        const norm = normalizeTasks(parsed, loadedStart);
         setTasks(norm.tasks);
         // Persist normalization once on rehydration (no UI screen side-effects)
         if (norm.didChange) {
@@ -360,10 +404,6 @@ export default function App() {
       // Load/seed time-of-day background slots (single source of truth)
       const cfg = await loadOrSeedTimeOfDayBackgroundConfig();
       setTimeOfDayBackgroundConfig(cfg);
-
-      // Daily start time (when the calendar day rolls over)
-      const loadedStart = await loadDailyStartMinutes();
-      setDailyStartMinutes(loadedStart);
       setSelectedDate((prev) => {
         const logical = getLogicalDate(prev, DEFAULT_DAILY_START_MINUTES);
         const [y, m1, d] = logical.split('-').map(Number);
@@ -389,7 +429,7 @@ export default function App() {
       const storedTasks = await AsyncStorage.getItem(TASKS_KEY);
       if (storedTasks) {
         const parsed: Task[] = JSON.parse(storedTasks);
-        const norm = normalizeTasks(parsed);
+        const norm = normalizeTasks(parsed, dailyStartMinutes);
         setTasks(norm.tasks);
         if (norm.didChange) {
           saveTasks(norm.tasks);
@@ -403,7 +443,7 @@ export default function App() {
   };
 
   // Handle adding a new task
-  const handleAddTask = (taskData: { title: string; description?: string; priority: Task['priority']; categoryId?: string; forDate: string; isBacklog?: boolean }) => {
+  const handleAddTask = (taskData: { title: string; description?: string; priority: Task['priority']; categoryId?: string; forDate: string; isBacklog?: boolean; recurrence?: Recurrence }) => {
     const now = new Date().toISOString();
     const newTask: Task = {
       id: Date.now(),
@@ -414,8 +454,16 @@ export default function App() {
       categoryId: taskData.categoryId,
       forDate: taskData.forDate,
       isBacklog: taskData.isBacklog,
+      recurrence: taskData.recurrence,
       createdAt: now,
       updatedAt: now,
+      // For recurring tasks, don't include stages/comments on the main task
+      // They will be stored in recurrenceInstances per date
+      stages: taskData.recurrence ? undefined : [],
+      comments: taskData.recurrence ? undefined : [],
+      recurrenceInstances: taskData.recurrence ? {} : undefined,
+      // Initialize streak for recurring tasks (will be 0 initially, calculated when instances are completed)
+      streak: taskData.recurrence ? 0 : undefined,
     };
     setTasks(prev => {
       const updated = [...prev, newTask];
@@ -433,17 +481,47 @@ export default function App() {
 
     const now = new Date().toISOString();
     setTasks(prev => {
-      const updated = prev.map(t =>
-        t.id === task.id
-          ? {
+      const updated = prev.map(t => {
+        if (t.id !== task.id) return t;
+
+        // If this is a recurring task, update the date-specific instance status
+        if (t.recurrence) {
+          const instanceDate = normalizeDateString(task.forDate); // Normalize the date for consistency
+          const existingInstances = t.recurrenceInstances || {};
+          const existingInstance = existingInstances[instanceDate] || {};
+          
+          const updatedTask = {
             ...t,
-            status: nextStatus,
+            recurrenceInstances: {
+              ...existingInstances,
+              [instanceDate]: {
+                ...existingInstance,
+                status: nextStatus,
+                startedAt: (nextStatus === 'In Progress' && !existingInstance.startedAt) ? now : existingInstance.startedAt,
+                completedAt: nextStatus === 'Completed' ? now : undefined,
+              },
+            },
             updatedAt: now,
-            startedAt: (nextStatus === 'In Progress' && !t.startedAt) ? now : t.startedAt,
-            completedAt: nextStatus === 'Completed' ? now : undefined
-          }
-          : t
-      );
+          };
+          
+          // Calculate and update streak when status changes
+          const newStreak = calculateStreak(updatedTask, dailyStartMinutes);
+          
+          return {
+            ...updatedTask,
+            streak: newStreak,
+          };
+        }
+
+        // Non-recurring task: update status directly
+        return {
+          ...t,
+          status: nextStatus,
+          updatedAt: now,
+          startedAt: (nextStatus === 'In Progress' && !t.startedAt) ? now : t.startedAt,
+          completedAt: nextStatus === 'Completed' ? now : undefined
+        };
+      });
       saveTasks(updated);
       return updated;
     });
@@ -473,12 +551,14 @@ export default function App() {
 
   // Handle editing a task (opening the modal)
   const handleEditTask = (task: Task) => {
-    setTaskToEdit(task);
+    // If this is an expanded recurring task instance, find the original task
+    const originalTask = findOriginalRecurringTask(tasks, task) || task;
+    setTaskToEdit(originalTask);
     setAddTaskModalVisible(true);
   };
 
   // Handle updating an existing task
-  const handleUpdateTask = (taskId: number, taskData: { title: string; description?: string; priority: Task['priority']; categoryId?: string; forDate: string; isBacklog?: boolean }) => {
+  const handleUpdateTask = (taskId: number, taskData: { title: string; description?: string; priority: Task['priority']; categoryId?: string; forDate: string; isBacklog?: boolean; recurrence?: Recurrence }) => {
     const now = new Date().toISOString();
     setTasks(prev => {
       const updated = prev.map(t =>
@@ -509,15 +589,34 @@ export default function App() {
     };
 
     setTasks(prev => {
-      const updated = prev.map(t =>
-        t.id === task.id
-          ? {
+      const updated = prev.map(t => {
+        if (t.id !== task.id) return t;
+
+        // If this is a recurring task, save comment to the date-specific instance
+        if (t.recurrence) {
+          const instanceDate = task.forDate; // The expanded task's forDate
+          const existingInstance = t.recurrenceInstances?.[instanceDate] || {};
+          
+          return {
             ...t,
-            comments: [newComment, ...(t.comments || [])],
+            recurrenceInstances: {
+              ...t.recurrenceInstances,
+              [instanceDate]: {
+                ...existingInstance,
+                comments: [newComment, ...(existingInstance.comments || [])],
+              },
+            },
             updatedAt: now,
-          }
-          : t
-      );
+          };
+        }
+
+        // Non-recurring task: save comment directly
+        return {
+          ...t,
+          comments: [newComment, ...(t.comments || [])],
+          updatedAt: now,
+        };
+      });
       saveTasks(updated);
       return updated;
     });
@@ -532,7 +631,19 @@ export default function App() {
       const latestTask = prev.find(t => t.id === task.id);
       if (!latestTask) return prev;
 
-      const previousStages = latestTask.stages || [];
+      // For recurring tasks, get stages from the date-specific instance
+      const isRecurring = !!latestTask.recurrence;
+      const instanceDate = task.forDate; // The expanded task's forDate (should be YYYY-MM-DD format)
+      
+      // Ensure we're using the correct date format
+      if (isRecurring && !instanceDate) {
+        console.warn('Recurring task missing forDate:', task);
+        return prev;
+      }
+      
+      const instanceData = isRecurring ? latestTask.recurrenceInstances?.[instanceDate] : undefined;
+      const previousStages = isRecurring ? (instanceData?.stages || []) : (latestTask.stages || []);
+
       const normalized = normalizeStages(stages, now);
       const nextStages = normalized.stages;
 
@@ -541,13 +652,18 @@ export default function App() {
       const isAddingStage = nextStages.length > previousStages.length;
 
       // Calculate completion status
-      const completedCount = nextStages.filter(s => s.isCompleted || s.status === 'Done').length;
+      // Safety check: ensure stages have status property
+      const completedCount = nextStages.filter(s => s && (s.isCompleted || s.status === 'Done')).length;
       const totalCount = nextStages.length;
       const allCompleted = totalCount > 0 && completedCount === totalCount;
       const someCompleted = completedCount > 0 && completedCount < totalCount;
 
       // Determine new status
-      let newStatus: Task['status'] = latestTask.status;
+      // Safety check: ensure latestTask has status property (for backward compatibility)
+      const latestTaskStatus = latestTask.status || 'Pending';
+      let newStatus: Task['status'] = isRecurring 
+        ? (instanceData?.status ?? latestTaskStatus)
+        : latestTaskStatus;
 
       if (allCompleted && totalCount > 0) {
         // All stages completed → Task is Completed
@@ -555,37 +671,106 @@ export default function App() {
       } else if (someCompleted) {
         // Some stages completed → Task is In Progress
         newStatus = 'In Progress';
-      } else if (isAddingStage && latestTask.status === 'Completed') {
+      } else if (isAddingStage && newStatus === 'Completed') {
         // Adding a stage to a completed task → Back to Pending
         newStatus = 'Pending';
-      } else if (totalCount > 0 && completedCount === 0 && latestTask.status === 'Completed') {
+      } else if (totalCount > 0 && completedCount === 0 && newStatus === 'Completed') {
         // If task was completed but now has uncompleted stages → In Progress
         newStatus = 'In Progress';
       }
 
-      const updated = prev.map(t =>
-        t.id === task.id
-          ? {
-            ...t,
-            stages: nextStages,
-            status: newStatus,
-            updatedAt: now,
-            // Set startedAt if moving to In Progress and not already set
-            startedAt: newStatus === 'In Progress' && !t.startedAt ? now : t.startedAt,
-            // Set completedAt if becoming Completed, clear it otherwise
-            completedAt: newStatus === 'Completed' ? now : undefined,
+      const updated = prev.map(t => {
+        if (t.id !== task.id) return t;
+
+        // If this is a recurring task, save stages to the date-specific instance
+        if (t.recurrence) {
+          // Normalize the date to ensure consistent format (YYYY-MM-DD)
+          // The instanceDate should already be YYYY-MM-DD from the expanded task,
+          // but normalize it to be safe and handle any edge cases
+          let normalizedInstanceDate = instanceDate;
+          if (!instanceDate.match(/^\d{4}-\d{2}-\d{2}$/)) {
+            // Try to parse and normalize
+            const date = new Date(instanceDate);
+            if (!isNaN(date.getTime())) {
+              const year = date.getFullYear();
+              const month = String(date.getMonth() + 1).padStart(2, '0');
+              const day = String(date.getDate()).padStart(2, '0');
+              normalizedInstanceDate = `${year}-${month}-${day}`;
+            }
           }
-          : t
-      );
+          
+          // Check if instance exists with normalized date, or try to find it with any format
+          let existingInstance = t.recurrenceInstances?.[normalizedInstanceDate] || {};
+          if (!existingInstance.stages && t.recurrenceInstances) {
+            // Try to find existing instance with different date format
+            const matchingKey = Object.keys(t.recurrenceInstances).find(key => {
+              const normalizedKey = key.match(/^\d{4}-\d{2}-\d{2}$/) 
+                ? key 
+                : (() => {
+                    const d = new Date(key);
+                    if (isNaN(d.getTime())) return null;
+                    const y = d.getFullYear();
+                    const m = String(d.getMonth() + 1).padStart(2, '0');
+                    const day = String(d.getDate()).padStart(2, '0');
+                    return `${y}-${m}-${day}`;
+                  })();
+              return normalizedKey === normalizedInstanceDate;
+            });
+            if (matchingKey) {
+              existingInstance = t.recurrenceInstances[matchingKey];
+            }
+          }
+          const instanceStartedAt = newStatus === 'In Progress' && !existingInstance.startedAt 
+            ? now 
+            : existingInstance.startedAt;
+          const instanceCompletedAt: string | undefined = newStatus === 'Completed' 
+            ? now 
+            : undefined;
+
+          // Create a new recurrenceInstances object to ensure React detects the change
+          const updatedRecurrenceInstances = {
+            ...(t.recurrenceInstances || {}),
+            [normalizedInstanceDate]: {
+              ...existingInstance,
+              stages: nextStages, // This is already a new array from normalizeStages
+              status: newStatus,
+              startedAt: instanceStartedAt,
+              completedAt: instanceCompletedAt,
+            },
+          };
+
+          const updatedTask = {
+            ...t,
+            recurrenceInstances: updatedRecurrenceInstances,
+            updatedAt: now,
+          };
+          
+          // Calculate and update streak when status changes
+          const newStreak = calculateStreak(updatedTask, dailyStartMinutes);
+          
+          return {
+            ...updatedTask,
+            streak: newStreak,
+          };
+        }
+
+        // Non-recurring task: save stages directly
+        return {
+          ...t,
+          stages: nextStages,
+          status: newStatus,
+          updatedAt: now,
+          // Set startedAt if moving to In Progress and not already set
+          startedAt: newStatus === 'In Progress' && !t.startedAt ? now : t.startedAt,
+          // Set completedAt if becoming Completed, clear it otherwise
+          completedAt: newStatus === 'Completed' ? now : undefined,
+        };
+      });
 
       // Persist immediately (single source of truth)
-      const persist = saveTasks(updated);
+      saveTasks(updated);
 
-      // After ADD/DELETE: rehydrate from storage so UI renders from persisted data (not cached UI state)
-      if (stageCountChanged) {
-        persist.then(() => rehydrateTasksFromStorage());
-      }
-
+      // Return updated state immediately - no need to rehydrate as we've already updated the state
       return updated;
     });
   };
