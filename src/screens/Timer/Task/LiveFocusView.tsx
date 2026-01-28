@@ -2204,37 +2204,34 @@ export default function LiveFocusView({
                                                             });
                                                         })()}
 
-                                                        {/* Add Subtask Plus Button — placed after the "last" card in the 6-to-6 day (max displayEnd; dailyStart from settings) */}
+                                                        {/* Add Subtask Plus Button — placed after the selected subtask (when in resize mode) */}
                                                         {(() => {
-                                                            let buttonLeft = 10; // Default if no stages
-                                                            let buttonTop = 7;
-
-                                                            // Last card = the one that ends latest in the 6-to-6 display (0=dailyStart, 1440=next dailyStart)
-                                                            let lastStage: TaskStage | undefined;
-                                                            let maxDisplayEnd = -1;
-                                                            let maxDisplayStart = -1;
-                                                            for (const s of sortedTimedStages) {
-                                                                const { startTimeMinutes: start, durationMinutes: dur } = getEffectiveStageTime(s);
-                                                                const displayStart = (start - dailyStartMinutes + 1440) % 1440;
-                                                                const displayEnd = Math.min(displayStart + dur, 1440);
-                                                                if (displayEnd > maxDisplayEnd || (displayEnd === maxDisplayEnd && displayStart > maxDisplayStart)) {
-                                                                    maxDisplayEnd = displayEnd;
-                                                                    maxDisplayStart = displayStart;
-                                                                    lastStage = s;
-                                                                }
+                                                            // Only show button if a subtask is selected (in resize mode) for this task
+                                                            const isTaskSelected = resizeModeStage?.taskId === task.id;
+                                                            if (!isTaskSelected) {
+                                                                return null;
                                                             }
 
-                                                            if (lastStage) {
-                                                                const isLastActive = activeStage?.taskId === task.id && activeStage?.stageId === lastStage.id;
-                                                                const lastLane = isLastActive && tempStageLayout?.lane !== undefined
-                                                                    ? tempStageLayout.lane
-                                                                    : (calculateStageLanes(sortedTimedStages).get(lastStage.id) ?? 0);
-                                                                const { left, width, top } = getStageLayout(lastStage, 0, lastLane);
-                                                                buttonLeft = left + width + 8;
-                                                                buttonTop = top;
+                                                            // Find the selected stage
+                                                            const selectedStage = sortedTimedStages.find(s => s.id === resizeModeStage?.stageId);
+                                                            if (!selectedStage) {
+                                                                return null;
                                                             }
 
-                                                            const nowMinutes = currentTimeRef.current.getHours() * 60 + currentTimeRef.current.getMinutes();
+                                                            // Get the selected stage's layout
+                                                            const isSelectedActive = activeStage?.taskId === task.id && activeStage?.stageId === selectedStage.id;
+                                                            const selectedLane = isSelectedActive && tempStageLayout?.lane !== undefined
+                                                                ? tempStageLayout.lane
+                                                                : (calculateStageLanes(sortedTimedStages).get(selectedStage.id) ?? 0);
+                                                            const { left, width, top } = getStageLayout(selectedStage, 0, selectedLane);
+                                                            
+                                                            // Position button after the selected stage
+                                                            const buttonLeft = left + width + 8;
+                                                            const buttonTop = top;
+
+                                                            // Calculate the selected stage's end time (completion time)
+                                                            const effectiveTime = getEffectiveStageTime(selectedStage);
+                                                            const selectedStageEndTime = (effectiveTime.startTimeMinutes + effectiveTime.durationMinutes) % 1440;
 
                                                             return (
                                                                 <TouchableOpacity
@@ -2244,7 +2241,7 @@ export default function LiveFocusView({
                                                                         setAddSubtaskModal({
                                                                             visible: true,
                                                                             taskId: task.id,
-                                                                            startTimeMinutes: nowMinutes,
+                                                                            startTimeMinutes: selectedStageEndTime,
                                                                             mode: 'add',
                                                                         });
                                                                     }}
