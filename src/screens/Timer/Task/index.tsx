@@ -489,6 +489,7 @@ const styles = StyleSheet.create({
     },
     cardLeft: {
         flex: 1,
+        minWidth: 0,
     },
     topStatusRow: {
         flexDirection: 'row',
@@ -524,12 +525,17 @@ const styles = StyleSheet.create({
         flexDirection: 'row',
         alignItems: 'center',
         marginBottom: 4,
+        minWidth: 0,
+    },
+    titleTextWrapper: {
+        flex: 1,
+        minWidth: 0,
+        marginRight: 8,
     },
     taskTitle: {
         fontSize: 14,
         fontWeight: '700',
         color: '#fff',
-        marginRight: 8,
     },
     taskTitleCompleted: {
         color: 'rgba(255,255,255,0.6)',
@@ -543,6 +549,7 @@ const styles = StyleSheet.create({
         borderRadius: 6,
         borderWidth: 1,
         gap: 4,
+        flexShrink: 0,
     },
     categoryBadgeText: {
         fontSize: 8,
@@ -711,12 +718,14 @@ const styles = StyleSheet.create({
         height: 42,
         alignItems: 'center',
         justifyContent: 'center',
+        flexShrink: 0,
     },
     checkboxContainer: {
         width: 42,
         height: 42,
         alignItems: 'center',
         justifyContent: 'center',
+        flexShrink: 0,
     },
     checkbox: {
         width: 28,
@@ -2714,8 +2723,6 @@ function TaskCard({
 
     const category = categories.find(c => c.id === task.categoryId);
     const categoryColor = category?.color || '#fff';
-    const categoryIcon = category?.icon || 'folder';
-
     const statusConfig = getStatusConfig(taskStatus);
     const priorityConfig = getPriorityConfig(task.priority);
 
@@ -2805,38 +2812,46 @@ function TaskCard({
             <View style={[
                 styles.cardContent,
                 isFullView && isLandscape && { display: 'none' },
-                isExpanded && !isLandscape && { alignItems: 'flex-start' }
+                isExpanded && !isLandscape && { alignItems: 'flex-start', paddingRight: 110 }
             ]}>
                 <View style={styles.cardLeft}>
-                    {/* Status Row */}
+                    {/* Category + Status Row */}
                     <View style={styles.topStatusRow}>
+                        <View style={[styles.priorityBadge, { borderColor: `${categoryColor}40`, flexDirection: 'row', alignItems: 'center', gap: 4 }]}>
+                            {isExpanded && (
+                                <MaterialIcons name={category?.icon || 'folder'} size={10} color={categoryColor} />
+                            )}
+                            <Text style={[styles.priorityBadgeText, { color: categoryColor }]}>
+                                {category?.name.toUpperCase() || 'GENERAL'}
+                            </Text>
+                        </View>
                         <View style={[styles.statusBadge, { backgroundColor: statusConfig.bgColor }]}>
                             <Text style={[styles.statusText, { color: statusConfig.color }]}>
                                 {statusConfig.label}
                             </Text>
                         </View>
-                        <View style={[styles.priorityBadge, { borderColor: `${priorityConfig.color}40` }]}>
-                            <Text style={[styles.priorityBadgeText, { color: priorityConfig.color }]}>
-                                {task.priority.toUpperCase()}
-                            </Text>
-                        </View>
                     </View>
 
                     <View style={styles.titleRow}>
-                        <Text
-                            style={[styles.taskTitle, isCompleted && styles.taskTitleCompleted]}
-                            numberOfLines={isExpanded ? undefined : 1}
-                        >
-                            {task.title}
-                        </Text>
-                        <View style={[styles.categoryBadge, { backgroundColor: `${categoryColor}15`, borderColor: `${categoryColor}30` }]}>
-                            <MaterialIcons name={categoryIcon} size={10} color={categoryColor} />
-                            <Text style={[styles.categoryBadgeText, { color: categoryColor }]}>
-                                {category?.name.toUpperCase() || 'GENERAL'}
+                        <View style={styles.titleTextWrapper}>
+                            <Text
+                                style={[styles.taskTitle, isCompleted && styles.taskTitleCompleted]}
+                                numberOfLines={isExpanded ? undefined : 1}
+                                ellipsizeMode="tail"
+                            >
+                                {task.title}
                             </Text>
                         </View>
+                        <View style={[styles.categoryBadge, { backgroundColor: `${priorityConfig.color}15`, borderColor: `${priorityConfig.color}30` }]}>
+                            <MaterialIcons name={priorityConfig.icon} size={10} color={priorityConfig.color} />
+                            {isExpanded && (
+                                <Text style={[styles.categoryBadgeText, { color: priorityConfig.color }]} numberOfLines={1} ellipsizeMode="tail">
+                                    {task.priority.toUpperCase()}
+                                </Text>
+                            )}
+                        </View>
                         {(task.comments?.length ?? 0) > 0 && !isExpanded && (
-                            <View style={[styles.categoryBadge, { backgroundColor: 'rgba(255,255,255,0.05)', marginLeft: 8 }]}>
+                            <View style={[styles.categoryBadge, { backgroundColor: 'rgba(255,255,255,0.05)', marginLeft: 8, flexShrink: 0 }]}>
                                 <MaterialIcons name="chat" size={10} color="rgba(255,255,255,0.6)" />
                             </View>
                         )}
@@ -2965,14 +2980,15 @@ function TaskCard({
                     {/* LEFT COLUMN: TASK DETAILS */}
                     <View style={styles.fullViewLeftCol}>
                         <View style={styles.topStatusRow}>
+                            <View style={[styles.priorityBadge, { borderColor: `${categoryColor}40`, flexDirection: 'row', alignItems: 'center', gap: 4 }]}>
+                                <MaterialIcons name={category?.icon || 'folder'} size={10} color={categoryColor} />
+                                <Text style={[styles.priorityBadgeText, { color: categoryColor }]}>
+                                    {category?.name.toUpperCase() || 'GENERAL'}
+                                </Text>
+                            </View>
                             <View style={[styles.statusBadge, { backgroundColor: statusConfig.bgColor }]}>
                                 <Text style={[styles.statusText, { color: statusConfig.color }]}>
                                     {statusConfig.label}
-                                </Text>
-                            </View>
-                            <View style={[styles.priorityBadge, { borderColor: `${priorityConfig.color}40` }]}>
-                                <Text style={[styles.priorityBadgeText, { color: priorityConfig.color }]}>
-                                    {task.priority.toUpperCase()}
                                 </Text>
                             </View>
                         </View>
@@ -2981,10 +2997,10 @@ function TaskCard({
                             {task.title}
                         </Text>
 
-                        <View style={[styles.categoryBadge, { backgroundColor: `${categoryColor}15`, borderColor: `${categoryColor}30`, alignSelf: 'flex-start', marginBottom: 16 }]}>
-                            <MaterialIcons name={categoryIcon} size={12} color={categoryColor} />
-                            <Text style={[styles.categoryBadgeText, { color: categoryColor, fontSize: 10 }]}>
-                                {category?.name.toUpperCase() || 'GENERAL'}
+                        <View style={[styles.categoryBadge, { backgroundColor: `${priorityConfig.color}15`, borderColor: `${priorityConfig.color}30`, alignSelf: 'flex-start', marginBottom: 16 }]}>
+                            <MaterialIcons name={priorityConfig.icon} size={12} color={priorityConfig.color} />
+                            <Text style={[styles.categoryBadgeText, { color: priorityConfig.color, fontSize: 10 }]}>
+                                {task.priority.toUpperCase()}
                             </Text>
                         </View>
 

@@ -199,6 +199,9 @@ export default function LiveFocusView({
     const [showDockCalendar, setShowDockCalendar] = useState(false);
     const [viewDate, setViewDate] = useState(() => new Date());
 
+    // Task subtasks popup: tap left task card opens popup with all subtasks and status
+    const [taskSubtasksPopupTask, setTaskSubtasksPopupTask] = useState<Task | null>(null);
+
     // Simple timer state (counts up from 00:00:00)
     const [timerSeconds, setTimerSeconds] = useState(0);
     const [isTimerRunning, setIsTimerRunning] = useState(false);
@@ -1587,7 +1590,10 @@ export default function LiveFocusView({
                                             >
                                                 <TouchableOpacity
                                                     activeOpacity={1}
-                                                    onPress={() => {}}
+                                                    onPress={() => {
+                                                        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                                                        setTaskSubtasksPopupTask(task);
+                                                    }}
                                                     style={[
                                                         styles.trackLabel,
                                                         { width: TRACK_LABEL_WIDTH, borderLeftWidth: 3, borderLeftColor: category?.color || 'rgba(255,255,255,0.12)' },
@@ -2717,6 +2723,179 @@ export default function LiveFocusView({
                     <View style={styles.calendarPopup}>
                         {renderDockCalendar()}
                     </View>
+                </View>
+            </Modal>
+
+            {/* Task subtasks popup: tap left task card to show all subtasks with status */}
+            <Modal
+                visible={taskSubtasksPopupTask != null}
+                transparent
+                animationType="fade"
+                supportedOrientations={['portrait', 'landscape', 'landscape-left', 'landscape-right']}
+                onRequestClose={() => setTaskSubtasksPopupTask(null)}
+            >
+                <View style={styles.calendarModalBackdrop}>
+                    <TouchableWithoutFeedback onPress={() => setTaskSubtasksPopupTask(null)}>
+                        <View style={styles.calendarModalTouchable} />
+                    </TouchableWithoutFeedback>
+                    {taskSubtasksPopupTask && (() => {
+                        const stages = taskSubtasksPopupTask.stages || [];
+                        const totalStages = stages.length;
+                        const totalDuration = stages.reduce((sum, s) => sum + (s.durationMinutes ?? 180), 0);
+                        const completed = stages.filter(s => s.status === 'Done' || s.isCompleted).length;
+                        const undone = stages.filter(s => s.status === 'Undone').length;
+                        const inProcess = stages.filter(s => s.status === 'Process').length;
+                        const pending = stages.filter(s => s.status === 'Upcoming' || !s.status).length;
+                        const analyticsBlock = (
+                            <>
+                                <View style={styles.taskSubtasksPopupAnalyticsRow}>
+                                    <Text style={styles.taskSubtasksPopupAnalyticsLabel}>TOTAL DURATION</Text>
+                                    <Text style={styles.taskSubtasksPopupAnalyticsValue}>{formatDurationCompact(totalDuration)}</Text>
+                                </View>
+                                <View style={styles.taskSubtasksPopupAnalyticsRow}>
+                                    <Text style={styles.taskSubtasksPopupAnalyticsLabel}>TOTAL</Text>
+                                    <Text style={styles.taskSubtasksPopupAnalyticsValue}>{totalStages}</Text>
+                                </View>
+                                <View style={styles.taskSubtasksPopupAnalyticsRow}>
+                                    <Text style={styles.taskSubtasksPopupAnalyticsLabel}>DONE</Text>
+                                    <Text style={[styles.taskSubtasksPopupAnalyticsValue, { color: '#4CAF50' }]}>{completed}</Text>
+                                </View>
+                                <View style={styles.taskSubtasksPopupAnalyticsRow}>
+                                    <Text style={styles.taskSubtasksPopupAnalyticsLabel}>UNDONE</Text>
+                                    <Text style={[styles.taskSubtasksPopupAnalyticsValue, { color: '#FF5252' }]}>{undone}</Text>
+                                </View>
+                                <View style={styles.taskSubtasksPopupAnalyticsRow}>
+                                    <Text style={styles.taskSubtasksPopupAnalyticsLabel}>PENDING</Text>
+                                    <Text style={styles.taskSubtasksPopupAnalyticsValue}>{pending}</Text>
+                                </View>
+                                <View style={styles.taskSubtasksPopupAnalyticsRow}>
+                                    <Text style={styles.taskSubtasksPopupAnalyticsLabel}>IN PROCESS</Text>
+                                    <Text style={[styles.taskSubtasksPopupAnalyticsValue, { color: '#FFB74D' }]}>{inProcess}</Text>
+                                </View>
+                            </>
+                        );
+
+                        const cardsContent = (taskSubtasksPopupTask.stages || []).length === 0 ? (
+                            <Text style={styles.taskSubtasksPopupEmpty}>No subtasks</Text>
+                        ) : (
+                            (taskSubtasksPopupTask.stages || []).map((stage) => {
+                                const status = stage.status || 'Upcoming';
+                                const config = STAGE_STATUS_CONFIG[status];
+                                const startMinutes = stage.startTimeMinutes ?? 0;
+                                const durationMinutes = stage.durationMinutes ?? 180;
+                                const endMinutes = (startMinutes + durationMinutes) % 1440;
+                                const startStr = formatTimeCompact(startMinutes);
+                                const endStr = formatTimeCompact(endMinutes);
+                                const durationStr = formatDurationCompact(durationMinutes);
+                                return (
+                                    <View
+                                        key={stage.id}
+                                        style={[
+                                            styles.taskSubtasksPopupRow,
+                                            { borderLeftColor: config.color },
+                                        ]}
+                                    >
+                                        <View style={[styles.taskSubtasksPopupStatusCircle, { backgroundColor: config.color }]}>
+                                            <MaterialIcons name={config.icon} size={14} color="#FFFFFF" />
+                                        </View>
+                                        <View style={styles.taskSubtasksPopupCardContent}>
+                                            <Text style={styles.taskSubtasksPopupRowText} numberOfLines={1}>
+                                                {stage.text}
+                                            </Text>
+                                            <Text style={styles.taskSubtasksPopupTimeRow}>
+                                                {startStr} – {endStr}  ·  {durationStr}
+                                            </Text>
+                                        </View>
+                                    </View>
+                                );
+                            })
+                        );
+
+                        return (
+                        <View
+                            style={[
+                                styles.taskSubtasksPopup,
+                                isLandscape && styles.taskSubtasksPopupLandscape,
+                                isLandscape && { height: screenHeight * 0.88, maxHeight: screenHeight * 0.88 },
+                            ]}
+                        >
+                            <View style={styles.taskSubtasksPopupHeader}>
+                                <Text style={styles.taskSubtasksPopupTitle} numberOfLines={1}>
+                                    {taskSubtasksPopupTask.title}
+                                </Text>
+                                <TouchableOpacity
+                                    style={styles.taskSubtasksPopupClose}
+                                    onPress={() => {
+                                        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                                        setTaskSubtasksPopupTask(null);
+                                    }}
+                                >
+                                    <MaterialIcons name="close" size={20} color="#fff" />
+                                </TouchableOpacity>
+                            </View>
+                            {isLandscape ? (
+                                <View style={styles.taskSubtasksPopupBodyLandscape}>
+                                    <View style={styles.taskSubtasksPopupLeftPanel}>
+                                        <Text style={styles.taskSubtasksPopupAnalyticsTitle}>ANALYTICS</Text>
+                                        <View style={styles.taskSubtasksPopupLeftPanelContent}>
+                                            {analyticsBlock}
+                                        </View>
+                                    </View>
+                                    <View style={styles.taskSubtasksPopupRightPanel}>
+                                        <ScrollView
+                                            style={[styles.taskSubtasksPopupScroll, styles.taskSubtasksPopupScrollLandscape]}
+                                            contentContainerStyle={styles.taskSubtasksPopupScrollContent}
+                                            showsVerticalScrollIndicator={true}
+                                        >
+                                            {cardsContent}
+                                        </ScrollView>
+                                    </View>
+                                </View>
+                            ) : (
+                                <>
+                                    <View style={styles.taskSubtasksPopupAnalytics}>
+                                        <View style={styles.taskSubtasksPopupAnalyticsRow}>
+                                            <Text style={styles.taskSubtasksPopupAnalyticsLabel}>TOTAL DURATION</Text>
+                                            <Text style={styles.taskSubtasksPopupAnalyticsValue}>{formatDurationCompact(totalDuration)}</Text>
+                                        </View>
+                                        <View style={styles.taskSubtasksPopupAnalyticsDivider} />
+                                        <View style={styles.taskSubtasksPopupAnalyticsRow}>
+                                            <Text style={styles.taskSubtasksPopupAnalyticsLabel}>TOTAL</Text>
+                                            <Text style={styles.taskSubtasksPopupAnalyticsValue}>{totalStages}</Text>
+                                        </View>
+                                        <View style={styles.taskSubtasksPopupAnalyticsDivider} />
+                                        <View style={styles.taskSubtasksPopupAnalyticsRow}>
+                                            <Text style={styles.taskSubtasksPopupAnalyticsLabel}>DONE</Text>
+                                            <Text style={[styles.taskSubtasksPopupAnalyticsValue, { color: '#4CAF50' }]}>{completed}</Text>
+                                        </View>
+                                        <View style={styles.taskSubtasksPopupAnalyticsDivider} />
+                                        <View style={styles.taskSubtasksPopupAnalyticsRow}>
+                                            <Text style={styles.taskSubtasksPopupAnalyticsLabel}>UNDONE</Text>
+                                            <Text style={[styles.taskSubtasksPopupAnalyticsValue, { color: '#FF5252' }]}>{undone}</Text>
+                                        </View>
+                                        <View style={styles.taskSubtasksPopupAnalyticsDivider} />
+                                        <View style={styles.taskSubtasksPopupAnalyticsRow}>
+                                            <Text style={styles.taskSubtasksPopupAnalyticsLabel}>PENDING</Text>
+                                            <Text style={styles.taskSubtasksPopupAnalyticsValue}>{pending}</Text>
+                                        </View>
+                                        <View style={styles.taskSubtasksPopupAnalyticsDivider} />
+                                        <View style={styles.taskSubtasksPopupAnalyticsRow}>
+                                            <Text style={styles.taskSubtasksPopupAnalyticsLabel}>IN PROCESS</Text>
+                                            <Text style={[styles.taskSubtasksPopupAnalyticsValue, { color: '#FFB74D' }]}>{inProcess}</Text>
+                                        </View>
+                                    </View>
+                                    <ScrollView
+                                        style={styles.taskSubtasksPopupScroll}
+                                        contentContainerStyle={styles.taskSubtasksPopupScrollContent}
+                                        showsVerticalScrollIndicator={true}
+                                    >
+                                        {cardsContent}
+                                    </ScrollView>
+                                </>
+                            )}
+                        </View>
+                        );
+                    })()}
                 </View>
             </Modal>
 
@@ -4312,5 +4491,162 @@ const styles = StyleSheet.create({
     selectedPastCircle: {
         borderWidth: 2,
         borderColor: '#FF5050',
+    },
+    // Task subtasks popup (tap left task card) — black background, status-colored cards
+    taskSubtasksPopup: {
+        width: 320,
+        maxWidth: '90%',
+        maxHeight: '85%',
+        backgroundColor: '#000000',
+        borderRadius: 12,
+        borderWidth: 1,
+        borderColor: 'rgba(255,255,255,0.12)',
+        padding: 12,
+        overflow: 'hidden',
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 4 },
+        shadowOpacity: 0.3,
+        shadowRadius: 8,
+        elevation: 8,
+        flexDirection: 'column',
+    },
+    taskSubtasksPopupLandscape: {
+        width: 520,
+        maxWidth: '95%',
+    },
+    taskSubtasksPopupBodyLandscape: {
+        flexDirection: 'row',
+        flex: 1,
+        minHeight: 220,
+        alignItems: 'stretch',
+    },
+    taskSubtasksPopupLeftPanel: {
+        width: 150,
+        minWidth: 150,
+        paddingRight: 14,
+        paddingLeft: 4,
+        paddingVertical: 8,
+        borderRightWidth: 1,
+        borderRightColor: 'rgba(255,255,255,0.12)',
+        backgroundColor: 'rgba(0,0,0,0.4)',
+    },
+    taskSubtasksPopupLeftPanelContent: {
+        gap: 10,
+    },
+    taskSubtasksPopupRightPanel: {
+        flex: 1,
+        minWidth: 0,
+        paddingLeft: 12,
+    },
+    taskSubtasksPopupAnalyticsTitle: {
+        fontSize: 10,
+        fontWeight: '800',
+        letterSpacing: 1.5,
+        color: 'rgba(255,255,255,0.5)',
+        marginBottom: 10,
+    },
+    taskSubtasksPopupHeader: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        marginBottom: 8,
+    },
+    taskSubtasksPopupTitle: {
+        flex: 1,
+        fontSize: 15,
+        fontWeight: '700',
+        color: '#fff',
+        marginRight: 8,
+    },
+    taskSubtasksPopupClose: {
+        padding: 4,
+    },
+    taskSubtasksPopupAnalytics: {
+        flexDirection: 'row',
+        flexWrap: 'wrap',
+        alignItems: 'center',
+        paddingVertical: 8,
+        paddingHorizontal: 4,
+        marginBottom: 8,
+        borderBottomWidth: 1,
+        borderBottomColor: 'rgba(255,255,255,0.1)',
+        gap: 4,
+    },
+    taskSubtasksPopupAnalyticsRow: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 4,
+    },
+    taskSubtasksPopupAnalyticsLabel: {
+        fontSize: 8,
+        fontWeight: '800',
+        letterSpacing: 1,
+        color: 'rgba(255,255,255,0.45)',
+    },
+    taskSubtasksPopupAnalyticsValue: {
+        fontSize: 11,
+        fontWeight: '800',
+        color: '#fff',
+    },
+    taskSubtasksPopupAnalyticsDivider: {
+        width: 1,
+        height: 14,
+        backgroundColor: 'rgba(255,255,255,0.12)',
+    },
+    taskSubtasksPopupScroll: {
+        flex: 1,
+        maxHeight: 360,
+    },
+    taskSubtasksPopupScrollLandscape: {
+        flex: 1,
+        maxHeight: 10000,
+    },
+    taskSubtasksPopupScrollContent: {
+        paddingBottom: 12,
+    },
+    taskSubtasksPopupEmpty: {
+        fontSize: 13,
+        fontWeight: '600',
+        color: 'rgba(255,255,255,0.35)',
+        textAlign: 'center',
+        paddingVertical: 24,
+    },
+    taskSubtasksPopupRow: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        paddingVertical: 8,
+        paddingHorizontal: 10,
+        marginBottom: 4,
+        borderRadius: 8,
+        backgroundColor: 'rgba(30,30,30,0.98)',
+        borderLeftWidth: 3,
+        borderColor: 'rgba(255,255,255,0.1)',
+        gap: 10,
+        minHeight: 44,
+    },
+    taskSubtasksPopupStatusCircle: {
+        width: 26,
+        height: 26,
+        borderRadius: 13,
+        alignItems: 'center',
+        justifyContent: 'center',
+    },
+    taskSubtasksPopupCardContent: {
+        flex: 1,
+        minWidth: 0,
+        justifyContent: 'center',
+    },
+    taskSubtasksPopupRowText: {
+        fontSize: 12,
+        fontWeight: '700',
+        color: '#fff',
+        minWidth: 0,
+        marginBottom: 2,
+    },
+    taskSubtasksPopupTimeRow: {
+        fontSize: 10,
+        fontWeight: '600',
+        color: 'rgba(255,255,255,0.5)',
+        letterSpacing: 0.2,
     },
 });
