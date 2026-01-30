@@ -59,6 +59,7 @@ export interface Comment {
   id: number;
   text: string;
   createdAt: string; // ISO string
+  updatedAt?: string; // ISO string, set when comment is edited
 }
 
 export type StageStatus = 'Upcoming' | 'Process' | 'Done' | 'Undone';
@@ -112,11 +113,10 @@ export interface TaskStage {
 
 /**
  * Date-specific instance data for recurring tasks
- * Stages and comments are stored per date instance, not on the recurring task itself
+ * Stages are per date instance. Comments are stored on the task itself (task.comments) and shared across all dates.
  */
 export interface RecurrenceInstance {
   stages?: TaskStage[];        // Stages for this specific date instance
-  comments?: Comment[];        // Comments for this specific date instance
   status?: 'Pending' | 'In Progress' | 'Completed'; // Optional: per-instance status override
   startedAt?: string;         // Optional: per-instance startedAt
   completedAt?: string;       // Optional: per-instance completedAt
@@ -135,7 +135,7 @@ export interface Task {
   updatedAt: string;           // ISO string of last update
   startedAt?: string;          // ISO string when task was first started (for non-recurring or first instance)
   completedAt?: string;        // ISO string when task was completed (for non-recurring or first instance)
-  comments?: Comment[];        // List of user comments (for non-recurring tasks only)
+  comments?: Comment[];        // List of user comments (shared across all dates for recurring tasks)
   stages?: TaskStage[];        // List of task stages (for non-recurring tasks only)
   isPinned?: boolean;          // Whether the task is pinned
   pinTimestamp?: number | null; // Unix timestamp when pinned

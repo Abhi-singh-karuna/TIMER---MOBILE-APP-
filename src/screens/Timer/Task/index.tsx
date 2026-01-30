@@ -36,9 +36,10 @@ import { expandTasksForDate, findOriginalRecurringTask, getRecentRecurringDatesS
 
 const { width, height } = Dimensions.get('window');
 
-// AsyncStorage keys for LiveFocusView zoom and scroll persistence
+// AsyncStorage keys for LiveFocusView zoom, scroll, and view mode persistence
 const LIVE_FOCUS_ZOOM_KEY = '@timer_app_live_focus_zoom';
 const LIVE_FOCUS_SCROLL_KEY = '@timer_app_live_focus_scroll_x';
+const LIVE_FOCUS_VIEW_MODE_KEY = '@timer_app_live_focus_view_mode';
 
 // Days and months for date formatting
 const DAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
@@ -698,6 +699,39 @@ const styles = StyleSheet.create({
         paddingVertical: 4,
         paddingHorizontal: 8,
     },
+    commentCard: {
+        marginBottom: 6,
+        paddingVertical: 8,
+        paddingHorizontal: 10,
+        borderRadius: 10,
+        backgroundColor: 'rgba(255,255,255,0.05)',
+        borderWidth: 1,
+        borderColor: 'rgba(255,255,255,0.08)',
+    },
+    commentCardTop: {
+        marginBottom: 2,
+    },
+    commentCardChat: {
+        marginTop: 0,
+        minWidth: 0,
+    },
+    commentCardFooter: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'flex-end',
+        marginTop: 2,
+        minHeight: 0,
+    },
+    commentCardActions: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 0,
+        marginLeft: 'auto',
+    },
+    commentCardActionBtn: {
+        padding: 3,
+        margin: 0,
+    },
     inlineCommentTime: {
         fontSize: 10,
         color: 'rgba(255,255,255,0.25)',
@@ -706,7 +740,7 @@ const styles = StyleSheet.create({
     inlineCommentText: {
         fontSize: 12,
         color: 'rgba(255,255,255,0.85)',
-        lineHeight: 16,
+        lineHeight: 15,
     },
     inlineCommentDivider: {
         height: 1,
@@ -1421,6 +1455,8 @@ interface TaskListProps {
     isPastTasksDisabled?: boolean;
     dailyStartMinutes?: number;
     onUpdateComment?: (task: Task, comment: string) => void;
+    onEditComment?: (task: Task, commentId: number, newText: string) => void;
+    onDeleteComment?: (task: Task, commentId: number) => void;
     onUpdateStages?: (task: Task, stages: TaskStage[]) => void;
     onPinTask?: (task: Task) => void;
     quickMessages?: QuickMessage[];
@@ -1449,6 +1485,8 @@ export default function TaskList({
     isPastTasksDisabled,
     dailyStartMinutes = DEFAULT_DAILY_START_MINUTES,
     onUpdateComment,
+    onEditComment,
+    onDeleteComment,
     onUpdateStages,
     onPinTask,
     quickMessages,
@@ -1492,9 +1530,10 @@ export default function TaskList({
     const [selectedActionTask, setSelectedActionTask] = useState<Task | null>(null);
     const [expandedTaskId, setExpandedTaskId] = useState<number | null>(null);
 
-    // LiveFocusView: zoom (minutesPerCell) and scroll X — persisted across close/reopen
+    // LiveFocusView: zoom (minutesPerCell), scroll X, and view mode — persisted across close/reopen
     const [liveFocusZoom, setLiveFocusZoom] = useState(60);
     const [liveFocusScrollX, setLiveFocusScrollX] = useState(0);
+    const [liveFocusViewMode, setLiveFocusViewMode] = useState<'task' | 'merged' | 'category'>('task');
     const liveFocusScrollXRef = useRef(0);
     const liveFocusZoomRef = useRef(60);
     const saveScrollTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -1503,7 +1542,7 @@ export default function TaskList({
     const slideAnim = useRef(new Animated.Value(0)).current;
     const fadeAnim = useRef(new Animated.Value(1)).current;
 
-    // Load LiveFocus zoom and scroll from AsyncStorage on mount
+    // Load LiveFocus zoom, scroll, and view mode from AsyncStorage on mount
     useEffect(() => {
         AsyncStorage.getItem(LIVE_FOCUS_ZOOM_KEY).then((v) => {
             if (v != null) {
@@ -1516,6 +1555,9 @@ export default function TaskList({
                 const n = Number(v);
                 if (!Number.isNaN(n) && n >= 0) setLiveFocusScrollX(n);
             }
+        });
+        AsyncStorage.getItem(LIVE_FOCUS_VIEW_MODE_KEY).then((v) => {
+            if (v === 'task' || v === 'merged' || v === 'category') setLiveFocusViewMode(v);
         });
     }, []);
 
@@ -1807,6 +1849,11 @@ export default function TaskList({
                     initialScrollX={liveFocusScrollX}
                     onZoomChange={handleLiveFocusZoomChange}
                     onScrollChange={handleLiveFocusScrollChange}
+                    initialViewMode={liveFocusViewMode}
+                    onViewModeChange={(mode) => {
+                        setLiveFocusViewMode(mode);
+                        AsyncStorage.setItem(LIVE_FOCUS_VIEW_MODE_KEY, mode).catch(() => {});
+                    }}
                     runningTimer={runningTimer ?? null}
                     onOpenRunningTimer={(timer) => {
                         setShowLive(false);
@@ -2102,6 +2149,8 @@ export default function TaskList({
                                         isExpanded={true}
                                         onExpand={() => setExpandedTaskId(null)}
                                         onUpdateComment={onUpdateComment}
+                                        onEditComment={onEditComment}
+                                        onDeleteComment={onDeleteComment}
                                         onUpdateStages={onUpdateStages}
                                         quickMessages={quickMessages}
                                         isFullView={true}
@@ -2164,6 +2213,8 @@ export default function TaskList({
                                                                 setExpandedTaskId(expandedTaskId === task.id ? null : task.id);
                                                             }}
                                                             onUpdateComment={onUpdateComment}
+                                                            onEditComment={onEditComment}
+                                                            onDeleteComment={onDeleteComment}
                                                             onUpdateStages={onUpdateStages}
                                                             quickMessages={quickMessages}
                                                             allTasks={tasks}
@@ -2220,6 +2271,8 @@ export default function TaskList({
                                                 setExpandedTaskId(expandedTaskId === task.id ? null : task.id);
                                             }}
                                             onUpdateComment={onUpdateComment}
+                                            onEditComment={onEditComment}
+                                            onDeleteComment={onDeleteComment}
                                             onUpdateStages={onUpdateStages}
                                             quickMessages={quickMessages}
                                             allTasks={tasks}
@@ -2434,6 +2487,8 @@ interface TaskCardProps {
     isExpanded: boolean;
     onExpand: () => void;
     onUpdateComment?: (task: Task, comment: string) => void;
+    onEditComment?: (task: Task, commentId: number, newText: string) => void;
+    onDeleteComment?: (task: Task, commentId: number) => void;
     onUpdateStages?: (task: Task, stages: TaskStage[]) => void;
     isFullView?: boolean;
     quickMessages?: QuickMessage[];
@@ -2656,6 +2711,8 @@ function TaskCard({
     isExpanded,
     onExpand,
     onUpdateComment,
+    onEditComment,
+    onDeleteComment,
     onUpdateStages,
     isFullView,
     quickMessages,
@@ -2664,6 +2721,7 @@ function TaskCard({
     const [commentText, setCommentText] = useState('');
     const [stageText, setStageText] = useState('');
     const [activeRightTab, setActiveRightTab] = useState<'comments' | 'stages'>('stages');
+    const [editingCommentId, setEditingCommentId] = useState<number | null>(null);
     // Safety check: ensure task has status property
     const taskStatus = task?.status || 'Pending';
     const isCompleted = taskStatus === 'Completed';
@@ -3161,42 +3219,58 @@ function TaskCard({
                                     <View style={styles.inlineAddComment}>
                                         <TextInput
                                             style={styles.inlineCommentInput}
-                                            placeholder="Add a comment..."
+                                            placeholder={editingCommentId != null ? "Edit comment..." : "Add a comment..."}
                                             placeholderTextColor="rgba(255,255,255,0.3)"
                                             value={commentText}
                                             onChangeText={setCommentText}
                                             multiline
                                         />
+                                        {editingCommentId != null && (
+                                            <TouchableOpacity
+                                                style={[styles.portraitCloseBtnStatic, { marginBottom: 0 }]}
+                                                onPress={() => { setEditingCommentId(null); setCommentText(''); }}
+                                            >
+                                                <MaterialIcons name="close" size={18} color="rgba(255,255,255,0.6)" />
+                                            </TouchableOpacity>
+                                        )}
                                         <TouchableOpacity
                                             style={[styles.inlineSendBtn, !commentText.trim() && styles.inlineSendBtnDisabled]}
                                             onPress={() => {
                                                 if (commentText.trim()) {
-                                                    onUpdateComment?.(task, commentText.trim());
-                                                    setCommentText('');
+                                                    if (editingCommentId != null && onEditComment) {
+                                                        onEditComment(task, editingCommentId, commentText.trim());
+                                                        setEditingCommentId(null);
+                                                        setCommentText('');
+                                                    } else {
+                                                        onUpdateComment?.(task, commentText.trim());
+                                                        setCommentText('');
+                                                    }
                                                     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
                                                 }
                                             }}
                                             disabled={!commentText.trim()}
                                         >
-                                            <MaterialIcons name="send" size={18} color={commentText.trim() ? "#000" : "rgba(0,0,0,0.2)"} />
+                                            <MaterialIcons name={editingCommentId != null ? "check" : "send"} size={18} color={commentText.trim() ? "#000" : "rgba(0,0,0,0.2)"} />
                                         </TouchableOpacity>
                                     </View>
 
-                                    {/* Quick Messages (Landscape) */}
-                                    <ScrollView horizontal showsHorizontalScrollIndicator={false} style={[styles.quickMessagesScroll, { marginTop: 4, marginBottom: 4 }]}>
-                                        {(quickMessages || []).map((msg) => (
-                                            <TouchableOpacity
-                                                key={msg.id}
-                                                style={[styles.quickMessageChip, { borderColor: `${msg.color}30` }]}
-                                                onPress={() => {
-                                                    onUpdateComment?.(task, msg.text);
-                                                    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                                                }}
-                                            >
-                                                <Text style={[styles.quickMessageText, { color: msg.color }]}>{msg.text}</Text>
-                                            </TouchableOpacity>
-                                        ))}
-                                    </ScrollView>
+                                    {/* Quick Messages (Landscape) - hide when editing */}
+                                    {editingCommentId == null && (
+                                        <ScrollView horizontal showsHorizontalScrollIndicator={false} style={[styles.quickMessagesScroll, { marginTop: 4, marginBottom: 4 }]}>
+                                            {(quickMessages || []).map((msg) => (
+                                                <TouchableOpacity
+                                                    key={msg.id}
+                                                    style={[styles.quickMessageChip, { borderColor: `${msg.color}30` }]}
+                                                    onPress={() => {
+                                                        onUpdateComment?.(task, msg.text);
+                                                        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                                                    }}
+                                                >
+                                                    <Text style={[styles.quickMessageText, { color: msg.color }]}>{msg.text}</Text>
+                                                </TouchableOpacity>
+                                            ))}
+                                        </ScrollView>
+                                    )}
                                 </>
                             ) : (
                                 <View style={styles.inlineAddComment}>
@@ -3235,13 +3309,59 @@ function TaskCard({
                                         contentContainerStyle={{ paddingBottom: 60 }}
                                     >
                                         {task.comments.map((comment) => (
-                                            <View key={comment.id} style={styles.inlineCommentItem}>
-                                                <Text style={styles.inlineCommentText}>
+                                            <View key={comment.id} style={styles.commentCard}>
+                                                <View style={styles.commentCardTop}>
                                                     <Text style={styles.inlineCommentTime}>
-                                                        {new Date(comment.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: true }).toLowerCase()} •{" "}
+                                                        {new Date(comment.createdAt).toLocaleString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit', hour12: true }).toLowerCase()}
                                                     </Text>
+                                                </View>
+                                                <Text style={[styles.inlineCommentText, styles.commentCardChat]}>
                                                     {comment.text}
                                                 </Text>
+                                                <View style={styles.commentCardFooter}>
+                                                    <View style={styles.commentCardActions}>
+                                                        {onEditComment && (
+                                                            <TouchableOpacity
+                                                                style={styles.commentCardActionBtn}
+                                                                onPress={() => {
+                                                                    setEditingCommentId(comment.id);
+                                                                    setCommentText(comment.text);
+                                                                    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                                                                }}
+                                                            >
+                                                                <MaterialIcons name="edit" size={14} color="rgba(255,255,255,0.5)" />
+                                                            </TouchableOpacity>
+                                                        )}
+                                                        {onDeleteComment && (
+                                                            <TouchableOpacity
+                                                                style={styles.commentCardActionBtn}
+                                                                onPress={() => {
+                                                                    Alert.alert(
+                                                                        'Delete comment',
+                                                                        'Remove this comment?',
+                                                                        [
+                                                                            { text: 'Cancel', style: 'cancel' },
+                                                                            {
+                                                                                text: 'Delete',
+                                                                                style: 'destructive',
+                                                                                onPress: () => {
+                                                                                    onDeleteComment(task, comment.id);
+                                                                                    if (editingCommentId === comment.id) {
+                                                                                        setEditingCommentId(null);
+                                                                                        setCommentText('');
+                                                                                    }
+                                                                                    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+                                                                                },
+                                                                            },
+                                                                        ]
+                                                                    );
+                                                                }}
+                                                            >
+                                                                <MaterialIcons name="delete-outline" size={14} color="rgba(255,82,82,0.9)" />
+                                                            </TouchableOpacity>
+                                                        )}
+                                                    </View>
+                                                </View>
                                             </View>
                                         ))}
                                     </ScrollView>
@@ -3364,42 +3484,58 @@ function TaskCard({
                             <View style={styles.inlineAddComment}>
                                 <TextInput
                                     style={styles.inlineCommentInput}
-                                    placeholder="Add a comment..."
+                                    placeholder={editingCommentId != null ? "Edit comment..." : "Add a comment..."}
                                     placeholderTextColor="rgba(255,255,255,0.3)"
                                     value={commentText}
                                     onChangeText={setCommentText}
                                     multiline
                                 />
+                                {editingCommentId != null && (
+                                    <TouchableOpacity
+                                        style={[styles.portraitCloseBtnStatic, { marginBottom: 0 }]}
+                                        onPress={() => { setEditingCommentId(null); setCommentText(''); }}
+                                    >
+                                        <MaterialIcons name="close" size={18} color="rgba(255,255,255,0.6)" />
+                                    </TouchableOpacity>
+                                )}
                                 <TouchableOpacity
                                     style={[styles.inlineSendBtn, !commentText.trim() && styles.inlineSendBtnDisabled]}
                                     onPress={() => {
                                         if (commentText.trim()) {
-                                            onUpdateComment?.(task, commentText.trim());
-                                            setCommentText('');
+                                            if (editingCommentId != null && onEditComment) {
+                                                onEditComment(task, editingCommentId, commentText.trim());
+                                                setEditingCommentId(null);
+                                                setCommentText('');
+                                            } else {
+                                                onUpdateComment?.(task, commentText.trim());
+                                                setCommentText('');
+                                            }
                                             Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
                                         }
                                     }}
                                     disabled={!commentText.trim()}
                                 >
-                                    <MaterialIcons name="send" size={18} color={commentText.trim() ? "#000" : "rgba(0,0,0,0.2)"} />
+                                    <MaterialIcons name={editingCommentId != null ? "check" : "send"} size={18} color={commentText.trim() ? "#000" : "rgba(0,0,0,0.2)"} />
                                 </TouchableOpacity>
                             </View>
 
-                            {/* Quick Messages (Portrait) */}
-                            <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.quickMessagesScroll}>
-                                {(quickMessages || []).map((msg) => (
-                                    <TouchableOpacity
-                                        key={msg.id}
-                                        style={[styles.quickMessageChip, { borderColor: `${msg.color}30` }]}
-                                        onPress={() => {
-                                            onUpdateComment?.(task, msg.text);
-                                            Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                                        }}
-                                    >
-                                        <Text style={[styles.quickMessageText, { color: msg.color }]}>{msg.text}</Text>
-                                    </TouchableOpacity>
-                                ))}
-                            </ScrollView>
+                            {/* Quick Messages (Portrait) - hide when editing */}
+                            {editingCommentId == null && (
+                                <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.quickMessagesScroll}>
+                                    {(quickMessages || []).map((msg) => (
+                                        <TouchableOpacity
+                                            key={msg.id}
+                                            style={[styles.quickMessageChip, { borderColor: `${msg.color}30` }]}
+                                            onPress={() => {
+                                                onUpdateComment?.(task, msg.text);
+                                                Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                                            }}
+                                        >
+                                            <Text style={[styles.quickMessageText, { color: msg.color }]}>{msg.text}</Text>
+                                        </TouchableOpacity>
+                                    ))}
+                                </ScrollView>
+                            )}
 
                             <View style={styles.expandedDivider} />
 
@@ -3417,13 +3553,59 @@ function TaskCard({
                                     contentContainerStyle={{ paddingBottom: 40 }}
                                 >
                                     {task.comments.map((comment) => (
-                                        <View key={comment.id} style={styles.inlineCommentItem}>
-                                            <Text style={styles.inlineCommentText}>
+                                        <View key={comment.id} style={styles.commentCard}>
+                                            <View style={styles.commentCardTop}>
                                                 <Text style={styles.inlineCommentTime}>
-                                                    {new Date(comment.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: true }).toLowerCase()} •{" "}
+                                                    {new Date(comment.createdAt).toLocaleString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit', hour12: true }).toLowerCase()}
                                                 </Text>
+                                            </View>
+                                            <Text style={[styles.inlineCommentText, styles.commentCardChat]}>
                                                 {comment.text}
                                             </Text>
+                                            <View style={styles.commentCardFooter}>
+                                                <View style={styles.commentCardActions}>
+                                                    {onEditComment && (
+                                                        <TouchableOpacity
+                                                            style={styles.commentCardActionBtn}
+                                                            onPress={() => {
+                                                                setEditingCommentId(comment.id);
+                                                                setCommentText(comment.text);
+                                                                Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                                                            }}
+                                                        >
+                                                            <MaterialIcons name="edit" size={14} color="rgba(255,255,255,0.5)" />
+                                                        </TouchableOpacity>
+                                                    )}
+                                                    {onDeleteComment && (
+                                                        <TouchableOpacity
+                                                            style={styles.commentCardActionBtn}
+                                                            onPress={() => {
+                                                                Alert.alert(
+                                                                    'Delete comment',
+                                                                    'Remove this comment?',
+                                                                    [
+                                                                        { text: 'Cancel', style: 'cancel' },
+                                                                        {
+                                                                            text: 'Delete',
+                                                                            style: 'destructive',
+                                                                            onPress: () => {
+                                                                                onDeleteComment(task, comment.id);
+                                                                                if (editingCommentId === comment.id) {
+                                                                                    setEditingCommentId(null);
+                                                                                    setCommentText('');
+                                                                                }
+                                                                                Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+                                                                            },
+                                                                        },
+                                                                    ]
+                                                                );
+                                                            }}
+                                                        >
+                                                            <MaterialIcons name="delete-outline" size={14} color="rgba(255,82,82,0.9)" />
+                                                        </TouchableOpacity>
+                                                    )}
+                                                </View>
+                                            </View>
                                         </View>
                                     ))}
                                 </ScrollView>

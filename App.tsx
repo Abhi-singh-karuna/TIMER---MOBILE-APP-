@@ -458,10 +458,9 @@ export default function App() {
       recurrence: taskData.recurrence,
       createdAt: now,
       updatedAt: now,
-      // For recurring tasks, don't include stages/comments on the main task
-      // They will be stored in recurrenceInstances per date
+      // For recurring tasks, stages are per-date in recurrenceInstances; comments are on the task and shared
       stages: taskData.recurrence ? undefined : [],
-      comments: taskData.recurrence ? undefined : [],
+      comments: [],
       recurrenceInstances: taskData.recurrence ? {} : undefined,
       // Initialize streak for recurring tasks (will be 0 initially, calculated when instances are completed)
       streak: taskData.recurrence ? 0 : undefined,
@@ -593,30 +592,44 @@ export default function App() {
       const updated = prev.map(t => {
         if (t.id !== task.id) return t;
 
-        // If this is a recurring task, save comment to the date-specific instance
-        if (t.recurrence) {
-          const instanceDate = task.forDate; // The expanded task's forDate
-          const existingInstance = t.recurrenceInstances?.[instanceDate] || {};
-          
-          return {
-            ...t,
-            recurrenceInstances: {
-              ...t.recurrenceInstances,
-              [instanceDate]: {
-                ...existingInstance,
-                comments: [newComment, ...(existingInstance.comments || [])],
-              },
-            },
-            updatedAt: now,
-          };
-        }
-
-        // Non-recurring task: save comment directly
+        // Comments are stored on the task for both recurring and non-recurring (shared across dates for recurring)
         return {
           ...t,
           comments: [newComment, ...(t.comments || [])],
           updatedAt: now,
         };
+      });
+      saveTasks(updated);
+      return updated;
+    });
+  };
+
+  // Handle editing a comment (same task for recurring = shared comments)
+  const handleEditComment = (task: Task, commentId: number, newText: string) => {
+    if (!newText.trim()) return;
+
+    const now = new Date().toISOString();
+    setTasks(prev => {
+      const updated = prev.map(t => {
+        if (t.id !== task.id) return t;
+        const comments = (t.comments || []).map(c =>
+          c.id === commentId ? { ...c, text: newText.trim(), updatedAt: now } : c
+        );
+        return { ...t, comments, updatedAt: now };
+      });
+      saveTasks(updated);
+      return updated;
+    });
+  };
+
+  // Handle deleting a comment (same task for recurring = shared comments)
+  const handleDeleteComment = (task: Task, commentId: number) => {
+    const now = new Date().toISOString();
+    setTasks(prev => {
+      const updated = prev.map(t => {
+        if (t.id !== task.id) return t;
+        const comments = (t.comments || []).filter(c => c.id !== commentId);
+        return { ...t, comments, updatedAt: now };
       });
       saveTasks(updated);
       return updated;
@@ -1530,6 +1543,8 @@ export default function App() {
               onDeleteTask={handleDeleteTask}
               onEditTask={handleEditTask}
               onUpdateComment={handleUpdateComment}
+              onEditComment={handleEditComment}
+              onDeleteComment={handleDeleteComment}
               onUpdateStages={handleUpdateStages}
               onPinTask={handlePinTask}
               categories={categories}

@@ -99,7 +99,7 @@ export function shouldRecurOnDate(recurrence: Recurrence, targetDate: string): b
 /**
  * Expands recurring tasks into instances for a given date
  * Returns the original task with the forDate set to the target date if it should recur
- * For recurring tasks, includes date-specific stages and comments from recurrenceInstances
+ * For recurring tasks, includes date-specific stages from recurrenceInstances; comments are on the task and shared across dates
  */
 export function expandRecurringTaskForDate(task: import('../constants/data').Task, targetDate: string): import('../constants/data').Task | null {
   // Safety check: ensure task exists
@@ -137,15 +137,14 @@ export function expandRecurringTaskForDate(task: import('../constants/data').Tas
     const taskStatus = (task.status || 'Pending') as import('../constants/data').Task['status'];
     
     // Return a copy with the forDate set to the target date
-    // Include date-specific stages, comments, and status overrides
+    // Include date-specific stages and status overrides; comments are on the task and shared across dates
     // Keep the original task ID so we can edit the original
     return {
       ...task,
       forDate: normalizedTargetDate, // Use normalized date for consistency
-      // Override with date-specific data if available
-      // Use empty array if stages/comments don't exist for this date
+      // Override with date-specific stages if available; comments come from task (shared for recurring)
       stages: instanceData?.stages ? [...instanceData.stages] : [],
-      comments: instanceData?.comments ? [...instanceData.comments] : [],
+      comments: task.comments ? [...task.comments] : [],
       // Use instance-specific status if provided, otherwise use task status (with fallback)
       status: instanceData?.status ?? taskStatus,
       // Use instance-specific timestamps if provided
