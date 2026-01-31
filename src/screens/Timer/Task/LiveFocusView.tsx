@@ -2491,12 +2491,14 @@ export default function LiveFocusView({
                                                             const isBeingEdited = activeStage?.stageId === stage.id;
                                                             const isInResizeMode = resizeModeStage?.taskId === task.id && resizeModeStage?.stageId === stage.id;
                                                             const effectiveTime = getEffectiveStageTime(stage);
+                                                            const category = categories.find(c => c.id === task.categoryId);
                                                             return (
                                                                 <React.Fragment key={stage.id}>
                                                                     <View
                                                                         style={[
                                                                             styles.timelineStageCard,
                                                                             { backgroundColor: STAGE_STATUS_CONFIG[stage.status || 'Upcoming'].color },
+                                                                            { borderLeftWidth: 3, borderLeftColor: category?.color || 'rgba(255,255,255,0.2)' },
                                                                             isBeingEdited && styles.stageCardDragging,
                                                                             isInResizeMode && styles.stageCardResizeMode,
                                                                             { left, width, top },

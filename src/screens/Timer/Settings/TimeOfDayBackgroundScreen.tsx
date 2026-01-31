@@ -1,6 +1,7 @@
 import React, { useMemo, useState } from 'react';
 import {
   Alert,
+  KeyboardAvoidingView,
   Modal,
   NativeSyntheticEvent,
   Platform,
@@ -29,6 +30,7 @@ import {
   TimeOfDayBackgroundConfig,
   WeekdayKey,
 } from '../../../utils/timeOfDaySlots';
+import { styles as sharedStyles } from './styles';
 
 type SlotDraft = {
   key: TimeOfDaySlotConfig['key'];
@@ -257,6 +259,36 @@ export default function TimeOfDayBackgroundScreen({
     );
   };
 
+  const handleCopyFromDay = (sourceDay: WeekdayKey) => {
+    if (sourceDay === activeDay) return;
+    setDraftByDay(prev => ({
+      ...prev,
+      [activeDay]: prev[sourceDay].map(s => ({
+        key: s.key,
+        label: s.label,
+        start: s.start,
+        end: s.end,
+        colorHex: s.colorHex,
+      })),
+    }));
+    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+  };
+
+  const showCopyFromDayPicker = () => {
+    const otherDays = WEEKDAY_ORDER.filter(d => d !== activeDay);
+    Alert.alert(
+      'Copy from day',
+      `Copy slot settings from another day to ${WEEKDAY_LABEL[activeDay]}.`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        ...otherDays.map(day => ({
+          text: WEEKDAY_LABEL[day],
+          onPress: () => handleCopyFromDay(day),
+        })),
+      ]
+    );
+  };
+
   const handleSave = () => {
     const byDay = {} as Record<WeekdayKey, TimeOfDaySlotConfigList>;
 
@@ -298,8 +330,8 @@ export default function TimeOfDayBackgroundScreen({
     onBack();
   };
 
-  const renderColorPicker = (s: SlotDraft) => (
-    <View style={styles.colorPickerRow}>
+  const renderColorPicker = (s: SlotDraft, compact?: boolean) => (
+    <View style={[styles.colorPickerRow, compact && styles.colorPickerRowCompact]}>
       {COLOR_SWATCHES.map((c) => {
         const selected = (s.colorHex || '').trim().toLowerCase() === c.toLowerCase();
         return (
@@ -307,6 +339,7 @@ export default function TimeOfDayBackgroundScreen({
             key={c}
             style={[
               styles.colorDot,
+              compact && styles.colorDotCompact,
               { backgroundColor: c },
               selected && styles.colorDotSelected,
             ]}
@@ -318,42 +351,42 @@ export default function TimeOfDayBackgroundScreen({
     </View>
   );
 
-  const renderSlotRow = (s: SlotDraft) => (
-    <View key={s.key} style={styles.card}>
-      <View style={styles.cardHeader}>
-        <Text style={styles.cardTitle}>{s.label || s.key.toUpperCase()}</Text>
-        <View style={[styles.colorSwatch, { backgroundColor: isHex(s.colorHex) ? s.colorHex : '#000' }]} />
+  const renderSlotRow = (s: SlotDraft, compact?: boolean) => (
+    <View key={s.key} style={[styles.card, compact && styles.cardCompact]}>
+      <View style={[styles.cardHeader, compact && styles.cardHeaderCompact]}>
+        <Text style={[styles.cardTitle, compact && styles.cardTitleCompact]}>{s.label || s.key.toUpperCase()}</Text>
+        <View style={[styles.colorSwatch, compact && styles.colorSwatchCompact, { backgroundColor: isHex(s.colorHex) ? s.colorHex : '#000' }]} />
       </View>
 
-      <View style={styles.fieldRow}>
-        <Text style={styles.fieldLabel}>Label</Text>
+      <View style={[styles.fieldRow, compact && styles.fieldRowCompact]}>
+        <Text style={[styles.fieldLabel, compact && styles.fieldLabelCompact]}>Label</Text>
         <TextInput
           value={s.label}
           onChangeText={(v) => update(s.key, { label: v })}
           placeholder="e.g. Morning"
           placeholderTextColor="rgba(255,255,255,0.35)"
-          style={styles.input}
+          style={[styles.input, compact && styles.inputCompact]}
         />
       </View>
 
-      <View style={styles.fieldRow}>
-        <Text style={styles.fieldLabel}>Color</Text>
+      <View style={[styles.fieldRow, compact && styles.fieldRowCompact]}>
+        <Text style={[styles.fieldLabel, compact && styles.fieldLabelCompact]}>Color</Text>
         <TextInput
           value={s.colorHex}
           onChangeText={(v) => update(s.key, { colorHex: v })}
           placeholder="#102A43"
           placeholderTextColor="rgba(255,255,255,0.35)"
           autoCapitalize="none"
-          style={styles.input}
+          style={[styles.input, compact && styles.inputCompact]}
         />
-        {renderColorPicker(s)}
+        {renderColorPicker(s, compact)}
       </View>
 
-      <View style={styles.timeRow}>
+      <View style={[styles.timeRow, compact && styles.timeRowCompact]}>
         <View style={{ flex: 1 }}>
-          <Text style={styles.fieldLabel}>Start (inclusive)</Text>
+          <Text style={[styles.fieldLabel, compact && styles.fieldLabelCompact]}>Start</Text>
           <Pressable
-            style={styles.timePickerButton}
+            style={[styles.timePickerButton, compact && styles.timePickerButtonCompact]}
             onPress={() => {
               const startMin = parseTimeToMinutes(s.start, false) ?? 0;
               setTimePicker({
@@ -366,15 +399,15 @@ export default function TimeOfDayBackgroundScreen({
               Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
             }}
           >
-            <Text style={styles.timePickerValue}>{s.start}</Text>
-            <MaterialIcons name="keyboard-arrow-down" size={18} color="rgba(255,255,255,0.35)" />
+            <Text style={[styles.timePickerValue, compact && styles.timePickerValueCompact]}>{s.start}</Text>
+            <MaterialIcons name="keyboard-arrow-down" size={compact ? 14 : 18} color="rgba(255,255,255,0.35)" />
           </Pressable>
         </View>
-        <View style={{ width: 12 }} />
+        <View style={{ width: compact ? 8 : 12 }} />
         <View style={{ flex: 1 }}>
-          <Text style={styles.fieldLabel}>End (exclusive)</Text>
+          <Text style={[styles.fieldLabel, compact && styles.fieldLabelCompact]}>End</Text>
           <Pressable
-            style={styles.timePickerButton}
+            style={[styles.timePickerButton, compact && styles.timePickerButtonCompact]}
             onPress={() => {
               const endMin = parseTimeToMinutes(s.end, true) ?? 0;
               setTimePicker({
@@ -387,15 +420,17 @@ export default function TimeOfDayBackgroundScreen({
               Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
             }}
           >
-            <Text style={styles.timePickerValue}>{s.end}</Text>
-            <MaterialIcons name="keyboard-arrow-down" size={18} color="rgba(255,255,255,0.35)" />
+            <Text style={[styles.timePickerValue, compact && styles.timePickerValueCompact]}>{s.end}</Text>
+            <MaterialIcons name="keyboard-arrow-down" size={compact ? 14 : 18} color="rgba(255,255,255,0.35)" />
           </Pressable>
         </View>
       </View>
 
-      <Text style={styles.hint}>
-        Tip: set end earlier than start to cross midnight (e.g. Night 20:00 → 06:00).
-      </Text>
+      {!compact && (
+        <Text style={styles.hint}>
+          Tip: set end earlier than start to cross midnight (e.g. Night 20:00 → 06:00).
+        </Text>
+      )}
     </View>
   );
 
@@ -450,14 +485,14 @@ export default function TimeOfDayBackgroundScreen({
 
             <View style={styles.timeModalActions}>
               <TouchableOpacity
-                style={styles.actionBtn}
+                style={styles.timeModalBtn}
                 onPress={() => setTimePicker(prev => ({ ...prev, visible: false }))}
                 activeOpacity={0.75}
               >
-                <Text style={styles.actionBtnText}>Cancel</Text>
+                <Text style={styles.timeModalBtnText}>Cancel</Text>
               </TouchableOpacity>
               <TouchableOpacity
-                style={styles.actionBtnPrimary}
+                style={styles.timeModalBtnPrimary}
                 onPress={() => {
                   if (!timePicker.slotKey) return;
                   const hh = String(timePicker.hours).padStart(2, '0');
@@ -470,7 +505,7 @@ export default function TimeOfDayBackgroundScreen({
                 }}
                 activeOpacity={0.75}
               >
-                <Text style={styles.actionBtnTextPrimary}>Set</Text>
+                <Text style={styles.timeModalBtnTextPrimary}>Set</Text>
               </TouchableOpacity>
             </View>
           </Pressable>
@@ -482,34 +517,146 @@ export default function TimeOfDayBackgroundScreen({
   if (isLandscape) {
     const previewSegments = buildPreviewSegmentsFromDraft(draft);
     return (
-      <SafeAreaView style={styles.container} edges={['left', 'right', 'top', 'bottom']}>
-        <View style={styles.landscapeRoot}>
-          {/* Left card: preview + slot selector + back */}
-          <View style={styles.leftCard}>
-            <Text style={styles.sidebarSectionTitle}>LIVE PREVIEW</Text>
+      <LinearGradient colors={['#000000', '#000000']} locations={[0, 1]} style={sharedStyles.container}>
+        <SafeAreaView style={sharedStyles.safeArea} edges={['left', 'right']}>
+          <KeyboardAvoidingView
+            behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+            style={sharedStyles.landscapeContainer}
+          >
+            {/* Left Panel - same as Settings: preview + day + slots + back */}
+            <View style={[sharedStyles.leftSidebarCard, { width: '38%' }]}>
+              <Text style={sharedStyles.sidebarSectionTitle}>LIVE PREVIEW</Text>
+              <View style={styles.landscapePreviewWrap}>
+                <View style={styles.landscapePreviewBar}>
+                  {previewSegments.map((seg, idx) => (
+                    <View
+                      key={`${seg.key}-${idx}`}
+                      style={[
+                        styles.landscapePreviewSeg,
+                        { left: `${seg.leftPct}%`, width: `${seg.widthPct}%`, backgroundColor: seg.colorHex },
+                      ]}
+                    />
+                  ))}
+                </View>
+                <View style={styles.landscapePreviewTicks}>
+                  <Text style={styles.landscapeTick}>00</Text>
+                  <Text style={styles.landscapeTick}>06</Text>
+                  <Text style={styles.landscapeTick}>12</Text>
+                  <Text style={styles.landscapeTick}>18</Text>
+                  <Text style={styles.landscapeTick}>24</Text>
+                </View>
+              </View>
 
-            <View style={styles.timelinePreviewCard}>
-              <View style={styles.timelinePreviewBar}>
-                {previewSegments.map((seg, idx) => (
-                  <View
-                    key={`${seg.key}-${idx}`}
-                    style={[
-                      styles.timelinePreviewSeg,
-                      { left: `${seg.leftPct}%`, width: `${seg.widthPct}%`, backgroundColor: seg.colorHex },
-                    ]}
-                  />
-                ))}
+              <Text style={sharedStyles.sidebarSectionTitle}>DAY</Text>
+              <View style={styles.landscapeDayRow}>
+                {WEEKDAY_ORDER.map((day) => {
+                  const active = day === activeDay;
+                  return (
+                    <TouchableOpacity
+                      key={day}
+                      style={[styles.landscapeDayChip, active && styles.landscapeDayChipActive]}
+                      onPress={() => setActiveDay(day)}
+                      activeOpacity={0.8}
+                    >
+                      <Text style={[styles.landscapeDayChipText, active && styles.landscapeDayChipTextActive]}>
+                        {WEEKDAY_LABEL[day]}
+                      </Text>
+                    </TouchableOpacity>
+                  );
+                })}
               </View>
-              <View style={styles.timelinePreviewTicks}>
-                <Text style={styles.tickText}>00</Text>
-                <Text style={styles.tickText}>06</Text>
-                <Text style={styles.tickText}>12</Text>
-                <Text style={styles.tickText}>18</Text>
-                <Text style={styles.tickText}>24</Text>
+
+              <Text style={sharedStyles.sidebarSectionTitle}>SLOTS</Text>
+              <View style={sharedStyles.sidebarNavSection}>
+                <ScrollView
+                  showsVerticalScrollIndicator={false}
+                  contentContainerStyle={[sharedStyles.sidebarButtonsScroll, { flexGrow: 1 }]}
+                  alwaysBounceVertical={true}
+                >
+                  {draft.map((s) => {
+                    const isActive = s.key === activeKey;
+                    return (
+                      <TouchableOpacity
+                        key={s.key}
+                        style={[styles.landscapeSlotRow, isActive && styles.landscapeSlotRowActive]}
+                        onPress={() => setActiveKey(s.key)}
+                        activeOpacity={0.75}
+                      >
+                        <View style={[styles.landscapeSlotSwatch, { backgroundColor: isHex(s.colorHex) ? s.colorHex : '#000' }]} />
+                        <View style={styles.landscapeSlotInfo}>
+                          <Text style={[styles.landscapeSlotTitle, isActive && styles.landscapeSlotTitleActive]} numberOfLines={1}>
+                            {s.label || s.key.toUpperCase()}
+                          </Text>
+                          <Text style={styles.landscapeSlotTime} numberOfLines={1}>{s.start} → {s.end}</Text>
+                        </View>
+                        <MaterialIcons name="chevron-right" size={14} color="rgba(255,255,255,0.2)" />
+                      </TouchableOpacity>
+                    );
+                  })}
+                </ScrollView>
               </View>
+
+              <TouchableOpacity style={sharedStyles.smallBackButton} onPress={onBack} activeOpacity={0.7}>
+                <MaterialIcons name="arrow-back" size={18} color="rgba(255,255,255,0.6)" />
+              </TouchableOpacity>
             </View>
 
-            <Text style={[styles.sidebarSectionTitle, { marginTop: 12 }]}>SLOTS</Text>
+            {/* Right Panel - header with Copy/Save top right, then content */}
+            <View style={sharedStyles.rightContentCard}>
+              <View style={styles.landscapeRightHeader}>
+                <Text style={sharedStyles.sectionTitleLandscape}>TIME-OF-DAY BACKGROUND</Text>
+                <View style={styles.landscapeRightActions}>
+                  <TouchableOpacity style={sharedStyles.addCategoryBtn} onPress={showCopyFromDayPicker} activeOpacity={0.7}>
+                    <MaterialIcons name="content-copy" size={18} color="#FFFFFF" />
+                    <Text style={sharedStyles.addCategoryBtnText}>Copy from day</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity style={sharedStyles.categoryCancelBtn} onPress={handleReset} activeOpacity={0.7}>
+                    <Text style={sharedStyles.categoryCancelText}>Reset</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity style={sharedStyles.categorySaveBtn} onPress={handleSave} activeOpacity={0.7}>
+                    <Text style={sharedStyles.categorySaveText}>Save</Text>
+                  </TouchableOpacity>
+                </View>
+              </View>
+              <ScrollView
+                style={sharedStyles.rightContentScroll}
+                contentContainerStyle={[sharedStyles.rightContentScrollPadding, { flexGrow: 1 }]}
+                showsVerticalScrollIndicator={false}
+                alwaysBounceVertical={true}
+              >
+                {activeSlot ? renderSlotRow(activeSlot, true) : null}
+                <Text style={styles.landscapeHint}>End earlier than start = slot spans midnight.</Text>
+              </ScrollView>
+            </View>
+          </KeyboardAvoidingView>
+        </SafeAreaView>
+        {timeWheelModal}
+      </LinearGradient>
+    );
+  }
+
+  // Portrait - same layout as main Settings screen
+  return (
+    <LinearGradient colors={['#000000', '#000000']} locations={[0, 1]} style={sharedStyles.container}>
+      <SafeAreaView style={sharedStyles.safeArea} edges={['top', 'left', 'right', 'bottom']}>
+        <View style={sharedStyles.header}>
+          <TouchableOpacity style={sharedStyles.backButton} onPress={onBack} activeOpacity={0.7}>
+            <MaterialIcons name="arrow-back-ios" size={20} color="rgba(255,255,255,0.7)" style={{ marginLeft: 6 }} />
+          </TouchableOpacity>
+          <Text style={sharedStyles.headerTitle}>TIME-OF-DAY BACKGROUND</Text>
+          <TouchableOpacity style={sharedStyles.backButton} onPress={handleSave} activeOpacity={0.7}>
+            <MaterialIcons name="check" size={20} color="rgba(255,255,255,0.9)" />
+          </TouchableOpacity>
+        </View>
+
+        <ScrollView
+          style={sharedStyles.content}
+          contentContainerStyle={sharedStyles.scrollContent}
+          showsVerticalScrollIndicator={false}
+          alwaysBounceVertical={true}
+        >
+          <View style={sharedStyles.section}>
+            <Text style={sharedStyles.sectionTitle}>DAY</Text>
             <View style={styles.weekdayRow}>
               {WEEKDAY_ORDER.map((day) => {
                 const active = day === activeDay;
@@ -527,124 +674,31 @@ export default function TimeOfDayBackgroundScreen({
                 );
               })}
             </View>
-            <ScrollView
-              showsVerticalScrollIndicator={false}
-              contentContainerStyle={{ paddingBottom: 18 }}
-              alwaysBounceVertical={true}
-            >
-              {draft.map((s) => {
-                const isActive = s.key === activeKey;
-                return (
-                  <TouchableOpacity
-                    key={s.key}
-                    style={[styles.slotNavRow, isActive && styles.slotNavRowActive]}
-                    onPress={() => setActiveKey(s.key)}
-                    activeOpacity={0.75}
-                  >
-                    <View style={styles.slotNavLeft}>
-                      <View style={[styles.slotNavSwatch, { backgroundColor: isHex(s.colorHex) ? s.colorHex : '#000' }]} />
-                      <View>
-                        <Text style={[styles.slotNavTitle, isActive ? styles.slotNavTitleActive : styles.slotNavTitleInactive]}>
-                          {s.label || s.key.toUpperCase()}
-                        </Text>
-                        <Text style={styles.slotNavSub}>
-                          {s.start} → {s.end}
-                        </Text>
-                      </View>
-                    </View>
-                    <MaterialIcons name="chevron-right" size={18} color="rgba(255,255,255,0.15)" />
-                  </TouchableOpacity>
-                );
-              })}
-            </ScrollView>
-
-            <TouchableOpacity style={styles.smallBackButton} onPress={onBack} activeOpacity={0.75}>
-              <MaterialIcons name="arrow-back" size={18} color="rgba(255,255,255,0.65)" />
-            </TouchableOpacity>
           </View>
 
-          {/* Right card: editor */}
-          <View style={styles.rightCard}>
-            <View style={styles.rightHeaderRow}>
-              <View>
-                <Text style={styles.rightTitle}>TIME-OF-DAY BACKGROUND</Text>
-                <Text style={styles.rightSubtitle}>Edit a slot. Save applies instantly to the timeline.</Text>
-              </View>
-              <View style={styles.rightHeaderActions}>
-                <TouchableOpacity style={styles.actionBtn} onPress={handleReset} activeOpacity={0.75}>
-                  <MaterialIcons name="refresh" size={18} color="#FFFFFF" />
-                  <Text style={styles.actionBtnText}>Reset</Text>
-                </TouchableOpacity>
-                <TouchableOpacity style={styles.actionBtnPrimary} onPress={handleSave} activeOpacity={0.75}>
-                  <MaterialIcons name="check" size={18} color="#000" />
-                  <Text style={styles.actionBtnTextPrimary}>Save</Text>
-                </TouchableOpacity>
-              </View>
+          <View style={sharedStyles.section}>
+            <Text style={sharedStyles.sectionTitle}>SLOTS</Text>
+            {draft.map((s) => renderSlotRow(s))}
+          </View>
+
+          <View style={sharedStyles.section}>
+            <View style={sharedStyles.categoryFormActions}>
+              <TouchableOpacity style={sharedStyles.addCategoryBtn} onPress={showCopyFromDayPicker} activeOpacity={0.7}>
+                <MaterialIcons name="content-copy" size={20} color="#FFFFFF" />
+                <Text style={sharedStyles.addCategoryBtnText}>Copy from day</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={sharedStyles.categoryCancelBtn} onPress={handleReset} activeOpacity={0.7}>
+                <Text style={sharedStyles.categoryCancelText}>Reset to defaults</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={sharedStyles.categorySaveBtn} onPress={handleSave} activeOpacity={0.7}>
+                <Text style={sharedStyles.categorySaveText}>Save</Text>
+              </TouchableOpacity>
             </View>
-
-            <ScrollView
-              style={{ flex: 1 }}
-              contentContainerStyle={{ padding: 16, paddingBottom: 28 }}
-              showsVerticalScrollIndicator={false}
-              alwaysBounceVertical={true}
-            >
-              {activeSlot ? renderSlotRow(activeSlot) : null}
-              <Text style={styles.hint}>
-                Note: end earlier than start means the slot spans midnight.
-              </Text>
-            </ScrollView>
           </View>
-        </View>
+        </ScrollView>
         {timeWheelModal}
       </SafeAreaView>
-    );
-  }
-
-  // Portrait (current behavior)
-  return (
-    <SafeAreaView style={styles.container} edges={['top', 'left', 'right', 'bottom']}>
-      <View style={styles.header}>
-        <TouchableOpacity style={styles.headerBtn} onPress={onBack} activeOpacity={0.7}>
-          <MaterialIcons name="arrow-back-ios" size={18} color="rgba(255,255,255,0.8)" />
-        </TouchableOpacity>
-        <Text style={styles.headerTitle}>TIME-OF-DAY BACKGROUND</Text>
-        <TouchableOpacity style={styles.headerBtn} onPress={handleSave} activeOpacity={0.7}>
-          <MaterialIcons name="check" size={20} color="rgba(255,255,255,0.9)" />
-        </TouchableOpacity>
-      </View>
-
-      <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
-        <Text style={styles.sectionTitle}>DAY</Text>
-        <View style={styles.weekdayRow}>
-          {WEEKDAY_ORDER.map((day) => {
-            const active = day === activeDay;
-            return (
-              <TouchableOpacity
-                key={day}
-                style={[styles.weekdayChip, active && styles.weekdayChipActive]}
-                onPress={() => setActiveDay(day)}
-                activeOpacity={0.8}
-              >
-                <Text style={[styles.weekdayChipText, active && styles.weekdayChipTextActive]}>
-                  {WEEKDAY_LABEL[day]}
-                </Text>
-              </TouchableOpacity>
-            );
-          })}
-        </View>
-
-        <Text style={styles.sectionTitle}>SLOTS</Text>
-        {draft.map(renderSlotRow)}
-
-        <View style={{ height: 12 }} />
-        <TouchableOpacity style={styles.resetBtn} onPress={handleReset} activeOpacity={0.75}>
-          <MaterialIcons name="refresh" size={18} color="#FFFFFF" />
-          <Text style={styles.resetText}>Reset to defaults</Text>
-        </TouchableOpacity>
-        <View style={{ height: 40 }} />
-      </ScrollView>
-      {timeWheelModal}
-    </SafeAreaView>
+    </LinearGradient>
   );
 }
 
@@ -682,97 +736,150 @@ const pickerStyles = StyleSheet.create({
 });
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: '#000',
+  landscapePreviewWrap: {
+    borderRadius: 10,
+    padding: 8,
+    marginBottom: 8,
+    backgroundColor: 'rgba(255,255,255,0.04)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.06)',
   },
-  landscapeRoot: {
-    flex: 1,
+  landscapePreviewBar: {
+    height: 12,
+    borderRadius: 6,
+    backgroundColor: 'rgba(0,0,0,0.3)',
+    overflow: 'hidden',
+    position: 'relative',
+  },
+  landscapePreviewSeg: {
+    position: 'absolute',
+    top: 0,
+    bottom: 0,
+    opacity: 0.85,
+  },
+  landscapePreviewTicks: {
+    marginTop: 6,
     flexDirection: 'row',
-    paddingVertical: 12,
-    paddingHorizontal: 10,
-    gap: 18,
+    justifyContent: 'space-between',
   },
-  leftCard: {
-    width: '38%',
-    paddingVertical: 12,
-    paddingHorizontal: 10,
-    backgroundColor: 'transparent',
+  landscapeTick: {
+    fontSize: 9,
+    fontWeight: '600',
+    color: 'rgba(255,255,255,0.3)',
   },
-  rightCard: {
+  landscapeLabel: {
+    fontSize: 9,
+    fontWeight: '800',
+    color: 'rgba(255,255,255,0.35)',
+    letterSpacing: 1,
+    marginBottom: 4,
+    paddingLeft: 2,
+  },
+  landscapeDayRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 4,
+    marginBottom: 8,
+  },
+  landscapeDayChip: {
+    paddingHorizontal: 6,
+    paddingVertical: 4,
+    borderRadius: 8,
+    backgroundColor: 'rgba(255,255,255,0.06)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.08)',
+  },
+  landscapeDayChipActive: {
+    backgroundColor: 'rgba(255,255,255,0.14)',
+    borderColor: 'rgba(255,255,255,0.2)',
+  },
+  landscapeDayChipText: {
+    fontSize: 10,
+    fontWeight: '700',
+    color: 'rgba(255,255,255,0.5)',
+  },
+  landscapeDayChipTextActive: {
+    color: '#fff',
+  },
+  landscapeSlotList: {
+    paddingBottom: 8,
+  },
+  landscapeSlotRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 6,
+    paddingVertical: 6,
+    borderRadius: 8,
+    backgroundColor: 'rgba(255,255,255,0.03)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.06)',
+    marginBottom: 4,
+  },
+  landscapeSlotRowActive: {
+    backgroundColor: 'rgba(255,255,255,0.08)',
+    borderColor: 'rgba(255,255,255,0.12)',
+  },
+  landscapeSlotSwatch: {
+    width: 12,
+    height: 12,
+    borderRadius: 4,
+    marginRight: 6,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.12)',
+  },
+  landscapeSlotInfo: {
     flex: 1,
-    borderRadius: 18,
-    backgroundColor: 'rgba(255,255,255,0.05)',
+    minWidth: 0,
+  },
+  landscapeSlotTitle: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: 'rgba(255,255,255,0.6)',
+  },
+  landscapeSlotTitleActive: {
+    color: '#fff',
+  },
+  landscapeSlotTime: {
+    fontSize: 9,
+    color: 'rgba(255,255,255,0.35)',
+    marginTop: 1,
+  },
+  landscapeRight: {
+    flex: 1,
+    borderRadius: 12,
+    backgroundColor: 'rgba(255,255,255,0.04)',
     borderWidth: 1,
     borderColor: 'rgba(255,255,255,0.08)',
     overflow: 'hidden',
+    minWidth: 0,
   },
-  rightHeaderRow: {
+  landscapeEditorScroll: {
+    flex: 1,
+  },
+  landscapeEditorContent: {
+    padding: 12,
+    paddingBottom: 20,
+  },
+  landscapeHint: {
+    marginTop: 8,
+    fontSize: 10,
+    color: 'rgba(255,255,255,0.35)',
+  },
+  landscapeRightHeader: {
     flexDirection: 'row',
-    alignItems: 'flex-start',
+    alignItems: 'center',
     justifyContent: 'space-between',
-    paddingHorizontal: 16,
-    paddingTop: 14,
-    paddingBottom: 12,
+    paddingHorizontal: 20,
+    paddingVertical: 12,
     borderBottomWidth: 1,
-    borderBottomColor: 'rgba(255,255,255,0.08)',
+    borderBottomColor: 'rgba(255,255,255,0.06)',
     gap: 12,
+    flexWrap: 'wrap',
   },
-  rightTitle: {
-    fontSize: 12,
-    fontWeight: '900',
-    letterSpacing: 2,
-    color: '#fff',
-  },
-  rightSubtitle: {
-    marginTop: 6,
-    fontSize: 12,
-    color: 'rgba(255,255,255,0.45)',
-  },
-  rightHeaderActions: {
-    flexDirection: 'row',
-    gap: 10,
-  },
-  actionBtn: {
+  landscapeRightActions: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-    borderRadius: 14,
-    backgroundColor: 'rgba(255,255,255,0.08)',
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.12)',
-  },
-  actionBtnText: {
-    color: '#fff',
-    fontSize: 13,
-    fontWeight: '800',
-  },
-  actionBtnPrimary: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-    borderRadius: 14,
-    backgroundColor: '#FFFFFF',
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.12)',
-  },
-  actionBtnTextPrimary: {
-    color: '#000',
-    fontSize: 13,
-    fontWeight: '900',
-  },
-  sidebarSectionTitle: {
-    fontSize: 9,
-    fontWeight: '900',
-    color: 'rgba(255,255,255,0.25)',
-    letterSpacing: 2,
-    marginBottom: 8,
-    paddingLeft: 4,
-    textTransform: 'uppercase',
   },
   weekdayRow: {
     flexDirection: 'row',
@@ -801,131 +908,6 @@ const styles = StyleSheet.create({
   weekdayChipTextActive: {
     color: '#fff',
   },
-  timelinePreviewCard: {
-    borderRadius: 18,
-    padding: 14,
-    backgroundColor: 'rgba(255,255,255,0.05)',
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.08)',
-  },
-  timelinePreviewBar: {
-    height: 18,
-    borderRadius: 10,
-    backgroundColor: 'rgba(0,0,0,0.30)',
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.10)',
-    overflow: 'hidden',
-    position: 'relative',
-  },
-  timelinePreviewSeg: {
-    position: 'absolute',
-    top: 0,
-    bottom: 0,
-    opacity: 0.85,
-  },
-  timelinePreviewTicks: {
-    marginTop: 10,
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-  },
-  tickText: {
-    fontSize: 10,
-    fontWeight: '700',
-    color: 'rgba(255,255,255,0.30)',
-  },
-  slotNavRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: 10,
-    paddingVertical: 10,
-    borderRadius: 14,
-    backgroundColor: 'rgba(255,255,255,0.04)',
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.06)',
-    marginBottom: 8,
-  },
-  slotNavRowActive: {
-    backgroundColor: 'rgba(255,255,255,0.08)',
-    borderColor: 'rgba(255,255,255,0.14)',
-  },
-  slotNavLeft: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 10,
-  },
-  slotNavSwatch: {
-    width: 16,
-    height: 16,
-    borderRadius: 6,
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.16)',
-  },
-  slotNavTitle: {
-    fontSize: 13,
-    fontWeight: '800',
-  },
-  slotNavTitleActive: {
-    color: '#fff',
-  },
-  slotNavTitleInactive: {
-    color: 'rgba(255,255,255,0.65)',
-  },
-  slotNavSub: {
-    marginTop: 2,
-    fontSize: 11,
-    color: 'rgba(255,255,255,0.35)',
-  },
-  smallBackButton: {
-    position: 'absolute',
-    left: 10,
-    bottom: 10,
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: 'rgba(255,255,255,0.08)',
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.12)',
-  },
-  header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: 18,
-    paddingTop: 10,
-    paddingBottom: 10,
-    borderBottomWidth: 1,
-    borderBottomColor: 'rgba(255,255,255,0.08)',
-  },
-  headerTitle: {
-    fontSize: 12,
-    fontWeight: '800',
-    letterSpacing: 2,
-    color: '#fff',
-  },
-  headerBtn: {
-    width: 42,
-    height: 42,
-    borderRadius: 21,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: 'rgba(255,255,255,0.08)',
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.1)',
-  },
-  content: {
-    padding: 18,
-    paddingBottom: 30,
-  },
-  sectionTitle: {
-    fontSize: 11,
-    fontWeight: '800',
-    letterSpacing: 2,
-    color: 'rgba(255,255,255,0.5)',
-    marginBottom: 10,
-  },
   card: {
     backgroundColor: 'rgba(255,255,255,0.06)',
     borderWidth: 1,
@@ -934,16 +916,27 @@ const styles = StyleSheet.create({
     padding: 14,
     marginBottom: 12,
   },
+  cardCompact: {
+    borderRadius: 12,
+    padding: 10,
+    marginBottom: 8,
+  },
   cardHeader: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
     marginBottom: 10,
   },
+  cardHeaderCompact: {
+    marginBottom: 6,
+  },
   cardTitle: {
     fontSize: 14,
     fontWeight: '800',
     color: '#fff',
+  },
+  cardTitleCompact: {
+    fontSize: 11,
   },
   colorSwatch: {
     width: 18,
@@ -952,14 +945,26 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: 'rgba(255,255,255,0.18)',
   },
+  colorSwatchCompact: {
+    width: 14,
+    height: 14,
+    borderRadius: 4,
+  },
   fieldRow: {
     marginBottom: 10,
+  },
+  fieldRowCompact: {
+    marginBottom: 6,
   },
   colorPickerRow: {
     flexDirection: 'row',
     flexWrap: 'wrap',
     gap: 8,
     marginTop: 10,
+  },
+  colorPickerRowCompact: {
+    gap: 5,
+    marginTop: 6,
   },
   colorDot: {
     width: 22,
@@ -968,6 +973,11 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: 'rgba(255,255,255,0.18)',
   },
+  colorDotCompact: {
+    width: 18,
+    height: 18,
+    borderRadius: 9,
+  },
   colorDotSelected: {
     borderColor: '#fff',
     borderWidth: 2,
@@ -975,6 +985,9 @@ const styles = StyleSheet.create({
   timeRow: {
     flexDirection: 'row',
     marginTop: 2,
+  },
+  timeRowCompact: {
+    marginTop: 0,
   },
   timePickerButton: {
     height: 44,
@@ -987,17 +1000,29 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
   },
+  timePickerButtonCompact: {
+    height: 32,
+    borderRadius: 8,
+    paddingHorizontal: 8,
+  },
   timePickerValue: {
     color: '#fff',
     fontSize: 14,
     fontWeight: '700',
     letterSpacing: 0.5,
   },
+  timePickerValueCompact: {
+    fontSize: 12,
+  },
   fieldLabel: {
     fontSize: 11,
     fontWeight: '700',
     color: 'rgba(255,255,255,0.55)',
     marginBottom: 6,
+  },
+  fieldLabelCompact: {
+    fontSize: 9,
+    marginBottom: 3,
   },
   input: {
     height: 44,
@@ -1009,6 +1034,12 @@ const styles = StyleSheet.create({
     color: '#fff',
     fontSize: 14,
     fontWeight: '600',
+  },
+  inputCompact: {
+    height: 32,
+    borderRadius: 8,
+    paddingHorizontal: 8,
+    fontSize: 11,
   },
   modalOverlay: {
     flex: 1,
@@ -1061,28 +1092,39 @@ const styles = StyleSheet.create({
     gap: 12,
     justifyContent: 'space-between',
   },
+  timeModalBtn: {
+    flex: 1,
+    paddingVertical: 12,
+    borderRadius: 14,
+    backgroundColor: 'rgba(255,255,255,0.08)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.12)',
+    alignItems: 'center',
+  },
+  timeModalBtnText: {
+    color: '#fff',
+    fontSize: 13,
+    fontWeight: '700',
+  },
+  timeModalBtnPrimary: {
+    flex: 1,
+    paddingVertical: 12,
+    borderRadius: 14,
+    backgroundColor: '#FFFFFF',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.2)',
+    alignItems: 'center',
+  },
+  timeModalBtnTextPrimary: {
+    color: '#000',
+    fontSize: 13,
+    fontWeight: '800',
+  },
   hint: {
     marginTop: 10,
     fontSize: 11,
     color: 'rgba(255,255,255,0.35)',
     lineHeight: 16,
-  },
-  resetBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 10,
-    alignSelf: 'flex-start',
-    paddingHorizontal: 14,
-    paddingVertical: 10,
-    borderRadius: 14,
-    backgroundColor: 'rgba(255,255,255,0.08)',
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.12)',
-  },
-  resetText: {
-    color: '#fff',
-    fontSize: 13,
-    fontWeight: '700',
   },
 });
 

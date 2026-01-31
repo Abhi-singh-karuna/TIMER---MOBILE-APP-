@@ -862,6 +862,68 @@ export const styles = StyleSheet.create({
         justifyContent: 'center',
     },
 
+    // Draggable category card (same design as task stage expand – priority by order)
+    categoryCardItem: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 8,
+        marginBottom: 6,
+        backgroundColor: 'transparent',
+        paddingVertical: 8,
+        paddingHorizontal: 8,
+        borderRadius: 8,
+        minHeight: 44,
+        borderWidth: 1,
+        borderColor: 'rgba(255,255,255,0.08)',
+    },
+    categoryCardDragging: {
+        backgroundColor: 'rgba(255,255,255,0.95)',
+        borderRadius: 8,
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 4 },
+        shadowOpacity: 0.25,
+        shadowRadius: 8,
+        elevation: 10,
+        zIndex: 1000,
+    },
+    categoryCardDragHandle: {
+        paddingHorizontal: 2,
+        paddingVertical: 4,
+        opacity: 0.5,
+    },
+    categoryOrderCircle: {
+        width: 26,
+        height: 26,
+        borderRadius: 13,
+        backgroundColor: 'rgba(255,255,255,0.08)',
+        alignItems: 'center',
+        justifyContent: 'center',
+        borderWidth: 1.5,
+        borderColor: 'rgba(255,255,255,0.1)',
+    },
+    categoryOrderText: {
+        fontSize: 11,
+        fontWeight: '700',
+        color: 'rgba(255,255,255,0.5)',
+    },
+    categoryOrderTextDragging: {
+        color: 'rgba(0,0,0,0.5)',
+    },
+    categoryCardName: {
+        fontSize: 13,
+        color: '#fff',
+        flex: 1,
+        fontWeight: '600',
+        minWidth: 0,
+    },
+    categoryCardNameDragging: {
+        color: '#1a1a1a',
+    },
+    categoryCardDeleteBtn: {
+        padding: 6,
+        opacity: 0.4,
+    },
+
     categoryForm: {
         paddingVertical: 8,
     },

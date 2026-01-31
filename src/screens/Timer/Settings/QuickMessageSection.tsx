@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
     View,
     Text,
@@ -6,9 +6,13 @@ import {
     ScrollView,
     TextInput,
     Alert,
+    LayoutAnimation,
 } from 'react-native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { MaterialIcons } from '@expo/vector-icons';
-import { QuickMessage, COLOR_PRESETS } from '../../../constants/data';
+import * as Haptics from 'expo-haptics';
+import DraggableFlatList, { RenderItemParams } from 'react-native-draggable-flatlist';
+import { QuickMessage, COLOR_PRESETS, QUICK_MESSAGES_KEY } from '../../../constants/data';
 import { styles } from './styles';
 import { QuickMessageSectionProps } from './types';
 
@@ -21,10 +25,15 @@ export default function QuickMessageSection({
     const [isAddingMessage, setIsAddingMessage] = useState(false);
     const [newMessageText, setNewMessageText] = useState('');
     const [selectedMessageColor, setSelectedMessageColor] = useState('#00E5FF');
+    const [data, setData] = useState<QuickMessage[]>(quickMessages);
+
+    useEffect(() => {
+        setData(quickMessages);
+    }, [quickMessages]);
 
     const handleSaveMessage = () => {
         if (!newMessageText.trim()) return;
-        let updatedMessages;
+        let updatedMessages: QuickMessage[];
         if (editingMessage) {
             updatedMessages = quickMessages.map(msg =>
                 msg.id === editingMessage.id
@@ -50,6 +59,7 @@ export default function QuickMessageSection({
                 text: "Delete", style: "destructive", onPress: () => {
                     const updatedMessages = quickMessages.filter(msg => msg.id !== id);
                     onQuickMessagesChange(updatedMessages);
+                    AsyncStorage.setItem(QUICK_MESSAGES_KEY, JSON.stringify(updatedMessages)).catch((err) => console.error(err));
                 }
             }
         ]);
@@ -113,28 +123,86 @@ export default function QuickMessageSection({
                     </View>
                 </View>
             ) : (
-                <View style={styles.categoriesList}>
-                    {quickMessages.map((msg, index) => (
-                        <React.Fragment key={msg.id}>
-                            <View style={styles.categoryItem}>
+                <DraggableFlatList
+                    data={data}
+                    keyExtractor={(item) => item.id}
+                    scrollEnabled={false}
+                    renderItem={({ item: msg, drag, isActive, getIndex }: RenderItemParams<QuickMessage>) => {
+                        const index = getIndex?.() ?? 0;
+                        const orderNumber = index + 1;
+                        return (
+                            <View style={[styles.categoryCardItem, isActive && styles.categoryCardDragging]}>
+                                <TouchableOpacity
+                                    style={styles.categoryCardDragHandle}
+                                    onLongPress={() => {
+                                        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
+                                        drag();
+                                    }}
+                                    delayLongPress={180}
+                                    activeOpacity={0.7}
+                                >
+                                    <MaterialIcons
+                                        name="drag-indicator"
+                                        size={16}
+                                        color={isActive ? 'rgba(0,0,0,0.4)' : 'rgba(255,255,255,0.3)'}
+                                    />
+                                </TouchableOpacity>
+                                <View style={[styles.categoryOrderCircle, isActive && { backgroundColor: 'rgba(0,0,0,0.08)', borderColor: 'rgba(0,0,0,0.15)' }]}>
+                                    <Text style={[styles.categoryOrderText, isActive && styles.categoryOrderTextDragging]}>
+                                        {orderNumber}
+                                    </Text>
+                                </View>
                                 <View style={[styles.categoryIconCircle, { backgroundColor: `${msg.color}20` }]}>
                                     <MaterialIcons name="chat-bubble" size={18} color={msg.color} />
                                 </View>
                                 <View style={styles.categoryInfo}>
-                                    <Text style={[styles.categoryNameText, { color: msg.color }]}>{msg.text}</Text>
+                                    <Text style={[styles.categoryCardName, { color: msg.color }, isActive && styles.categoryCardNameDragging]} numberOfLines={1}>
+                                        {msg.text}
+                                    </Text>
                                     <View style={[styles.categoryColorPill, { backgroundColor: `${msg.color}15` }]}>
-                                        <View style={[styles.colorDot, { backgroundColor: msg.color }]} /><Text style={[styles.categoryColorText, { color: msg.color }]}>{msg.color}</Text>
+                                        <View style={[styles.colorDot, { backgroundColor: msg.color }]} />
+                                        <Text style={[styles.categoryColorText, { color: msg.color }]}>{msg.color}</Text>
                                     </View>
                                 </View>
                                 <View style={styles.categoryActions}>
-                                    <TouchableOpacity style={styles.actionBtn} onPress={() => startEditMessage(msg)}><MaterialIcons name="edit" size={18} color="rgba(255,255,255,0.4)" /></TouchableOpacity>
-                                    <TouchableOpacity style={styles.actionBtn} onPress={() => handleDeleteMessage(msg.id)}><MaterialIcons name="delete" size={18} color="#FF3B30" /></TouchableOpacity>
+                                    <TouchableOpacity
+                                        style={styles.actionBtn}
+                                        onPress={() => startEditMessage(msg)}
+                                        disabled={isActive}
+                                        activeOpacity={0.7}
+                                    >
+                                        <MaterialIcons name="edit" size={18} color={isActive ? 'rgba(0,0,0,0.4)' : 'rgba(255,255,255,0.4)'} />
+                                    </TouchableOpacity>
+                                    <TouchableOpacity
+                                        style={styles.categoryCardDeleteBtn}
+                                        onPress={() => handleDeleteMessage(msg.id)}
+                                        disabled={isActive}
+                                        activeOpacity={0.7}
+                                    >
+                                        <MaterialIcons name="delete-outline" size={16} color={isActive ? 'rgba(0,0,0,0.25)' : '#FF3B30'} />
+                                    </TouchableOpacity>
                                 </View>
                             </View>
-                            {index < quickMessages.length - 1 && <View style={styles.sectionDivider} />}
-                        </React.Fragment>
-                    ))}
-                </View>
+                        );
+                    }}
+                    onDragBegin={() => {
+                        LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+                    }}
+                    onDragEnd={({ data: next }) => {
+                        LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+                        setData(next);
+                        onQuickMessagesChange(next);
+                        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+                        AsyncStorage.setItem(QUICK_MESSAGES_KEY, JSON.stringify(next)).catch((err) => console.error(err));
+                    }}
+                    autoscrollThreshold={80}
+                    autoscrollSpeed={90}
+                    activationDistance={12}
+                    nestedScrollEnabled={true}
+                    showsVerticalScrollIndicator={true}
+                    keyboardShouldPersistTaps="handled"
+                    contentContainerStyle={{ paddingBottom: 40 }}
+                />
             )}
         </View>
     );

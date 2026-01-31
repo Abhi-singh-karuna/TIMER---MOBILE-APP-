@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
     View,
     Text,
@@ -6,9 +6,12 @@ import {
     ScrollView,
     TextInput,
     Alert,
+    LayoutAnimation,
 } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { MaterialIcons } from '@expo/vector-icons';
+import * as Haptics from 'expo-haptics';
+import DraggableFlatList, { RenderItemParams } from 'react-native-draggable-flatlist';
 import { Category, CATEGORIES_KEY, COLOR_PRESETS } from '../../../constants/data';
 import { styles } from './styles';
 import { CategorySectionProps, CATEGORY_ICONS } from './types';
@@ -23,6 +26,11 @@ export default function CategorySection({
     const [newCategoryName, setNewCategoryName] = useState('');
     const [selectedCategoryColor, setSelectedCategoryColor] = useState('#FFFFFF');
     const [selectedCategoryIcon, setSelectedCategoryIcon] = useState<keyof typeof MaterialIcons.glyphMap>('category');
+    const [data, setData] = useState<Category[]>(categories);
+
+    useEffect(() => {
+        setData(categories);
+    }, [categories]);
 
     const handleSaveCategory = async () => {
         if (!newCategoryName.trim()) return;
@@ -111,26 +119,86 @@ export default function CategorySection({
                     </View>
                 </View>
             ) : (
-                <View style={styles.categoriesList}>
-                    {categories.map((cat, index) => (
-                        <React.Fragment key={cat.id}>
-                            <View style={styles.categoryItem}>
-                                <View style={styles.categoryIconCircle}><MaterialIcons name={cat.icon} size={20} color={cat.color} /></View>
+                <DraggableFlatList
+                    data={data}
+                    keyExtractor={(item) => item.id}
+                    scrollEnabled={false}
+                    renderItem={({ item: cat, drag, isActive, getIndex }: RenderItemParams<Category>) => {
+                        const index = getIndex?.() ?? 0;
+                        const orderNumber = index + 1;
+                        return (
+                            <View style={[styles.categoryCardItem, isActive && styles.categoryCardDragging]}>
+                                <TouchableOpacity
+                                    style={styles.categoryCardDragHandle}
+                                    onLongPress={() => {
+                                        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
+                                        drag();
+                                    }}
+                                    delayLongPress={180}
+                                    activeOpacity={0.7}
+                                >
+                                    <MaterialIcons
+                                        name="drag-indicator"
+                                        size={16}
+                                        color={isActive ? 'rgba(0,0,0,0.4)' : 'rgba(255,255,255,0.3)'}
+                                    />
+                                </TouchableOpacity>
+                                <View style={[styles.categoryOrderCircle, isActive && { backgroundColor: 'rgba(0,0,0,0.08)', borderColor: 'rgba(0,0,0,0.15)' }]}>
+                                    <Text style={[styles.categoryOrderText, isActive && styles.categoryOrderTextDragging]}>
+                                        {orderNumber}
+                                    </Text>
+                                </View>
+                                <View style={styles.categoryIconCircle}>
+                                    <MaterialIcons name={cat.icon} size={20} color={cat.color} />
+                                </View>
                                 <View style={styles.categoryInfo}>
-                                    <Text style={styles.categoryNameText}>{cat.name}</Text>
+                                    <Text style={[styles.categoryCardName, isActive && styles.categoryCardNameDragging]} numberOfLines={1}>
+                                        {cat.name}
+                                    </Text>
                                     <View style={[styles.categoryColorPill, { backgroundColor: `${cat.color}15` }]}>
-                                        <View style={[styles.colorDot, { backgroundColor: cat.color }]} /><Text style={[styles.categoryColorText, { color: cat.color }]}>{cat.color}</Text>
+                                        <View style={[styles.colorDot, { backgroundColor: cat.color }]} />
+                                        <Text style={[styles.categoryColorText, { color: cat.color }]}>{cat.color}</Text>
                                     </View>
                                 </View>
                                 <View style={styles.categoryActions}>
-                                    <TouchableOpacity style={styles.actionBtn} onPress={() => startEditCategory(cat)}><MaterialIcons name="edit" size={18} color="rgba(255,255,255,0.4)" /></TouchableOpacity>
-                                    <TouchableOpacity style={styles.actionBtn} onPress={() => handleDeleteCategory(cat.id)}><MaterialIcons name="delete" size={18} color="#FF3B30" /></TouchableOpacity>
+                                    <TouchableOpacity
+                                        style={styles.actionBtn}
+                                        onPress={() => startEditCategory(cat)}
+                                        disabled={isActive}
+                                        activeOpacity={0.7}
+                                    >
+                                        <MaterialIcons name="edit" size={18} color={isActive ? 'rgba(0,0,0,0.4)' : 'rgba(255,255,255,0.4)'} />
+                                    </TouchableOpacity>
+                                    <TouchableOpacity
+                                        style={styles.categoryCardDeleteBtn}
+                                        onPress={() => handleDeleteCategory(cat.id)}
+                                        disabled={isActive}
+                                        activeOpacity={0.7}
+                                    >
+                                        <MaterialIcons name="delete-outline" size={16} color={isActive ? 'rgba(0,0,0,0.25)' : '#FF3B30'} />
+                                    </TouchableOpacity>
                                 </View>
                             </View>
-                            {index < categories.length - 1 && <View style={styles.sectionDivider} />}
-                        </React.Fragment>
-                    ))}
-                </View>
+                        );
+                    }}
+                    onDragBegin={() => {
+                        LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+                    }}
+                    onDragEnd={({ data: next }) => {
+                        LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+                        setData(next);
+                        onCategoriesChange(next);
+                        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+                        AsyncStorage.setItem(CATEGORIES_KEY, JSON.stringify(next)).catch((err) => console.error(err));
+                    }}
+                    autoscrollThreshold={80}
+                    autoscrollSpeed={90}
+                    activationDistance={12}
+                    nestedScrollEnabled={true}
+                    showsVerticalScrollIndicator={true}
+                    keyboardShouldPersistTaps="handled"
+                    contentContainerStyle={{ paddingBottom: 40 }}
+                />
             )}
         </View>
     );
