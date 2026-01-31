@@ -854,22 +854,22 @@ const styles = StyleSheet.create({
     },
     dayCell: {
         width: '14.28%',
-        height: 32,
+        minHeight: 34,
         alignItems: 'center',
         justifyContent: 'center',
         marginBottom: 2,
     },
     dayCircle: {
-        width: 24,
-        height: 24,
-        borderRadius: 12,
+        width: 20,
+        height: 20,
+        borderRadius: 10,
         alignItems: 'center',
         justifyContent: 'center',
     },
     dayCirclePortrait: {
-        width: 26,
-        height: 26,
-        borderRadius: 13,
+        width: 22,
+        height: 22,
+        borderRadius: 11,
     },
     todayCircle: {
         backgroundColor: '#FFFFFF',
@@ -891,6 +891,28 @@ const styles = StyleSheet.create({
     },
     otherMonthText: {
         color: 'rgba(255,255,255,0.4)',
+    },
+    dayTaskCountBar: {
+        width: 20,
+        height: 10,
+        borderRadius: 5,
+        alignItems: 'center',
+        justifyContent: 'center',
+        marginTop: 2,
+    },
+    dayTaskCountBarPortrait: {
+        width: 22,
+        height: 10,
+    },
+    dayTaskCount: {
+        fontSize: 8,
+        fontWeight: '800',
+        color: 'rgba(255,255,255,0.7)',
+    },
+    dayTaskCountZero: {
+        fontSize: 8,
+        fontWeight: '600',
+        color: 'rgba(255,255,255,0.22)',
     },
     selectedDayCircle: {
         borderWidth: 2,
@@ -1736,6 +1758,35 @@ export default function TaskList({
 
                         const isPastSelection = isSelected && selectedLogical < getLogicalDate(new Date(), dailyStartMinutes);
 
+                        // Task count and completion for this date (current month only)
+                        let dayTaskCount = 0;
+                        let dayTasks: Task[] = [];
+                        let cellLogicalDate = '';
+                        if (item.currentMonth) {
+                            const y = viewDate.getFullYear(), m = viewDate.getMonth(), d = item.day;
+                            const cellDate = new Date(y, m, d, Math.floor(dailyStartMinutes / 60), dailyStartMinutes % 60, 0, 0);
+                            cellLogicalDate = getLogicalDate(cellDate, dailyStartMinutes);
+                            dayTasks = expandTasksForDate(tasks, cellLogicalDate).filter(t => t && !t.isBacklog);
+                            dayTaskCount = dayTasks.length;
+                        }
+                        const isPastDate = item.currentMonth && cellLogicalDate !== '' && cellLogicalDate < logicalToday;
+                        const completedCount = dayTasks.filter(t => t.status === 'Completed').length;
+                        // Past day bar color: all done = green, all pending = red, mixed = yellow (only when has tasks)
+                        const pastDayBarStyle = isPastDate && dayTaskCount > 0
+                            ? (completedCount === dayTaskCount
+                                ? { backgroundColor: 'rgba(76,175,80,0.35)' as const }
+                                : completedCount === 0
+                                    ? { backgroundColor: 'rgba(255,80,80,0.35)' as const }
+                                    : { backgroundColor: 'rgba(255,193,7,0.4)' as const })
+                            : null;
+                        const pastDayTextStyle = isPastDate && dayTaskCount > 0
+                            ? (completedCount === dayTaskCount
+                                ? { color: '#81C784' as const }
+                                : completedCount === 0
+                                    ? { color: '#FF8A80' as const }
+                                    : { color: '#FFD54F' as const })
+                            : null;
+
                         return (
                             <TouchableOpacity
                                 key={index}
@@ -1764,6 +1815,25 @@ export default function TaskList({
                                         {item.day}
                                     </Text>
                                 </View>
+                                {item.currentMonth && (
+                                    <View style={[
+                                        styles.dayTaskCountBar,
+                                        !isLandscape && styles.dayTaskCountBarPortrait,
+                                        pastDayBarStyle ?? (dayTaskCount > 0
+                                            ? { backgroundColor: 'rgba(255,255,255,0.1)' }
+                                            : { backgroundColor: 'rgba(255,255,255,0.04)' }),
+                                        !pastDayBarStyle && isSelected && (isPastSelection ? { backgroundColor: 'rgba(255,80,80,0.25)' } : { backgroundColor: 'rgba(76,175,80,0.25)' }),
+                                        !pastDayBarStyle && isTodayDate && !isSelected && dayTaskCount > 0 && { backgroundColor: 'rgba(255,255,255,0.15)' }
+                                    ]}>
+                                        <Text style={[
+                                            dayTaskCount > 0 ? styles.dayTaskCount : styles.dayTaskCountZero,
+                                            pastDayTextStyle ?? (isSelected ? (isPastSelection ? { color: '#FF8080' } : { color: '#81C784' }) : undefined),
+                                            !pastDayTextStyle && isTodayDate && !isSelected && dayTaskCount > 0 && { color: 'rgba(255,255,255,0.9)' }
+                                        ]}>
+                                            {dayTaskCount === 0 ? '–' : dayTaskCount}
+                                        </Text>
+                                    </View>
+                                )}
                             </TouchableOpacity>
                         );
                     })}
@@ -1941,7 +2011,7 @@ export default function TaskList({
                                             activeOpacity={0.7}
                                         >
                                             <MaterialIcons name="calendar-today" size={14} color="#fff" />
-                                            <Text style={[styles.dateLandscapeText, !isToday && { color: '#fff', fontSize: 16 }]}>
+                                            <Text style={styles.dateLandscapeText}>
                                                 {isToday ? `  ${dayName}, ${dayNum} ${monthName}` : `  ${dateLabel} ${monthName}`}
                                             </Text>
                                         </TouchableOpacity>
