@@ -6,6 +6,10 @@ import {
     useWindowDimensions,
     KeyboardAvoidingView,
     Platform,
+    Modal,
+    TextInput,
+    TouchableWithoutFeedback,
+    Keyboard,
 } from 'react-native';
 import { ScrollView, GestureHandlerRootView } from 'react-native-gesture-handler';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -19,6 +23,7 @@ import CategorySection from './CategorySection';
 import GeneralSection from './GeneralSection';
 import InfoSection from './InfoSection';
 import QuickMessageSection from './QuickMessageSection';
+import RestoreSection from './RestoreSection';
 import TimeOfDayBackgroundScreen from './TimeOfDayBackgroundScreen';
 import { styles } from './styles';
 import {
@@ -30,7 +35,98 @@ import {
     DEFAULT_FILLER_COLOR,
     DEFAULT_SLIDER_BUTTON_COLOR,
     DEFAULT_TEXT_COLOR,
+    TIMERS_STORAGE_KEY,
+    TASKS_STORAGE_KEY,
 } from './types';
+
+const CONFIRM_PHRASE = 'clear all';
+
+/** Modal content uses its own useWindowDimensions so orientation is correct when popup is open (e.g. in landscape). */
+function ConfirmClearModalContent({
+    clearConfirmType,
+    confirmInput,
+    confirmError,
+    onInputChange,
+    onConfirmClear,
+    onClose,
+}: {
+    clearConfirmType: 'time' | 'task';
+    confirmInput: string;
+    confirmError: boolean;
+    onInputChange: (text: string) => void;
+    onConfirmClear: () => void;
+    onClose: () => void;
+}) {
+    const { width, height } = useWindowDimensions();
+    const isLandscape = width > height;
+
+    return (
+        <TouchableWithoutFeedback onPress={() => Keyboard.dismiss()}>
+            <KeyboardAvoidingView
+                behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+                style={[styles.restoreOverlay, { width, height }]}
+            >
+                <View style={[styles.restoreDimLayer, { width, height }]} pointerEvents="none" />
+                <TouchableWithoutFeedback onPress={(e) => e.stopPropagation()}>
+                    <View style={[
+                        styles.restoreModal,
+                        isLandscape && styles.restoreModalLandscape
+                    ]}>
+                        <Text style={styles.restoreTitle}>
+                            {clearConfirmType === 'time' ? 'Clear all timers?' : 'Clear all tasks?'}
+                        </Text>
+                        <Text style={styles.restoreSubtitle}>
+                            Type &quot;clear all&quot; below to confirm. This cannot be undone.
+                        </Text>
+                        <Text style={styles.restoreLabel}>CONFIRM</Text>
+                        <TextInput
+                            style={[
+                                styles.restoreInput,
+                                confirmError && styles.restoreInputError
+                            ]}
+                            placeholder="clear all"
+                            placeholderTextColor="rgba(255,255,255,0.3)"
+                            value={confirmInput}
+                            onChangeText={onInputChange}
+                            autoCapitalize="none"
+                            autoCorrect={false}
+                        />
+                        {confirmError && (
+                            <Text style={[styles.restoreSubtitle, { color: '#FF5050', marginBottom: 12, fontSize: 12 }]}>
+                                Type exactly &quot;clear all&quot; to confirm
+                            </Text>
+                        )}
+                        <View style={[
+                            styles.restoreButtonRow,
+                            isLandscape && styles.restoreButtonRowLandscape
+                        ]}>
+                            <TouchableOpacity
+                                style={[
+                                    styles.restorePrimaryBtn,
+                                    isLandscape && styles.restorePrimaryBtnLandscape
+                                ]}
+                                onPress={onConfirmClear}
+                                activeOpacity={0.7}
+                            >
+                                <Text style={styles.restorePrimaryBtnText}>Confirm</Text>
+                            </TouchableOpacity>
+                            <TouchableOpacity
+                                style={[
+                                    styles.restoreSecondaryBtn,
+                                    isLandscape && styles.restoreSecondaryBtnLandscape
+                                ]}
+                                onPress={onClose}
+                                activeOpacity={0.7}
+                            >
+                                <Text style={styles.restoreSecondaryBtnText}>Cancel</Text>
+                            </TouchableOpacity>
+                        </View>
+                    </View>
+                </TouchableWithoutFeedback>
+            </KeyboardAvoidingView>
+        </TouchableWithoutFeedback>
+    );
+}
 
 export default function SettingsScreen({
     onBack,
@@ -58,13 +154,20 @@ export default function SettingsScreen({
     onQuickMessagesChange,
     timeOfDayBackgroundConfig,
     onTimeOfDayBackgroundConfigChange,
+    onAfterClearTimers,
+    onAfterClearTasks,
 }: SettingsScreenProps) {
     const { width, height } = useWindowDimensions();
     const isLandscape = width > height;
 
-    const [activeTab, setActiveTab] = useState<'customization' | 'sound' | 'categories' | 'quickmsg' | 'general' | 'about'>('customization');
+    const [activeTab, setActiveTab] = useState<'customization' | 'sound' | 'categories' | 'quickmsg' | 'general' | 'restore' | 'about'>('customization');
     const [resetKey, setResetKey] = useState(0);
     const [activeSubPage, setActiveSubPage] = useState<null | 'timeOfDayBackground'>(null);
+
+    // Clear confirm popup (type "Clear all" to confirm)
+    const [clearConfirmType, setClearConfirmType] = useState<'time' | 'task' | null>(null);
+    const [confirmInput, setConfirmInput] = useState('');
+    const [confirmError, setConfirmError] = useState(false);
 
     // Widen sidebar to 38% for a larger preview
     const sidebarWidth = width * 0.38;
@@ -84,6 +187,39 @@ export default function SettingsScreen({
             onPresetChange(0);
             setResetKey(prev => prev + 1);
         } catch (e) { console.error('Failed to reset defaults:', e); }
+    };
+
+    const openClearConfirm = (type: 'time' | 'task') => {
+        setClearConfirmType(type);
+        setConfirmInput('');
+        setConfirmError(false);
+    };
+
+    const closeClearConfirm = () => {
+        setClearConfirmType(null);
+        setConfirmInput('');
+        setConfirmError(false);
+    };
+
+    const handleConfirmClear = async () => {
+        if (confirmInput.trim().toLowerCase() !== CONFIRM_PHRASE) {
+            setConfirmError(true);
+            return;
+        }
+        if (!clearConfirmType) return;
+        try {
+            if (clearConfirmType === 'time') {
+                await AsyncStorage.removeItem(TIMERS_STORAGE_KEY);
+                onAfterClearTimers?.();
+            } else {
+                await AsyncStorage.removeItem(TASKS_STORAGE_KEY);
+                onAfterClearTasks?.();
+            }
+            closeClearConfirm();
+        } catch (e) {
+            console.error('Failed to clear:', e);
+            setConfirmError(true);
+        }
     };
 
     if (activeSubPage === 'timeOfDayBackground') {
@@ -169,6 +305,11 @@ export default function SettingsScreen({
                     <MaterialIcons name="refresh" size={20} color="#FFFFFF" /><Text style={styles.resetButtonText}>Reset Theme to Defaults</Text>
                 </TouchableOpacity>
             </View>
+            <RestoreSection
+                isLandscape={false}
+                onClearTime={() => openClearConfirm('time')}
+                onClearTask={() => openClearConfirm('task')}
+            />
             <View style={styles.section}>
                 <Text style={styles.sectionTitle}>ABOUT</Text>
                 <InfoSection isLandscape={false} />
@@ -178,7 +319,7 @@ export default function SettingsScreen({
 
     // Landscape Layout - Side by side with Sidebar
     const renderLandscapeLayout = () => {
-        const renderSidebarButton = (id: 'customization' | 'sound' | 'categories' | 'quickmsg' | 'general' | 'timeline' | 'about', icon: keyof typeof MaterialIcons.glyphMap, label: string) => {
+        const renderSidebarButton = (id: 'customization' | 'sound' | 'categories' | 'quickmsg' | 'general' | 'timeline' | 'restore' | 'about', icon: keyof typeof MaterialIcons.glyphMap, label: string) => {
             const isActive = activeTab === id;
             return (
                 <TouchableOpacity
@@ -190,6 +331,10 @@ export default function SettingsScreen({
                     onPress={() => {
                         if (id === 'timeline') {
                             setActiveSubPage('timeOfDayBackground');
+                            return;
+                        }
+                        if (id === 'restore') {
+                            setActiveTab('restore');
                             return;
                         }
                         setActiveTab(id as any);
@@ -254,6 +399,7 @@ export default function SettingsScreen({
                                 {renderSidebarButton('quickmsg', 'chat', 'Quick Msg')}
                                 {renderSidebarButton('general', 'settings', 'General')}
                                 {renderSidebarButton('timeline', 'timeline', 'Timeline BG')}
+                                {renderSidebarButton('restore', 'restore', 'Restore')}
                                 {renderSidebarButton('about', 'info', 'Info')}
                             </View>
                         </ScrollView>
@@ -332,6 +478,14 @@ export default function SettingsScreen({
                             />
                         )}
 
+                        {activeTab === 'restore' && (
+                            <RestoreSection
+                                isLandscape={true}
+                                onClearTime={() => openClearConfirm('time')}
+                                onClearTask={() => openClearConfirm('task')}
+                            />
+                        )}
+
                         {activeTab === 'about' && (
                             <InfoSection isLandscape={true} />
                         )}
@@ -364,6 +518,31 @@ export default function SettingsScreen({
                     )}
 
                     {isLandscape ? renderLandscapeLayout() : renderPortraitLayout()}
+
+                    {/* Confirm clear popup: type "Clear all" to confirm. supportedOrientations so popup opens in landscape too. */}
+                    <Modal
+                        visible={clearConfirmType !== null}
+                        transparent
+                        animationType="fade"
+                        onRequestClose={closeClearConfirm}
+                        supportedOrientations={['portrait', 'landscape']}
+                        statusBarTranslucent={Platform.OS === 'android'}
+                        presentationStyle="overFullScreen"
+                    >
+                        {clearConfirmType !== null && (
+                            <ConfirmClearModalContent
+                                clearConfirmType={clearConfirmType}
+                                confirmInput={confirmInput}
+                                confirmError={confirmError}
+                                onInputChange={(text) => {
+                                    setConfirmInput(text);
+                                    if (text.trim()) setConfirmError(false);
+                                }}
+                                onConfirmClear={handleConfirmClear}
+                                onClose={closeClearConfirm}
+                            />
+                        )}
+                    </Modal>
                 </SafeAreaView>
             </LinearGradient>
         </GestureHandlerRootView>
