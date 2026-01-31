@@ -456,6 +456,35 @@ export default function TimerList({
 
                         const isPastSelection = isSelected && selectedLogical < getLogicalDate(new Date(), dailyStartMinutes);
 
+                        // Timer count and completion for this date (current month only)
+                        let dayTimerCount = 0;
+                        let dayTimers: Timer[] = [];
+                        let cellLogicalDate = '';
+                        if (item.currentMonth) {
+                            const y = viewDate.getFullYear(), m = viewDate.getMonth(), d = item.day;
+                            const cellDate = new Date(y, m, d, Math.floor(dailyStartMinutes / 60), dailyStartMinutes % 60, 0, 0);
+                            cellLogicalDate = getLogicalDate(cellDate, dailyStartMinutes);
+                            dayTimers = timers.filter(t => t && t.forDate === cellLogicalDate);
+                            dayTimerCount = dayTimers.length;
+                        }
+                        const isPastDate = item.currentMonth && cellLogicalDate !== '' && cellLogicalDate < logicalToday;
+                        const completedCount = dayTimers.filter(t => t.status === 'Completed').length;
+                        // Past day bar color: all done = green, all pending/upcoming = red, mixed = yellow (only when has timers)
+                        const pastDayBarStyle = isPastDate && dayTimerCount > 0
+                            ? (completedCount === dayTimerCount
+                                ? { backgroundColor: 'rgba(76,175,80,0.35)' as const }
+                                : completedCount === 0
+                                    ? { backgroundColor: 'rgba(255,80,80,0.35)' as const }
+                                    : { backgroundColor: 'rgba(255,193,7,0.4)' as const })
+                            : null;
+                        const pastDayTextStyle = isPastDate && dayTimerCount > 0
+                            ? (completedCount === dayTimerCount
+                                ? { color: '#81C784' as const }
+                                : completedCount === 0
+                                    ? { color: '#FF8A80' as const }
+                                    : { color: '#FFD54F' as const })
+                            : null;
+
                         return (
                             <TouchableOpacity
                                 key={index}
@@ -486,6 +515,25 @@ export default function TimerList({
                                         {item.day}
                                     </Text>
                                 </View>
+                                {item.currentMonth && (
+                                    <View style={[
+                                        styles.dayTaskCountBar,
+                                        !isLandscape && styles.dayTaskCountBarPortrait,
+                                        pastDayBarStyle ?? (dayTimerCount > 0
+                                            ? { backgroundColor: 'rgba(255,255,255,0.1)' }
+                                            : { backgroundColor: 'rgba(255,255,255,0.04)' }),
+                                        !pastDayBarStyle && isSelected && (isPastSelection ? { backgroundColor: 'rgba(255,80,80,0.25)' } : { backgroundColor: 'rgba(76,175,80,0.25)' }),
+                                        !pastDayBarStyle && isToday && !isSelected && dayTimerCount > 0 && { backgroundColor: 'rgba(255,255,255,0.15)' }
+                                    ]}>
+                                        <Text style={[
+                                            dayTimerCount > 0 ? styles.dayTaskCount : styles.dayTaskCountZero,
+                                            pastDayTextStyle ?? (isSelected ? (isPastSelection ? { color: '#FF8080' } : { color: '#81C784' }) : undefined),
+                                            !pastDayTextStyle && isToday && !isSelected && dayTimerCount > 0 && { color: 'rgba(255,255,255,0.9)' }
+                                        ]}>
+                                            {dayTimerCount === 0 ? '–' : dayTimerCount}
+                                        </Text>
+                                    </View>
+                                )}
                             </TouchableOpacity>
                         );
                     })}
@@ -687,7 +735,7 @@ export default function TimerList({
                                             activeOpacity={0.7}
                                         >
                                             <MaterialIcons name="calendar-today" size={14} color="#fff" />
-                                            <Text style={[styles.dateLandscapeText, !isToday && { color: '#fff', fontSize: 16 }]}>
+                                            <Text style={styles.dateLandscapeText}>
                                                 {isToday ? `  ${dayName}, ${dayNum} ${monthName}` : `  ${dateLabel} ${monthName}`}
                                             </Text>
                                         </TouchableOpacity>
@@ -2889,15 +2937,15 @@ const styles = StyleSheet.create({
     },
     dayCell: {
         width: '14.28%',
-        height: 32,
+        minHeight: 34,
         alignItems: 'center',
         justifyContent: 'center',
         marginBottom: 2,
     },
     dayCircle: {
-        width: 24,
-        height: 24,
-        borderRadius: 12,
+        width: 20,
+        height: 20,
+        borderRadius: 10,
         alignItems: 'center',
         justifyContent: 'center',
     },
@@ -2938,6 +2986,28 @@ const styles = StyleSheet.create({
         color: '#FF5050',
         fontWeight: '800',
     },
+    dayTaskCountBar: {
+        width: 20,
+        height: 10,
+        borderRadius: 5,
+        alignItems: 'center',
+        justifyContent: 'center',
+        marginTop: 2,
+    },
+    dayTaskCountBarPortrait: {
+        width: 22,
+        height: 10,
+    },
+    dayTaskCount: {
+        fontSize: 8,
+        fontWeight: '800',
+        color: 'rgba(255,255,255,0.7)',
+    },
+    dayTaskCountZero: {
+        fontSize: 8,
+        fontWeight: '600',
+        color: 'rgba(255,255,255,0.22)',
+    },
     datePortraitRow: {
         flex: 1,
         flexDirection: 'row',
@@ -2959,9 +3029,9 @@ const styles = StyleSheet.create({
         paddingBottom: 0,
     },
     dayCirclePortrait: {
-        width: 26,
-        height: 26,
-        borderRadius: 13,
+        width: 22,
+        height: 22,
+        borderRadius: 11,
     },
     dayTextPortrait: {
         fontSize: 11,

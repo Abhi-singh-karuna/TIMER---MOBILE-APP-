@@ -534,7 +534,7 @@ const styles = StyleSheet.create({
         marginRight: 8,
     },
     taskTitle: {
-        fontSize: 14,
+        fontSize: 15,
         fontWeight: '700',
         color: '#fff',
     },
@@ -573,6 +573,27 @@ const styles = StyleSheet.create({
         marginTop: 4,
         gap: 1,
         flexWrap: 'wrap',
+    },
+    streakContainerSingleLine: {
+        flexWrap: 'nowrap',
+        maxWidth: '100%',
+    },
+    streakRemainingBadge: {
+        marginLeft: 2,
+        paddingHorizontal: 4,
+        paddingVertical: 2,
+        borderRadius: 6,
+        backgroundColor: 'rgba(0,229,255,0.2)',
+        borderWidth: 1,
+        borderColor: 'rgba(0,229,255,0.4)',
+        justifyContent: 'center',
+        alignItems: 'center',
+    },
+    streakRemainingBadgeText: {
+        fontSize: 8,
+        fontWeight: '900',
+        color: '#00E5FF',
+        lineHeight: 10,
     },
     streakStar: {
         position: 'relative',
@@ -854,22 +875,22 @@ const styles = StyleSheet.create({
     },
     dayCell: {
         width: '14.28%',
-        height: 32,
+        minHeight: 34,
         alignItems: 'center',
         justifyContent: 'center',
         marginBottom: 2,
     },
     dayCircle: {
-        width: 24,
-        height: 24,
-        borderRadius: 12,
+        width: 20,
+        height: 20,
+        borderRadius: 10,
         alignItems: 'center',
         justifyContent: 'center',
     },
     dayCirclePortrait: {
-        width: 26,
-        height: 26,
-        borderRadius: 13,
+        width: 22,
+        height: 22,
+        borderRadius: 11,
     },
     todayCircle: {
         backgroundColor: '#FFFFFF',
@@ -891,6 +912,28 @@ const styles = StyleSheet.create({
     },
     otherMonthText: {
         color: 'rgba(255,255,255,0.4)',
+    },
+    dayTaskCountBar: {
+        width: 20,
+        height: 10,
+        borderRadius: 5,
+        alignItems: 'center',
+        justifyContent: 'center',
+        marginTop: 2,
+    },
+    dayTaskCountBarPortrait: {
+        width: 22,
+        height: 10,
+    },
+    dayTaskCount: {
+        fontSize: 8,
+        fontWeight: '800',
+        color: 'rgba(255,255,255,0.7)',
+    },
+    dayTaskCountZero: {
+        fontSize: 8,
+        fontWeight: '600',
+        color: 'rgba(255,255,255,0.22)',
     },
     selectedDayCircle: {
         borderWidth: 2,
@@ -1505,7 +1548,7 @@ export default function TaskList({
         }
     }, []);
 
-    const [filterCategoryId, setFilterCategoryId] = useState<string>('All');
+    const [filterCategoryIds, setFilterCategoryIds] = useState<string[]>([]); // empty = All; multi-select
     const [filterStatus, setFilterStatus] = useState<string>('All');
     const [isCategoryExpanded, setIsCategoryExpanded] = useState(false);
     const [isStatusExpanded, setIsStatusExpanded] = useState(false);
@@ -1575,11 +1618,11 @@ export default function TaskList({
         ? tasks.filter(t => t && !!t.isBacklog)
         : expandTasksForDate(tasks, selectedLogical).filter(t => t && !t.isBacklog);
 
-    // Apply category and status filters
+    // Apply category and status filters (category: multi-select; empty = All)
     const filteredTasks = dateFilteredTasks.filter(t => {
         // Safety check: ensure task exists and has required properties
         if (!t || !t.id || !t.status || !t.forDate) return false;
-        const matchesCategory = filterCategoryId === 'All' || t.categoryId === filterCategoryId;
+        const matchesCategory = filterCategoryIds.length === 0 || (t.categoryId != null && filterCategoryIds.includes(t.categoryId));
         const matchesStatus = filterStatus === 'All' || t.status === filterStatus;
         return matchesCategory && matchesStatus;
     }).sort((a, b) => {
@@ -1736,6 +1779,39 @@ export default function TaskList({
 
                         const isPastSelection = isSelected && selectedLogical < getLogicalDate(new Date(), dailyStartMinutes);
 
+                        // Task count and completion for this date (current month only)
+                        let dayTaskCount = 0;
+                        let dayTasks: Task[] = [];
+                        let cellLogicalDate = '';
+                        if (item.currentMonth) {
+                            const y = viewDate.getFullYear(), m = viewDate.getMonth(), d = item.day;
+                            const cellDate = new Date(y, m, d, Math.floor(dailyStartMinutes / 60), dailyStartMinutes % 60, 0, 0);
+                            cellLogicalDate = getLogicalDate(cellDate, dailyStartMinutes);
+                            dayTasks = expandTasksForDate(tasks, cellLogicalDate).filter(t => t && !t.isBacklog);
+                            // Apply same category filter as task list (calendar count includes category filter)
+                            if (filterCategoryIds.length > 0) {
+                                dayTasks = dayTasks.filter(t => t.categoryId != null && filterCategoryIds.includes(t.categoryId));
+                            }
+                            dayTaskCount = dayTasks.length;
+                        }
+                        const isPastDate = item.currentMonth && cellLogicalDate !== '' && cellLogicalDate < logicalToday;
+                        const completedCount = dayTasks.filter(t => t.status === 'Completed').length;
+                        // Past day bar color: all done = green, all pending = red, mixed = yellow (only when has tasks)
+                        const pastDayBarStyle = isPastDate && dayTaskCount > 0
+                            ? (completedCount === dayTaskCount
+                                ? { backgroundColor: 'rgba(76,175,80,0.35)' as const }
+                                : completedCount === 0
+                                    ? { backgroundColor: 'rgba(255,80,80,0.35)' as const }
+                                    : { backgroundColor: 'rgba(255,193,7,0.4)' as const })
+                            : null;
+                        const pastDayTextStyle = isPastDate && dayTaskCount > 0
+                            ? (completedCount === dayTaskCount
+                                ? { color: '#81C784' as const }
+                                : completedCount === 0
+                                    ? { color: '#FF8A80' as const }
+                                    : { color: '#FFD54F' as const })
+                            : null;
+
                         return (
                             <TouchableOpacity
                                 key={index}
@@ -1764,6 +1840,25 @@ export default function TaskList({
                                         {item.day}
                                     </Text>
                                 </View>
+                                {item.currentMonth && (
+                                    <View style={[
+                                        styles.dayTaskCountBar,
+                                        !isLandscape && styles.dayTaskCountBarPortrait,
+                                        pastDayBarStyle ?? (dayTaskCount > 0
+                                            ? { backgroundColor: 'rgba(255,255,255,0.1)' }
+                                            : { backgroundColor: 'rgba(255,255,255,0.04)' }),
+                                        !pastDayBarStyle && isSelected && (isPastSelection ? { backgroundColor: 'rgba(255,80,80,0.25)' } : { backgroundColor: 'rgba(76,175,80,0.25)' }),
+                                        !pastDayBarStyle && isTodayDate && !isSelected && dayTaskCount > 0 && { backgroundColor: 'rgba(255,255,255,0.15)' }
+                                    ]}>
+                                        <Text style={[
+                                            dayTaskCount > 0 ? styles.dayTaskCount : styles.dayTaskCountZero,
+                                            pastDayTextStyle ?? (isSelected ? (isPastSelection ? { color: '#FF8080' } : { color: '#81C784' }) : undefined),
+                                            !pastDayTextStyle && isTodayDate && !isSelected && dayTaskCount > 0 && { color: 'rgba(255,255,255,0.9)' }
+                                        ]}>
+                                            {dayTaskCount === 0 ? '–' : dayTaskCount}
+                                        </Text>
+                                    </View>
+                                )}
                             </TouchableOpacity>
                         );
                     })}
@@ -1941,7 +2036,7 @@ export default function TaskList({
                                             activeOpacity={0.7}
                                         >
                                             <MaterialIcons name="calendar-today" size={14} color="#fff" />
-                                            <Text style={[styles.dateLandscapeText, !isToday && { color: '#fff', fontSize: 16 }]}>
+                                            <Text style={styles.dateLandscapeText}>
                                                 {isToday ? `  ${dayName}, ${dayNum} ${monthName}` : `  ${dateLabel} ${monthName}`}
                                             </Text>
                                         </TouchableOpacity>
@@ -2009,7 +2104,7 @@ export default function TaskList({
                                                     </TouchableOpacity>
                                                 </View>
 
-                                                {/* Category Filter */}
+                                                {/* Category Filter (multi-select) */}
                                                 <View style={styles.expandableFilterContainer}>
                                                     <TouchableOpacity
                                                         style={styles.expandableHeader}
@@ -2018,12 +2113,12 @@ export default function TaskList({
                                                     >
                                                         <View style={styles.expandableHeaderLeft}>
                                                             <MaterialIcons
-                                                                name={filterCategoryId === 'All' ? 'category' : (categories.find(c => c.id === filterCategoryId)?.icon || 'category')}
+                                                                name={filterCategoryIds.length === 0 ? 'category' : (categories.find(c => c.id === filterCategoryIds[0])?.icon || 'category')}
                                                                 size={16}
-                                                                color={filterCategoryId === 'All' ? 'rgba(255,255,255,0.4)' : (categories.find(c => c.id === filterCategoryId)?.color || '#fff')}
+                                                                color={filterCategoryIds.length === 0 ? 'rgba(255,255,255,0.4)' : (categories.find(c => c.id === filterCategoryIds[0])?.color || '#fff')}
                                                             />
                                                             <Text style={styles.expandableHeaderText}>
-                                                                {filterCategoryId === 'All' ? ' Category' : ` ${categories.find(c => c.id === filterCategoryId)?.name}`}
+                                                                {filterCategoryIds.length === 0 ? ' Category (All)' : filterCategoryIds.length === 1 ? ` ${categories.find(c => c.id === filterCategoryIds[0])?.name}` : ` ${filterCategoryIds.length} categories`}
                                                             </Text>
                                                         </View>
                                                         <MaterialIcons
@@ -2036,24 +2131,29 @@ export default function TaskList({
                                                     {isCategoryExpanded && (
                                                         <View style={styles.expandedContent}>
                                                             <TouchableOpacity
-                                                                style={[styles.miniChip, filterCategoryId === 'All' && styles.miniChipActive]}
-                                                                onPress={() => setFilterCategoryId('All')}
+                                                                style={[styles.miniChip, filterCategoryIds.length === 0 && styles.miniChipActive]}
+                                                                onPress={() => setFilterCategoryIds([])}
                                                             >
-                                                                <Text style={[styles.miniChipText, filterCategoryId === 'All' && styles.miniChipTextActive]}>All</Text>
+                                                                <Text style={[styles.miniChipText, filterCategoryIds.length === 0 && styles.miniChipTextActive]}>All</Text>
                                                             </TouchableOpacity>
-                                                            {categories.map(cat => (
-                                                                <TouchableOpacity
-                                                                    key={cat.id}
-                                                                    style={[
-                                                                        styles.miniChip,
-                                                                        filterCategoryId === cat.id && { backgroundColor: `${cat.color}20`, borderColor: cat.color }
-                                                                    ]}
-                                                                    onPress={() => setFilterCategoryId(cat.id)}
-                                                                >
-                                                                    <MaterialIcons name={cat.icon} size={10} color={filterCategoryId === cat.id ? cat.color : 'rgba(255,255,255,0.4)'} />
-                                                                    <Text style={[styles.miniChipText, filterCategoryId === cat.id && { color: cat.color }]}> {cat.name}</Text>
-                                                                </TouchableOpacity>
-                                                            ))}
+                                                            {categories.map(cat => {
+                                                                const isSelected = filterCategoryIds.includes(cat.id);
+                                                                return (
+                                                                    <TouchableOpacity
+                                                                        key={cat.id}
+                                                                        style={[
+                                                                            styles.miniChip,
+                                                                            isSelected && { backgroundColor: `${cat.color}20`, borderColor: cat.color }
+                                                                        ]}
+                                                                        onPress={() => {
+                                                                            setFilterCategoryIds(prev => prev.includes(cat.id) ? prev.filter(id => id !== cat.id) : [...prev, cat.id]);
+                                                                        }}
+                                                                    >
+                                                                        <MaterialIcons name={cat.icon} size={10} color={isSelected ? cat.color : 'rgba(255,255,255,0.4)'} />
+                                                                        <Text style={[styles.miniChipText, isSelected && { color: cat.color }]}> {cat.name}</Text>
+                                                                    </TouchableOpacity>
+                                                                );
+                                                            })}
                                                         </View>
                                                     )}
                                                 </View>
@@ -2333,7 +2433,7 @@ export default function TaskList({
                                                     styles.headerIconBtnPortrait,
                                                     { marginLeft: 6 },
                                                     showFiltersPortrait && styles.headerIconBtnActivePortrait,
-                                                    (filterCategoryId !== 'All' || filterStatus !== 'All' || showBacklog) && { borderColor: 'rgba(255,255,255,0.3)' }
+                                                    (filterCategoryIds.length > 0 || filterStatus !== 'All' || showBacklog) && { borderColor: 'rgba(255,255,255,0.3)' }
                                                 ]}
                                                 onPress={() => {
                                                     LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
@@ -2344,7 +2444,7 @@ export default function TaskList({
                                                 <MaterialIcons
                                                     name="filter-alt"
                                                     size={18}
-                                                    color={showFiltersPortrait ? "#fff" : (filterCategoryId !== 'All' || filterStatus !== 'All' || showBacklog ? "#fff" : "rgba(255,255,255,0.7)")}
+                                                    color={showFiltersPortrait ? "#fff" : (filterCategoryIds.length > 0 || filterStatus !== 'All' || showBacklog ? "#fff" : "rgba(255,255,255,0.7)")}
                                                 />
                                             </TouchableOpacity>
                                         </View>
@@ -2368,24 +2468,29 @@ export default function TaskList({
                                                     <View style={styles.filterDividerPortrait} />
 
                                                     <TouchableOpacity
-                                                        style={[styles.miniChip, filterCategoryId === 'All' && styles.miniChipActive]}
-                                                        onPress={() => setFilterCategoryId('All')}
+                                                        style={[styles.miniChip, filterCategoryIds.length === 0 && styles.miniChipActive]}
+                                                        onPress={() => setFilterCategoryIds([])}
                                                     >
-                                                        <Text style={[styles.miniChipText, filterCategoryId === 'All' && styles.miniChipTextActive]}>All Cat</Text>
+                                                        <Text style={[styles.miniChipText, filterCategoryIds.length === 0 && styles.miniChipTextActive]}>All Cat</Text>
                                                     </TouchableOpacity>
-                                                    {categories.map(cat => (
-                                                        <TouchableOpacity
-                                                            key={cat.id}
-                                                            style={[
-                                                                styles.miniChip,
-                                                                filterCategoryId === cat.id && { backgroundColor: `${cat.color}20`, borderColor: cat.color }
-                                                            ]}
-                                                            onPress={() => setFilterCategoryId(cat.id)}
-                                                        >
-                                                            <MaterialIcons name={cat.icon} size={10} color={filterCategoryId === cat.id ? cat.color : 'rgba(255,255,255,0.4)'} />
-                                                            <Text style={[styles.miniChipText, filterCategoryId === cat.id && { color: cat.color }]}> {cat.name}</Text>
-                                                        </TouchableOpacity>
-                                                    ))}
+                                                    {categories.map(cat => {
+                                                        const isSelected = filterCategoryIds.includes(cat.id);
+                                                        return (
+                                                            <TouchableOpacity
+                                                                key={cat.id}
+                                                                style={[
+                                                                    styles.miniChip,
+                                                                    isSelected && { backgroundColor: `${cat.color}20`, borderColor: cat.color }
+                                                                ]}
+                                                                onPress={() => {
+                                                                    setFilterCategoryIds(prev => prev.includes(cat.id) ? prev.filter(id => id !== cat.id) : [...prev, cat.id]);
+                                                                }}
+                                                            >
+                                                                <MaterialIcons name={cat.icon} size={10} color={isSelected ? cat.color : 'rgba(255,255,255,0.4)'} />
+                                                                <Text style={[styles.miniChipText, isSelected && { color: cat.color }]}> {cat.name}</Text>
+                                                            </TouchableOpacity>
+                                                        );
+                                                    })}
 
                                                     <View style={styles.filterDividerPortrait} />
 
@@ -2915,50 +3020,46 @@ function TaskCard({
                         )}
                     </View>
 
-                    {/* Show streak stars for recurring tasks, description for non-recurring */}
-                    {/* In expanded mode, show both streak and description for recurring tasks */}
+                    {/* Show streak stars: list mode = 10 stars + gray + count; expanded mode = all stars visible, no count icon */}
                     {(task.recurrence || task.recurrenceInstances) ? (() => {
-                        // Get the original task to access full recurrence data
                         const originalTask = allTasks ? (findOriginalRecurringTask(allTasks, task) || task) : task;
-                        const recentDates = getRecentRecurringDatesStatus(originalTask, dailyStartMinutes, 7);
-                        const streakCount = originalTask.streak ?? 0;
+                        const isExpandedMode = isExpanded || isFullView;
+                        const minDates = isExpandedMode ? 50 : 10;
+                        const rawRecent = getRecentRecurringDatesStatus(originalTask, dailyStartMinutes, minDates);
+                        const recentDates = [...rawRecent].sort((a, b) => b.date.localeCompare(a.date));
+                        const maxStars = 10;
+                        const visibleDates = recentDates.slice(0, maxStars);
+                        const remainingCount = recentDates.length > maxStars ? recentDates.length - maxStars : 0;
+                        const grayStarColor = 'rgba(255,255,255,0.25)';
+                        const displayItems: (typeof visibleDates[0] | null)[] = [...visibleDates];
+                        if (!isExpandedMode) {
+                            while (displayItems.length < maxStars) displayItems.push(null);
+                        }
+                        const itemsToShow = isExpandedMode ? recentDates : displayItems;
                         
                         return (
                             <>
-                                <View style={styles.streakContainer}>
-                                    {recentDates.length > 0 ? recentDates.map((dateStatus, index) => {
-                                        const isLast = index === recentDates.length - 1;
-                                        // Color based on status: Cyan for Completed, Yellow for In Progress, Red for Pending
-                                        let starColor = '#FF5252'; // Default: Red for Pending
-                                        if (dateStatus.status === 'Completed') {
-                                            starColor = '#00E5FF'; // Cyan
-                                        } else if (dateStatus.status === 'In Progress') {
-                                            starColor = '#FFB74D'; // Yellow
-                                        }
-                                        
+                                <View style={[
+                                    styles.streakContainer,
+                                    !isExpandedMode && styles.streakContainerSingleLine
+                                ]}>
+                                    {itemsToShow.map((dateStatus: (typeof recentDates[0]) | null, index: number) => {
+                                        const starColor = dateStatus
+                                            ? (dateStatus.status === 'Completed' ? '#4CAF50' : dateStatus.status === 'In Progress' ? '#FFB74D' : '#FF5252')
+                                            : grayStarColor;
                                         return (
-                                            <View key={`${dateStatus.date}-${index}`} style={styles.streakStar}>
+                                            <View key={dateStatus ? `${dateStatus.date}-${index}` : `gray-${index}`} style={styles.streakStar}>
                                                 <MaterialIcons 
-                                                    name="star" 
-                                                    size={14} 
+                                                    name="star-outline" 
+                                                    size={isExpandedMode ? 16 : 14} 
                                                     color={starColor}
                                                 />
-                                                {isLast && streakCount > 0 && (
-                                                    <View style={styles.streakStarBadge}>
-                                                        <Text style={styles.streakStarBadgeText}>
-                                                            +{streakCount}
-                                                        </Text>
-                                                    </View>
-                                                )}
                                             </View>
                                         );
-                                    }) : (
-                                        <View style={styles.streakStar}>
-                                            <MaterialIcons 
-                                                name="star" 
-                                                size={14} 
-                                                color="rgba(255,255,255,0.3)"
-                                            />
+                                    })}
+                                    {!isExpandedMode && remainingCount > 0 && (
+                                        <View style={styles.streakRemainingBadge}>
+                                            <Text style={styles.streakRemainingBadgeText}>+{remainingCount}</Text>
                                         </View>
                                     )}
                                 </View>
@@ -3063,51 +3164,27 @@ function TaskCard({
                         </View>
 
                         {/* Show streak stars for recurring tasks, description for non-recurring in full view */}
-                        {/* In full view, show both streak and description for recurring tasks */}
+                        {/* Full view (landscape): show all streak stars, no count icon */}
                         {(task.recurrence || task.recurrenceInstances) ? (() => {
-                            // Get the original task to access full recurrence data
                             const originalTask = allTasks ? (findOriginalRecurringTask(allTasks, task) || task) : task;
-                            const recentDates = getRecentRecurringDatesStatus(originalTask, dailyStartMinutes, 7);
-                            const streakCount = originalTask.streak ?? 0;
+                            const rawRecent = getRecentRecurringDatesStatus(originalTask, dailyStartMinutes, 50);
+                            const recentDates = [...rawRecent].sort((a, b) => b.date.localeCompare(a.date));
                             
                             return (
                                 <>
                                     <View style={[styles.streakContainer, { marginBottom: task.description ? 12 : 16 }]}>
-                                        {recentDates.length > 0 ? recentDates.map((dateStatus, index) => {
-                                            const isLast = index === recentDates.length - 1;
-                                            // Color based on status: Cyan for Completed, Yellow for In Progress, Red for Pending
-                                            let starColor = '#FF5252'; // Default: Red for Pending
-                                            if (dateStatus.status === 'Completed') {
-                                                starColor = '#00E5FF'; // Cyan
-                                            } else if (dateStatus.status === 'In Progress') {
-                                                starColor = '#FFB74D'; // Yellow
-                                            }
-                                            
+                                        {recentDates.map((dateStatus, index) => {
+                                            const starColor = dateStatus.status === 'Completed' ? '#4CAF50' : dateStatus.status === 'In Progress' ? '#FFB74D' : '#FF5252';
                                             return (
                                                 <View key={`${dateStatus.date}-${index}`} style={styles.streakStar}>
                                                     <MaterialIcons 
-                                                        name="star" 
+                                                        name="star-outline" 
                                                         size={16} 
                                                         color={starColor}
                                                     />
-                                                    {isLast && streakCount > 0 && (
-                                                        <View style={styles.streakStarBadge}>
-                                                            <Text style={styles.streakStarBadgeText}>
-                                                                +{streakCount}
-                                                            </Text>
-                                                        </View>
-                                                    )}
                                                 </View>
                                             );
-                                        }) : (
-                                            <View style={styles.streakStar}>
-                                                <MaterialIcons 
-                                                    name="star" 
-                                                    size={16} 
-                                                    color="rgba(255,255,255,0.3)"
-                                                />
-                                            </View>
-                                        )}
+                                        })}
                                     </View>
                                     {/* Show description in full view for recurring tasks */}
                                     {task.description && (

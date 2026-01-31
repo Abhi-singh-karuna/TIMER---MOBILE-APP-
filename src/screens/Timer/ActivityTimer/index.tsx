@@ -850,13 +850,13 @@ const styles = StyleSheet.create({
         letterSpacing: -3,
         lineHeight: 150,
         fontVariant: ['tabular-nums'],
-        transform: [{ scaleY: 1.18 }],
+        transform: [{ scaleY: 1.07 }, { scaleX: 1.07 }],
     },
 
     landscapeSlideContainer: {
         position: 'absolute',
-        top: 40,
-        bottom: 40,
+        top: 30,
+        bottom: 30,
         left: 50,
         width: 64,
     },

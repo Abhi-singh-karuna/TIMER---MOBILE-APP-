@@ -307,6 +307,12 @@ export function getRecentRecurringDatesStatus(
     currentDate.setDate(currentDate.getDate() + 1);
   }
   
+  // Always include today's logical date in the streak (so today's star is visible)
+  const todayLogical = getLogicalDateStr(today);
+  if (shouldRecurOnDate(task.recurrence, todayLogical) && !recurringDates.includes(todayLogical)) {
+    recurringDates.push(todayLogical);
+  }
+  
   // Sort dates in descending order (newest first) and take at least minDates
   recurringDates.sort((a, b) => b.localeCompare(a));
   const recentDates = recurringDates.slice(0, Math.max(minDates, recurringDates.length));
@@ -324,7 +330,8 @@ export function getRecentRecurringDatesStatus(
         (instance?.completedAt && !instance.status) ||
         (task.recurrenceInstances[normalizedDate]?.completedAt)) {
       status = 'Completed';
-    } else if (instance?.status === 'In Progress' || instance?.startedAt) {
+    } else if (instance?.status === 'In Progress') {
+      // Only use explicit status; do not treat startedAt alone as In Progress so Pending shows red
       status = 'In Progress';
     } else {
       status = 'Pending';

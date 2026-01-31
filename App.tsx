@@ -1513,6 +1513,8 @@ export default function App() {
               setTimeOfDayBackgroundConfig(cfg);
               saveTimeOfDayBackgroundConfig(cfg);
             }}
+            onAfterClearTimers={() => setTimers([])}
+            onAfterClearTasks={() => setTasks([])}
           />
         );
 

@@ -29,7 +29,15 @@ export interface SettingsScreenProps {
     onQuickMessagesChange: (messages: QuickMessage[]) => void;
     timeOfDayBackgroundConfig: TimeOfDayBackgroundConfig;
     onTimeOfDayBackgroundConfigChange: (config: TimeOfDayBackgroundConfig) => void;
+    /** Called after clearing timers from storage so parent can update state */
+    onAfterClearTimers?: () => void;
+    /** Called after clearing tasks from storage so parent can update state */
+    onAfterClearTasks?: () => void;
 }
+
+// Storage keys for restore/clear (timers and tasks)
+export const TIMERS_STORAGE_KEY = '@timers';
+export const TASKS_STORAGE_KEY = '@timer_app_tasks';
 
 // Theme section props
 export interface ThemeSectionProps {
@@ -84,6 +92,13 @@ export interface QuickMessageSectionProps {
 // Info section props
 export interface InfoSectionProps {
     isLandscape: boolean;
+}
+
+// Restore section props
+export interface RestoreSectionProps {
+    isLandscape: boolean;
+    onClearTime: () => void;
+    onClearTask: () => void;
 }
 
 // Storage keys
