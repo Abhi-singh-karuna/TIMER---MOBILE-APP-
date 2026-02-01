@@ -3306,7 +3306,7 @@ export default function LiveFocusView({
                         >
                             {runningTimer != null ? (
                                 <>
-                                    <Text style={styles.liveRunningTimerName} numberOfLines={1}>{runningTimer.title}</Text>
+                                    <Text style={styles.liveRunningTimerName} numberOfLines={1} ellipsizeMode="tail">{runningTimer.title}</Text>
                                     <Text style={styles.liveRunningTimerValue}>{runningTimer.time}</Text>
                                 </>
                             ) : (
@@ -4348,13 +4348,16 @@ const styles = StyleSheet.create({
         justifyContent: 'center',
         gap: 2,
         minWidth: 0,
-        maxWidth: 200,
+        maxWidth: 180,
+        flexShrink: 1,
+        overflow: 'hidden',
     },
     liveRunningTimerName: {
         fontSize: 11,
         fontWeight: '800',
         color: '#FFFFFF',
         minWidth: 0,
+        maxWidth: '100%',
     },
     liveRunningTimerValue: {
         fontSize: 10,

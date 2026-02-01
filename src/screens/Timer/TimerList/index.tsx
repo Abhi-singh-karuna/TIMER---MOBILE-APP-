@@ -1318,20 +1318,6 @@ interface TimerCardProps {
     isReadOnly?: boolean;
 }
 
-// Status badge configuration
-const getStatusConfig = (status: Timer['status']) => {
-    switch (status) {
-        case 'Running':
-            return { label: 'RUNNING', color: '#00E5FF', bgColor: 'rgba(0,229,255,0.1)' };
-        case 'Paused':
-            return { label: 'PAUSED', color: '#FFA500', bgColor: 'rgba(255,165,0,0.15)' };
-        case 'Completed':
-            return { label: 'COMPLETED', color: '#4CAF50', bgColor: 'rgba(76,175,80,0.15)' };
-        default:
-            return { label: 'UPCOMING', color: 'rgba(255,255,255,0.5)', bgColor: 'rgba(255,255,255,0.08)' };
-    }
-};
-
 function TimerCard({ timer, onLongPress, onPress, onPlayPause, isLandscape, categories, isReadOnly }: TimerCardProps) {
     const isCompleted = timer.status === 'Completed';
     const isRunning = timer.status === 'Running';
@@ -1371,8 +1357,6 @@ function TimerCard({ timer, onLongPress, onPress, onPlayPause, isLandscape, cate
             useNativeDriver: false, // width animation can't use native driver
         }).start();
     }, [completionPercentage]);
-
-    const statusConfig = getStatusConfig(timer.status);
 
     return (
         <View
@@ -1485,21 +1469,19 @@ function TimerCard({ timer, onLongPress, onPress, onPlayPause, isLandscape, cate
             {/* Timer Info and Actions */}
             <View style={styles.cardContent} pointerEvents="box-none">
                 <View style={styles.cardLeft} pointerEvents="none">
-                    {/* Status Row */}
+                    {/* Top Row: Category + Status (interchanged with borrow time) + saved badge */}
                     <View style={styles.topStatusRow}>
+                        <View style={[styles.categoryBadge, { backgroundColor: `${categoryColor}15`, borderColor: `${categoryColor}30` }]}>
+                            <MaterialIcons name={categoryIcon} size={10} color={categoryColor} />
+                            <Text style={[styles.categoryBadgeText, { color: categoryColor }]}>
+                                {category?.name.toUpperCase() || 'GENERAL'}
+                            </Text>
+                        </View>
                         <View style={[styles.statusBadge, { backgroundColor: `${getStatusColor()}15` }]}>
                             <Text style={[styles.statusText, { color: getStatusColor() }]}>
                                 {timer.status.toUpperCase()}
                             </Text>
                         </View>
-                        {borrowedSeconds > 0 && !isCompleted && (
-                            <View style={styles.borrowedBadgeSmall}>
-                                <MaterialIcons name="add-alarm" size={10} color="rgba(255,255,255,0.4)" />
-                                <Text style={styles.borrowedTextSmall}>
-                                    {formatBorrowedTime(borrowedSeconds)}
-                                </Text>
-                            </View>
-                        )}
                         {isCompleted && (timer.savedTime || 0) > 0 && (
                             <View style={styles.savedBadgeSmall}>
                                 <MaterialIcons name="speed" size={10} color="rgba(76,175,80,0.6)" />
@@ -1510,17 +1492,14 @@ function TimerCard({ timer, onLongPress, onPress, onPlayPause, isLandscape, cate
                         )}
                     </View>
 
+                    {/* Title Row: Title only */}
                     <View style={styles.titleRow}>
-                        <Text
-                            style={[styles.timerTitle, isCompleted && styles.timerTitleCompleted]}
-                            numberOfLines={1}
-                        >
-                            {timer.title}
-                        </Text>
-                        <View style={[styles.categoryBadge, { backgroundColor: `${categoryColor}15`, borderColor: `${categoryColor}30` }]}>
-                            <MaterialIcons name={categoryIcon} size={10} color={categoryColor} />
-                            <Text style={[styles.categoryBadgeText, { color: categoryColor }]}>
-                                {category?.name.toUpperCase() || 'GENERAL'}
+                        <View style={styles.timerTitleWrap}>
+                            <Text
+                                style={[styles.timerTitle, isCompleted && styles.timerTitleCompleted]}
+                                numberOfLines={1}
+                            >
+                                {timer.title}
                             </Text>
                         </View>
                     </View>
@@ -1531,6 +1510,14 @@ function TimerCard({ timer, onLongPress, onPress, onPlayPause, isLandscape, cate
                         <Text style={styles.timerTotal}>
                             / {getExpandedTotal(timer.total, timer.borrowedTime || 0)}
                         </Text>
+                        {borrowedSeconds > 0 && (
+                            <View style={styles.borrowedBadgeSmall}>
+                                <MaterialIcons name="add-alarm" size={8} color="rgba(255,255,255,0.4)" />
+                                <Text style={styles.borrowedTextSmall}>
+                                    {formatBorrowedTime(borrowedSeconds)}
+                                </Text>
+                            </View>
+                        )}
                     </View>
                 </View>
 
@@ -2007,22 +1994,24 @@ const styles = StyleSheet.create({
         paddingVertical: 3,
         borderRadius: 99,
         borderWidth: 1,
+        flexShrink: 0,
     },
 
     borrowedBadgeSmall: {
         flexDirection: 'row',
         alignItems: 'center',
-        gap: 4,
-        paddingHorizontal: 8,
-        paddingVertical: 4,
+        gap: 3,
+        paddingHorizontal: 6,
+        paddingVertical: 3,
         borderRadius: 8,
-        backgroundColor: 'rgba(255,255,255,0.05)',
+        backgroundColor: 'rgba(113, 94, 94, 0.58)',
+        marginLeft: 10,
     },
 
     borrowedTextSmall: {
-        fontSize: 10,
+        fontSize: 8,
         fontWeight: '600',
-        color: 'rgba(255,255,255,0.4)',
+        color: 'rgba(0, 0, 0, 0.4)',
     },
 
     savedBadgeSmall: {
@@ -2057,13 +2046,20 @@ const styles = StyleSheet.create({
 
     cardLeft: {
         flex: 1,
+        minWidth: 0,
+        marginRight: 12,
+    },
+
+    timerTitleWrap: {
+        flex: 1,
+        minWidth: 0,
+        marginRight: 8,
     },
 
     timerTitle: {
         fontSize: 14,
         fontFamily: 'PlusJakartaSans_700Bold',
         color: '#fff',
-        marginRight: 8,
     },
 
     timerTitleCompleted: {
@@ -2091,6 +2087,7 @@ const styles = StyleSheet.create({
         flexDirection: 'row',
         alignItems: 'center',
         marginBottom: 4,
+        minWidth: 0,
     },
 
     categoryBadge: {
@@ -2101,6 +2098,7 @@ const styles = StyleSheet.create({
         borderRadius: 6,
         borderWidth: 1,
         gap: 4,
+        flexShrink: 0,
     },
 
     categoryBadgeText: {
