@@ -70,6 +70,8 @@ export type RecurrenceType = 'daily' | 'weekly' | 'monthly';
 export interface RecurrenceBase {
   startDate: string; // ISO date, default = today
   endDate?: string;  // optional
+  /** When true, subtask create/update/delete on one instance syncs to all instances. Status (complete/incomplete) is NOT synced. */
+  repeatSync?: boolean;
 }
 
 export type Recurrence =
@@ -197,6 +199,16 @@ export const COLOR_PRESETS = [
   { name: 'Vibrant Orange', hex: '#FF9100' },
   { name: 'Spring Green', hex: '#00E676' },
   { name: 'Royal Purple', hex: '#D1C4E9' },
+  { name: 'Teal', hex: '#00897B' },
+  { name: 'Navy Blue', hex: '#1565C0' },
+  { name: 'Lavender', hex: '#B39DDB' },
+  { name: 'Amber', hex: '#FFC107' },
+  { name: 'Rose', hex: '#E91E63' },
+  { name: 'Cyan', hex: '#00BCD4' },
+  { name: 'Lime', hex: '#CDDC39' },
+  { name: 'Indigo', hex: '#3F51B5' },
+  { name: 'Deep Orange', hex: '#FF5722' },
+  { name: 'Brown', hex: '#795548' },
 ];
 
 export const LANDSCAPE_PRESETS = [

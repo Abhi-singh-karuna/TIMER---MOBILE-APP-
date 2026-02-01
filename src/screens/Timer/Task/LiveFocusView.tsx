@@ -826,9 +826,19 @@ export default function LiveFocusView({
         }
     }, [tasks.length]);
 
-    // NOTE: Removed the cleanup effect for pendingLayoutsRef
-    // Pending layouts now persist for the lifetime of the component
-    // This prevents any race conditions where A1 reverts when A2 is edited
+    // NOTE: Pending layouts persist within a date view. When user changes date (dock calendar),
+    // we must clear them so the new date's per-instance data (start/duration) is shown.
+    const selectedDateKey = getLogicalDate(selectedDate, dailyStartMinutes);
+    useEffect(() => {
+        pendingLayoutsRef.current.clear();
+        setPendingLayoutsVersion(v => v + 1);
+        setTaskHeights(new Map());
+        setCategorySectionHeights(new Map());
+        stagesHashRef.current = '';
+        // Exit any in-progress edit (resize/drag) when switching dates
+        clearEditingState();
+        // eslint-disable-next-line react-hooks/exhaustive-deps -- clearEditingState is stable, only run on date change
+    }, [selectedDateKey, dailyStartMinutes]);
 
     // Clear measured heights when stages change to force recalculation for dynamic lane adjustment
     useEffect(() => {

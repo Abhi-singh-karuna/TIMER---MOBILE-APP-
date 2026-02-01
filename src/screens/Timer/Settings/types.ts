@@ -121,7 +121,11 @@ export const DEFAULT_TEXT_COLOR = '#FFFFFF';
 // Category icons list
 export const CATEGORY_ICONS: (keyof typeof MaterialIcons.glyphMap)[] = [
     'category', 'work', 'fitness-center', 'menu-book', 'fastfood', 'local-hospital',
-    'home', 'laptop', 'shopping-cart', 'brush', 'code', 'sports-esports'
+    'home', 'laptop', 'shopping-cart', 'brush', 'code', 'sports-esports',
+    'school', 'directions-car', 'pets', 'music-note', 'star', 'favorite',
+    'attach-money', 'eco', 'local-cafe', 'movie',
+    'business', 'business-center', 'group', 'handshake', 'assignment',
+    'analytics', 'schedule', 'folder', 'description', 'leaderboard',
 ];
 
 // Repetition options
