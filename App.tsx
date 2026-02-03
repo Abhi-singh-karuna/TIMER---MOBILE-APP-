@@ -1632,6 +1632,8 @@ export default function App() {
               }}
               initialShowLive={shouldShowLiveView}
               onLiveViewShown={() => setShouldShowLiveView(false)}
+              timerTextColor={timerTextColor}
+              sliderButtonColor={sliderButtonColor}
             />
           );
         }

@@ -24,6 +24,7 @@ import { Task, Category, TaskStage, StageStatus, Timer } from '../../../constant
 import AddSubtaskModal from '../../../components/AddSubtaskModal';
 import ApprovalPopup from './ApprovalPopup';
 import StageActionPopup from './StageActionPopup';
+import FullScreenTimer from './FullScreenTimer';
 import { buildTimeOfDayBackgroundSegments, DEFAULT_TIME_OF_DAY_SLOTS, TimeOfDaySlotConfigList } from '../../../utils/timeOfDaySlots';
 import { getLogicalDate, getStartOfLogicalDay, getStartOfLogicalDayFromString, isSameLogicalDay, toDisplayMinutes, DEFAULT_DAILY_START_MINUTES } from '../../../utils/dailyStartTime';
 
@@ -52,6 +53,10 @@ interface LiveFocusViewProps {
     initialViewMode?: LiveViewMode;
     /** Called when user changes view mode; parent should persist (e.g. AsyncStorage). */
     onViewModeChange?: (mode: LiveViewMode) => void;
+    /** Timer running colour from Settings (Theme); used by full-screen timer display. */
+    timerTextColor?: string;
+    /** Slider/button accent colour from Settings; used by full-screen timer slide-to-complete. */
+    sliderButtonColor?: string;
 }
 
 type TaskLiveStatus = 'ACTIVE' | 'DONE' | 'PLANNED';
@@ -104,6 +109,8 @@ export default function LiveFocusView({
     onOpenRunningTimer,
     initialViewMode,
     onViewModeChange,
+    timerTextColor = '#FFFFFF',
+    sliderButtonColor = '#FFFFFF',
 }: LiveFocusViewProps) {
     const { width: screenWidth, height: screenHeight } = useWindowDimensions();
     const isLandscape = screenWidth > screenHeight;
@@ -236,10 +243,11 @@ export default function LiveFocusView({
     // Task subtasks popup: tap left task card opens popup with all subtasks and status
     const [taskSubtasksPopupTask, setTaskSubtasksPopupTask] = useState<Task | null>(null);
 
-    // Simple timer state (counts up from 00:00:00)
+    // Simple timer state (counts up from 00:00:00); shared with dock and full-screen timer
     const [timerSeconds, setTimerSeconds] = useState(0);
     const [isTimerRunning, setIsTimerRunning] = useState(false);
     const timerIntervalRef = useRef<NodeJS.Timeout | null>(null);
+    const [fullScreenTimerVisible, setFullScreenTimerVisible] = useState(false);
 
     // Animate progress panel expand/collapse
     useEffect(() => {
@@ -1329,6 +1337,174 @@ export default function LiveFocusView({
     }, [tasks]);
     const mergedTimedStages = useMemo(() => mergedTimedEntries.map(e => e.stage), [mergedTimedEntries]);
 
+    // Live stages for full-screen timer (top right): only subtasks whose time range overlaps "now", with remaining countdown (descending) in seconds
+    const liveStagesForFullScreen = useMemo((): { text: string; startTimeMinutes: number; durationMinutes: number; remainingSeconds: number; taskId: number; id: number; status: StageStatus }[] => {
+        const now = currentTimeRef.current;
+        const currentMinutes = now.getHours() * 60 + now.getMinutes() + now.getSeconds() / 60;
+        const nowD = toDisplayMinutes(currentMinutes, dailyStartMinutes); // 0–1440 display space
+        const list: { text: string; startTimeMinutes: number; durationMinutes: number; remainingSeconds: number; taskId: number; id: number; status: StageStatus }[] = [];
+        tasks.forEach(task => {
+            (task.stages || []).forEach(stage => {
+                const hasTime = (stage.startTimeMinutes != null) || (stage.durationMinutes != null);
+                if (!hasTime || (stage.status !== 'Upcoming' && stage.status !== 'Process')) return;
+                const pending = pendingLayoutsRef.current.get(stage.id);
+                const start = pending ? pending.startTimeMinutes : (stage.startTimeMinutes ?? 0);
+                const duration = pending ? pending.durationMinutes : (stage.durationMinutes ?? 180);
+                const displayStart = (start - dailyStartMinutes + 1440) % 1440;
+                const displayEndRaw = displayStart + duration;
+                const overlapsNow =
+                    displayEndRaw <= 1440
+                        ? nowD >= displayStart && nowD < displayEndRaw
+                        : nowD >= displayStart || nowD < displayEndRaw - 1440;
+                if (overlapsNow) {
+                    const elapsedDisplay = nowD >= displayStart ? nowD - displayStart : (1440 - displayStart) + nowD;
+                    const remainingMinutes = duration - elapsedDisplay;
+                    const remainingSeconds = Math.max(0, Math.round(remainingMinutes * 60));
+                    list.push({
+                        text: stage.text,
+                        startTimeMinutes: start,
+                        durationMinutes: duration,
+                        remainingSeconds,
+                        taskId: task.id,
+                        id: stage.id,
+                        status: stage.status
+                    });
+                }
+            });
+        });
+        list.sort((a, b) => {
+            const effectiveA = a.startTimeMinutes < dailyStartMinutes ? a.startTimeMinutes + 1440 : a.startTimeMinutes;
+            const effectiveB = b.startTimeMinutes < dailyStartMinutes ? b.startTimeMinutes + 1440 : b.startTimeMinutes;
+            return effectiveA - effectiveB;
+        });
+        return list;
+    }, [tasks, pendingLayoutsVersion, dailyStartMinutes, currentTimeForRender]);
+
+    // Completed stages for full-screen timer (top left): timed stages with status === 'Done',
+    // and only those that start at or after daily start (e.g. 8 AM) so we count "completed since day started"
+    const completedStagesForFullScreen = useMemo((): { text: string; startTimeMinutes: number; durationMinutes: number; taskId: number; id: number; status: StageStatus; isOverdueProcess?: boolean }[] => {
+        const list: { text: string; startTimeMinutes: number; durationMinutes: number; taskId: number; id: number; status: StageStatus; isOverdueProcess?: boolean }[] = [];
+        const now = currentTimeRef.current;
+        const currentMinutes = now.getHours() * 60 + now.getMinutes() + now.getSeconds() / 60;
+        const nowD = toDisplayMinutes(currentMinutes, dailyStartMinutes);
+
+        tasks.forEach(task => {
+            (task.stages || []).forEach(stage => {
+                const hasTime = (stage.startTimeMinutes != null) || (stage.durationMinutes != null);
+                if (!hasTime) return;
+
+                // Allow "Done" tasks
+                // OR "Process" tasks that are overdue (end time passed)
+                // Overdue check: displayEnd < nowD
+
+                const pending = pendingLayoutsRef.current.get(stage.id);
+                const start = pending ? pending.startTimeMinutes : (stage.startTimeMinutes ?? 0);
+                const duration = pending ? pending.durationMinutes : (stage.durationMinutes ?? 180);
+
+                const displayStart = (start - dailyStartMinutes + 1440) % 1440;
+                const displayEndRaw = displayStart + duration;
+
+                // Check if it's an overdue process task
+                // It is overdue if status is Process AND nowD > displayEndRaw (meaning time has passed)
+                // Note: displayEndRaw can be > 1440 if wrapping, so we check logic carefully
+                // But simplified: if it's Process, we check if it is NOT overlapping now (i.e. finished)
+                // Re-use overlap logic or simple end check?
+                // Logic from liveStages: overlapsNow = ...
+                // If it DOES NOT overlap now, and is Process, implies it's either future or past.
+                // We want PAST. past means nowD >= displayEndRaw (or wrapping equivalent).
+
+                let isOverdueProcess = false;
+                if (stage.status === 'Process') {
+                    // Check if strictly past
+                    if (displayEndRaw <= 1440) {
+                        if (nowD >= displayEndRaw) isOverdueProcess = true;
+                    } else {
+                        // Wraps to next day (e.g. 23:00 to 01:00 -> 1380 to 1500)
+                        // It is past if nowD >= displayEndRaw - 1440 AND nowD < displayStart (to avoid confusion with pre-start)
+                        // Actually if it wraps, "past" means we are in the next day portion AFTER the end.
+                        // e.g. end is 01:00 (1500/60). if now is 02:00 (120), 120 > 60.
+                        if (nowD >= displayEndRaw - 1440 && nowD < displayStart) isOverdueProcess = true;
+                    }
+                }
+
+                if (stage.status !== 'Done' && !isOverdueProcess) return;
+
+                // Allow all times, treating < dailyStart as next day (post-midnight)
+
+                list.push({
+                    text: stage.text,
+                    startTimeMinutes: start,
+                    durationMinutes: duration,
+                    taskId: task.id,
+                    id: stage.id,
+                    status: stage.status,
+                    isOverdueProcess
+                });
+            });
+        });
+        list.sort((a, b) => {
+            // Adjust times relative to dailyStartMinutes
+            const effectiveA = a.startTimeMinutes < dailyStartMinutes ? a.startTimeMinutes + 1440 : a.startTimeMinutes;
+            const effectiveB = b.startTimeMinutes < dailyStartMinutes ? b.startTimeMinutes + 1440 : b.startTimeMinutes;
+            return effectiveA - effectiveB;
+        });
+        return list;
+    }, [tasks, pendingLayoutsVersion, dailyStartMinutes, currentTimeForRender]);
+
+    // Upcoming stages for full-screen timer (top left): timed stages with status === 'Upcoming',
+    // only those that start at or after daily start (e.g. 8 AM) for the current logical day
+    const upcomingStagesForFullScreen = useMemo((): { text: string; startTimeMinutes: number; durationMinutes: number; taskId: number; id: number; isLate: boolean }[] => {
+        const list: { text: string; startTimeMinutes: number; durationMinutes: number; taskId: number; id: number; isLate: boolean }[] = [];
+        tasks.forEach(task => {
+            (task.stages || []).forEach(stage => {
+                const hasTime = (stage.startTimeMinutes != null) || (stage.durationMinutes != null);
+                if (!hasTime || stage.status !== 'Upcoming') return;
+                const pending = pendingLayoutsRef.current.get(stage.id);
+                const start = pending ? pending.startTimeMinutes : (stage.startTimeMinutes ?? 0);
+                const duration = pending ? pending.durationMinutes : (stage.durationMinutes ?? 180);
+
+                // Allow all times, treating < dailyStart as next day (post-midnight)
+
+                // Calculate isLate: compare nowD with displayStart
+                const now = currentTimeRef.current;
+                const currentMinutes = now.getHours() * 60 + now.getMinutes() + now.getSeconds() / 60;
+                const nowD = toDisplayMinutes(currentMinutes, dailyStartMinutes);
+
+                const displayStart = (start - dailyStartMinutes + 1440) % 1440;
+                // It is late if nowD > displayStart (and within reasonable bounds, e.g. same day)
+                // Simple check: if nowD > displayStart, it's late.
+                const isLate = nowD > displayStart;
+
+                list.push({ text: stage.text, startTimeMinutes: start, durationMinutes: duration, taskId: task.id, id: stage.id, isLate });
+            });
+        });
+        list.sort((a, b) => {
+            // Adjust times relative to dailyStartMinutes
+            const effectiveA = a.startTimeMinutes < dailyStartMinutes ? a.startTimeMinutes + 1440 : a.startTimeMinutes;
+            const effectiveB = b.startTimeMinutes < dailyStartMinutes ? b.startTimeMinutes + 1440 : b.startTimeMinutes;
+            return effectiveA - effectiveB;
+        });
+        return list;
+    }, [tasks, pendingLayoutsVersion, dailyStartMinutes]);
+
+    // Undone stages for full-screen timer (top left): timed stages with status === 'Undone', start >= daily start
+    const undoneStagesForFullScreen = useMemo((): { text: string; startTimeMinutes: number; durationMinutes: number; taskId: number }[] => {
+        const list: { text: string; startTimeMinutes: number; durationMinutes: number; taskId: number }[] = [];
+        tasks.forEach(task => {
+            (task.stages || []).forEach(stage => {
+                const hasTime = (stage.startTimeMinutes != null) || (stage.durationMinutes != null);
+                if (!hasTime || stage.status !== 'Undone') return;
+                const pending = pendingLayoutsRef.current.get(stage.id);
+                const start = pending ? pending.startTimeMinutes : (stage.startTimeMinutes ?? 0);
+                const duration = pending ? pending.durationMinutes : (stage.durationMinutes ?? 180);
+                if (start < dailyStartMinutes) return;
+                list.push({ text: stage.text, startTimeMinutes: start, durationMinutes: duration, taskId: task.id });
+            });
+        });
+        list.sort((a, b) => (a.startTimeMinutes !== b.startTimeMinutes ? a.startTimeMinutes - b.startTimeMinutes : 0));
+        return list;
+    }, [tasks, pendingLayoutsVersion, dailyStartMinutes]);
+
     // Category view: one section per category that has tasks; each section has timed (sorted ascending) + untimed entries
     type CategorySection = {
         categoryId: string;
@@ -1586,6 +1762,90 @@ export default function LiveFocusView({
         );
         onUpdateStages(task, updatedStages);
         Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    }, [tasks, onUpdateStages]);
+
+    const handleStartStage = useCallback((taskId: number, stageId: number) => {
+        if (!onUpdateStages) return;
+        const task = tasks.find(t => t.id === taskId);
+        if (!task) return;
+
+        // Calculate current time as new start time
+        const now = new Date();
+        const currentMinutes = now.getHours() * 60 + now.getMinutes();
+        const newStartTime = (currentMinutes + 1440) % 1440;
+
+        const updatedStages = (task.stages || []).map(s => {
+            if (s.id === stageId) {
+                // Update pending layout ref immediately for responsiveness
+                pendingLayoutsRef.current.set(s.id, {
+                    startTimeMinutes: newStartTime,
+                    durationMinutes: s.durationMinutes || 30
+                });
+                return { ...s, status: 'Process' as StageStatus, startTimeMinutes: newStartTime };
+            }
+            return s;
+        });
+
+        onUpdateStages(task, updatedStages);
+        // Force refresh
+        setPendingLayoutsVersion(v => v + 1);
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    }, [tasks, onUpdateStages]);
+
+    const handleExtendStage = useCallback((taskId: number, stageId: number, minutes: number) => {
+        if (!onUpdateStages) return;
+        const task = tasks.find(t => t.id === taskId);
+        if (!task) return;
+
+        const updatedStages = (task.stages || []).map(s => {
+            if (s.id === stageId) {
+                // Update pending layout ref
+                const currentDuration = pendingLayoutsRef.current.get(s.id)?.durationMinutes || s.durationMinutes || 30;
+                const newDuration = currentDuration + minutes;
+
+                // If it has pending layout, update it
+                if (pendingLayoutsRef.current.has(s.id)) {
+                    const existing = pendingLayoutsRef.current.get(s.id)!;
+                    pendingLayoutsRef.current.set(s.id, {
+                        ...existing,
+                        durationMinutes: newDuration
+                    });
+                }
+
+                // Also update the stage object itself so the change persists
+                return { ...s, durationMinutes: newDuration };
+            }
+            return s;
+        });
+
+        onUpdateStages(task, updatedStages);
+        // Force refresh
+        setPendingLayoutsVersion(v => v + 1);
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    }, [tasks, onUpdateStages]);
+
+    const handleCompleteStage = useCallback((taskId: number, stageId: number) => {
+        if (!onUpdateStages) return;
+        const task = tasks.find(t => t.id === taskId);
+        if (!task) return;
+
+        const now = new Date();
+        const currentMinutes = now.getHours() * 60 + now.getMinutes();
+
+        const updatedStages = (task.stages || []).map(s => {
+            if (s.id === stageId) {
+                const start = s.startTimeMinutes || 0;
+                let actualDuration = currentMinutes - start;
+                if (actualDuration < 0) actualDuration += 1440;
+                actualDuration = Math.max(1, actualDuration);
+                return { ...s, status: 'Done' as StageStatus, durationMinutes: actualDuration };
+            }
+            return s;
+        });
+
+        onUpdateStages(task, updatedStages);
+        setPendingLayoutsVersion(v => v + 1);
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
     }, [tasks, onUpdateStages]);
 
     const handleDeleteStage = useCallback((taskId: number, stageId: number) => {
@@ -3317,14 +3577,21 @@ export default function LiveFocusView({
 
                         <View style={styles.bottomDockSpacer} />
 
-                        {/* Timer controls (always visible, on right side) */}
+                        {/* Timer controls (always visible, on right side); tap display opens full-screen timer */}
                         <View style={styles.bottomDockTimerSection}>
-                            <View style={styles.bottomDockTimerDisplay}>
+                            <TouchableOpacity
+                                style={styles.bottomDockTimerDisplay}
+                                onPress={() => {
+                                    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                                    setFullScreenTimerVisible(true);
+                                }}
+                                activeOpacity={0.7}
+                            >
                                 <Text style={styles.bottomDockTimerLabel}>TIMER</Text>
                                 <Text style={styles.bottomDockTimerValue}>
                                     {formatTimer(timerSeconds)}
                                 </Text>
-                            </View>
+                            </TouchableOpacity>
                             <View style={styles.bottomDockTimerControls}>
                                 <TouchableOpacity
                                     style={styles.dockTimerBtn}
@@ -3558,6 +3825,34 @@ export default function LiveFocusView({
                 onUpdateStageStatus={handleUpdateStageStatus}
                 onDeleteStage={handleDeleteStage}
                 onApproveAll={handleApproveAll}
+            />
+
+            <FullScreenTimer
+                visible={fullScreenTimerVisible}
+                onClose={() => setFullScreenTimerVisible(false)}
+                timerSeconds={timerSeconds}
+                isTimerRunning={isTimerRunning}
+                onPlay={() => setIsTimerRunning(true)}
+                onPause={() => setIsTimerRunning(false)}
+                onReset={() => {
+                    setIsTimerRunning(false);
+                    setTimerSeconds(0);
+                }}
+                tasks={tasks.map(t => ({
+                    id: t.id,
+                    title: t.title,
+                    color: categories.find(c => c.id === t.categoryId)?.color
+                }))}
+                liveStages={liveStagesForFullScreen}
+                completedStages={completedStagesForFullScreen}
+                upcomingStages={upcomingStagesForFullScreen}
+                undoneStages={undoneStagesForFullScreen}
+                timerTextColor={timerTextColor}
+                sliderButtonColor={sliderButtonColor}
+                onStartStage={handleStartStage}
+                onCompleteStage={handleCompleteStage}
+                onExtendStage={handleExtendStage}
+                onUpdateStageStatus={handleUpdateStageStatus}
             />
 
             <StageActionPopup

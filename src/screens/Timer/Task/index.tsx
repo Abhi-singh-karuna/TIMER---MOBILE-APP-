@@ -1523,6 +1523,10 @@ interface TaskListProps {
     initialShowLive?: boolean;
     /** Callback to reset initialShowLive after it's been consumed */
     onLiveViewShown?: () => void;
+    /** Timer running colour from Settings (Theme); used by full-screen timer. */
+    timerTextColor?: string;
+    /** Slider/button accent colour from Settings; used by full-screen timer slide-to-complete. */
+    sliderButtonColor?: string;
 }
 
 export default function TaskList({
@@ -1550,6 +1554,8 @@ export default function TaskList({
     onOpenActiveTimer,
     initialShowLive = false,
     onLiveViewShown,
+    timerTextColor = '#FFFFFF',
+    sliderButtonColor = '#FFFFFF',
 }: TaskListProps) {
     const { width: screenWidth, height: screenHeight } = useWindowDimensions();
     const isLandscape = screenWidth > screenHeight;
@@ -1930,6 +1936,8 @@ export default function TaskList({
                     selectedDate={selectedDate}
                     onDateChange={onDateChange}
                     categories={categories}
+                    timerTextColor={timerTextColor}
+                    sliderButtonColor={sliderButtonColor}
                     onClose={() => {
                         setShowLive(false);
                         // If we came from timer view, switch back to timer view
