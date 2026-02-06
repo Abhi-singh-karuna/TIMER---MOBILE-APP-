@@ -30,6 +30,7 @@ import {
   TimeOfDayBackgroundConfig,
   WeekdayKey,
 } from '../../../utils/timeOfDaySlots';
+import { getLogicalDate, DEFAULT_DAILY_START_MINUTES } from '../../../utils/dailyStartTime';
 import { styles as sharedStyles } from './styles';
 
 type SlotDraft = {
@@ -65,6 +66,16 @@ const parseTimeToMinutes = (s: string, allow24 = false) => {
 };
 
 const isHex = (s: string) => /^#([0-9a-fA-F]{6}|[0-9a-fA-F]{3})$/.test((s || '').trim());
+
+/** Returns the WeekdayKey for the current logical day (6am–6am). */
+const getCurrentLogicalWeekday = (dailyStartMinutes: number): WeekdayKey => {
+  const logical = getLogicalDate(new Date(), dailyStartMinutes);
+  const [y, mo, day] = logical.split('-').map(Number);
+  const d = new Date(y, mo - 1, day);
+  const dayOfWeek = d.getDay(); // 0=Sun, 1=Mon, ..., 6=Sat
+  const keys: WeekdayKey[] = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
+  return keys[dayOfWeek];
+};
 
 const ITEM_HEIGHT = 44;
 const generateNumbers = (max: number) => Array.from({ length: max + 1 }, (_, i) => i);
@@ -189,10 +200,12 @@ const WheelPicker = ({ data, value, onChange }: { data: number[]; value: number;
 
 export default function TimeOfDayBackgroundScreen({
   config,
+  dailyStartMinutes = DEFAULT_DAILY_START_MINUTES,
   onSave,
   onBack,
 }: {
   config: TimeOfDayBackgroundConfig;
+  dailyStartMinutes?: number;
   onSave: (config: TimeOfDayBackgroundConfig) => void;
   onBack: () => void;
 }) {
@@ -212,7 +225,7 @@ export default function TimeOfDayBackgroundScreen({
     return out;
   }, [config]);
 
-  const [activeDay, setActiveDay] = useState<WeekdayKey>('monday');
+  const [activeDay, setActiveDay] = useState<WeekdayKey>(() => getCurrentLogicalWeekday(dailyStartMinutes));
   const [draftByDay, setDraftByDay] = useState<Record<WeekdayKey, SlotDraft[]>>(initialDraftByDay);
   const [activeKey, setActiveKey] = useState<SlotDraft['key']>('morning');
   const [timePicker, setTimePicker] = useState<{
@@ -516,6 +529,9 @@ export default function TimeOfDayBackgroundScreen({
 
   if (isLandscape) {
     const previewSegments = buildPreviewSegmentsFromDraft(draft);
+    const sidebarWidth = width * 0.38;
+    const previewWidth = sidebarWidth - 34;
+
     return (
       <LinearGradient colors={['#000000', '#000000']} locations={[0, 1]} style={sharedStyles.container}>
         <SafeAreaView style={sharedStyles.safeArea} edges={['left', 'right']}>
@@ -523,47 +539,34 @@ export default function TimeOfDayBackgroundScreen({
             behavior={Platform.OS === 'ios' ? 'padding' : undefined}
             style={sharedStyles.landscapeContainer}
           >
-            {/* Left Panel - same as Settings: preview + day + slots + back */}
+            {/* Left Panel - Phone preview (same as Theme) + day + slots + back */}
             <View style={[sharedStyles.leftSidebarCard, { width: '38%' }]}>
               <Text style={sharedStyles.sidebarSectionTitle}>LIVE PREVIEW</Text>
-              <View style={styles.landscapePreviewWrap}>
-                <View style={styles.landscapePreviewBar}>
-                  {previewSegments.map((seg, idx) => (
-                    <View
-                      key={`${seg.key}-${idx}`}
-                      style={[
-                        styles.landscapePreviewSeg,
-                        { left: `${seg.leftPct}%`, width: `${seg.widthPct}%`, backgroundColor: seg.colorHex },
-                      ]}
-                    />
-                  ))}
+              <View style={sharedStyles.sidebarPreviewWrapper}>
+                <View style={[sharedStyles.phoneFrameContainer, sharedStyles.phoneFrameContainerLandscape]}>
+                  <View style={[sharedStyles.phoneFrame, { width: previewWidth + 12 }]}>
+                    <View style={sharedStyles.phoneInternalFrame}>
+                      <View style={[styles.phonePreviewInner, { width: previewWidth }]}>
+                        {previewSegments.map((seg, idx) => (
+                          <View
+                            key={`${seg.key}-${idx}`}
+                            style={[
+                              styles.phonePreviewSlotSeg,
+                              { left: `${seg.leftPct}%`, width: `${seg.widthPct}%`, backgroundColor: seg.colorHex },
+                            ]}
+                          />
+                        ))}
+                        <View style={styles.phonePreviewTicks}>
+                          <Text style={styles.phonePreviewTick}>00</Text>
+                          <Text style={styles.phonePreviewTick}>06</Text>
+                          <Text style={styles.phonePreviewTick}>12</Text>
+                          <Text style={styles.phonePreviewTick}>18</Text>
+                          <Text style={styles.phonePreviewTick}>24</Text>
+                        </View>
+                      </View>
+                    </View>
+                  </View>
                 </View>
-                <View style={styles.landscapePreviewTicks}>
-                  <Text style={styles.landscapeTick}>00</Text>
-                  <Text style={styles.landscapeTick}>06</Text>
-                  <Text style={styles.landscapeTick}>12</Text>
-                  <Text style={styles.landscapeTick}>18</Text>
-                  <Text style={styles.landscapeTick}>24</Text>
-                </View>
-              </View>
-
-              <Text style={sharedStyles.sidebarSectionTitle}>DAY</Text>
-              <View style={styles.landscapeDayRow}>
-                {WEEKDAY_ORDER.map((day) => {
-                  const active = day === activeDay;
-                  return (
-                    <TouchableOpacity
-                      key={day}
-                      style={[styles.landscapeDayChip, active && styles.landscapeDayChipActive]}
-                      onPress={() => setActiveDay(day)}
-                      activeOpacity={0.8}
-                    >
-                      <Text style={[styles.landscapeDayChipText, active && styles.landscapeDayChipTextActive]}>
-                        {WEEKDAY_LABEL[day]}
-                      </Text>
-                    </TouchableOpacity>
-                  );
-                })}
               </View>
 
               <Text style={sharedStyles.sidebarSectionTitle}>SLOTS</Text>
@@ -601,7 +604,7 @@ export default function TimeOfDayBackgroundScreen({
               </TouchableOpacity>
             </View>
 
-            {/* Right Panel - header with Copy/Save top right, then content */}
+            {/* Right Panel - header + slot editor + day at bottom */}
             <View style={sharedStyles.rightContentCard}>
               <View style={styles.landscapeRightHeader}>
                 <Text style={sharedStyles.sectionTitleLandscape}>TIME-OF-DAY BACKGROUND</Text>
@@ -627,6 +630,26 @@ export default function TimeOfDayBackgroundScreen({
                 {activeSlot ? renderSlotRow(activeSlot, true) : null}
                 <Text style={styles.landscapeHint}>End earlier than start = slot spans midnight.</Text>
               </ScrollView>
+              <View style={styles.landscapeRightDaySection}>
+                <Text style={sharedStyles.sidebarSectionTitle}>DAY</Text>
+                <View style={styles.landscapeDayRow}>
+                  {WEEKDAY_ORDER.map((day) => {
+                    const active = day === activeDay;
+                    return (
+                      <TouchableOpacity
+                        key={day}
+                        style={[styles.landscapeDayChip, active && styles.landscapeDayChipActive]}
+                        onPress={() => setActiveDay(day)}
+                        activeOpacity={0.8}
+                      >
+                        <Text style={[styles.landscapeDayChipText, active && styles.landscapeDayChipTextActive]}>
+                          {WEEKDAY_LABEL[day]}
+                        </Text>
+                      </TouchableOpacity>
+                    );
+                  })}
+                </View>
+              </View>
             </View>
           </KeyboardAvoidingView>
         </SafeAreaView>
@@ -655,6 +678,34 @@ export default function TimeOfDayBackgroundScreen({
           showsVerticalScrollIndicator={false}
           alwaysBounceVertical={true}
         >
+          <View style={sharedStyles.section}>
+            <Text style={sharedStyles.sectionTitle}>LIVE PREVIEW</Text>
+            <View style={sharedStyles.phoneFrameContainer}>
+              <View style={[sharedStyles.phoneFrame, { width: (width - 48) + 12 }]}>
+                <View style={sharedStyles.phoneInternalFrame}>
+                  <View style={[styles.phonePreviewInner, { width: width - 48 }]}>
+                    {buildPreviewSegmentsFromDraft(draft).map((seg, idx) => (
+                      <View
+                        key={`${seg.key}-${idx}`}
+                        style={[
+                          styles.phonePreviewSlotSeg,
+                          { left: `${seg.leftPct}%`, width: `${seg.widthPct}%`, backgroundColor: seg.colorHex },
+                        ]}
+                      />
+                    ))}
+                    <View style={styles.phonePreviewTicks}>
+                      <Text style={styles.phonePreviewTick}>00</Text>
+                      <Text style={styles.phonePreviewTick}>06</Text>
+                      <Text style={styles.phonePreviewTick}>12</Text>
+                      <Text style={styles.phonePreviewTick}>18</Text>
+                      <Text style={styles.phonePreviewTick}>24</Text>
+                    </View>
+                  </View>
+                </View>
+              </View>
+            </View>
+          </View>
+
           <View style={sharedStyles.section}>
             <Text style={sharedStyles.sectionTitle}>DAY</Text>
             <View style={styles.weekdayRow}>
@@ -736,6 +787,31 @@ const pickerStyles = StyleSheet.create({
 });
 
 const styles = StyleSheet.create({
+  phonePreviewInner: {
+    height: 160,
+    position: 'relative',
+    overflow: 'hidden',
+    backgroundColor: '#000',
+  },
+  phonePreviewSlotSeg: {
+    position: 'absolute',
+    top: 0,
+    bottom: 0,
+    opacity: 0.9,
+  },
+  phonePreviewTicks: {
+    position: 'absolute',
+    bottom: 6,
+    left: 8,
+    right: 8,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+  },
+  phonePreviewTick: {
+    fontSize: 9,
+    fontWeight: '600',
+    color: 'rgba(255,255,255,0.35)',
+  },
   landscapePreviewWrap: {
     borderRadius: 10,
     padding: 8,
@@ -880,6 +956,12 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
+  },
+  landscapeRightDaySection: {
+    paddingHorizontal: 20,
+    paddingVertical: 12,
+    borderTopWidth: 1,
+    borderTopColor: 'rgba(255,255,255,0.06)',
   },
   weekdayRow: {
     flexDirection: 'row',

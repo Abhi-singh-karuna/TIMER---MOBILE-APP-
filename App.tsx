@@ -50,7 +50,7 @@ import {
   getStartOfLogicalDayFromString,
   DEFAULT_DAILY_START_MINUTES,
 } from './src/utils/dailyStartTime';
-import { findOriginalRecurringTask, calculateStreak } from './src/utils/recurrenceUtils';
+import { findOriginalRecurringTask, calculateStreak, getAllRecurringDates } from './src/utils/recurrenceUtils';
 
 // Helper to normalize date string (imported from recurrenceUtils logic)
 function normalizeDateString(dateStr: string): string {
@@ -742,7 +742,7 @@ export default function App() {
             : undefined;
 
           // Create a new recurrenceInstances object to ensure React detects the change
-          const updatedRecurrenceInstances = {
+          let updatedRecurrenceInstances: Record<string, import('./src/constants/data').RecurrenceInstance> = {
             ...(t.recurrenceInstances || {}),
             [normalizedInstanceDate]: {
               ...existingInstance,
@@ -752,6 +752,67 @@ export default function App() {
               completedAt: instanceCompletedAt,
             },
           };
+
+          // Repeat Sync: replicate structure (create/update/delete) to all other instances; do NOT sync status
+          if (t.recurrence?.repeatSync) {
+            const allDates = getAllRecurringDates(t);
+            for (const otherDate of allDates) {
+              if (otherDate === normalizedInstanceDate) continue;
+              const findInstance = (inst: Record<string, import('./src/constants/data').RecurrenceInstance> | undefined) => {
+                if (!inst) return undefined;
+                const direct = inst[otherDate];
+                if (direct) return direct;
+                const match = Object.keys(inst).find(k => normalizeDateString(k) === otherDate);
+                return match ? inst[match] : undefined;
+              };
+              const otherInstance = findInstance(updatedRecurrenceInstances) || findInstance(t.recurrenceInstances) || {};
+              const otherStages = otherInstance.stages || [];
+              const preservedByStageId = new Map<number, {
+                status: import('./src/constants/data').StageStatus;
+                isCompleted: boolean;
+                startTime?: string;
+                endTime?: string;
+                startTimeMinutes?: number;
+                durationMinutes?: number;
+              }>();
+              for (const s of otherStages) {
+                if (s?.id) {
+                  preservedByStageId.set(s.id, {
+                    status: (s.status || 'Upcoming') as import('./src/constants/data').StageStatus,
+                    isCompleted: s.isCompleted ?? (s.status === 'Done'),
+                    startTime: s.startTime,
+                    endTime: s.endTime,
+                    startTimeMinutes: s.startTimeMinutes,
+                    durationMinutes: s.durationMinutes,
+                  });
+                }
+              }
+              const syncedStages: TaskStage[] = nextStages.map(src => {
+                const preserved = preservedByStageId.get(src.id);
+                return {
+                  ...src,
+                  status: preserved?.status ?? 'Upcoming',
+                  isCompleted: preserved?.isCompleted ?? false,
+                  startTime: preserved?.startTime,
+                  endTime: preserved?.endTime,
+                  // Preserve per-date start/duration so same subtask can have different times on different days
+                  startTimeMinutes: preserved?.startTimeMinutes ?? src.startTimeMinutes ?? 0,
+                  durationMinutes: preserved?.durationMinutes ?? src.durationMinutes ?? 180,
+                };
+              });
+              updatedRecurrenceInstances = {
+                ...updatedRecurrenceInstances,
+                [otherDate]: {
+                  ...otherInstance,
+                  stages: syncedStages,
+                  // Preserve instance-specific task status and timestamps (do not sync)
+                  status: otherInstance.status,
+                  startedAt: otherInstance.startedAt,
+                  completedAt: otherInstance.completedAt,
+                },
+              };
+            }
+          }
 
           const updatedTask = {
             ...t,
@@ -1571,6 +1632,8 @@ export default function App() {
               }}
               initialShowLive={shouldShowLiveView}
               onLiveViewShown={() => setShouldShowLiveView(false)}
+              timerTextColor={timerTextColor}
+              sliderButtonColor={sliderButtonColor}
             />
           );
         }

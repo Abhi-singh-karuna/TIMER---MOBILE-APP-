@@ -37,7 +37,7 @@ export function shouldRecurOnDate(recurrence: Recurrence, targetDate: string): b
   }
 
   // Check if target date is after end date
-  if (end && targetDate > recurrence.endDate) {
+  if (recurrence.endDate && targetDate > recurrence.endDate) {
     return false;
   }
 
@@ -94,6 +94,39 @@ export function shouldRecurOnDate(recurrence: Recurrence, targetDate: string): b
       }
     }
   }
+}
+
+/**
+ * Returns all YYYY-MM-DD dates where a recurring task should appear.
+ * Capped at MAX_RECURRING_DAYS from start (or until endDate if set).
+ */
+const MAX_RECURRING_DAYS = 730; // ~2 years
+
+export function getAllRecurringDates(task: import('../constants/data').Task): string[] {
+  if (!task.recurrence) return [];
+  const recurrence = task.recurrence;
+  const startDate = new Date(recurrence.startDate);
+  const endDate = recurrence.endDate ? new Date(recurrence.endDate) : null;
+  const maxDate = endDate
+    ? endDate
+    : new Date(startDate.getTime() + MAX_RECURRING_DAYS * 24 * 60 * 60 * 1000);
+
+  const dates: string[] = [];
+  const currentDate = new Date(startDate);
+
+  while (currentDate <= maxDate) {
+    const year = currentDate.getFullYear();
+    const month = String(currentDate.getMonth() + 1).padStart(2, '0');
+    const day = String(currentDate.getDate()).padStart(2, '0');
+    const dateStr = `${year}-${month}-${day}`;
+
+    if (shouldRecurOnDate(recurrence, dateStr)) {
+      dates.push(dateStr);
+    }
+    currentDate.setDate(currentDate.getDate() + 1);
+  }
+
+  return dates;
 }
 
 /**
@@ -317,18 +350,18 @@ export function getRecentRecurringDatesStatus(
   recurringDates.sort((a, b) => b.localeCompare(a));
   const recentDates = recurringDates.slice(0, Math.max(minDates, recurringDates.length));
   
+  const instances = task.recurrenceInstances;
   // Get status for each date
   return recentDates.map(dateStr => {
     const normalizedDate = normalizeDateString(dateStr);
-    const instance = task.recurrenceInstances[normalizedDate] || 
-                     task.recurrenceInstances[dateStr];
+    const instance = instances?.[normalizedDate] || instances?.[dateStr];
     
     // Determine status: Completed, In Progress, or Pending
     let status: 'Completed' | 'In Progress' | 'Pending' = 'Pending';
     
     if (instance?.status === 'Completed' || 
         (instance?.completedAt && !instance.status) ||
-        (task.recurrenceInstances[normalizedDate]?.completedAt)) {
+        (instances?.[normalizedDate]?.completedAt)) {
       status = 'Completed';
     } else if (instance?.status === 'In Progress') {
       // Only use explicit status; do not treat startedAt alone as In Progress so Pending shows red

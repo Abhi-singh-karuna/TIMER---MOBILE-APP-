@@ -806,17 +806,19 @@ export const styles = StyleSheet.create({
     },
 
     categoryIconCircle: {
-        width: 40,
-        height: 40,
-        borderRadius: 20,
-        backgroundColor: 'rgba(255,255,255,0.05)',
+        width: 28,
+        height: 28,
+        borderRadius: 14,
+        backgroundColor: 'rgba(255,255,255,0.15)',
         alignItems: 'center',
         justifyContent: 'center',
-        marginRight: 12,
+        marginRight: 6,
     },
 
     categoryInfo: {
         flex: 1,
+        alignSelf: 'stretch',
+        justifyContent: 'center',
     },
 
     categoryNameText: {
@@ -829,10 +831,11 @@ export const styles = StyleSheet.create({
     categoryColorPill: {
         flexDirection: 'row',
         alignItems: 'center',
-        paddingHorizontal: 8,
+        paddingHorizontal: 6,
         paddingVertical: 2,
-        borderRadius: 10,
+        borderRadius: 8,
         alignSelf: 'flex-start',
+        marginTop: 3,
     },
 
     colorDot: {
@@ -850,31 +853,31 @@ export const styles = StyleSheet.create({
 
     categoryActions: {
         flexDirection: 'row',
-        gap: 8,
+        gap: 4,
     },
 
     actionBtn: {
-        width: 36,
-        height: 36,
-        borderRadius: 12,
-        backgroundColor: 'rgba(255,255,255,0.03)',
+        width: 28,
+        height: 28,
+        borderRadius: 8,
+        backgroundColor: 'rgba(255,255,255,0.08)',
         alignItems: 'center',
         justifyContent: 'center',
     },
 
-    // Draggable category card (same design as task stage expand – priority by order)
+    // Draggable category card (compact – black background, like Quick Message)
     categoryCardItem: {
         flexDirection: 'row',
         alignItems: 'center',
-        gap: 8,
-        marginBottom: 6,
-        backgroundColor: 'transparent',
-        paddingVertical: 8,
-        paddingHorizontal: 8,
+        gap: 5,
+        marginBottom: 3,
+        paddingVertical: 5,
+        paddingHorizontal: 6,
         borderRadius: 8,
-        minHeight: 44,
+        minHeight: 40,
         borderWidth: 1,
-        borderColor: 'rgba(255,255,255,0.08)',
+        borderColor: 'rgba(255,255,255,0.12)',
+        backgroundColor: '#000000',
     },
     categoryCardDragging: {
         backgroundColor: 'rgba(255,255,255,0.95)',
@@ -892,36 +895,38 @@ export const styles = StyleSheet.create({
         opacity: 0.5,
     },
     categoryOrderCircle: {
-        width: 26,
-        height: 26,
-        borderRadius: 13,
-        backgroundColor: 'rgba(255,255,255,0.08)',
+        width: 19,
+        height: 19,
+        borderRadius: 9.5,
+        backgroundColor: 'rgba(255,255,255,0.12)',
         alignItems: 'center',
         justifyContent: 'center',
-        borderWidth: 1.5,
-        borderColor: 'rgba(255,255,255,0.1)',
+        borderWidth: 1,
+        borderColor: 'rgba(255,255,255,0.2)',
     },
     categoryOrderText: {
-        fontSize: 11,
+        fontSize: 9,
         fontWeight: '700',
-        color: 'rgba(255,255,255,0.5)',
+        color: 'rgba(255,255,255,0.6)',
     },
     categoryOrderTextDragging: {
         color: 'rgba(0,0,0,0.5)',
     },
     categoryCardName: {
-        fontSize: 13,
+        fontSize: 11,
         color: '#fff',
         flex: 1,
         fontWeight: '600',
         minWidth: 0,
+        lineHeight: 14,
+        ...(Platform.OS === 'android' && { textAlignVertical: 'center' as const }),
     },
     categoryCardNameDragging: {
         color: '#1a1a1a',
     },
     categoryCardDeleteBtn: {
-        padding: 6,
-        opacity: 0.4,
+        padding: 4,
+        opacity: 0.5,
     },
 
     categoryForm: {
@@ -956,14 +961,14 @@ export const styles = StyleSheet.create({
     iconsGrid: {
         flexDirection: 'row',
         flexWrap: 'wrap',
-        gap: 8,
-        marginBottom: 20,
+        gap: 5,
+        marginBottom: 16,
     },
 
     iconPickerItem: {
-        width: 36,
-        height: 36,
-        borderRadius: 10,
+        width: 28,
+        height: 28,
+        borderRadius: 8,
         alignItems: 'center',
         justifyContent: 'center',
         backgroundColor: 'rgba(255,255,255,0.05)',

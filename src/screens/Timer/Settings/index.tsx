@@ -226,6 +226,7 @@ export default function SettingsScreen({
         return (
             <TimeOfDayBackgroundScreen
                 config={timeOfDayBackgroundConfig}
+                dailyStartMinutes={dailyStartMinutes}
                 onSave={onTimeOfDayBackgroundConfigChange}
                 onBack={() => setActiveSubPage(null)}
             />

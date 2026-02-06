@@ -121,6 +121,17 @@ npx expo prebuild --platform ios
 ---
 ## 9. Common Errors: Provisioning & Capabilities
 
+### Error: "Provisioning Profile Expired"
+This happens because free Apple Developer accounts (Personal Teams) only grant certificates valid for **7 days**. When it expires, the app will fail to install or open.
+
+**The Fix:**
+1. Open `ios/TIMERAPP.xcworkspace` in Xcode.
+2. Select the **TIMERAPP** project in the left sidebar.
+3. Go to the **Signing & Capabilities** tab.
+4. You will likely see a red error message.
+5. **Option A**: Run the app again via Xcode (**Play** button). Xcode usually attempts to renew the certificate automatically upon build.
+6. **Option B**: If it fails, uncheck **"Automatically manage signing"**, wait a moment, and re-check it. Select your "Personal Team" again. This forces a fresh fetch.
+
 ### Error: "Personal development teams do not support Push Notifications"
 If you are using a free Apple Developer account (Personal Team), you must remove the **Push Notifications** capability, as it is only for paid developer accounts. Local timer notifications will still work without it.
 

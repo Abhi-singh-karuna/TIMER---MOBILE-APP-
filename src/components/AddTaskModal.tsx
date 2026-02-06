@@ -62,6 +62,7 @@ export default function AddTaskModal({
     
     // Recurrence state
     const [isRecurring, setIsRecurring] = useState(false);
+    const [repeatSync, setRepeatSync] = useState(false);
     const [recurrenceType, setRecurrenceType] = useState<RecurrenceType>('daily');
     const [recurrenceStartDate, setRecurrenceStartDate] = useState(getLogicalDate(new Date(), dailyStartMinutes));
     const [recurrenceEndDate, setRecurrenceEndDate] = useState<string | undefined>(undefined);
@@ -94,6 +95,7 @@ export default function AddTaskModal({
                 // Load recurrence if exists
                 if (taskToEdit.recurrence) {
                     setIsRecurring(true);
+                    setRepeatSync(!!taskToEdit.recurrence.repeatSync);
                     setRecurrenceType(taskToEdit.recurrence.type);
                     setRecurrenceStartDate(taskToEdit.recurrence.startDate);
                     setRecurrenceEndDate(taskToEdit.recurrence.endDate);
@@ -112,6 +114,7 @@ export default function AddTaskModal({
                     }
                 } else {
                     setIsRecurring(false);
+                    setRepeatSync(false);
                 }
             } else {
                 setTitle('');
@@ -125,6 +128,7 @@ export default function AddTaskModal({
                 
                 // Reset recurrence
                 setIsRecurring(false);
+                setRepeatSync(false);
                 setRecurrenceType('daily');
                 setRecurrenceStartDate(date);
                 setRecurrenceEndDate(undefined);
@@ -162,7 +166,8 @@ export default function AddTaskModal({
         
         const base: RecurrenceBase = {
             startDate: recurrenceStartDate,
-            ...(recurrenceEndEnabled && recurrenceEndDate ? { endDate: recurrenceEndDate } : {})
+            ...(recurrenceEndEnabled && recurrenceEndDate ? { endDate: recurrenceEndDate } : {}),
+            ...(repeatSync ? { repeatSync: true } : {}),
         };
         
         switch (recurrenceType) {
@@ -1340,6 +1345,7 @@ export default function AddTaskModal({
                                                                         if (!isRecurring) {
                                                                             setRecurrenceStartDate(selectedDate);
                                                                         }
+                                                                        if (isRecurring) setRepeatSync(false);
                                                                         Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
                                                                     }}
                                                                 >
@@ -1349,6 +1355,27 @@ export default function AddTaskModal({
                                                             </View>
                                                         </View>
                                                     </View>
+
+                                                    {isRecurring && (
+                                                        <View style={styles.fieldGroup}>
+                                                            <View style={styles.backlogRow}>
+                                                                <Text style={styles.label}>REPEAT SYNC</Text>
+                                                                <View style={styles.toggleRow}>
+                                                                    <Text style={[styles.toggleLabel, !repeatSync && styles.toggleLabelActive]}>Off</Text>
+                                                                    <TouchableOpacity
+                                                                        style={[styles.backlogToggle, repeatSync && styles.backlogToggleActive]}
+                                                                        onPress={() => {
+                                                                            setRepeatSync(!repeatSync);
+                                                                            Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                                                                        }}
+                                                                    >
+                                                                        <View style={[styles.backlogToggleCircle, repeatSync && styles.backlogToggleCircleActive]} />
+                                                                    </TouchableOpacity>
+                                                                    <Text style={[styles.toggleLabel, repeatSync && styles.toggleLabelActive]}>On</Text>
+                                                                </View>
+                                                            </View>
+                                                        </View>
+                                                    )}
 
                                                     {renderRecurrenceSection()}
 
@@ -1459,6 +1486,7 @@ export default function AddTaskModal({
                                                                         if (!isRecurring) {
                                                                             setRecurrenceStartDate(selectedDate);
                                                                         }
+                                                                        if (isRecurring) setRepeatSync(false);
                                                                         Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
                                                                     }}
                                                                 >
@@ -1467,6 +1495,25 @@ export default function AddTaskModal({
                                                                 <Text style={[styles.toggleLabel, isRecurring && styles.toggleLabelActive]}>On</Text>
                                                             </View>
                                                         </View>
+
+                                                        {isRecurring && (
+                                                            <View style={[styles.backlogRow, { marginBottom: 19.2 }]}>
+                                                                <Text style={styles.label}>REPEAT SYNC</Text>
+                                                                <View style={styles.toggleRow}>
+                                                                    <Text style={[styles.toggleLabel, !repeatSync && styles.toggleLabelActive]}>Off</Text>
+                                                                    <TouchableOpacity
+                                                                        style={[styles.backlogToggle, repeatSync && styles.backlogToggleActive]}
+                                                                        onPress={() => {
+                                                                            setRepeatSync(!repeatSync);
+                                                                            Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                                                                        }}
+                                                                    >
+                                                                        <View style={[styles.backlogToggleCircle, repeatSync && styles.backlogToggleCircleActive]} />
+                                                                    </TouchableOpacity>
+                                                                    <Text style={[styles.toggleLabel, repeatSync && styles.toggleLabelActive]}>On</Text>
+                                                                </View>
+                                                            </View>
+                                                        )}
 
                                                         {renderRecurrenceSection()}
 

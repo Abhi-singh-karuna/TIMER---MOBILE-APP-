@@ -101,7 +101,7 @@ export default function CategorySection({
                     <View style={styles.iconsGrid}>
                         {CATEGORY_ICONS.map(icon => (
                             <TouchableOpacity key={icon} style={[styles.iconPickerItem, selectedCategoryIcon === icon && { backgroundColor: `${selectedCategoryColor}30`, borderColor: selectedCategoryColor }]} onPress={() => setSelectedCategoryIcon(icon)}>
-                                <MaterialIcons name={icon} size={20} color={selectedCategoryIcon === icon ? selectedCategoryColor : 'rgba(255,255,255,0.4)'} />
+                                <MaterialIcons name={icon} size={16} color={selectedCategoryIcon === icon ? selectedCategoryColor : 'rgba(255,255,255,0.4)'} />
                             </TouchableOpacity>
                         ))}
                     </View>
@@ -139,8 +139,8 @@ export default function CategorySection({
                                 >
                                     <MaterialIcons
                                         name="drag-indicator"
-                                        size={16}
-                                        color={isActive ? 'rgba(0,0,0,0.4)' : 'rgba(255,255,255,0.3)'}
+                                        size={14}
+                                        color={isActive ? 'rgba(0,0,0,0.4)' : 'rgba(255,255,255,0.4)'}
                                     />
                                 </TouchableOpacity>
                                 <View style={[styles.categoryOrderCircle, isActive && { backgroundColor: 'rgba(0,0,0,0.08)', borderColor: 'rgba(0,0,0,0.15)' }]}>
@@ -149,7 +149,7 @@ export default function CategorySection({
                                     </Text>
                                 </View>
                                 <View style={styles.categoryIconCircle}>
-                                    <MaterialIcons name={cat.icon} size={20} color={cat.color} />
+                                    <MaterialIcons name={cat.icon} size={16} color={cat.color} />
                                 </View>
                                 <View style={styles.categoryInfo}>
                                     <Text style={[styles.categoryCardName, isActive && styles.categoryCardNameDragging]} numberOfLines={1}>
@@ -167,7 +167,7 @@ export default function CategorySection({
                                         disabled={isActive}
                                         activeOpacity={0.7}
                                     >
-                                        <MaterialIcons name="edit" size={18} color={isActive ? 'rgba(0,0,0,0.4)' : 'rgba(255,255,255,0.4)'} />
+                                        <MaterialIcons name="edit" size={12} color={isActive ? 'rgba(0,0,0,0.4)' : 'rgba(255,255,255,0.5)'} />
                                     </TouchableOpacity>
                                     <TouchableOpacity
                                         style={styles.categoryCardDeleteBtn}
@@ -175,7 +175,7 @@ export default function CategorySection({
                                         disabled={isActive}
                                         activeOpacity={0.7}
                                     >
-                                        <MaterialIcons name="delete-outline" size={16} color={isActive ? 'rgba(0,0,0,0.25)' : '#FF3B30'} />
+                                        <MaterialIcons name="delete-outline" size={12} color={isActive ? 'rgba(0,0,0,0.25)' : '#FF3B30'} />
                                     </TouchableOpacity>
                                 </View>
                             </View>

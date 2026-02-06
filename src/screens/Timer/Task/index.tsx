@@ -1323,6 +1323,18 @@ const styles = StyleSheet.create({
         color: '#4CAF50',
         letterSpacing: 0.5,
     },
+    progressCountRow: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        marginTop: 4,
+        gap: 6,
+    },
+    progressCountText: {
+        fontSize: 8,
+        fontWeight: '600',
+        color: 'rgba(255,255,255,0.4)',
+        letterSpacing: 0.3,
+    },
     portraitStageItem: {
         flexDirection: 'row',
         alignItems: 'center',
@@ -1511,6 +1523,10 @@ interface TaskListProps {
     initialShowLive?: boolean;
     /** Callback to reset initialShowLive after it's been consumed */
     onLiveViewShown?: () => void;
+    /** Timer running colour from Settings (Theme); used by full-screen timer. */
+    timerTextColor?: string;
+    /** Slider/button accent colour from Settings; used by full-screen timer slide-to-complete. */
+    sliderButtonColor?: string;
 }
 
 export default function TaskList({
@@ -1538,6 +1554,8 @@ export default function TaskList({
     onOpenActiveTimer,
     initialShowLive = false,
     onLiveViewShown,
+    timerTextColor = '#FFFFFF',
+    sliderButtonColor = '#FFFFFF',
 }: TaskListProps) {
     const { width: screenWidth, height: screenHeight } = useWindowDimensions();
     const isLandscape = screenWidth > screenHeight;
@@ -1918,6 +1936,8 @@ export default function TaskList({
                     selectedDate={selectedDate}
                     onDateChange={onDateChange}
                     categories={categories}
+                    timerTextColor={timerTextColor}
+                    sliderButtonColor={sliderButtonColor}
                     onClose={() => {
                         setShowLive(false);
                         // If we came from timer view, switch back to timer view
@@ -3107,30 +3127,46 @@ function TaskCard({
                 </View>
 
                 {!task.isBacklog && !(isExpanded && !isLandscape) && (
-                    isCompleted ? (
-                        <TouchableOpacity
-                            style={styles.completedCheckIcon}
-                            onPress={isLocked ? undefined : onToggle}
-                            activeOpacity={0.6}
-                        >
-                            <MaterialIcons name="check-circle" size={28} color="#4CAF50" />
-                        </TouchableOpacity>
-                    ) : (
-                        <TouchableOpacity
-                            style={styles.checkboxContainer}
-                            onPress={isLocked ? undefined : onToggle}
-                            activeOpacity={0.6}
-                        >
-                            <View style={[
-                                styles.checkbox,
-                                isInProgress && styles.checkboxActive
-                            ]}>
-                                {isInProgress && (
-                                    <MaterialIcons name="hourglass-empty" size={16} color="#00E5FF" />
-                                )}
+                    <View style={{ width: 42, alignItems: 'center', justifyContent: 'center', flexShrink: 0, position: 'relative', overflow: 'visible', alignSelf: 'flex-start', marginTop: 8 }}>
+                        {isCompleted ? (
+                            <TouchableOpacity
+                                style={styles.completedCheckIcon}
+                                onPress={isLocked ? undefined : onToggle}
+                                activeOpacity={0.6}
+                            >
+                                <MaterialIcons name="check-circle" size={28} color="#4CAF50" />
+                            </TouchableOpacity>
+                        ) : (
+                            <TouchableOpacity
+                                style={styles.checkboxContainer}
+                                onPress={isLocked ? undefined : onToggle}
+                                activeOpacity={0.6}
+                            >
+                                <View style={[
+                                    styles.checkbox,
+                                    isInProgress && styles.checkboxActive
+                                ]}>
+                                    {isInProgress && (
+                                        <MaterialIcons name="hourglass-empty" size={16} color="#00E5FF" />
+                                    )}
+                                </View>
+                            </TouchableOpacity>
+                        )}
+                        {/* Stage counts: numbers only, below tick box - absolute so tick stays centered */}
+                        {!isFullView && (
+                            <View style={[styles.progressCountRow, { position: 'absolute', top: 42, left: 0, right: 0, marginTop: 2, justifyContent: 'center' }]}>
+                                <Text style={styles.progressCountText}>{task.stages?.length || 0}</Text>
+                                <Text style={styles.progressCountText}>/</Text>
+                                <Text style={[styles.progressCountText, { color: '#4CAF50' }]}>
+                                    {task.stages?.filter(s => s && s.status === 'Done').length || 0}
+                                </Text>
+                                <Text style={styles.progressCountText}>/</Text>
+                                <Text style={[styles.progressCountText, { color: '#FF5252' }]}>
+                                    {task.stages?.filter(s => s && s.status === 'Undone').length || 0}
+                                </Text>
                             </View>
-                        </TouchableOpacity>
-                    )
+                        )}
+                    </View>
                 )}
             </View>
 
@@ -3452,14 +3488,29 @@ function TaskCard({
                                 (task.stages || []).length > 0 ? (
                                     <View style={{ flex: 1 }}>
                                         {/* Progress Bar - Static (Outside ScrollView) */}
-                                        <View style={[styles.metaRow, { marginBottom: 12, paddingHorizontal: 4 }]}>
-                                            <Text style={[styles.metaLabel, { width: 'auto', marginRight: 12 }]}>PROGRESS</Text>
-                                            <View style={styles.stagesProgressWrapper}>
-                                                <View style={[styles.stagesProgressBar, { width: `${(task.stages?.length || 0) > 0 ? (task.stages?.filter(s => s && s.status === 'Done').length || 0) / (task.stages?.length || 0) * 100 : 0}%` }]} />
+                                        <View style={{ marginBottom: 12, paddingHorizontal: 4 }}>
+                                            <View style={[styles.metaRow, { marginBottom: 0 }]}>
+                                                <Text style={[styles.metaLabel, { width: 'auto', marginRight: 12 }]}>PROGRESS</Text>
+                                                <View style={styles.stagesProgressWrapper}>
+                                                    <View style={[styles.stagesProgressBar, { width: `${(task.stages?.length || 0) > 0 ? (task.stages?.filter(s => s && s.status === 'Done').length || 0) / (task.stages?.length || 0) * 100 : 0}%` }]} />
+                                                </View>
+                                                <Text style={[styles.sectionSubtitle, { marginLeft: 12 }]}>
+                                                    {task.stages?.filter(s => s && s.status === 'Done').length || 0} / {task.stages?.length || 0}
+                                                </Text>
                                             </View>
-                                            <Text style={[styles.sectionSubtitle, { marginLeft: 12 }]}>
-                                                {task.stages?.filter(s => s && s.status === 'Done').length || 0} / {task.stages?.length || 0}
-                                            </Text>
+                                            <View style={styles.progressCountRow}>
+                                                <Text style={styles.progressCountText}>
+                                                    {task.stages?.length || 0} total
+                                                </Text>
+                                                <Text style={styles.progressCountText}>·</Text>
+                                                <Text style={[styles.progressCountText, { color: '#4CAF50' }]}>
+                                                    {task.stages?.filter(s => s && s.status === 'Done').length || 0} done
+                                                </Text>
+                                                <Text style={styles.progressCountText}>·</Text>
+                                                <Text style={[styles.progressCountText, { color: '#FF5252' }]}>
+                                                    {task.stages?.filter(s => s && s.status === 'Undone').length || 0} undone
+                                                </Text>
+                                            </View>
                                         </View>
                                         {/* Stages List - Draggable */}
                                         <DraggableStagesList
@@ -3527,14 +3578,29 @@ function TaskCard({
 
                             {/* Progress Bar */}
                             {(task.stages || []).length > 0 && (
-                                <View style={[styles.metaRow, { marginTop: 8, marginBottom: 8 }]}>
-                                    <Text style={[styles.metaLabel, { width: 'auto', marginRight: 8, fontSize: 9 }]}>PROGRESS</Text>
-                                    <View style={[styles.stagesProgressWrapper, { flex: 1 }]}>
-                                        <View style={[styles.stagesProgressBar, { width: `${(task.stages?.filter(s => s && s.status === 'Done').length || 0) / (task.stages?.length || 1) * 100}%` }]} />
+                                <View style={{ marginTop: 8, marginBottom: 8 }}>
+                                    <View style={[styles.metaRow, { marginBottom: 4 }]}>
+                                        <Text style={[styles.metaLabel, { width: 'auto', marginRight: 8, fontSize: 9 }]}>PROGRESS</Text>
+                                        <View style={[styles.stagesProgressWrapper, { flex: 1 }]}>
+                                            <View style={[styles.stagesProgressBar, { width: `${(task.stages?.filter(s => s && s.status === 'Done').length || 0) / (task.stages?.length || 1) * 100}%` }]} />
+                                        </View>
+                                        <Text style={[styles.sectionSubtitle, { marginLeft: 8, fontSize: 10 }]}>
+                                            {task.stages?.filter(s => s && s.status === 'Done').length || 0}/{task.stages?.length || 0}
+                                        </Text>
                                     </View>
-                                    <Text style={[styles.sectionSubtitle, { marginLeft: 8, fontSize: 10 }]}>
-                                        {task.stages?.filter(s => s && s.status === 'Done').length || 0}/{task.stages?.length || 0}
-                                    </Text>
+                                    <View style={styles.progressCountRow}>
+                                        <Text style={styles.progressCountText}>
+                                            {task.stages?.length || 0} total
+                                        </Text>
+                                        <Text style={styles.progressCountText}>·</Text>
+                                        <Text style={[styles.progressCountText, { color: '#4CAF50' }]}>
+                                            {task.stages?.filter(s => s && s.status === 'Done').length || 0} done
+                                        </Text>
+                                        <Text style={styles.progressCountText}>·</Text>
+                                        <Text style={[styles.progressCountText, { color: '#FF5252' }]}>
+                                            {task.stages?.filter(s => s && s.status === 'Undone').length || 0} undone
+                                        </Text>
+                                    </View>
                                 </View>
                             )}
 
