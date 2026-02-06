@@ -11,6 +11,7 @@ import {
 } from 'react-native';
 import { MaterialIcons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
+import Animated, { Layout, FadeIn, FadeOut } from 'react-native-reanimated';
 import { StageStatus } from '../../../constants/data';
 
 import StageActionPopup from './StageActionPopup';
@@ -134,7 +135,6 @@ export default function FullScreenTimer({
             if (found) return found;
         }
         // Fallback to first stage if selection invalid or not set
-        // But we ideally want to set the ID so it sticks
         return liveStages[0];
     }, [liveStages, focusedStageId]);
 
@@ -190,16 +190,6 @@ export default function FullScreenTimer({
         }
     };
 
-    const handlePause = () => {
-        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-        onPause();
-    };
-
-    const handleReset = () => {
-        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-        onReset();
-    };
-
     const handleCancel = () => {
         Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
         onClose();
@@ -216,322 +206,116 @@ export default function FullScreenTimer({
         >
             <StatusBar hidden />
             <View style={[styles.container, { width, height }]}>
-                {/* Top Center: All Tasks Bar (Landscape only) */}
-                {isLandscape && (
-                    <View style={styles.bottomTaskBarContainer}>
-                        <ScrollView
-                            horizontal
-                            showsHorizontalScrollIndicator={false}
-                            contentContainerStyle={styles.bottomTaskBarContent}
-                        >
+
+                {/* 1. Timer & Controls Section */}
+                <Animated.View
+                    layout={Layout.duration(400)}
+                    style={[
+                        styles.timerSection,
+                        isLandscape ? styles.timerSectionLandscape : styles.timerSectionPortrait
+                    ]}
+                >
+                    {/* Controls & Task Name Header */}
+                    <View style={{
+                        flexDirection: 'row',
+                        alignItems: 'center',
+                        justifyContent: isLandscape ? 'flex-start' : 'center',
+                        width: isLandscape ? '100%' : 'auto',
+                        maxWidth: isLandscape ? undefined : '90%',
+                        gap: 12
+                    }}>
+                        {/* Action Buttons Group */}
+                        {activeStage?.status === 'Upcoming' && onStartStage && activeStage.id !== undefined && (
                             <TouchableOpacity
-                                style={[styles.taskChip, selectedTaskId === 'ALL' && styles.taskChipSelected]}
-                                onPress={() => {
-                                    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                                    setSelectedTaskId('ALL');
-                                }}
-                                activeOpacity={0.7}
+                                onPress={handlePlay}
+                                style={styles.actionBtnStartCompact}
                             >
-                                <Text style={selectedTaskId === 'ALL' ? styles.taskChipTextSelected : styles.taskChipText}>ALL</Text>
+                                <Text style={styles.actionBtnTextCompact}>START</Text>
                             </TouchableOpacity>
-                            {tasks.map((task, index) => {
-                                const isSelected = selectedTaskId === task.id;
-                                const taskColor = task.color || '#FFFFFF';
-                                return (
-                                    <TouchableOpacity
-                                        key={`chip-${task.id}`}
-                                        style={[
-                                            styles.taskChip,
-                                            isSelected && { borderBottomColor: taskColor }
-                                        ]}
-                                        onPress={() => {
-                                            Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                                            setSelectedTaskId(task.id);
-                                        }}
-                                        activeOpacity={0.7}
-                                    >
-                                        <Text style={isSelected ? [styles.taskChipTextSelected, { color: taskColor }] : styles.taskChipText}>
-                                            {task.title.toUpperCase()}
-                                        </Text>
-                                    </TouchableOpacity>
-                                );
-                            })}
-                        </ScrollView>
-                    </View>
-                )}
+                        )}
 
-                {/* Top left: Completed and Upcoming stages (table form, collapsible, side-by-side in landscape) */}
-                <View style={[styles.topLeftSections, isLandscape && styles.topLeftSectionsLandscape]}>
-                    <View style={[styles.stageSection, isLandscape && styles.stageSectionLandscape]}>
-                        <TouchableOpacity
-                            style={styles.stageSectionHeader}
-                            onPress={toggleCompleted}
-                            activeOpacity={0.7}
-                        >
-                            <Text style={styles.stageSectionLabel}>COMPLETED ({filteredCompleted.length})</Text>
-                            <MaterialIcons
-                                name={completedExpanded ? 'expand-less' : 'expand-more'}
-                                size={20}
-                                color="rgba(255,255,255,0.5)"
-                            />
-                        </TouchableOpacity>
-                        {completedExpanded && (
-                            <>
-                                <View style={styles.tableSeparator} />
-                                <View style={styles.tableHeaderRow}>
-                                    <Text style={styles.tableHeaderTask}>TASK NAME</Text>
-                                    <Text style={styles.tableHeaderStart}>START</Text>
-                                    <Text style={styles.tableHeaderDur}>DUR.</Text>
-                                </View>
-                                <ScrollView
-                                    style={[styles.stageSectionScroll, isLandscape && styles.stageSectionScrollLandscape]}
-                                    contentContainerStyle={styles.stageSectionScrollContent}
-                                    showsVerticalScrollIndicator={true}
+                        {activeStage?.status === 'Process' && onCompleteStage && activeStage.id !== undefined && (
+                            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                                <TouchableOpacity
+                                    onPress={() => {
+                                        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
+                                        onCompleteStage(activeStage.taskId, activeStage.id!);
+                                    }}
+                                    style={styles.actionBtnCompleteCompact}
                                 >
-                                    {filteredCompleted.map((stage, index) => {
-                                        // Overdue process tasks: render yellow, clickable start button
-                                        if (stage.isOverdueProcess) {
-                                            return (
-                                                <View key={`c-${index}`} style={styles.tableRow}>
-                                                    <Text style={[styles.tableCellTask, { color: '#FFCC00' }]}>
-                                                        {stage.text}
-                                                    </Text>
-                                                    <TouchableOpacity
-                                                        hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-                                                        style={{
-                                                            paddingHorizontal: 6,
-                                                            paddingVertical: 2,
-                                                            borderRadius: 4,
-                                                            backgroundColor: 'rgba(255, 204, 0, 0.2)',
-                                                            alignItems: 'center',
-                                                            justifyContent: 'center',
-                                                            alignSelf: 'center'
-                                                        }}
-                                                        onPress={(event) => {
-                                                            Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                                                            if (stage.id !== undefined) {
-                                                                const { pageX, pageY } = event.nativeEvent;
-                                                                setStatusPopupPosition({ x: pageX, y: pageY });
-                                                                setStatusPopupStage({
-                                                                    taskId: stage.taskId,
-                                                                    stageId: stage.id,
-                                                                    currentStatus: 'Process'
-                                                                });
-                                                                setStatusPopupVisible(true);
-                                                            }
-                                                        }}
-                                                    >
-                                                        <Text style={{
-                                                            fontSize: 11,
-                                                            fontWeight: '800',
-                                                            color: '#FFCC00',
-                                                            fontVariant: ['tabular-nums'],
-                                                        }}>
-                                                            {formatStartTimeHHMM(stage.startTimeMinutes)}
-                                                        </Text>
-                                                    </TouchableOpacity>
-                                                    <Text style={[styles.tableCellDur, { color: '#FFCC00' }]}>
-                                                        {formatDuration(stage.durationMinutes)}
-                                                    </Text>
-                                                </View>
-                                            );
-                                        }
-                                        // Standard completed tasks: render green
-                                        return (
-                                            <View key={`c-${index}`} style={styles.tableRow}>
-                                                <Text style={[styles.tableCellTask, { color: '#45d075' }]}>
-                                                    {stage.text}
-                                                </Text>
-                                                <Text style={[styles.tableCellStart, { color: '#45d075' }]}>
-                                                    {formatStartTimeHHMM(stage.startTimeMinutes)}
-                                                </Text>
-                                                <Text style={[styles.tableCellDur, { color: '#45d075' }]}>
-                                                    {formatDuration(stage.durationMinutes)}
-                                                </Text>
-                                            </View>
-                                        );
-                                    })}
-                                </ScrollView>
-                            </>
-                        )}
-                    </View>
-                    <View style={[styles.stageSection, isLandscape && styles.stageSectionLandscape]}>
-                        <TouchableOpacity
-                            style={styles.stageSectionHeader}
-                            onPress={toggleUpcoming}
-                            activeOpacity={0.7}
-                        >
-                            <Text style={styles.stageSectionLabel}>UPCOMING ({filteredUpcoming.length})</Text>
-                            <MaterialIcons
-                                name={upcomingExpanded ? 'expand-less' : 'expand-more'}
-                                size={20}
-                                color="rgba(255,255,255,0.5)"
-                            />
-                        </TouchableOpacity>
-                        {upcomingExpanded && (
-                            <>
-                                <View style={styles.tableSeparator} />
-                                <View style={styles.tableHeaderRow}>
-                                    <Text style={styles.tableHeaderTask}>TASK NAME</Text>
-                                    <Text style={styles.tableHeaderStart}>START</Text>
-                                    <Text style={styles.tableHeaderDur}>DUR.</Text>
-                                </View>
-                                <ScrollView
-                                    style={[styles.stageSectionScroll, isLandscape && styles.stageSectionScrollLandscape]}
-                                    contentContainerStyle={styles.stageSectionScrollContent}
-                                    showsVerticalScrollIndicator={true}
-                                >
-                                    {filteredUpcoming.map((stage, index) => (
-                                        <View key={`u-${index}`} style={styles.tableRow}>
-                                            <Text style={[styles.tableCellTask, { color: 'rgba(255,255,255,0.5)' }]}>
-                                                {stage.text}
-                                            </Text>
-                                            <TouchableOpacity
-                                                hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-                                                style={{
-                                                    backgroundColor: stage.isLate ? 'rgba(255, 79, 79, 0.25)' : 'rgba(255, 204, 0, 0.2)',
-                                                    paddingHorizontal: 6,
-                                                    paddingVertical: 2,
-                                                    borderRadius: 4,
-                                                    alignItems: 'center',
-                                                    justifyContent: 'center',
-                                                    alignSelf: 'center'
-                                                }}
-                                                onPress={(event) => {
-                                                    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                                                    if (stage.id !== undefined) {
-                                                        const { pageX, pageY } = event.nativeEvent;
-                                                        setStatusPopupPosition({ x: pageX, y: pageY });
-                                                        setStatusPopupStage({
-                                                            taskId: stage.taskId,
-                                                            stageId: stage.id,
-                                                            currentStatus: 'Upcoming'
-                                                        });
-                                                        setStatusPopupVisible(true);
-                                                    }
-                                                }}
-                                            >
-                                                <Text style={{
-                                                    fontSize: 11,
-                                                    fontWeight: '700',
-                                                    color: stage.isLate ? '#FF4F4F' : '#FFCC00',
-                                                    fontVariant: ['tabular-nums'],
-                                                }}>
-                                                    {formatStartTimeHHMM(stage.startTimeMinutes)}
-                                                </Text>
-                                            </TouchableOpacity>
-                                            <Text style={[styles.tableCellDur, { color: 'rgba(255,255,255,0.5)' }]}>
-                                                {formatDuration(stage.durationMinutes)}
-                                            </Text>
-                                        </View>
-                                    ))}
-                                </ScrollView>
-                            </>
-                        )}
-                    </View>
-                    <View style={[styles.stageSection, isLandscape && styles.stageSectionLandscape]}>
-                        <TouchableOpacity
-                            style={styles.stageSectionHeader}
-                            onPress={toggleUndone}
-                            activeOpacity={0.7}
-                        >
-                            <Text style={styles.stageSectionLabel}>UNDONE ({filteredUndone.length})</Text>
-                            <MaterialIcons
-                                name={undoneExpanded ? 'expand-less' : 'expand-more'}
-                                size={20}
-                                color="rgba(255,255,255,0.5)"
-                            />
-                        </TouchableOpacity>
-                        {undoneExpanded && (
-                            <>
-                                <View style={styles.tableSeparator} />
-                                <View style={styles.tableHeaderRow}>
-                                    <Text style={styles.tableHeaderTask}>TASK NAME</Text>
-                                    <Text style={styles.tableHeaderStart}>START</Text>
-                                    <Text style={styles.tableHeaderDur}>DUR.</Text>
-                                </View>
-                                <ScrollView
-                                    style={[styles.stageSectionScroll, isLandscape && styles.stageSectionScrollLandscape]}
-                                    contentContainerStyle={styles.stageSectionScrollContent}
-                                    showsVerticalScrollIndicator={true}
-                                >
-                                    {filteredUndone.map((stage, index) => (
-                                        <View key={`d-${index}`} style={styles.tableRow}>
-                                            <Text style={[styles.tableCellTask, { color: '#ff4f4f' }]}>
-                                                {stage.text}
-                                            </Text>
-                                            <TouchableOpacity
-                                                hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-                                                style={{
-                                                    backgroundColor: 'rgba(255, 79, 79, 0.2)',
-                                                    paddingHorizontal: 6,
-                                                    paddingVertical: 2,
-                                                    borderRadius: 4,
-                                                    alignItems: 'center',
-                                                    justifyContent: 'center',
-                                                    alignSelf: 'center'
-                                                }}
-                                                onPress={(event) => {
-                                                    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                                                    if (stage.id !== undefined) {
-                                                        const { pageX, pageY } = event.nativeEvent;
-                                                        setStatusPopupPosition({ x: pageX, y: pageY });
-                                                        setStatusPopupStage({
-                                                            taskId: stage.taskId,
-                                                            stageId: stage.id,
-                                                            currentStatus: 'Undone'
-                                                        });
-                                                        setStatusPopupVisible(true);
-                                                    }
-                                                }}
-                                            >
-                                                <Text style={{
-                                                    fontSize: 11,
-                                                    fontWeight: '800',
-                                                    color: '#ff4f4f',
-                                                    fontVariant: ['tabular-nums'],
-                                                }}>
-                                                    {formatStartTimeHHMM(stage.startTimeMinutes)}
-                                                </Text>
-                                            </TouchableOpacity>
-                                            <Text style={[styles.tableCellDur, { color: '#ff4f4f' }]}>
-                                                {formatDuration(stage.durationMinutes)}
-                                            </Text>
-                                        </View>
-                                    ))}
-                                </ScrollView>
-                            </>
-                        )}
-                    </View>
-                </View>
+                                    <Text style={styles.actionBtnTextCompact}>DONE</Text>
+                                </TouchableOpacity>
 
-                {/* Bottom left: Cancel (X) */}
-                <View style={[styles.controlsContainer, isLandscape && styles.controlsContainerLandscape]}>
-                    <TouchableOpacity
-                        style={styles.cancelBtn}
-                        onPress={handleCancel}
-                        activeOpacity={0.7}
+                                {onExtendStage && (
+                                    <View style={{ flexDirection: 'row', gap: 4 }}>
+                                        {[5, 10, 20].map((mins) => (
+                                            <TouchableOpacity
+                                                key={`+${mins}`}
+                                                onPress={() => {
+                                                    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                                                    onExtendStage(activeStage.taskId, activeStage.id!, mins);
+                                                }}
+                                                style={styles.extendBtnCompact}
+                                            >
+                                                <Text style={styles.extendBtnTextCompact}>+{mins}</Text>
+                                            </TouchableOpacity>
+                                        ))}
+                                    </View>
+                                )}
+                            </View>
+                        )}
+
+                        {/* Task Name - Flexible and Truncated */}
+                        <Text
+                            style={[
+                                styles.timerLabelInteractive,
+                                { textAlign: 'left', flexShrink: 1 }
+                            ]}
+                            numberOfLines={1}
+                        >
+                            {activeStage
+                                ? (isLandscape && activeStage.text.length > 25
+                                    ? activeStage.text.substring(0, 25).toUpperCase() + '...'
+                                    : activeStage.text.toUpperCase())
+                                : 'TIMER'}
+                        </Text>
+                    </View>
+
+                    {/* Timer Display */}
+                    <Text
+                        style={[
+                            styles.timerDisplay,
+                            isLandscape ? styles.timerDisplayLandscape : styles.timerDisplayPortrait,
+                            { color: timerTextColor },
+                        ]}
+                        numberOfLines={1}
+                        adjustsFontSizeToFit
                     >
-                        <MaterialIcons name="close" size={24} color="#FFFFFF" />
-                    </TouchableOpacity>
-                </View>
+                        {activeStage && activeStage.status !== 'Upcoming'
+                            ? formatTimerHHMMSS(activeStage.remainingSeconds)
+                            : '00:00:00'}
+                    </Text>
+                </Animated.View>
 
-                {/* Top right: live stage name(s) with start time and descending countdown HH:MM:SS */}
-                <View style={[styles.liveStagesContainer, isLandscape && styles.liveStagesContainerLandscape]}>
-                    <Text style={styles.liveStagesLabel}>LIVE STAGES</Text>
+                {/* 2. Live Stages List */}
+                <Animated.View
+                    layout={Layout.duration(400)}
+                    style={[
+                        styles.liveStagesSection,
+                        isLandscape ? styles.liveStagesSectionLandscape : styles.liveStagesSectionPortrait
+                    ]}
+                >
+                    <Text style={[styles.liveStagesLabel, isLandscape ? {} : { textAlign: 'center', width: '100%' }]}>
+                        {isLandscape ? "LIVE STAGES" : "QUEUE"}
+                    </Text>
                     <ScrollView
                         style={styles.liveStagesScroll}
-                        contentContainerStyle={styles.liveStagesScrollContent}
+                        contentContainerStyle={[styles.liveStagesScrollContent, !isLandscape && { alignItems: 'center' }]}
                         showsVerticalScrollIndicator={true}
                     >
                         {liveStages.length === 0 ? (
                             <View style={[styles.liveStageRow, { borderRightColor: 'transparent', opacity: 0.7 }]}>
-                                <Text
-                                    style={[
-                                        styles.liveStageName,
-                                        { color: 'rgba(255,255,255,0.5)', fontStyle: 'italic' }
-                                    ]}
-                                >
+                                <Text style={[styles.liveStageName, { color: 'rgba(255,255,255,0.5)', fontStyle: 'italic' }]}>
                                     Waiting for new task...
                                 </Text>
                             </View>
@@ -541,7 +325,11 @@ export default function FullScreenTimer({
                                 return (
                                     <TouchableOpacity
                                         key={index}
-                                        style={[styles.liveStageRow, isFocused && styles.liveStageRowSelected]}
+                                        style={[
+                                            styles.liveStageRow,
+                                            isFocused && styles.liveStageRowSelected,
+                                            !isLandscape && { borderRightWidth: 0, paddingRight: 0, borderBottomWidth: 2, paddingBottom: 4, borderBottomColor: isFocused ? '#FFCC00' : 'transparent', alignItems: 'center' }
+                                        ]}
                                         onPress={() => {
                                             Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
                                             if (stage.id !== undefined) {
@@ -555,8 +343,8 @@ export default function FullScreenTimer({
                                                 styles.liveStageName,
                                                 {
                                                     color: stage.status === 'Process'
-                                                        ? '#00E676' // Green for running
-                                                        : (isFocused ? '#FFCC00' : 'rgba(255,255,255,0.7)') // Yellow for focused
+                                                        ? '#00E676'
+                                                        : (isFocused ? '#FFCC00' : 'rgba(255,255,255,0.7)')
                                                 }
                                             ]}
                                         >
@@ -578,117 +366,212 @@ export default function FullScreenTimer({
                             })
                         )}
                     </ScrollView>
-                </View>
+                </Animated.View>
 
-                {/* Bottom right: running timer display (Live Stage Countdown) */}
-                <View style={[styles.timerBottomRight, isLandscape && styles.timerBottomRightLandscape]}>
-                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12, marginBottom: 4 }}>
-                        {activeStage?.status === 'Upcoming' && onStartStage && activeStage.id !== undefined && (
+                {/* 3. Task Chips (Landscape Only) */}
+                {isLandscape && (
+                    <Animated.View
+                        entering={FadeIn}
+                        exiting={FadeOut}
+                        style={styles.bottomTaskBarContainer}
+                    >
+                        <ScrollView
+                            horizontal
+                            showsHorizontalScrollIndicator={false}
+                            contentContainerStyle={styles.bottomTaskBarContent}
+                        >
                             <TouchableOpacity
+                                style={[styles.taskChip, selectedTaskId === 'ALL' && styles.taskChipSelected]}
                                 onPress={() => {
-                                    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-                                    onStartStage(activeStage.taskId, activeStage.id!);
-                                }}
-                                style={{
-                                    backgroundColor: '#FFCC00',
-                                    paddingHorizontal: 20,
-                                    paddingVertical: 8,
-                                    borderRadius: 30,
-                                    shadowColor: '#FFCC00',
-                                    shadowOffset: { width: 0, height: 0 },
-                                    shadowOpacity: 0.6,
-                                    shadowRadius: 8,
-                                    elevation: 6,
+                                    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                                    setSelectedTaskId('ALL');
                                 }}
                             >
-                                <Text style={{
-                                    color: '#000000',
-                                    fontSize: 13,
-                                    fontWeight: '900',
-                                    letterSpacing: 1,
-                                }}>
-                                    START
-                                </Text>
+                                <Text style={selectedTaskId === 'ALL' ? styles.taskChipTextSelected : styles.taskChipText}>ALL</Text>
                             </TouchableOpacity>
-                        )}
-                        {activeStage?.status === 'Process' && onCompleteStage && activeStage.id !== undefined && (
-                            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+                            {tasks.map((task) => (
                                 <TouchableOpacity
+                                    key={`chip-${task.id}`}
+                                    style={[styles.taskChip, selectedTaskId === task.id && { borderBottomColor: task.color || '#FFFFFF' }]}
                                     onPress={() => {
-                                        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
-                                        onCompleteStage(activeStage.taskId, activeStage.id!);
-                                    }}
-                                    style={{
-                                        backgroundColor: '#00E676',
-                                        paddingHorizontal: 20,
-                                        paddingVertical: 8,
-                                        borderRadius: 30,
-                                        shadowColor: '#00E676',
-                                        shadowOffset: { width: 0, height: 0 },
-                                        shadowOpacity: 0.6,
-                                        shadowRadius: 8,
-                                        elevation: 6,
+                                        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                                        setSelectedTaskId(task.id);
                                     }}
                                 >
-                                    <Text style={{
-                                        color: '#000000',
-                                        fontSize: 13,
-                                        fontWeight: '900',
-                                        letterSpacing: 1,
-                                    }}>
-                                        COMPLETE
+                                    <Text style={selectedTaskId === task.id ? [styles.taskChipTextSelected, { color: task.color || '#FFFFFF' }] : styles.taskChipText}>
+                                        {task.title.toUpperCase()}
                                     </Text>
                                 </TouchableOpacity>
+                            ))}
+                        </ScrollView>
+                    </Animated.View>
+                )}
 
-                                {onExtendStage && (
-                                    <View style={{ flexDirection: 'row', gap: 8 }}>
-                                        {[5, 10, 20].map((mins) => (
-                                            <TouchableOpacity
-                                                key={`+${mins}`}
-                                                onPress={() => {
-                                                    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                                                    onExtendStage(activeStage.taskId, activeStage.id!, mins);
-                                                }}
-                                                style={{
-                                                    backgroundColor: 'rgba(255,255,255,0.1)',
-                                                    paddingHorizontal: 10,
-                                                    paddingVertical: 8,
-                                                    borderRadius: 20,
-                                                    borderWidth: 1,
-                                                    borderColor: 'rgba(255,255,255,0.2)'
-                                                }}
-                                            >
-                                                <Text style={{
-                                                    color: '#FFFFFF',
-                                                    fontSize: 11,
-                                                    fontWeight: '700',
-                                                }}>
-                                                    +{mins}
-                                                </Text>
-                                            </TouchableOpacity>
-                                        ))}
-                                    </View>
-                                )}
-                            </View>
+                {/* 4. Lists Container (Completed/Upcoming/Undone) */}
+                <Animated.View
+                    layout={Layout.springify().damping(16).stiffness(120)}
+                    style={[
+                        styles.listsContainer,
+                        isLandscape ? styles.listsContainerLandscape : styles.listsContainerPortrait
+                    ]}
+                >
+                    {/* Content Logic Same as before, just layout changes */}
+                    <View style={[styles.stageSection, isLandscape && styles.stageSectionLandscape]}>
+                        <TouchableOpacity style={styles.stageSectionHeader} onPress={toggleCompleted}>
+                            <Text style={styles.stageSectionLabel}>COMPLETED ({filteredCompleted.length})</Text>
+                            <MaterialIcons name={completedExpanded ? 'expand-less' : 'expand-more'} size={20} color="rgba(255,255,255,0.5)" />
+                        </TouchableOpacity>
+                        {completedExpanded && (
+                            <ScrollView style={[styles.stageSectionScroll, isLandscape && styles.stageSectionScrollLandscape]}>
+                                {filteredCompleted.map((stage, index) => {
+                                    if (stage.isOverdueProcess) {
+                                        return (
+                                            <View key={`c-${index}`} style={styles.tableRow}>
+                                                <Text style={[styles.tableCellTask, { color: '#FFCC00' }]}>{stage.text}</Text>
+                                                <TouchableOpacity
+                                                    style={{
+                                                        paddingHorizontal: 6,
+                                                        paddingVertical: 2,
+                                                        borderRadius: 4,
+                                                        backgroundColor: 'rgba(255, 204, 0, 0.2)',
+                                                        alignItems: 'center',
+                                                        justifyContent: 'center',
+                                                        alignSelf: 'center'
+                                                    }}
+                                                    onPress={(event) => {
+                                                        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                                                        if (stage.id !== undefined) {
+                                                            const { pageX, pageY } = event.nativeEvent;
+                                                            setStatusPopupPosition({ x: pageX, y: pageY });
+                                                            setStatusPopupStage({
+                                                                taskId: stage.taskId,
+                                                                stageId: stage.id,
+                                                                currentStatus: 'Process'
+                                                            });
+                                                            setStatusPopupVisible(true);
+                                                        }
+                                                    }}
+                                                >
+                                                    <Text style={{
+                                                        fontSize: 11,
+                                                        fontWeight: '800',
+                                                        color: '#FFCC00',
+                                                        fontVariant: ['tabular-nums'],
+                                                    }}>
+                                                        {formatStartTimeHHMM(stage.startTimeMinutes)}
+                                                    </Text>
+                                                </TouchableOpacity>
+                                                <Text style={[styles.tableCellDur, { color: '#FFCC00' }]}>{formatDuration(stage.durationMinutes)}</Text>
+                                            </View>
+                                        );
+                                    }
+                                    return (
+                                        <View key={`c-${index}`} style={styles.tableRow}>
+                                            <Text style={[styles.tableCellTask, { color: '#45d075' }]}>{stage.text}</Text>
+                                            <Text style={[styles.tableCellStart, { color: '#45d075' }]}>{formatStartTimeHHMM(stage.startTimeMinutes)}</Text>
+                                            <Text style={[styles.tableCellDur, { color: '#45d075' }]}>{formatDuration(stage.durationMinutes)}</Text>
+                                        </View>
+                                    );
+                                })}
+                            </ScrollView>
                         )}
-                        <Text style={styles.timerLabel} numberOfLines={1}>
-                            {activeStage ? (activeStage.text.length > 8 ? '...' + activeStage.text.slice(-14).toUpperCase() : activeStage.text.toUpperCase()) : 'TIMER'}
-                        </Text>
                     </View>
-                    <Text
-                        style={[
-                            styles.timerDisplay,
-                            isLandscape && styles.timerDisplayLandscape,
-                            { color: timerTextColor },
-                        ]}
-                        numberOfLines={1}
-                        adjustsFontSizeToFit
+                    <View style={[styles.stageSection, isLandscape && styles.stageSectionLandscape]}>
+                        <TouchableOpacity style={styles.stageSectionHeader} onPress={toggleUpcoming}>
+                            <Text style={styles.stageSectionLabel}>UPCOMING ({filteredUpcoming.length})</Text>
+                            <MaterialIcons name={upcomingExpanded ? 'expand-less' : 'expand-more'} size={20} color="rgba(255,255,255,0.5)" />
+                        </TouchableOpacity>
+                        {upcomingExpanded && (
+                            <ScrollView style={[styles.stageSectionScroll, isLandscape && styles.stageSectionScrollLandscape]}>
+                                {filteredUpcoming.map((stage, index) => (
+                                    <View key={`u-${index}`} style={styles.tableRow}>
+                                        <Text style={[styles.tableCellTask, { color: 'rgba(255,255,255,0.5)' }]}>{stage.text}</Text>
+                                        <TouchableOpacity
+                                            style={{ backgroundColor: stage.isLate ? 'rgba(255, 79, 79, 0.25)' : 'rgba(255, 204, 0, 0.2)', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4 }}
+                                            onPress={(event) => {
+                                                if (stage.id === undefined) return;
+                                                Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                                                const { pageX, pageY } = event.nativeEvent;
+                                                setStatusPopupPosition({ x: pageX, y: pageY });
+                                                setStatusPopupStage({ taskId: stage.taskId, stageId: stage.id, currentStatus: 'Upcoming' });
+                                                setStatusPopupVisible(true);
+                                            }}
+                                        >
+                                            <Text style={{ fontSize: 11, fontWeight: '700', color: stage.isLate ? '#FF4F4F' : '#FFCC00' }}>{formatStartTimeHHMM(stage.startTimeMinutes)}</Text>
+                                        </TouchableOpacity>
+                                        <Text style={[styles.tableCellDur, { color: 'rgba(255,255,255,0.5)' }]}>{formatDuration(stage.durationMinutes)}</Text>
+                                    </View>
+                                ))}
+                            </ScrollView>
+                        )}
+                    </View>
+                    <View style={[styles.stageSection, isLandscape && styles.stageSectionLandscape]}>
+                        <TouchableOpacity style={styles.stageSectionHeader} onPress={toggleUndone}>
+                            <Text style={styles.stageSectionLabel}>UNDONE ({filteredUndone.length})</Text>
+                            <MaterialIcons name={undoneExpanded ? 'expand-less' : 'expand-more'} size={20} color="rgba(255,255,255,0.5)" />
+                        </TouchableOpacity>
+                        {undoneExpanded && (
+                            <ScrollView style={[styles.stageSectionScroll, isLandscape && styles.stageSectionScrollLandscape]}>
+                                {filteredUndone.map((stage, index) => (
+                                    <View key={`d-${index}`} style={styles.tableRow}>
+                                        <Text style={[styles.tableCellTask, { color: '#ff4f4f' }]}>{stage.text}</Text>
+                                        <TouchableOpacity
+                                            style={{
+                                                backgroundColor: 'rgba(255, 79, 79, 0.2)',
+                                                paddingHorizontal: 6,
+                                                paddingVertical: 2,
+                                                borderRadius: 4,
+                                                alignItems: 'center',
+                                                justifyContent: 'center',
+                                                alignSelf: 'center'
+                                            }}
+                                            onPress={(event) => {
+                                                Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                                                if (stage.id !== undefined) {
+                                                    const { pageX, pageY } = event.nativeEvent;
+                                                    setStatusPopupPosition({ x: pageX, y: pageY });
+                                                    setStatusPopupStage({
+                                                        taskId: stage.taskId,
+                                                        stageId: stage.id,
+                                                        currentStatus: 'Undone'
+                                                    });
+                                                    setStatusPopupVisible(true);
+                                                }
+                                            }}
+                                        >
+                                            <Text style={{
+                                                fontSize: 11,
+                                                fontWeight: '800',
+                                                color: '#ff4f4f',
+                                                fontVariant: ['tabular-nums'],
+                                            }}>
+                                                {formatStartTimeHHMM(stage.startTimeMinutes)}
+                                            </Text>
+                                        </TouchableOpacity>
+                                        <Text style={[styles.tableCellDur, { color: '#ff4f4f' }]}>{formatDuration(stage.durationMinutes)}</Text>
+                                    </View>
+                                ))}
+                            </ScrollView>
+                        )}
+                    </View>
+                </Animated.View>
+
+                {/* 5. Close Button */}
+                <Animated.View
+                    layout={Layout.springify().damping(16)}
+                    style={[
+                        styles.controlsContainer,
+                        isLandscape ? styles.controlsContainerLandscape : styles.controlsContainerPortrait
+                    ]}
+                >
+                    <TouchableOpacity
+                        style={styles.cancelBtn}
+                        onPress={handleCancel}
+                        activeOpacity={0.7}
                     >
-                        {activeStage && activeStage.status !== 'Upcoming'
-                            ? formatTimerHHMMSS(activeStage.remainingSeconds)
-                            : '00:00:00'}
-                    </Text>
-                </View>
+                        <MaterialIcons name="close" size={24} color="#FFFFFF" />
+                    </TouchableOpacity>
+                </Animated.View>
 
                 <StageActionPopup
                     visible={statusPopupVisible}
@@ -698,16 +581,12 @@ export default function FullScreenTimer({
                     onSelectStatus={(status) => {
                         setStatusPopupVisible(false);
                         if (!statusPopupStage) return;
-
-                        if (status === 'Process') {
-                            if (onStartStage) onStartStage(statusPopupStage.taskId, statusPopupStage.stageId);
-                        } else if (onUpdateStageStatus) {
-                            onUpdateStageStatus(statusPopupStage.taskId, statusPopupStage.stageId, status);
-                        }
+                        if (status === 'Process' && onStartStage) onStartStage(statusPopupStage.taskId, statusPopupStage.stageId);
+                        else if (onUpdateStageStatus) onUpdateStageStatus(statusPopupStage.taskId, statusPopupStage.stageId, status);
                     }}
                 />
             </View>
-        </Modal >
+        </Modal>
     );
 }
 
@@ -716,180 +595,63 @@ const styles = StyleSheet.create({
         flex: 1,
         backgroundColor: '#000000',
     },
-    controlsContainer: {
+
+    // --- Timer Section Styles ---
+    timerSection: {
         position: 'absolute',
-        bottom: 24,
-        left: 24,
-        flexDirection: 'row',
-        alignItems: 'center',
-        gap: 16,
-        zIndex: 10,
+        zIndex: 20,
     },
-    controlsContainerLandscape: {
-        bottom: 0,
+    timerSectionLandscape: {
+        bottom: 20,
+        right: 20,
+        alignItems: 'flex-end',
+    },
+    timerSectionPortrait: {
+        top: 60,
         left: 0,
-        paddingBottom: 20,
-        paddingLeft: 20,
-        gap: 20,
-    },
-    playPauseBtn: {
-        width: 80,
-        height: 80,
-        borderRadius: 40,
-        backgroundColor: 'rgba(255,255,255,0.12)',
-        borderWidth: 1,
-        borderColor: 'rgba(255,255,255,0.18)',
-        justifyContent: 'center',
+        right: 0,
         alignItems: 'center',
+        flexDirection: 'column-reverse',
+        gap: 8,
     },
-    resetBtn: {
-        width: 56,
-        height: 56,
-        borderRadius: 28,
-        backgroundColor: 'rgba(255,255,255,0.08)',
-        borderWidth: 1,
-        borderColor: 'rgba(255,255,255,0.12)',
-        justifyContent: 'center',
-        alignItems: 'center',
+    timerDisplay: {
+        fontWeight: '900',
+        letterSpacing: 2,
+        fontVariant: ['tabular-nums'],
     },
-    cancelBtn: {
-        width: 56,
-        height: 56,
-        borderRadius: 28,
-        backgroundColor: 'rgba(0,0,0,0.6)',
-        borderWidth: 1,
-        borderColor: 'rgba(255,255,255,0.1)',
-        justifyContent: 'center',
-        alignItems: 'center',
+    timerDisplayLandscape: {
+        fontSize: 96,
+        letterSpacing: 4,
     },
-    topLeftSections: {
-        position: 'absolute',
-        top: 24,
-        left: 24,
-        flexDirection: 'column',
-        maxWidth: 550,
-        maxHeight: '58%',
-        zIndex: 10,
-        gap: 20,
+    timerDisplayPortrait: {
+        fontSize: 80,
+        letterSpacing: 2,
     },
-    topLeftSectionsLandscape: {
-        top: 30,
-        left: 20,
-        flexDirection: 'row',
-        maxWidth: '75%',
-        maxHeight: '55%',
-        gap: 16,
-        alignItems: 'flex-start',
-    },
-    stageSection: {
-        flex: 0,
-    },
-    stageSectionLandscape: {
-        flex: 1,
-        minWidth: 0,
-        maxWidth: '80%',
-    },
-    stageSectionHeader: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        justifyContent: 'space-between',
-        marginBottom: 6,
-    },
-    stageSectionLabel: {
-        fontSize: 10,
+    timerLabel: {
+        fontSize: 14,
         fontWeight: '700',
         letterSpacing: 2,
-        color: 'rgba(255,255,255,0.4)',
+        color: 'rgba(255,255,255,0.5)',
     },
-    tableSeparator: {
-        height: 1,
-        backgroundColor: 'rgba(255,255,255,0.25)',
-        marginBottom: 8,
-        width: '100%',
-    },
-    tableHeaderRow: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        marginBottom: 6,
-        paddingRight: 4,
-    },
-    tableHeaderTask: {
-        flex: 1,
-        fontSize: 9,
-        fontWeight: '700',
-        letterSpacing: 1.2,
-        color: 'rgba(255,255,255,0.4)',
-    },
-    tableHeaderStart: {
-        width: 48,
-        fontSize: 9,
-        fontWeight: '700',
-        letterSpacing: 1.2,
-        color: 'rgba(255,255,255,0.4)',
-        textAlign: 'center',
-    },
-    tableHeaderDur: {
-        width: 36,
-        fontSize: 9,
-        fontWeight: '700',
-        letterSpacing: 1.2,
-        color: 'rgba(255,255,255,0.4)',
-        textAlign: 'right',
-    },
-    stageSectionScroll: {
-        maxHeight: 220,
-    },
-    stageSectionScrollLandscape: {
-        maxHeight: 160,
-    },
-    stageSectionScrollContent: {
-        paddingVertical: 4,
-        paddingRight: 4,
-    },
-    tableRow: {
-        flexDirection: 'row',
-        alignItems: 'flex-start',
-        marginBottom: 12,
-        minHeight: 24,
-    },
-    tableCellTask: {
-        flex: 1,
-        fontSize: 13,
-        fontWeight: '700',
-        paddingRight: 8,
-    },
-    tableCellStart: {
-        width: 48,
-        fontSize: 13,
-        fontWeight: '800',
-        letterSpacing: 0.5,
-        fontVariant: ['tabular-nums'],
-        textAlign: 'center',
-        alignSelf: 'center',
-    },
-    tableCellDur: {
-        width: 36,
-        fontSize: 13,
-        fontWeight: '700',
-        letterSpacing: 0.3,
-        fontVariant: ['tabular-nums'],
-        textAlign: 'right',
-        alignSelf: 'center',
-    },
-    liveStagesContainer: {
+
+    // --- Live Stages Section Styles ---
+    liveStagesSection: {
         position: 'absolute',
-        top: 80,
-        right: 24,
-        alignItems: 'flex-end',
-        maxWidth: 220,
-        maxHeight: '50%',
         zIndex: 10,
     },
-    liveStagesContainerLandscape: {
+    liveStagesSectionLandscape: {
         top: 24,
         right: 20,
+        alignItems: 'flex-end',
         maxWidth: 200,
         maxHeight: '45%',
+    },
+    liveStagesSectionPortrait: {
+        top: 220, // Below timer (approx 60 + 100 + gap)
+        left: 20,
+        right: 20,
+        height: 120,
+        alignItems: 'center',
     },
     liveStagesLabel: {
         fontSize: 10,
@@ -900,6 +662,7 @@ const styles = StyleSheet.create({
     },
     liveStagesScroll: {
         maxHeight: 200,
+        width: '100%',
     },
     liveStagesScrollContent: {
         paddingVertical: 4,
@@ -928,7 +691,7 @@ const styles = StyleSheet.create({
         gap: 4,
     },
     liveStageTimeRunning: {
-        fontSize: 20,
+        fontSize: 18,
         fontWeight: '800',
         letterSpacing: 0.5,
         fontVariant: ['tabular-nums'],
@@ -940,37 +703,157 @@ const styles = StyleSheet.create({
         letterSpacing: 0.3,
         fontVariant: ['tabular-nums'],
     },
-    timerBottomRight: {
+
+    // --- Lists (Table) Section Styles ---
+    listsContainer: {
         position: 'absolute',
-        bottom: 24,
-        right: 24,
+        zIndex: 10,
+    },
+    listsContainerLandscape: {
+        top: 30,
+        left: 20,
+        flexDirection: 'row',
+        maxWidth: '75%',
+        maxHeight: '55%',
+        gap: 16,
         alignItems: 'flex-start',
-        justifyContent: 'flex-end',
-        zIndex: 5,
     },
-    timerBottomRightLandscape: {
-        bottom: 20,
-        right: 20,
+    listsContainerPortrait: {
+        top: 360,
+        left: 24,
+        right: 24,
+        bottom: 100,
+        flexDirection: 'column',
+        gap: 16,
     },
-    timerLabel: {
-        fontSize: 14,
+    stageSection: {
+        flex: 1, // Take available space in portrait column
+        minHeight: 0,
+    },
+    stageSectionLandscape: {
+        flex: 1,
+        minWidth: 0,
+        maxWidth: '80%',
+    },
+    stageSectionHeader: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        marginBottom: 6,
+        backgroundColor: 'rgba(255,255,255,0.05)',
+        padding: 6,
+        borderRadius: 4,
+    },
+    stageSectionLabel: {
+        fontSize: 10,
         fontWeight: '700',
         letterSpacing: 2,
-        color: 'rgba(255,255,255,0.5)',
-        marginBottom: 8,
-        textAlign: 'left',
-        maxWidth: 300,
+        color: 'rgba(255,255,255,0.4)',
     },
-    timerDisplay: {
-        fontSize: 72,
+    stageSectionScroll: {
+        flex: 1,
+        marginTop: 4,
+    },
+    stageSectionScrollLandscape: {
+        maxHeight: 160,
+    },
+
+    // --- Controls/Buttons ---
+    controlsContainer: {
+        position: 'absolute',
+        zIndex: 50,
+    },
+    controlsContainerLandscape: {
+        bottom: 24,
+        left: 24,
+    },
+    controlsContainerPortrait: {
+        bottom: 40,
+        alignSelf: 'center',
+    },
+    cancelBtn: {
+        width: 56,
+        height: 56,
+        borderRadius: 28,
+        backgroundColor: 'rgba(60,60,60,0.8)',
+        borderWidth: 1,
+        borderColor: 'rgba(255,255,255,0.1)',
+        justifyContent: 'center',
+        alignItems: 'center',
+    },
+    actionBtnStart: {
+        backgroundColor: '#FFCC00',
+        paddingHorizontal: 20,
+        paddingVertical: 8,
+        borderRadius: 30,
+        shadowColor: '#FFCC00',
+        shadowOffset: { width: 0, height: 0 },
+        shadowOpacity: 0.6,
+        shadowRadius: 8,
+        elevation: 6,
+    },
+    actionBtnComplete: {
+        backgroundColor: '#00E676',
+        paddingHorizontal: 20,
+        paddingVertical: 8,
+        borderRadius: 30,
+        shadowColor: '#00E676',
+        shadowOffset: { width: 0, height: 0 },
+        shadowOpacity: 0.6,
+        shadowRadius: 8,
+        elevation: 6,
+    },
+    actionBtnText: {
+        color: '#000000',
+        fontSize: 13,
         fontWeight: '900',
-        letterSpacing: 2,
+        letterSpacing: 1,
+    },
+    extendBtn: {
+        backgroundColor: 'rgba(255,255,255,0.1)',
+        paddingHorizontal: 10,
+        paddingVertical: 8,
+        borderRadius: 20,
+        borderWidth: 1,
+        borderColor: 'rgba(255,255,255,0.2)'
+    },
+    extendBtnText: {
+        color: '#FFFFFF',
+        fontSize: 11,
+        fontWeight: '700',
+    },
+
+    // --- Table/List Items ---
+    tableRow: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        marginBottom: 8,
+        paddingVertical: 2,
+    },
+    tableCellTask: {
+        flex: 1,
+        fontSize: 13,
+        fontWeight: '700',
+        paddingRight: 8,
+    },
+    tableCellStart: {
+        width: 48,
+        fontSize: 13,
+        fontWeight: '800',
+        letterSpacing: 0.5,
         fontVariant: ['tabular-nums'],
+        textAlign: 'center',
     },
-    timerDisplayLandscape: {
-        fontSize: 96,
-        letterSpacing: 4,
+    tableCellDur: {
+        width: 36,
+        fontSize: 13,
+        fontWeight: '700',
+        letterSpacing: 0.3,
+        fontVariant: ['tabular-nums'],
+        textAlign: 'right',
     },
+
+    // --- Bottom Bar ---
     bottomTaskBarContainer: {
         position: 'absolute',
         top: 1,
@@ -1007,5 +890,61 @@ const styles = StyleSheet.create({
         fontWeight: '800',
         color: '#FFFFFF',
         letterSpacing: 1.8,
+    },
+
+    // --- New Compact Controls Styles ---
+    actionBtnStartCompact: {
+        backgroundColor: '#FFCC00',
+        height: 32,
+        paddingHorizontal: 16,
+        borderRadius: 16,
+        justifyContent: 'center',
+        alignItems: 'center',
+        shadowColor: '#FFCC00',
+        shadowOffset: { width: 0, height: 0 },
+        shadowOpacity: 0.4,
+        shadowRadius: 4,
+        elevation: 4,
+    },
+    actionBtnCompleteCompact: {
+        backgroundColor: '#00E676',
+        height: 32,
+        paddingHorizontal: 16,
+        borderRadius: 16,
+        justifyContent: 'center',
+        alignItems: 'center',
+        shadowColor: '#00E676',
+        shadowOffset: { width: 0, height: 0 },
+        shadowOpacity: 0.4,
+        shadowRadius: 4,
+        elevation: 4,
+    },
+    actionBtnTextCompact: {
+        color: '#000000',
+        fontSize: 11,
+        fontWeight: '900',
+        letterSpacing: 0.5,
+    },
+    extendBtnCompact: {
+        backgroundColor: 'rgba(255,255,255,0.1)',
+        height: 32,
+        minWidth: 32,
+        paddingHorizontal: 6,
+        borderRadius: 16,
+        justifyContent: 'center',
+        alignItems: 'center',
+        borderWidth: 1,
+        borderColor: 'rgba(255,255,255,0.2)'
+    },
+    extendBtnTextCompact: {
+        color: '#FFFFFF',
+        fontSize: 10,
+        fontWeight: '700',
+    },
+    timerLabelInteractive: {
+        fontSize: 14,
+        fontWeight: '700',
+        letterSpacing: 1,
+        color: 'rgba(255,255,255,0.6)',
     },
 });
