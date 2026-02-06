@@ -268,7 +268,7 @@ export default function FullScreenTimer({
                             onPress={toggleCompleted}
                             activeOpacity={0.7}
                         >
-                            <Text style={styles.stageSectionLabel}>COMPLETED</Text>
+                            <Text style={styles.stageSectionLabel}>COMPLETED ({filteredCompleted.length})</Text>
                             <MaterialIcons
                                 name={completedExpanded ? 'expand-less' : 'expand-more'}
                                 size={20}
@@ -297,14 +297,12 @@ export default function FullScreenTimer({
                                                         {stage.text}
                                                     </Text>
                                                     <TouchableOpacity
+                                                        hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
                                                         style={{
                                                             paddingHorizontal: 6,
                                                             paddingVertical: 2,
                                                             borderRadius: 4,
-                                                            borderWidth: 1,
-                                                            borderColor: '#FFCC00',
-                                                            backgroundColor: 'rgba(255, 204, 0, 0.1)',
-                                                            minWidth: 42,
+                                                            backgroundColor: 'rgba(255, 204, 0, 0.2)',
                                                             alignItems: 'center',
                                                             justifyContent: 'center',
                                                             alignSelf: 'center'
@@ -317,7 +315,7 @@ export default function FullScreenTimer({
                                                                 setStatusPopupStage({
                                                                     taskId: stage.taskId,
                                                                     stageId: stage.id,
-                                                                    currentStatus: 'Process' // Current status is Process
+                                                                    currentStatus: 'Process'
                                                                 });
                                                                 setStatusPopupVisible(true);
                                                             }
@@ -326,7 +324,7 @@ export default function FullScreenTimer({
                                                         <Text style={{
                                                             fontSize: 11,
                                                             fontWeight: '800',
-                                                            color: '#FFCC00', // Yellow text
+                                                            color: '#FFCC00',
                                                             fontVariant: ['tabular-nums'],
                                                         }}>
                                                             {formatStartTimeHHMM(stage.startTimeMinutes)}
@@ -363,7 +361,7 @@ export default function FullScreenTimer({
                             onPress={toggleUpcoming}
                             activeOpacity={0.7}
                         >
-                            <Text style={styles.stageSectionLabel}>UPCOMING</Text>
+                            <Text style={styles.stageSectionLabel}>UPCOMING ({filteredUpcoming.length})</Text>
                             <MaterialIcons
                                 name={upcomingExpanded ? 'expand-less' : 'expand-more'}
                                 size={20}
@@ -389,12 +387,12 @@ export default function FullScreenTimer({
                                                 {stage.text}
                                             </Text>
                                             <TouchableOpacity
+                                                hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
                                                 style={{
-                                                    backgroundColor: stage.isLate ? '#FF4F4F' : '#FFCC00',
+                                                    backgroundColor: stage.isLate ? 'rgba(255, 79, 79, 0.25)' : 'rgba(255, 204, 0, 0.2)',
                                                     paddingHorizontal: 6,
-                                                    paddingVertical: 4,
+                                                    paddingVertical: 2,
                                                     borderRadius: 4,
-                                                    minWidth: 42,
                                                     alignItems: 'center',
                                                     justifyContent: 'center',
                                                     alignSelf: 'center'
@@ -415,8 +413,8 @@ export default function FullScreenTimer({
                                             >
                                                 <Text style={{
                                                     fontSize: 11,
-                                                    fontWeight: '800',
-                                                    color: stage.isLate ? '#FFFFFF' : '#000000',
+                                                    fontWeight: '700',
+                                                    color: stage.isLate ? '#FF4F4F' : '#FFCC00',
                                                     fontVariant: ['tabular-nums'],
                                                 }}>
                                                     {formatStartTimeHHMM(stage.startTimeMinutes)}
@@ -437,7 +435,7 @@ export default function FullScreenTimer({
                             onPress={toggleUndone}
                             activeOpacity={0.7}
                         >
-                            <Text style={styles.stageSectionLabel}>UNDONE</Text>
+                            <Text style={styles.stageSectionLabel}>UNDONE ({filteredUndone.length})</Text>
                             <MaterialIcons
                                 name={undoneExpanded ? 'expand-less' : 'expand-more'}
                                 size={20}
@@ -462,9 +460,40 @@ export default function FullScreenTimer({
                                             <Text style={[styles.tableCellTask, { color: '#ff4f4f' }]}>
                                                 {stage.text}
                                             </Text>
-                                            <Text style={[styles.tableCellStart, { color: '#ff4f4f' }]}>
-                                                {formatStartTimeHHMM(stage.startTimeMinutes)}
-                                            </Text>
+                                            <TouchableOpacity
+                                                hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                                                style={{
+                                                    backgroundColor: 'rgba(255, 79, 79, 0.2)',
+                                                    paddingHorizontal: 6,
+                                                    paddingVertical: 2,
+                                                    borderRadius: 4,
+                                                    alignItems: 'center',
+                                                    justifyContent: 'center',
+                                                    alignSelf: 'center'
+                                                }}
+                                                onPress={(event) => {
+                                                    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                                                    if (stage.id !== undefined) {
+                                                        const { pageX, pageY } = event.nativeEvent;
+                                                        setStatusPopupPosition({ x: pageX, y: pageY });
+                                                        setStatusPopupStage({
+                                                            taskId: stage.taskId,
+                                                            stageId: stage.id,
+                                                            currentStatus: 'Undone'
+                                                        });
+                                                        setStatusPopupVisible(true);
+                                                    }
+                                                }}
+                                            >
+                                                <Text style={{
+                                                    fontSize: 11,
+                                                    fontWeight: '800',
+                                                    color: '#ff4f4f',
+                                                    fontVariant: ['tabular-nums'],
+                                                }}>
+                                                    {formatStartTimeHHMM(stage.startTimeMinutes)}
+                                                </Text>
+                                            </TouchableOpacity>
                                             <Text style={[styles.tableCellDur, { color: '#ff4f4f' }]}>
                                                 {formatDuration(stage.durationMinutes)}
                                             </Text>

@@ -1488,8 +1488,8 @@ export default function LiveFocusView({
     }, [tasks, pendingLayoutsVersion, dailyStartMinutes]);
 
     // Undone stages for full-screen timer (top left): timed stages with status === 'Undone', start >= daily start
-    const undoneStagesForFullScreen = useMemo((): { text: string; startTimeMinutes: number; durationMinutes: number; taskId: number }[] => {
-        const list: { text: string; startTimeMinutes: number; durationMinutes: number; taskId: number }[] = [];
+    const undoneStagesForFullScreen = useMemo((): { text: string; startTimeMinutes: number; durationMinutes: number; taskId: number; id: number }[] => {
+        const list: { text: string; startTimeMinutes: number; durationMinutes: number; taskId: number; id: number }[] = [];
         tasks.forEach(task => {
             (task.stages || []).forEach(stage => {
                 const hasTime = (stage.startTimeMinutes != null) || (stage.durationMinutes != null);
@@ -1497,11 +1497,18 @@ export default function LiveFocusView({
                 const pending = pendingLayoutsRef.current.get(stage.id);
                 const start = pending ? pending.startTimeMinutes : (stage.startTimeMinutes ?? 0);
                 const duration = pending ? pending.durationMinutes : (stage.durationMinutes ?? 180);
-                if (start < dailyStartMinutes) return;
-                list.push({ text: stage.text, startTimeMinutes: start, durationMinutes: duration, taskId: task.id });
+
+                // Allow all times, treating < dailyStart as next day (post-midnight)
+
+                list.push({ text: stage.text, startTimeMinutes: start, durationMinutes: duration, taskId: task.id, id: stage.id });
             });
         });
-        list.sort((a, b) => (a.startTimeMinutes !== b.startTimeMinutes ? a.startTimeMinutes - b.startTimeMinutes : 0));
+        list.sort((a, b) => {
+            // Adjust times relative to dailyStartMinutes
+            const effectiveA = a.startTimeMinutes < dailyStartMinutes ? a.startTimeMinutes + 1440 : a.startTimeMinutes;
+            const effectiveB = b.startTimeMinutes < dailyStartMinutes ? b.startTimeMinutes + 1440 : b.startTimeMinutes;
+            return effectiveA - effectiveB;
+        });
         return list;
     }, [tasks, pendingLayoutsVersion, dailyStartMinutes]);
 
