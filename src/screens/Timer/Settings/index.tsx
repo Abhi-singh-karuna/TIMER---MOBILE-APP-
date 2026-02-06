@@ -18,6 +18,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { MaterialIcons } from '@expo/vector-icons';
 
 import ThemeSection, { LandscapePreviewComponent } from './ThemeSection';
+import LeaveSection from './LeaveSection';
 import AudioSection from './AudioSection';
 import CategorySection from './CategorySection';
 import GeneralSection from './GeneralSection';
@@ -160,7 +161,7 @@ export default function SettingsScreen({
     const { width, height } = useWindowDimensions();
     const isLandscape = width > height;
 
-    const [activeTab, setActiveTab] = useState<'customization' | 'sound' | 'categories' | 'quickmsg' | 'general' | 'restore' | 'about'>('customization');
+    const [activeTab, setActiveTab] = useState<'customization' | 'sound' | 'categories' | 'quickmsg' | 'general' | 'restore' | 'about' | 'leave'>('customization');
     const [resetKey, setResetKey] = useState(0);
     const [activeSubPage, setActiveSubPage] = useState<null | 'timeOfDayBackground'>(null);
 
@@ -270,6 +271,10 @@ export default function SettingsScreen({
                 />
             </View>
             <View style={styles.section}>
+                <Text style={styles.sectionTitle}>LEAVE MANAGEMENT</Text>
+                <LeaveSection isLandscape={false} />
+            </View>
+            <View style={styles.section}>
                 <Text style={styles.sectionTitle}>QUICK MESSAGES</Text>
                 <QuickMessageSection
                     isLandscape={false}
@@ -279,15 +284,15 @@ export default function SettingsScreen({
             </View>
             <View style={styles.section}>
                 <Text style={styles.sectionTitle}>GENERAL SETTINGS</Text>
-                        <GeneralSection
-                                isLandscape={false}
-                                isPastTimersDisabled={isPastTimersDisabled}
-                                onPastTimersDisabledChange={onPastTimersDisabledChange}
-                                isPastTasksDisabled={isPastTasksDisabled}
-                                onPastTasksDisabledChange={onPastTasksDisabledChange}
-                                dailyStartMinutes={dailyStartMinutes}
-                                onDailyStartMinutesChange={onDailyStartMinutesChange}
-                            />
+                <GeneralSection
+                    isLandscape={false}
+                    isPastTimersDisabled={isPastTimersDisabled}
+                    onPastTimersDisabledChange={onPastTimersDisabledChange}
+                    isPastTasksDisabled={isPastTasksDisabled}
+                    onPastTasksDisabledChange={onPastTasksDisabledChange}
+                    dailyStartMinutes={dailyStartMinutes}
+                    onDailyStartMinutesChange={onDailyStartMinutesChange}
+                />
             </View>
             <View style={styles.section}>
                 <Text style={styles.sectionTitle}>TIMELINE</Text>
@@ -320,7 +325,7 @@ export default function SettingsScreen({
 
     // Landscape Layout - Side by side with Sidebar
     const renderLandscapeLayout = () => {
-        const renderSidebarButton = (id: 'customization' | 'sound' | 'categories' | 'quickmsg' | 'general' | 'timeline' | 'restore' | 'about', icon: keyof typeof MaterialIcons.glyphMap, label: string) => {
+        const renderSidebarButton = (id: 'customization' | 'sound' | 'categories' | 'quickmsg' | 'general' | 'timeline' | 'restore' | 'about' | 'leave', icon: keyof typeof MaterialIcons.glyphMap, label: string) => {
             const isActive = activeTab === id;
             return (
                 <TouchableOpacity
@@ -334,10 +339,7 @@ export default function SettingsScreen({
                             setActiveSubPage('timeOfDayBackground');
                             return;
                         }
-                        if (id === 'restore') {
-                            setActiveTab('restore');
-                            return;
-                        }
+                        // The 'restore' and 'leave' tabs are handled directly by setActiveTab
                         setActiveTab(id as any);
                     }}
                     activeOpacity={0.7}
@@ -397,6 +399,7 @@ export default function SettingsScreen({
                                 {renderSidebarButton('customization', 'palette', 'Theme')}
                                 {renderSidebarButton('sound', 'volume-up', 'Audio')}
                                 {renderSidebarButton('categories', 'category', 'Category')}
+                                {renderSidebarButton('leave', 'event-busy', 'Leave Mgmt')}
                                 {renderSidebarButton('quickmsg', 'chat', 'Quick Msg')}
                                 {renderSidebarButton('general', 'settings', 'General')}
                                 {renderSidebarButton('timeline', 'timeline', 'Timeline BG')}
@@ -457,6 +460,10 @@ export default function SettingsScreen({
                                 categories={categories}
                                 onCategoriesChange={onCategoriesChange}
                             />
+                        )}
+
+                        {activeTab === 'leave' && (
+                            <LeaveSection isLandscape={true} />
                         )}
 
                         {activeTab === 'quickmsg' && (

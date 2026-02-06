@@ -1,6 +1,12 @@
 import { MaterialIcons } from '@expo/vector-icons';
 
 export const CATEGORIES_KEY = '@timer_categories';
+export const LEAVE_DAYS_KEY = '@timer_leave_days';
+
+export interface LeaveDay {
+  date: string; // YYYY-MM-DD
+  reason?: string;
+}
 
 export interface Category {
   id: string;
@@ -76,29 +82,29 @@ export interface RecurrenceBase {
 
 export type Recurrence =
   | (RecurrenceBase & {
-      type: 'daily';
-    })
+    type: 'daily';
+  })
   | (RecurrenceBase & {
-      type: 'weekly';
-      days: number[]; // 0–6 (Sun–Sat)
-    })
+    type: 'weekly';
+    days: number[]; // 0–6 (Sun–Sat)
+  })
   | (RecurrenceBase & {
-      type: 'monthly';
-      mode: 'date';
-      /** Day-of-month selections (1–31). Multiple allowed. */
-      dates: number[];
-    })
+    type: 'monthly';
+    mode: 'date';
+    /** Day-of-month selections (1–31). Multiple allowed. */
+    dates: number[];
+  })
   | (RecurrenceBase & {
-      type: 'monthly';
-      mode: 'weekday';
-      /**
-       * Week-of-month selections:
-       * 1 = 1st, 2 = 2nd, 3 = 3rd, 4 = 4th, -1 = last
-       */
-      weekOfMonth: Array<1 | 2 | 3 | 4 | -1>;
-      /** 0–6 (Sun–Sat). Multiple allowed. */
-      weekdays: number[];
-    });
+    type: 'monthly';
+    mode: 'weekday';
+    /**
+     * Week-of-month selections:
+     * 1 = 1st, 2 = 2nd, 3 = 3rd, 4 = 4th, -1 = last
+     */
+    weekOfMonth: Array<1 | 2 | 3 | 4 | -1>;
+    /** 0–6 (Sun–Sat). Multiple allowed. */
+    weekdays: number[];
+  });
 
 export interface TaskStage {
   id: number;

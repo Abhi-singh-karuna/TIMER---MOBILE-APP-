@@ -56,7 +56,10 @@ interface LiveFocusViewProps {
     /** Timer running colour from Settings (Theme); used by full-screen timer display. */
     timerTextColor?: string;
     /** Slider/button accent colour from Settings; used by full-screen timer slide-to-complete. */
+    /** Slider/button accent colour from Settings; used by full-screen timer slide-to-complete. */
     sliderButtonColor?: string;
+    /** List of dates (YYYY-MM-DD) marked as leave. */
+    leaveDays?: string[];
 }
 
 type TaskLiveStatus = 'ACTIVE' | 'DONE' | 'PLANNED';

@@ -74,6 +74,13 @@ export const styles = StyleSheet.create({
         marginBottom: 10,
     },
 
+    sectionDescription: {
+        fontSize: 13,
+        color: 'rgba(255,255,255,0.5)',
+        lineHeight: 18,
+        marginBottom: 16,
+    },
+
     landscapeContainer: {
         flex: 1,
         flexDirection: 'row',

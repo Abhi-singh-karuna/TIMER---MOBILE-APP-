@@ -130,7 +130,7 @@ const normalizeTasks = (tasks: Task[], dailyStartMinutes: number = DEFAULT_DAILY
     const norm = normalizeStages(t.stages, nowIso);
     if (norm.didChange) didChange = true;
     let updatedTask = norm.didChange ? { ...t, stages: norm.stages } : t;
-    
+
     // Recalculate streak for recurring tasks
     if (updatedTask.recurrence) {
       const newStreak = calculateStreak(updatedTask, dailyStartMinutes);
@@ -143,7 +143,7 @@ const normalizeTasks = (tasks: Task[], dailyStartMinutes: number = DEFAULT_DAILY
         updatedTask = { ...updatedTask, streak: newStreak };
       }
     }
-    
+
     return updatedTask;
   });
 
@@ -152,7 +152,11 @@ const normalizeTasks = (tasks: Task[], dailyStartMinutes: number = DEFAULT_DAILY
 
 
 
-LogBox.ignoreLogs(['SafeAreaView has been deprecated']);
+LogBox.ignoreLogs([
+  'SafeAreaView has been deprecated',
+  'expo-notifications',
+  '[expo-av]',
+]);
 
 type Screen = 'list' | 'active' | 'complete' | 'settings';
 
@@ -489,7 +493,7 @@ export default function App() {
           const instanceDate = normalizeDateString(task.forDate); // Normalize the date for consistency
           const existingInstances = t.recurrenceInstances || {};
           const existingInstance = existingInstances[instanceDate] || {};
-          
+
           const updatedTask = {
             ...t,
             recurrenceInstances: {
@@ -503,10 +507,10 @@ export default function App() {
             },
             updatedAt: now,
           };
-          
+
           // Calculate and update streak when status changes
           const newStreak = calculateStreak(updatedTask, dailyStartMinutes);
-          
+
           return {
             ...updatedTask,
             streak: newStreak,
@@ -648,13 +652,13 @@ export default function App() {
       // For recurring tasks, get stages from the date-specific instance
       const isRecurring = !!latestTask.recurrence;
       const instanceDate = task.forDate; // The expanded task's forDate (should be YYYY-MM-DD format)
-      
+
       // Ensure we're using the correct date format
       if (isRecurring && !instanceDate) {
         console.warn('Recurring task missing forDate:', task);
         return prev;
       }
-      
+
       const instanceData = isRecurring ? latestTask.recurrenceInstances?.[instanceDate] : undefined;
       const previousStages = isRecurring ? (instanceData?.stages || []) : (latestTask.stages || []);
 
@@ -675,7 +679,7 @@ export default function App() {
       // Determine new status
       // Safety check: ensure latestTask has status property (for backward compatibility)
       const latestTaskStatus = latestTask.status || 'Pending';
-      let newStatus: Task['status'] = isRecurring 
+      let newStatus: Task['status'] = isRecurring
         ? (instanceData?.status ?? latestTaskStatus)
         : latestTaskStatus;
 
@@ -712,33 +716,33 @@ export default function App() {
               normalizedInstanceDate = `${year}-${month}-${day}`;
             }
           }
-          
+
           // Check if instance exists with normalized date, or try to find it with any format
           let existingInstance = t.recurrenceInstances?.[normalizedInstanceDate] || {};
           if (!existingInstance.stages && t.recurrenceInstances) {
             // Try to find existing instance with different date format
             const matchingKey = Object.keys(t.recurrenceInstances).find(key => {
-              const normalizedKey = key.match(/^\d{4}-\d{2}-\d{2}$/) 
-                ? key 
+              const normalizedKey = key.match(/^\d{4}-\d{2}-\d{2}$/)
+                ? key
                 : (() => {
-                    const d = new Date(key);
-                    if (isNaN(d.getTime())) return null;
-                    const y = d.getFullYear();
-                    const m = String(d.getMonth() + 1).padStart(2, '0');
-                    const day = String(d.getDate()).padStart(2, '0');
-                    return `${y}-${m}-${day}`;
-                  })();
+                  const d = new Date(key);
+                  if (isNaN(d.getTime())) return null;
+                  const y = d.getFullYear();
+                  const m = String(d.getMonth() + 1).padStart(2, '0');
+                  const day = String(d.getDate()).padStart(2, '0');
+                  return `${y}-${m}-${day}`;
+                })();
               return normalizedKey === normalizedInstanceDate;
             });
             if (matchingKey) {
               existingInstance = t.recurrenceInstances[matchingKey];
             }
           }
-          const instanceStartedAt = newStatus === 'In Progress' && !existingInstance.startedAt 
-            ? now 
+          const instanceStartedAt = newStatus === 'In Progress' && !existingInstance.startedAt
+            ? now
             : existingInstance.startedAt;
-          const instanceCompletedAt: string | undefined = newStatus === 'Completed' 
-            ? now 
+          const instanceCompletedAt: string | undefined = newStatus === 'Completed'
+            ? now
             : undefined;
 
           // Create a new recurrenceInstances object to ensure React detects the change
@@ -819,10 +823,10 @@ export default function App() {
             recurrenceInstances: updatedRecurrenceInstances,
             updatedAt: now,
           };
-          
+
           // Calculate and update streak when status changes
           const newStreak = calculateStreak(updatedTask, dailyStartMinutes);
-          
+
           return {
             ...updatedTask,
             streak: newStreak,

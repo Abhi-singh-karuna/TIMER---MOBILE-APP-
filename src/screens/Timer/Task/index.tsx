@@ -25,7 +25,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { BlurView } from 'expo-blur';
 import { MaterialIcons } from '@expo/vector-icons';
 import DraggableFlatList, { RenderItemParams } from 'react-native-draggable-flatlist';
-import { Category, Task, TaskStage, QuickMessage, StageStatus, Timer } from '../../../constants/data';
+import { Category, Task, TaskStage, QuickMessage, StageStatus, Timer, LEAVE_DAYS_KEY } from '../../../constants/data';
 import TaskActionModal from '../../../components/TaskActionModal';
 import LiveFocusView from './LiveFocusView';
 import StageActionPopup from './StageActionPopup';
@@ -33,6 +33,7 @@ import * as Haptics from 'expo-haptics';
 import { TimeOfDaySlotConfigList } from '../../../utils/timeOfDaySlots';
 import { getLogicalDate, getStartOfLogicalDay, DEFAULT_DAILY_START_MINUTES, formatDailyStartRangeCompact } from '../../../utils/dailyStartTime';
 import { expandTasksForDate, findOriginalRecurringTask, getRecentRecurringDatesStatus } from '../../../utils/recurrenceUtils';
+// import { useFocusEffect } from '@react-navigation/native'; // Removed to avoid crash outside NavContainer
 
 const { width, height } = Dimensions.get('window');
 
@@ -1523,9 +1524,9 @@ interface TaskListProps {
     initialShowLive?: boolean;
     /** Callback to reset initialShowLive after it's been consumed */
     onLiveViewShown?: () => void;
-    /** Timer running colour from Settings (Theme); used by full-screen timer. */
+    /** Timer running colour from Settings (Theme) (used by full-screen timer). */
     timerTextColor?: string;
-    /** Slider/button accent colour from Settings; used by full-screen timer slide-to-complete. */
+    /** Slider/button accent colour from Settings (used by full-screen timer slide-to-complete). */
     sliderButtonColor?: string;
 }
 
@@ -1576,7 +1577,20 @@ export default function TaskList({
     const [showBacklog, setShowBacklog] = useState(false);
     const [showLive, setShowLive] = useState(initialShowLive);
     const [actionModalVisible, setActionModalVisible] = useState(false);
+    const [leaveDays, setLeaveDays] = useState<string[]>([]);
     const cameFromTimerView = useRef(false);
+
+    // Load leave days on initial mount
+    useEffect(() => {
+        AsyncStorage.getItem(LEAVE_DAYS_KEY).then((json) => {
+            if (json) {
+                const days = JSON.parse(json) as { date: string }[];
+                setLeaveDays(days.map(d => d.date));
+            } else {
+                setLeaveDays([]);
+            }
+        }).catch(e => console.error("Failed to load leave days", e));
+    }, []);
 
     // Handle initialShowLive prop changes
     useEffect(() => {
@@ -1906,7 +1920,7 @@ export default function TaskList({
         if (saveZoomTimeoutRef.current) clearTimeout(saveZoomTimeoutRef.current);
         saveZoomTimeoutRef.current = setTimeout(() => {
             setLiveFocusZoom(liveFocusZoomRef.current);
-            AsyncStorage.setItem(LIVE_FOCUS_ZOOM_KEY, String(liveFocusZoomRef.current)).catch(() => {});
+            AsyncStorage.setItem(LIVE_FOCUS_ZOOM_KEY, String(liveFocusZoomRef.current)).catch(() => { });
             saveZoomTimeoutRef.current = null;
         }, 120);
     }, []);
@@ -1916,7 +1930,7 @@ export default function TaskList({
         if (saveScrollTimeoutRef.current) clearTimeout(saveScrollTimeoutRef.current);
         saveScrollTimeoutRef.current = setTimeout(() => {
             setLiveFocusScrollX(liveFocusScrollXRef.current);
-            AsyncStorage.setItem(LIVE_FOCUS_SCROLL_KEY, String(liveFocusScrollXRef.current)).catch(() => {});
+            AsyncStorage.setItem(LIVE_FOCUS_SCROLL_KEY, String(liveFocusScrollXRef.current)).catch(() => { });
             saveScrollTimeoutRef.current = null;
         }, 250);
     }, []);
@@ -1938,6 +1952,7 @@ export default function TaskList({
                     categories={categories}
                     timerTextColor={timerTextColor}
                     sliderButtonColor={sliderButtonColor}
+                    leaveDays={leaveDays}
                     onClose={() => {
                         setShowLive(false);
                         // If we came from timer view, switch back to timer view
@@ -1967,7 +1982,7 @@ export default function TaskList({
                     initialViewMode={liveFocusViewMode}
                     onViewModeChange={(mode) => {
                         setLiveFocusViewMode(mode);
-                        AsyncStorage.setItem(LIVE_FOCUS_VIEW_MODE_KEY, mode).catch(() => {});
+                        AsyncStorage.setItem(LIVE_FOCUS_VIEW_MODE_KEY, mode).catch(() => { });
                     }}
                     runningTimer={runningTimer ?? null}
                     onOpenRunningTimer={(timer) => {
@@ -2254,28 +2269,29 @@ export default function TaskList({
                                         return (
                                             <TaskCard
                                                 task={expandedTask}
-                                        onToggle={() => onToggleTask(filteredTasks.find(t => t.id === expandedTaskId)!)}
-                                        onDelete={() => onDeleteTask(filteredTasks.find(t => t.id === expandedTaskId)!)}
-                                        onEdit={() => onEditTask?.(filteredTasks.find(t => t.id === expandedTaskId)!)}
-                                        isLandscape={true}
-                                        categories={categories}
-                                        dailyStartMinutes={dailyStartMinutes}
-                                        isPastTasksDisabled={isPastTasksDisabled}
-                                        onOpenMenu={() => {
-                                            const t = filteredTasks.find(tsk => tsk.id === expandedTaskId)!;
-                                            setSelectedActionTask(t);
-                                            setActionModalVisible(true);
-                                        }}
-                                        isExpanded={true}
-                                        onExpand={() => setExpandedTaskId(null)}
-                                        onUpdateComment={onUpdateComment}
-                                        onEditComment={onEditComment}
-                                        onDeleteComment={onDeleteComment}
-                                        onUpdateStages={onUpdateStages}
-                                        quickMessages={quickMessages}
-                                        isFullView={true}
-                                        allTasks={tasks}
-                                    />
+                                                onToggle={() => onToggleTask(filteredTasks.find(t => t.id === expandedTaskId)!)}
+                                                onDelete={() => onDeleteTask(filteredTasks.find(t => t.id === expandedTaskId)!)}
+                                                onEdit={() => onEditTask?.(filteredTasks.find(t => t.id === expandedTaskId)!)}
+                                                isLandscape={true}
+                                                categories={categories}
+                                                dailyStartMinutes={dailyStartMinutes}
+                                                isPastTasksDisabled={isPastTasksDisabled}
+                                                onOpenMenu={() => {
+                                                    const t = filteredTasks.find(tsk => tsk.id === expandedTaskId)!;
+                                                    setSelectedActionTask(t);
+                                                    setActionModalVisible(true);
+                                                }}
+                                                isExpanded={true}
+                                                onExpand={() => setExpandedTaskId(null)}
+                                                onUpdateComment={onUpdateComment}
+                                                onEditComment={onEditComment}
+                                                onDeleteComment={onDeleteComment}
+                                                onUpdateStages={onUpdateStages}
+                                                quickMessages={quickMessages}
+                                                isFullView={true}
+                                                allTasks={tasks}
+                                                leaveDays={leaveDays}
+                                            />
                                         );
                                     })()}
                                 </View>
@@ -2338,6 +2354,7 @@ export default function TaskList({
                                                             onUpdateStages={onUpdateStages}
                                                             quickMessages={quickMessages}
                                                             allTasks={tasks}
+                                                            leaveDays={leaveDays}
                                                         />
                                                     ))}
                                                     {pair.length === 1 && <View style={styles.cardPlaceholder} />}
@@ -2396,6 +2413,7 @@ export default function TaskList({
                                             onUpdateStages={onUpdateStages}
                                             quickMessages={quickMessages}
                                             allTasks={tasks}
+                                            leaveDays={leaveDays}
                                         />
                                     </View>
                                 );
@@ -2619,6 +2637,7 @@ interface TaskCardProps {
     quickMessages?: QuickMessage[];
     /** Original tasks array for accessing full recurrence data */
     allTasks?: Task[];
+    leaveDays?: string[];
 }
 
 // Draggable Stages List Props
@@ -2801,14 +2820,14 @@ function DraggableStagesList({ stages, onReorder, onSetStageStatus, onDeleteStag
     );
 }
 
-const getStatusConfig = (status: Task['status']) => {
+const getStatusConfig = (status: Task['status'], isPast: boolean = false) => {
     switch (status) {
         case 'In Progress':
-            return { label: 'IN PROGRESS', color: '#00E5FF', bgColor: 'rgba(0,229,255,0.1)' };
+            return { label: isPast ? 'UN DONE' : 'IN PROGRESS', color: '#00E5FF', bgColor: 'rgba(0,229,255,0.1)' };
         case 'Completed':
             return { label: 'COMPLETED', color: '#4CAF50', bgColor: 'rgba(76,175,80,0.15)' };
         default:
-            return { label: 'PENDING', color: 'rgba(255,255,255,0.5)', bgColor: 'rgba(255,255,255,0.08)' };
+            return { label: isPast ? 'UN COMPLETE' : 'PENDING', color: 'rgba(255,255,255,0.5)', bgColor: 'rgba(255,255,255,0.08)' };
     }
 };
 
@@ -2842,6 +2861,7 @@ function TaskCard({
     isFullView,
     quickMessages,
     allTasks,
+    leaveDays,
 }: TaskCardProps) {
     const [commentText, setCommentText] = useState('');
     const [stageText, setStageText] = useState('');
@@ -2906,7 +2926,7 @@ function TaskCard({
 
     const category = categories.find(c => c.id === task.categoryId);
     const categoryColor = category?.color || '#fff';
-    const statusConfig = getStatusConfig(taskStatus);
+    const statusConfig = getStatusConfig(taskStatus, isPast);
     const priorityConfig = getPriorityConfig(task.priority);
 
     const cardStyle = [
@@ -2916,7 +2936,9 @@ function TaskCard({
         isLandscape && styles.taskCardLandscape,
         isLocked && { opacity: 0.5 },
         isExpanded && styles.taskCardExpanded,
-        isFullView && styles.taskCardFullView
+        isFullView && styles.taskCardFullView,
+        // Red theme for past uncompleted tasks (per user request) - Applied LAST to override expanded/fullView styles
+        (isPast && !isCompleted) && { backgroundColor: 'rgba(255, 82, 82, 0.15)', borderColor: 'rgba(255, 82, 82, 0.3)' }
     ];
 
     const content = (
@@ -3045,7 +3067,7 @@ function TaskCard({
                         const originalTask = allTasks ? (findOriginalRecurringTask(allTasks, task) || task) : task;
                         const isExpandedMode = isExpanded || isFullView;
                         const minDates = isExpandedMode ? 50 : 10;
-                        const rawRecent = getRecentRecurringDatesStatus(originalTask, dailyStartMinutes, minDates);
+                        const rawRecent = getRecentRecurringDatesStatus(originalTask, dailyStartMinutes, minDates, leaveDays);
                         const recentDates = [...rawRecent].sort((a, b) => b.date.localeCompare(a.date));
                         const maxStars = 10;
                         const visibleDates = recentDates.slice(0, maxStars);
@@ -3056,7 +3078,7 @@ function TaskCard({
                             while (displayItems.length < maxStars) displayItems.push(null);
                         }
                         const itemsToShow = isExpandedMode ? recentDates : displayItems;
-                        
+
                         return (
                             <>
                                 <View style={[
@@ -3064,14 +3086,35 @@ function TaskCard({
                                     !isExpandedMode && styles.streakContainerSingleLine
                                 ]}>
                                     {itemsToShow.map((dateStatus: (typeof recentDates[0]) | null, index: number) => {
+                                        if (dateStatus && dateStatus.status === 'Leave') {
+                                            return (
+                                                <View key={dateStatus ? `${dateStatus.date}-${index}` : `gray-${index}`} style={styles.streakStar}>
+                                                    <View style={{
+                                                        width: isExpandedMode ? 16 : 14,
+                                                        height: isExpandedMode ? 16 : 14,
+                                                        borderRadius: 8,
+                                                        borderWidth: 1,
+                                                        borderColor: 'rgba(255,255,255,0.3)',
+                                                        alignItems: 'center',
+                                                        justifyContent: 'center'
+                                                    }}>
+                                                        <Text style={{
+                                                            fontSize: isExpandedMode ? 9 : 8,
+                                                            color: 'rgba(255,255,255,0.5)',
+                                                            fontWeight: '700'
+                                                        }}>H</Text>
+                                                    </View>
+                                                </View>
+                                            );
+                                        }
                                         const starColor = dateStatus
                                             ? (dateStatus.status === 'Completed' ? '#4CAF50' : dateStatus.status === 'In Progress' ? '#FFB74D' : '#FF5252')
                                             : grayStarColor;
                                         return (
                                             <View key={dateStatus ? `${dateStatus.date}-${index}` : `gray-${index}`} style={styles.streakStar}>
-                                                <MaterialIcons 
-                                                    name="star-outline" 
-                                                    size={isExpandedMode ? 16 : 14} 
+                                                <MaterialIcons
+                                                    name="star-outline"
+                                                    size={isExpandedMode ? 16 : 14}
                                                     color={starColor}
                                                 />
                                             </View>
@@ -3203,19 +3246,40 @@ function TaskCard({
                         {/* Full view (landscape): show all streak stars, no count icon */}
                         {(task.recurrence || task.recurrenceInstances) ? (() => {
                             const originalTask = allTasks ? (findOriginalRecurringTask(allTasks, task) || task) : task;
-                            const rawRecent = getRecentRecurringDatesStatus(originalTask, dailyStartMinutes, 50);
+                            const rawRecent = getRecentRecurringDatesStatus(originalTask, dailyStartMinutes, 50, leaveDays);
                             const recentDates = [...rawRecent].sort((a, b) => b.date.localeCompare(a.date));
-                            
+
                             return (
                                 <>
                                     <View style={[styles.streakContainer, { marginBottom: task.description ? 12 : 16 }]}>
                                         {recentDates.map((dateStatus, index) => {
+                                            if (dateStatus.status === 'Leave') {
+                                                return (
+                                                    <View key={`${dateStatus.date}-${index}`} style={styles.streakStar}>
+                                                        <View style={{
+                                                            width: 16,
+                                                            height: 16,
+                                                            borderRadius: 8,
+                                                            borderWidth: 1,
+                                                            borderColor: 'rgba(255,255,255,0.3)',
+                                                            alignItems: 'center',
+                                                            justifyContent: 'center'
+                                                        }}>
+                                                            <Text style={{
+                                                                fontSize: 9,
+                                                                color: 'rgba(255,255,255,0.5)',
+                                                                fontWeight: '700'
+                                                            }}>H</Text>
+                                                        </View>
+                                                    </View>
+                                                );
+                                            }
                                             const starColor = dateStatus.status === 'Completed' ? '#4CAF50' : dateStatus.status === 'In Progress' ? '#FFB74D' : '#FF5252';
                                             return (
                                                 <View key={`${dateStatus.date}-${index}`} style={styles.streakStar}>
-                                                    <MaterialIcons 
-                                                        name="star-outline" 
-                                                        size={16} 
+                                                    <MaterialIcons
+                                                        name="star-outline"
+                                                        size={16}
                                                         color={starColor}
                                                     />
                                                 </View>

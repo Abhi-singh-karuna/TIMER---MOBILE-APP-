@@ -17,114 +17,12 @@ import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { formatDailyStartForDisplay } from '../../../utils/dailyStartTime';
 import { styles as sharedStyles } from './styles';
 
+import { WheelPicker } from '../../../components/WheelPicker';
+
 const ITEM_HEIGHT = 44;
 const generate = (max: number) => Array.from({ length: max + 1 }, (_, i) => i);
 const HOURS = generate(23);
 const MINUTES = generate(59);
-
-function WheelPicker({
-    data,
-    value,
-    onChange,
-}: { data: number[]; value: number; onChange: (v: number) => void }) {
-    const scrollRef = useRef<ScrollView>(null);
-    const lastIndex = useRef(data.indexOf(value) >= 0 ? data.indexOf(value) : -1);
-
-    useEffect(() => {
-        const idx = data.indexOf(value);
-        if (idx >= 0) {
-            const timer = setTimeout(() => {
-                scrollRef.current?.scrollTo({ y: idx * ITEM_HEIGHT, animated: false });
-            }, 100);
-            return () => clearTimeout(timer);
-        }
-    }, [value, data]);
-
-    const handleScroll = useCallback(
-        (e: NativeSyntheticEvent<NativeScrollEvent>) => {
-            const idx = Math.round(e.nativeEvent.contentOffset.y / ITEM_HEIGHT);
-            const clamped = Math.max(0, Math.min(idx, data.length - 1));
-            if (clamped !== lastIndex.current) {
-                lastIndex.current = clamped;
-                Haptics.selectionAsync();
-            }
-        },
-        [data.length]
-    );
-
-    const handleEnd = useCallback(
-        (e: NativeSyntheticEvent<NativeScrollEvent>) => {
-            const idx = Math.round(e.nativeEvent.contentOffset.y / ITEM_HEIGHT);
-            const clamped = Math.max(0, Math.min(idx, data.length - 1));
-            onChange(data[clamped]);
-            Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-        },
-        [data, onChange]
-    );
-
-    return (
-        <View style={pickerStyles.container}>
-            <LinearGradient colors={['#000000', 'transparent']} style={pickerStyles.fadeTop} pointerEvents="none" />
-            <LinearGradient colors={['transparent', '#000000']} style={pickerStyles.fadeBottom} pointerEvents="none" />
-            <View style={pickerStyles.highlight} pointerEvents="none" />
-            <ScrollView
-                ref={scrollRef}
-                showsVerticalScrollIndicator={false}
-                snapToInterval={ITEM_HEIGHT}
-                decelerationRate={0.92}
-                bounces={true}
-                scrollEventThrottle={16}
-                onScroll={handleScroll}
-                onMomentumScrollEnd={handleEnd}
-                onScrollEndDrag={(e) => {
-                    if (e.nativeEvent.velocity?.y === 0) handleEnd(e);
-                }}
-                contentContainerStyle={{ paddingVertical: ITEM_HEIGHT }}
-                nestedScrollEnabled={true}
-                canCancelContentTouches={false}
-            >
-                {data.map((n) => (
-                    <View key={n} style={pickerStyles.item}>
-                        <Text style={pickerStyles.text}>{String(n).padStart(2, '0')}</Text>
-                    </View>
-                ))}
-            </ScrollView>
-        </View>
-    );
-}
-
-const pickerStyles = StyleSheet.create({
-    container: {
-        height: ITEM_HEIGHT * 3,
-        width: 70,
-        borderRadius: 14,
-        overflow: 'hidden',
-        backgroundColor: 'rgba(30,30,30,0.4)',
-    },
-    highlight: {
-        position: 'absolute',
-        top: ITEM_HEIGHT,
-        left: 3,
-        right: 3,
-        height: ITEM_HEIGHT,
-        borderRadius: 11,
-        backgroundColor: 'rgba(255, 255, 255, 0.05)',
-        borderWidth: 1,
-        borderColor: 'rgba(255, 255, 255, 0.3)',
-    },
-    fadeTop: { position: 'absolute', top: 0, left: 0, right: 0, height: ITEM_HEIGHT * 0.7, zIndex: 5 },
-    fadeBottom: { position: 'absolute', bottom: 0, left: 0, right: 0, height: ITEM_HEIGHT * 0.7, zIndex: 5 },
-    item: {
-        height: ITEM_HEIGHT,
-        alignItems: 'center',
-        justifyContent: 'center',
-    },
-    text: {
-        fontSize: 24,
-        fontWeight: '400',
-        color: '#FFFFFF',
-    },
-});
 
 export interface DailyStartTimeSectionProps {
     isLandscape?: boolean;

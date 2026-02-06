@@ -209,7 +209,6 @@ export default function FullScreenTimer({
 
                 {/* 1. Timer & Controls Section */}
                 <Animated.View
-                    layout={Layout.duration(400)}
                     style={[
                         styles.timerSection,
                         isLandscape ? styles.timerSectionLandscape : styles.timerSectionPortrait
@@ -299,7 +298,6 @@ export default function FullScreenTimer({
 
                 {/* 2. Live Stages List */}
                 <Animated.View
-                    layout={Layout.duration(400)}
                     style={[
                         styles.liveStagesSection,
                         isLandscape ? styles.liveStagesSectionLandscape : styles.liveStagesSectionPortrait
@@ -409,7 +407,6 @@ export default function FullScreenTimer({
 
                 {/* 4. Lists Container (Completed/Upcoming/Undone) */}
                 <Animated.View
-                    layout={Layout.springify().damping(16).stiffness(120)}
                     style={[
                         styles.listsContainer,
                         isLandscape ? styles.listsContainerLandscape : styles.listsContainerPortrait
@@ -558,7 +555,6 @@ export default function FullScreenTimer({
 
                 {/* 5. Close Button */}
                 <Animated.View
-                    layout={Layout.springify().damping(16)}
                     style={[
                         styles.controlsContainer,
                         isLandscape ? styles.controlsContainerLandscape : styles.controlsContainerPortrait
