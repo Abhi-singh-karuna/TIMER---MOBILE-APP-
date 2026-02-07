@@ -194,17 +194,17 @@ export default function TimerList({
 
                 const playSoundOnce = async () => {
                     const soundOption = SOUND_OPTIONS[selectedSound];
-                    const soundUri = soundOption?.uri;
+                    const soundSource = soundOption?.source;
 
-                    if (!soundUri) {
-                        console.log('Sound is muted or NO URI found for index:', selectedSound);
+                    if (soundSource === null || soundSource === undefined) {
+                        console.log('Sound is muted or NO SOURCE found for index:', selectedSound);
                         return;
                     }
 
-                    console.log('Playing sound:', soundUri);
+                    console.log('Playing sound:', soundOption.name);
 
                     const { sound } = await Audio.Sound.createAsync(
-                        { uri: soundUri },
+                        soundSource,
                         { shouldPlay: true, volume: 1.0 }
                     );
                     soundRef.current = sound;

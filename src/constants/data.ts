@@ -169,28 +169,28 @@ export const SOUND_OPTIONS = [
     name: 'Chime',
     icon: 'notifications' as const,
     color: '#FFFFFF',
-    uri: 'https://assets.mixkit.co/active_storage/sfx/2869/2869-preview.mp3',
+    source: require('../assets/sounds/chime.mp3'),
   },
   {
     id: 1,
     name: 'Success',
     icon: 'celebration' as const,
     color: '#34C759',
-    uri: 'https://assets.mixkit.co/active_storage/sfx/2568/2568-preview.mp3',
+    source: require('../assets/sounds/success.mp3'),
   },
   {
     id: 2,
     name: 'Alert',
     icon: 'campaign' as const,
     color: '#FF9500',
-    uri: 'https://assets.mixkit.co/active_storage/sfx/2870/2870-preview.mp3',
+    source: require('../assets/sounds/alert.mp3'),
   },
   {
     id: 3,
     name: 'Mute',
     icon: 'volume-off' as const,
     color: '#8E8E93',
-    uri: null,
+    source: null,
   },
 ];
 export const COLOR_PRESETS = [

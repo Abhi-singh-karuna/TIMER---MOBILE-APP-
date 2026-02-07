@@ -43,7 +43,7 @@ export default function AudioSection({
 
     const handlePreviewSound = async (soundIndex: number) => {
         const soundOption = SOUND_OPTIONS[soundIndex];
-        if (!soundOption || !soundOption.uri) return;
+        if (!soundOption || soundOption.source === null) return;
         try {
             if (soundRef.current) {
                 await soundRef.current.stopAsync();
@@ -52,7 +52,7 @@ export default function AudioSection({
             }
             setPlayingSound(soundIndex);
             await Audio.setAudioModeAsync({ playsInSilentModeIOS: true, staysActiveInBackground: false });
-            const { sound } = await Audio.Sound.createAsync({ uri: soundOption.uri }, { shouldPlay: true });
+            const { sound } = await Audio.Sound.createAsync(soundOption.source, { shouldPlay: true });
             soundRef.current = sound;
             sound.setOnPlaybackStatusUpdate((status: any) => {
                 if (status.isLoaded && status.didJustFinish) {
@@ -71,12 +71,12 @@ export default function AudioSection({
         <View style={[styles.soundSection, isLandscape && styles.soundSectionLandscape]}>
             <View style={styles.soundOptionsRow}>
                 {SOUND_OPTIONS.map((sound) => (
-                    <TouchableOpacity key={sound.id} style={[styles.soundCard, isLandscape && styles.soundCardLandscape, selectedSound === sound.id && styles.soundCardSelected, selectedSound === sound.id && { borderColor: sound.color }, sound.uri === null && { opacity: 0.8 }]} onPress={() => handleSoundSelect(sound.id)} activeOpacity={0.7}>
+                    <TouchableOpacity key={sound.id} style={[styles.soundCard, isLandscape && styles.soundCardLandscape, selectedSound === sound.id && styles.soundCardSelected, selectedSound === sound.id && { borderColor: sound.color }, sound.source === null && { opacity: 0.8 }]} onPress={() => handleSoundSelect(sound.id)} activeOpacity={0.7}>
                         <View style={[styles.soundIconContainer, selectedSound === sound.id && { backgroundColor: `${sound.color}20` }]}>
                             <MaterialIcons name={sound.icon} size={24} color={selectedSound === sound.id ? sound.color : 'rgba(255,255,255,0.5)'} />
                         </View>
                         <Text style={[styles.soundName, selectedSound === sound.id && { color: sound.color }]}>{sound.name}</Text>
-                        {sound.uri ? (
+                        {sound.source ? (
                             <TouchableOpacity style={[styles.previewButton, { backgroundColor: `${sound.color}20`, borderColor: sound.color }]} onPress={() => handlePreviewSound(sound.id)} activeOpacity={0.7}>
                                 {playingSound === sound.id ? <ActivityIndicator size="small" color={sound.color} /> : <MaterialIcons name="play-arrow" size={18} color={sound.color} />}
                             </TouchableOpacity>

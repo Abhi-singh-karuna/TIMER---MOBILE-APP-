@@ -15,26 +15,9 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { MaterialIcons } from '@expo/vector-icons';
 import * as ScreenOrientation from 'expo-screen-orientation';
 import { Audio } from 'expo-av';
-import { Category } from '../../../constants/data';
+import { Category, SOUND_OPTIONS } from '../../../constants/data';
 
-// Sound options matching SettingsScreen
-const SOUND_OPTIONS = [
-    {
-        id: 0,
-        name: 'Chime',
-        uri: 'https://assets.mixkit.co/active_storage/sfx/2869/2869-preview.mp3',
-    },
-    {
-        id: 1,
-        name: 'Success',
-        uri: 'https://assets.mixkit.co/active_storage/sfx/2870/2870-preview.mp3',
-    },
-    {
-        id: 2,
-        name: 'Alert',
-        uri: 'https://assets.mixkit.co/active_storage/sfx/2870/2870-preview.mp3',
-    },
-];
+
 
 interface TaskCompleteProps {
     completedAt: string;
@@ -106,11 +89,11 @@ export default function TaskComplete({
                 });
 
                 const playSoundOnce = async () => {
-                    const soundUri = SOUND_OPTIONS[selectedSound]?.uri;
-                    if (!soundUri) return;
+                    const soundSource = SOUND_OPTIONS[selectedSound]?.source;
+                    if (soundSource === null || soundSource === undefined) return;
 
                     const { sound } = await Audio.Sound.createAsync(
-                        { uri: soundUri },
+                        soundSource,
                         { shouldPlay: true }
                     );
                     soundRef.current = sound;
