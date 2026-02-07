@@ -1,4 +1,4 @@
-# Timer App - Professional Mobile Timer
+# Chronoscape - Professional Mobile Timer
 
 A sleek, high-performance timer application built with React Native and Expo. It features a stunning dynamic UI, micro-second smooth animations, and full orientation support.
 

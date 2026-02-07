@@ -15,7 +15,7 @@ export default function LandingPage() {
         >
             <SafeAreaView style={styles.safeArea}>
                 <View style={styles.content}>
-                    <Text style={styles.title}>Welcome to Timer App</Text>
+                    <Text style={styles.title}>Welcome to Chronoscape</Text>
                     <Text style={styles.subtitle}>Your productivity companion</Text>
                 </View>
             </SafeAreaView>

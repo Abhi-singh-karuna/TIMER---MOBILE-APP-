@@ -1,7 +1,7 @@
-# 📱 Timer & Task Management App - Technical Documentation
+# 📱 Chronoscape - Technical Documentation
 
 ## 1. Executive Summary
-This application is a professional-grade mobile timer and task management solution built with **React Native** and **Expo**. It combines high-precision timing functionality with robust task tracking, designed for productivity enthusiasts. The app features a stunning, dynamic UI that adapts to device orientation, offering a card-based interface in portrait mode and an immersive, full-screen progress experience in landscape mode.
+This application is **Chronoscape**, a professional-grade mobile timer and task management solution built with **React Native** and **Expo**. It combines high-precision timing functionality with robust task tracking, designed for productivity enthusiasts. The app features a stunning, dynamic UI that adapts to device orientation, offering a card-based interface in portrait mode and an immersive, full-screen progress experience in landscape mode.
 
 ## 2. core Features & Functional Requirements
 
