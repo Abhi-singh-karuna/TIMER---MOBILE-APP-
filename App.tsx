@@ -1519,7 +1519,6 @@ export default function App() {
             progress={Math.min(100, Math.max(0, progress))}
             endTime={completedAt || '21:09'}
             isRunning={currentActiveTimer?.status === 'Running'}
-            onBack={() => setCurrentScreen('list')}
             onPlayPause={() => activeTimer && handlePlayPause(activeTimer)}
             onCancel={handleCancel}
             onComplete={handleComplete}

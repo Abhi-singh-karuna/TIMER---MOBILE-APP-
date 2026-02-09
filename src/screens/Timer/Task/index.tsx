@@ -435,7 +435,78 @@ const styles = StyleSheet.create({
         bottom: 24,
     },
 
-    // Task Card
+    // Precision Task Card Styles
+    taskCardBezel: {
+        marginBottom: 4,
+        borderRadius: 32,
+        padding: 4,
+        backgroundColor: 'rgba(255,255,255,0.03)',
+        borderColor: 'rgba(255,255,255,0.12)',
+        borderWidth: 1.5,
+        overflow: 'hidden',
+        position: 'relative',
+    },
+
+    taskCardBezelLandscape: {
+        borderRadius: 24,
+        padding: 3,
+        marginBottom: 0,
+        flex: 1,
+    },
+
+    taskCardTrack: {
+        borderRadius: 28,
+        paddingHorizontal: 12,
+        paddingVertical: 20,
+        backgroundColor: 'rgba(0,0,0,0.15)',
+        overflow: 'hidden',
+        position: 'relative',
+    },
+
+    taskCardTrackLandscape: {
+        borderRadius: 20,
+        paddingHorizontal: 12,
+        paddingVertical: 12,
+        minHeight: 88,
+        flex: 1,
+    },
+
+    taskCardInteriorShadow: {
+        ...StyleSheet.absoluteFillObject,
+        borderBottomWidth: 2,
+        borderRightWidth: 1,
+        borderColor: 'rgba(0,0,0,0.25)',
+        borderRadius: 28,
+    },
+
+    taskCardInteriorShadowLandscape: {
+        borderRadius: 20,
+    },
+
+    taskCardTopRim: {
+        ...StyleSheet.absoluteFillObject,
+        borderTopWidth: 1,
+        borderLeftWidth: 0.5,
+        borderColor: 'rgba(255,255,255,0.15)',
+        borderRadius: 28,
+    },
+
+    taskCardTopRimLandscape: {
+        borderRadius: 20,
+    },
+
+    taskCardOuterBoundaryHighlight: {
+        ...StyleSheet.absoluteFillObject,
+        borderRadius: 32,
+        borderWidth: 1,
+        borderColor: 'rgba(255,255,255,0.08)',
+    },
+
+    taskCardOuterBoundaryHighlightLandscape: {
+        borderRadius: 24,
+    },
+
+    // Original Task Card Styles (kept for backward compatibility)
     taskCard: {
         marginBottom: 4,
         borderRadius: 32,
@@ -800,6 +871,50 @@ const styles = StyleSheet.create({
         justifyContent: 'center',
         flexShrink: 0,
     },
+
+    // Precision Status Button Styles
+    statusButtonBezel: {
+        width: 36,
+        height: 36,
+        borderRadius: 999,
+        padding: 3,
+        backgroundColor: 'rgba(255,255,255,0.03)',
+        borderColor: 'rgba(255,255,255,0.12)',
+        borderWidth: 1.5,
+        overflow: 'hidden',
+        position: 'relative',
+    },
+
+    statusButtonTrack: {
+        borderRadius: 999,
+        flex: 1,
+        backgroundColor: 'rgba(0,0,0,0.15)',
+        alignItems: 'center',
+        justifyContent: 'center',
+        position: 'relative',
+    },
+
+    statusButtonInteriorShadow: {
+        ...StyleSheet.absoluteFillObject,
+        borderBottomWidth: 1.5,
+        borderRightWidth: 0.8,
+        borderColor: 'rgba(0,0,0,0.25)',
+        borderRadius: 999,
+    },
+
+    statusButtonTopRim: {
+        ...StyleSheet.absoluteFillObject,
+        borderTopWidth: 0.8,
+        borderLeftWidth: 0.5,
+        borderColor: 'rgba(255,255,255,0.15)',
+        borderRadius: 999,
+    },
+
+    statusButtonActive: {
+        backgroundColor: 'rgba(0,229,255,0.15)',
+    },
+
+    // Original checkbox styles (kept for compatibility)
     checkbox: {
         width: 28,
         height: 28,
@@ -3103,18 +3218,6 @@ function TaskCard({
     const statusConfig = getStatusConfig(taskStatus, isPast);
     const priorityConfig = getPriorityConfig(task.priority);
 
-    const cardStyle = [
-        styles.taskCard,
-        isInProgress && styles.taskCardActive,
-        isCompleted && styles.taskCardCompleted,
-        isLandscape && styles.taskCardLandscape,
-        isLocked && { opacity: 0.5 },
-        isExpanded && styles.taskCardExpanded,
-        isFullView && styles.taskCardFullView,
-        // Red theme for past uncompleted tasks (per user request) - Applied LAST to override expanded/fullView styles
-        (isPast && !isCompleted) && { backgroundColor: 'rgba(255, 82, 82, 0.15)', borderColor: 'rgba(255, 82, 82, 0.3)' }
-    ];
-
     const content = (
         <>
             {isExpanded && !isLandscape && !isFullView && (
@@ -3126,7 +3229,7 @@ function TaskCard({
                                 onPress={isLocked ? undefined : onToggle}
                                 activeOpacity={0.6}
                             >
-                                <MaterialIcons name="check-circle" size={28} color="#4CAF50" />
+                                <MaterialIcons name="task-alt" size={28} color="#4CAF50" />
                             </TouchableOpacity>
                         ) : (
                             <TouchableOpacity
@@ -3134,13 +3237,19 @@ function TaskCard({
                                 onPress={isLocked ? undefined : onToggle}
                                 activeOpacity={0.6}
                             >
-                                <View style={[
-                                    styles.checkbox,
-                                    isInProgress && styles.checkboxActive
-                                ]}>
-                                    {isInProgress && (
-                                        <MaterialIcons name="hourglass-empty" size={16} color="#00E5FF" />
-                                    )}
+                                <View style={styles.statusButtonBezel}>
+                                    <View
+                                        style={[
+                                            styles.statusButtonTrack,
+                                            isInProgress && styles.statusButtonActive
+                                        ]}
+                                    >
+                                        <View style={styles.statusButtonInteriorShadow} pointerEvents="none" />
+                                        <View style={styles.statusButtonTopRim} pointerEvents="none" />
+                                        {isInProgress && (
+                                            <MaterialIcons name="play-circle" size={16} color="#00E5FF" />
+                                        )}
+                                    </View>
                                 </View>
                             </TouchableOpacity>
                         )
@@ -3351,7 +3460,7 @@ function TaskCard({
                                 onPress={isLocked ? undefined : onToggle}
                                 activeOpacity={0.6}
                             >
-                                <MaterialIcons name="check-circle" size={28} color="#4CAF50" />
+                                <MaterialIcons name="task-alt" size={28} color="#4CAF50" />
                             </TouchableOpacity>
                         ) : (
                             <TouchableOpacity
@@ -3528,7 +3637,7 @@ function TaskCard({
                                     activeOpacity={0.7}
                                 >
                                     <MaterialIcons
-                                        name={isCompleted ? "check" : (isInProgress ? "hourglass-empty" : "radio-button-unchecked")}
+                                        name={isCompleted ? "task-alt" : (isInProgress ? "play-circle" : "radio-button-unchecked")}
                                         size={14}
                                         color={isCompleted ? "#4CAF50" : (isInProgress ? "#00E5FF" : "rgba(255,255,255,0.5)")}
                                     />
@@ -4008,54 +4117,84 @@ function TaskCard({
         return (
             <View
                 style={[
-                    cardStyle,
-                    isExpanded && !isLandscape && {
-                        // Dynamic height based on active tab content + description
-                        height: (() => {
-                            // Calculate description height contribution (capped at 100px to match view)
-                            const descLength = task.description?.length || 0;
-                            const estimatedLines = Math.ceil(descLength / 45);
-                            const descHeight = Math.min(estimatedLines * 18, 100);
-
-                            if (activeRightTab === 'stages') {
-                                // Stages: min 2, max 5 visible
-                                const stageCount = task.stages?.length || 0;
-                                const visibleStages = Math.min(Math.max(stageCount, 2), 5);
-                                const stageHeight = 44;
-                                const headerSpace = 210 + descHeight; // padding, title, tabs, input
-                                const calculatedHeight = headerSpace + (visibleStages * stageHeight);
-                                return Math.min(Math.max(calculatedHeight, 300 + descHeight), height * 0.85);
-                            } else {
-                                // Comments: min 5, max 12 visible
-                                const commentCount = task.comments?.length || 0;
-                                const visibleComments = Math.min(Math.max(commentCount, 5), 12);
-                                const commentHeight = 28;
-                                const headerSpace = 200 + descHeight; // padding, title, tabs, input, chips
-                                const calculatedHeight = headerSpace + (visibleComments * commentHeight);
-                                return Math.min(Math.max(calculatedHeight, 340 + descHeight), height * 0.85);
-                            }
-                        })(),
-                        maxHeight: height * 0.88,
-                        minHeight: 280,
-                    }
+                    styles.taskCardBezel,
+                    isLandscape && styles.taskCardBezelLandscape,
+                    isLocked && { opacity: 0.5 },
                 ]}
             >
-                {content}
+                <View style={[styles.taskCardOuterBoundaryHighlight, isLandscape && styles.taskCardOuterBoundaryHighlightLandscape]} />
+                <View
+                    style={[
+                        styles.taskCardTrack,
+                        isInProgress && styles.taskCardActive,
+                        isCompleted && styles.taskCardCompleted,
+                        isLandscape && styles.taskCardTrackLandscape,
+                        isExpanded && styles.taskCardExpanded,
+                        isFullView && styles.taskCardFullView,
+                        (isPast && !isCompleted) && { backgroundColor: 'rgba(255, 82, 82, 0.15)' },
+                        isExpanded && !isLandscape && {
+                            height: (() => {
+                                const descLength = task.description?.length || 0;
+                                const estimatedLines = Math.ceil(descLength / 45);
+                                const descHeight = Math.min(estimatedLines * 18, 100);
+
+                                if (activeRightTab === 'stages') {
+                                    const stageCount = task.stages?.length || 0;
+                                    const visibleStages = Math.min(Math.max(stageCount, 2), 5);
+                                    const stageHeight = 44;
+                                    const headerSpace = 210 + descHeight;
+                                    const calculatedHeight = headerSpace + (visibleStages * stageHeight);
+                                    return Math.min(Math.max(calculatedHeight, 300 + descHeight), height * 0.85);
+                                } else {
+                                    const commentCount = task.comments?.length || 0;
+                                    const visibleComments = Math.min(Math.max(commentCount, 5), 12);
+                                    const commentHeight = 28;
+                                    const headerSpace = 200 + descHeight;
+                                    const calculatedHeight = headerSpace + (visibleComments * commentHeight);
+                                    return Math.min(Math.max(calculatedHeight, 340 + descHeight), height * 0.85);
+                                }
+                            })(),
+                            maxHeight: height * 0.88,
+                            minHeight: 280,
+                        }
+                    ]}
+                >
+                    <View style={[styles.taskCardInteriorShadow, isLandscape && styles.taskCardInteriorShadowLandscape]} pointerEvents="none" />
+                    <View style={[styles.taskCardTopRim, isLandscape && styles.taskCardTopRimLandscape]} pointerEvents="none" />
+                    {content}
+                </View>
             </View>
         );
     }
 
     return (
-        <TouchableOpacity
-            key={task.id}
-            activeOpacity={(isLocked || task.isBacklog) ? 1 : 0.7}
-            onPress={(isLocked) ? undefined : onExpand}
-            onLongPress={isLocked ? undefined : onOpenMenu}
-            style={cardStyle}
-            delayLongPress={400}
+        <View
+            style={[
+                styles.taskCardBezel,
+                isLandscape && styles.taskCardBezelLandscape,
+                isLocked && { opacity: 0.5 },
+            ]}
         >
-            {content}
-        </TouchableOpacity>
+            <View style={[styles.taskCardOuterBoundaryHighlight, isLandscape && styles.taskCardOuterBoundaryHighlightLandscape]} />
+            <TouchableOpacity
+                key={task.id}
+                activeOpacity={(isLocked || task.isBacklog) ? 1 : 0.7}
+                onPress={(isLocked) ? undefined : onExpand}
+                onLongPress={isLocked ? undefined : onOpenMenu}
+                style={[
+                    styles.taskCardTrack,
+                    isInProgress && styles.taskCardActive,
+                    isCompleted && styles.taskCardCompleted,
+                    isLandscape && styles.taskCardTrackLandscape,
+                    (isPast && !isCompleted) && { backgroundColor: 'rgba(255, 82, 82, 0.15)' },
+                ]}
+                delayLongPress={400}
+            >
+                <View style={[styles.taskCardInteriorShadow, isLandscape && styles.taskCardInteriorShadowLandscape]} pointerEvents="none" />
+                <View style={[styles.taskCardTopRim, isLandscape && styles.taskCardTopRimLandscape]} pointerEvents="none" />
+                {content}
+            </TouchableOpacity>
+        </View>
     );
 }
 

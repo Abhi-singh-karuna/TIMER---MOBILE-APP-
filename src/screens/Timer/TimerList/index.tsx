@@ -1530,205 +1530,219 @@ function TimerCard({ timer, onLongPress, onPress, onPlayPause, isLandscape, cate
     return (
         <View
             style={[
-                styles.timerCard,
+                styles.timerCardBezel,
+                isLandscape && styles.timerCardLandscape,
                 isRunning && styles.timerCardActive,
                 isPaused && styles.timerCardPaused,
                 isCompleted && styles.timerCardCompleted,
-                isLandscape && styles.timerCardLandscape
             ]}
         >
-            {/* Background Touchable for the whole card navigation */}
             <TouchableOpacity
-                style={StyleSheet.absoluteFill}
+                style={[styles.timerCardTrack, isLandscape && styles.timerCardTrackLandscape]}
                 onPress={isReadOnly ? undefined : onPress}
                 onLongPress={onLongPress}
                 activeOpacity={isReadOnly ? 1 : 0.9}
                 delayLongPress={500}
-                disabled={isReadOnly && isCompleted} // Still allow viewing completed timers
-            />
+                disabled={isReadOnly && isCompleted}
+            >
+                {/* Background Gradient for Depth */}
+                <LinearGradient
+                    colors={isRunning ? ['rgba(0,229,255,0.06)', 'rgba(0,0,0,0.2)'] : isPaused ? ['rgba(255,165,0,0.05)', 'rgba(0,0,0,0.15)'] : isCompleted ? ['rgba(76,175,80,0.05)', 'rgba(0,0,0,0.15)'] : ['rgba(255,255,255,0.03)', 'rgba(0,0,0,0.1)']}
+                    style={StyleSheet.absoluteFill}
+                />
 
-            {/* Progress Fill - Shows completion percentage */}
-            {(isActive || isCompleted) && (
-                <View style={styles.progressFillContainer} pointerEvents="none">
-                    {isCompleted ? (
-                        // Completed timers show three segments: Original Used, Borrowed Used, Saved
-                        <View style={styles.multiProgressWrapper}>
-                            {/* Segment 1: Original Time Used */}
-                            <View
-                                style={[
-                                    styles.progressFill,
-                                    {
-                                        width: `${Math.min(originalTotalSeconds, Math.max(0, totalSeconds - (timer.savedTime || 0))) / totalSeconds * 100}%`,
-                                        backgroundColor: 'rgba(76,175,80,0.45)' // Slightly more opaque
-                                    }
-                                ]}
-                            />
-                            {/* Segment 2: Borrowed Time Used */}
-                            {totalSeconds > originalTotalSeconds && (totalSeconds - (timer.savedTime || 0)) > originalTotalSeconds && (
+                {/* Progress Fill - Shows completion percentage */}
+                {(isActive || isCompleted) && (
+                    <View style={styles.progressFillContainer} pointerEvents="none">
+                        {isCompleted ? (
+                            // Completed timers show three segments: Original Used, Borrowed Used, Saved
+                            <View style={styles.multiProgressWrapper}>
+                                {/* Segment 1: Original Time Used */}
                                 <View
                                     style={[
                                         styles.progressFill,
                                         {
-                                            left: `${originalTotalSeconds / totalSeconds * 100}%`,
-                                            width: `${(Math.min(totalSeconds, totalSeconds - (timer.savedTime || 0)) - originalTotalSeconds) / totalSeconds * 100}%`,
-                                            backgroundColor: 'rgba(38,120,40,0.6)' // More distinct dark green
+                                            width: `${Math.min(originalTotalSeconds, Math.max(0, totalSeconds - (timer.savedTime || 0))) / totalSeconds * 100}%`,
+                                            backgroundColor: 'rgba(76,175,80,0.45)' // Slightly more opaque
                                         }
                                     ]}
                                 />
-                            )}
-                            {/* Segment 3: Saved Time (Remaining) */}
-                            {(timer.savedTime || 0) > 0 && (
-                                <View
-                                    style={[
-                                        styles.progressFill,
-                                        {
-                                            left: `${Math.max(0, totalSeconds - (timer.savedTime || 0)) / totalSeconds * 100}%`,
-                                            width: `${(timer.savedTime || 0) / totalSeconds * 100}%`,
-                                            backgroundColor: 'rgba(255,255,255,0.3)' // Even brighter ghost shade
-                                        }
-                                    ]}
-                                />
-                            )}
-                        </View>
-                    ) : (
-                        // Active timers show animated progress with two segments
-                        <View style={styles.multiProgressWrapper}>
-                            {/* Original Segment Fill */}
-                            <Animated.View
-                                style={[
-                                    styles.progressFill,
-                                    {
-                                        width: animatedProgress.interpolate({
-                                            inputRange: [0, originalWeight * 100, 100],
-                                            outputRange: ['0%', `${originalWeight * 100}%`, `${originalWeight * 100}%`],
-                                        }),
-                                        backgroundColor: isRunning ? 'rgba(0, 229, 255, 0.25)' : 'rgba(255,165,0,0.35)'
-                                    }
-                                ]}
-                            />
-                            {/* Borrowed Segment Fill */}
-                            {borrowedSeconds > 0 && (
+                                {/* Segment 2: Borrowed Time Used */}
+                                {totalSeconds > originalTotalSeconds && (totalSeconds - (timer.savedTime || 0)) > originalTotalSeconds && (
+                                    <View
+                                        style={[
+                                            styles.progressFill,
+                                            {
+                                                left: `${originalTotalSeconds / totalSeconds * 100}%`,
+                                                width: `${(Math.min(totalSeconds, totalSeconds - (timer.savedTime || 0)) - originalTotalSeconds) / totalSeconds * 100}%`,
+                                                backgroundColor: 'rgba(38,120,40,0.6)' // More distinct dark green
+                                            }
+                                        ]}
+                                    />
+                                )}
+                                {/* Segment 3: Saved Time (Remaining) */}
+                                {(timer.savedTime || 0) > 0 && (
+                                    <View
+                                        style={[
+                                            styles.progressFill,
+                                            {
+                                                left: `${Math.max(0, totalSeconds - (timer.savedTime || 0)) / totalSeconds * 100}%`,
+                                                width: `${(timer.savedTime || 0) / totalSeconds * 100}%`,
+                                                backgroundColor: 'rgba(255,255,255,0.3)' // Even brighter ghost shade
+                                            }
+                                        ]}
+                                    />
+                                )}
+                            </View>
+                        ) : (
+                            // Active timers show animated progress with two segments
+                            <View style={styles.multiProgressWrapper}>
+                                {/* Original Segment Fill */}
                                 <Animated.View
                                     style={[
                                         styles.progressFill,
                                         {
-                                            left: `${originalWeight * 100}%`,
                                             width: animatedProgress.interpolate({
                                                 inputRange: [0, originalWeight * 100, 100],
-                                                outputRange: ['0%', '0%', `${(1 - originalWeight) * 100}%`],
+                                                outputRange: ['0%', `${originalWeight * 100}%`, `${originalWeight * 100}%`],
                                             }),
-                                            backgroundColor: isRunning ? 'rgba(0, 180, 204, 0.45)' : 'rgba(128,82,0,0.5)' // Darker cyan for borrowed segment
+                                            backgroundColor: isRunning ? 'rgba(0, 229, 255, 0.25)' : 'rgba(255,165,0,0.35)'
                                         }
                                     ]}
                                 />
+                                {/* Borrowed Segment Fill */}
+                                {borrowedSeconds > 0 && (
+                                    <Animated.View
+                                        style={[
+                                            styles.progressFill,
+                                            {
+                                                left: `${originalWeight * 100}%`,
+                                                width: animatedProgress.interpolate({
+                                                    inputRange: [0, originalWeight * 100, 100],
+                                                    outputRange: ['0%', '0%', `${(1 - originalWeight) * 100}%`],
+                                                }),
+                                                backgroundColor: isRunning ? 'rgba(0, 180, 204, 0.45)' : 'rgba(128,82,0,0.5)' // Darker cyan for borrowed segment
+                                            }
+                                        ]}
+                                    />
+                                )}
+                            </View>
+                        )}
+                    </View>
+                )}
+
+                {/* Interior shadow for depth */}
+                <View style={[styles.timerCardInteriorShadow, isLandscape && styles.timerCardInteriorShadowLandscape]} pointerEvents="none" />
+
+                {/* Timer Info and Actions */}
+                <View style={[styles.cardContent, isLandscape && styles.cardContentLandscape]} pointerEvents="box-none">
+                    <View style={styles.cardLeft} pointerEvents="none">
+                        {/* Top Row: Category + Status (interchanged with borrow time) + saved badge */}
+                        <View style={styles.topStatusRow}>
+                            <View style={[styles.categoryBadge, { backgroundColor: `${categoryColor}15`, borderColor: `${categoryColor}30` }]}>
+                                <MaterialIcons name={categoryIcon} size={10} color={categoryColor} />
+                                <Text style={[styles.categoryBadgeText, { color: categoryColor }]}>
+                                    {category?.name.toUpperCase() || 'GENERAL'}
+                                </Text>
+                            </View>
+                            <View style={[styles.statusBadge, { backgroundColor: `${getStatusColor()}15` }]}>
+                                <Text style={[styles.statusText, { color: getStatusColor() }]}>
+                                    {timer.status.toUpperCase()}
+                                </Text>
+                            </View>
+                            {isCompleted && (timer.savedTime || 0) > 0 && (
+                                <View style={styles.savedBadgeSmall}>
+                                    <MaterialIcons name="speed" size={10} color="rgba(76,175,80,0.6)" />
+                                    <Text style={styles.savedTextSmall}>
+                                        {formatSavedTime(timer.savedTime || 0)}
+                                    </Text>
+                                </View>
                             )}
+                        </View>
+
+                        {/* Title Row: Title only */}
+                        <View style={styles.titleRow}>
+                            <View style={styles.timerTitleWrap}>
+                                <Text
+                                    style={[styles.timerTitle, isCompleted && styles.timerTitleCompleted]}
+                                    numberOfLines={1}
+                                >
+                                    {timer.title}
+                                </Text>
+                            </View>
+                        </View>
+                        <View style={styles.timeRow}>
+                            <Text style={[styles.timerTime, isCompleted && styles.timerTimeCompleted, isLandscape && styles.timerTimeLandscape]}>
+                                {timer.time}
+                            </Text>
+                            <Text style={[styles.timerTotal, isLandscape && styles.timerTotalLandscape]}>
+                                / {getExpandedTotal(timer.total, timer.borrowedTime || 0)}
+                            </Text>
+                            {borrowedSeconds > 0 && (
+                                <View style={styles.borrowedBadgeSmall}>
+                                    <MaterialIcons name="add-alarm" size={8} color="rgba(255,255,255,0.4)" />
+                                    <Text style={styles.borrowedTextSmall}>
+                                        {formatBorrowedTime(borrowedSeconds)}
+                                    </Text>
+                                </View>
+                            )}
+                        </View>
+                    </View>
+
+                    {timer.isPinned && (
+                        <View style={[styles.pinIconContainer, isLandscape ? styles.pinIconContainerLandscape : styles.pinIconContainerPortrait]}>
+                            <MaterialIcons
+                                name="local-offer"
+                                size={10}
+                                color="#fff"
+                            />
+                        </View>
+                    )}
+
+                    {isReadOnly && !isCompleted && (
+                        <View style={styles.readOnlyIcon}>
+                            <MaterialIcons name="lock" size={20} color="rgba(255,255,255,0.3)" />
+                        </View>
+                    )}
+
+                    {isCompleted ? (
+                        <View style={styles.completedCheckIcon}>
+                            <MaterialIcons name="check-circle" size={28} color="#4CAF50" />
+                        </View>
+                    ) : (
+                        <View style={styles.cardPlayButtonBezel}>
+                            <TouchableOpacity
+                                style={[
+                                    styles.cardPlayButtonTrack,
+                                    isRunning && styles.playButtonActive,
+                                ]}
+                                onPress={isReadOnly ? undefined : onPlayPause}
+                                hitSlop={{ top: 15, bottom: 15, left: 15, right: 15 }}
+                                activeOpacity={isReadOnly ? 1 : 0.6}
+                                disabled={isReadOnly}
+                            >
+                                <LinearGradient
+                                    colors={isRunning ? ['rgba(0,229,255,0.1)', 'rgba(0,0,0,0.2)'] : ['rgba(255,255,255,0.05)', 'rgba(0,0,0,0.15)']}
+                                    style={StyleSheet.absoluteFill}
+                                />
+                                <View style={styles.cardPlayButtonInteriorShadow} pointerEvents="none" />
+                                <MaterialIcons
+                                    name={isRunning ? "pause" : "play-arrow"}
+                                    size={28}
+                                    color={isRunning ? "#fff" : "rgba(255,255,255,0.7)"}
+                                />
+                                <View style={styles.cardPlayButtonTopRim} pointerEvents="none" />
+                            </TouchableOpacity>
                         </View>
                     )}
                 </View>
-            )}
 
-            {/* Inset shadow */}
-            <LinearGradient
-                colors={['rgba(0,0,0,0.5)', 'rgba(0,0,0,0.2)', 'transparent']}
-                style={styles.cardInset}
-                pointerEvents="none"
-            />
+                {/* Top Rim Highlight */}
+                <View style={[styles.timerCardTopRim, isLandscape && styles.timerCardTopRimLandscape]} pointerEvents="none" />
+            </TouchableOpacity>
 
-
-            {/* Timer Info and Actions */}
-            <View style={styles.cardContent} pointerEvents="box-none">
-                <View style={styles.cardLeft} pointerEvents="none">
-                    {/* Top Row: Category + Status (interchanged with borrow time) + saved badge */}
-                    <View style={styles.topStatusRow}>
-                        <View style={[styles.categoryBadge, { backgroundColor: `${categoryColor}15`, borderColor: `${categoryColor}30` }]}>
-                            <MaterialIcons name={categoryIcon} size={10} color={categoryColor} />
-                            <Text style={[styles.categoryBadgeText, { color: categoryColor }]}>
-                                {category?.name.toUpperCase() || 'GENERAL'}
-                            </Text>
-                        </View>
-                        <View style={[styles.statusBadge, { backgroundColor: `${getStatusColor()}15` }]}>
-                            <Text style={[styles.statusText, { color: getStatusColor() }]}>
-                                {timer.status.toUpperCase()}
-                            </Text>
-                        </View>
-                        {isCompleted && (timer.savedTime || 0) > 0 && (
-                            <View style={styles.savedBadgeSmall}>
-                                <MaterialIcons name="speed" size={10} color="rgba(76,175,80,0.6)" />
-                                <Text style={styles.savedTextSmall}>
-                                    {formatSavedTime(timer.savedTime || 0)}
-                                </Text>
-                            </View>
-                        )}
-                    </View>
-
-                    {/* Title Row: Title only */}
-                    <View style={styles.titleRow}>
-                        <View style={styles.timerTitleWrap}>
-                            <Text
-                                style={[styles.timerTitle, isCompleted && styles.timerTitleCompleted]}
-                                numberOfLines={1}
-                            >
-                                {timer.title}
-                            </Text>
-                        </View>
-                    </View>
-                    <View style={styles.timeRow}>
-                        <Text style={[styles.timerTime, isCompleted && styles.timerTimeCompleted]}>
-                            {timer.time}
-                        </Text>
-                        <Text style={styles.timerTotal}>
-                            / {getExpandedTotal(timer.total, timer.borrowedTime || 0)}
-                        </Text>
-                        {borrowedSeconds > 0 && (
-                            <View style={styles.borrowedBadgeSmall}>
-                                <MaterialIcons name="add-alarm" size={8} color="rgba(255,255,255,0.4)" />
-                                <Text style={styles.borrowedTextSmall}>
-                                    {formatBorrowedTime(borrowedSeconds)}
-                                </Text>
-                            </View>
-                        )}
-                    </View>
-                </View>
-
-                {timer.isPinned && (
-                    <View style={[styles.pinIconContainer, isLandscape ? styles.pinIconContainerLandscape : styles.pinIconContainerPortrait]}>
-                        <MaterialIcons
-                            name="local-offer"
-                            size={10}
-                            color="#fff"
-                        />
-                    </View>
-                )}
-
-                {isReadOnly && !isCompleted && (
-                    <View style={styles.readOnlyIcon}>
-                        <MaterialIcons name="lock" size={20} color="rgba(255,255,255,0.3)" />
-                    </View>
-                )}
-
-                {isCompleted ? (
-                    <View style={styles.completedCheckIcon}>
-                        <MaterialIcons name="check-circle" size={28} color="#4CAF50" />
-                    </View>
-                ) : (
-                    <TouchableOpacity
-                        style={[
-                            styles.playButton,
-                            isRunning && styles.playButtonActive,
-                        ]}
-                        onPress={isReadOnly ? undefined : onPlayPause}
-                        hitSlop={{ top: 15, bottom: 15, left: 15, right: 15 }}
-                        activeOpacity={isReadOnly ? 1 : 0.6}
-                        disabled={isReadOnly}
-                    >
-                        <MaterialIcons
-                            name={isRunning ? "pause" : "play-arrow"}
-                            size={28}
-                            color={isRunning ? "#fff" : "rgba(255,255,255,0.7)"}
-                        />
-                    </TouchableOpacity>
-                )}
-            </View>
+            {/* Outer Boundary Highlight */}
+            <View style={[styles.timerCardOuterBoundaryHighlight, isLandscape && styles.timerCardOuterBoundaryHighlightLandscape]} pointerEvents="none" />
         </View>
     );
 }
@@ -2110,6 +2124,67 @@ const styles = StyleSheet.create({
         paddingBottom: 100,
     },
 
+    timerCardBezel: {
+        marginBottom: 12,
+        borderRadius: 32,
+        padding: 4,
+        backgroundColor: 'rgba(255,255,255,0.03)',
+        borderColor: 'rgba(255,255,255,0.12)',
+        borderWidth: 1.5,
+        overflow: 'hidden',
+        position: 'relative',
+    },
+
+    timerCardTrack: {
+        borderRadius: 28,
+        paddingHorizontal: 12,
+        paddingVertical: 20,
+        backgroundColor: 'rgba(0,0,0,0.15)',
+        overflow: 'hidden',
+        position: 'relative',
+    },
+
+    timerCardTrackLandscape: {
+        borderRadius: 20,
+        paddingHorizontal: 8,
+        paddingVertical: 10,
+    },
+
+    timerCardInteriorShadow: {
+        ...StyleSheet.absoluteFillObject,
+        borderBottomWidth: 2,
+        borderRightWidth: 1,
+        borderColor: 'rgba(0,0,0,0.25)',
+        borderRadius: 28,
+    },
+
+    timerCardInteriorShadowLandscape: {
+        borderRadius: 20,
+    },
+
+    timerCardTopRim: {
+        ...StyleSheet.absoluteFillObject,
+        borderTopWidth: 1,
+        borderLeftWidth: 0.5,
+        borderColor: 'rgba(255,255,255,0.15)',
+        borderRadius: 28,
+    },
+
+    timerCardTopRimLandscape: {
+        borderRadius: 20,
+    },
+
+    timerCardOuterBoundaryHighlight: {
+        ...StyleSheet.absoluteFillObject,
+        borderRadius: 32,
+        borderWidth: 1,
+        borderColor: 'rgba(255,255,255,0.08)',
+    },
+
+    timerCardOuterBoundaryHighlightLandscape: {
+        borderRadius: 24,
+    },
+
     timerCard: {
         marginBottom: 12,
         borderRadius: 32,
@@ -2311,6 +2386,43 @@ const styles = StyleSheet.create({
         letterSpacing: 0.5,
     },
 
+    cardPlayButtonBezel: {
+        width: 48,
+        height: 48,
+        borderRadius: 24,
+        padding: 3,
+        backgroundColor: 'rgba(255,255,255,0.03)',
+        alignItems: 'center',
+        justifyContent: 'center',
+    },
+
+    cardPlayButtonTrack: {
+        width: 42,
+        height: 42,
+        borderRadius: 21,
+        backgroundColor: 'rgba(0,0,0,0.12)',
+        alignItems: 'center',
+        justifyContent: 'center',
+        overflow: 'hidden',
+        position: 'relative',
+    },
+
+    cardPlayButtonInteriorShadow: {
+        ...StyleSheet.absoluteFillObject,
+        borderBottomWidth: 2,
+        borderRightWidth: 1,
+        borderColor: 'rgba(0,0,0,0.25)',
+        borderRadius: 21,
+    },
+
+    cardPlayButtonTopRim: {
+        ...StyleSheet.absoluteFillObject,
+        borderTopWidth: 1,
+        borderLeftWidth: 0.5,
+        borderColor: 'rgba(255,255,255,0.1)',
+        borderRadius: 21,
+    },
+
     playButton: {
         width: 42,
         height: 42,
@@ -2328,8 +2440,8 @@ const styles = StyleSheet.create({
     },
 
     completedCheckIcon: {
-        width: 42,
-        height: 42,
+        width: 48,
+        height: 48,
         alignItems: 'center',
         justifyContent: 'center',
     },
@@ -2648,10 +2760,21 @@ const styles = StyleSheet.create({
     timerCardLandscape: {
         flex: 1,
         marginBottom: 0,
-        borderRadius: 16,
-        paddingVertical: 8,
-        paddingHorizontal: 8,
+        borderRadius: 24,
+        padding: 3,
         minHeight: 80,
+    },
+
+    cardContentLandscape: {
+        paddingVertical: 4,
+    },
+
+    timerTimeLandscape: {
+        fontSize: 18,
+    },
+
+    timerTotalLandscape: {
+        fontSize: 11,
     },
 
     addButtonLandscape: {

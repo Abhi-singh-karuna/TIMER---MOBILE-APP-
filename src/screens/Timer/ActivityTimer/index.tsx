@@ -26,7 +26,6 @@ interface ActiveTimerProps {
     progress: number; // 0-100
     endTime: string;
     isRunning: boolean;
-    onBack: () => void;
     onPlayPause: () => void;
     onCancel: () => void;
     onComplete: () => void;
@@ -44,7 +43,6 @@ export default function ActiveTimer({
     progress,
     endTime,
     isRunning,
-    onBack,
     onPlayPause,
     onCancel,
     onComplete,
@@ -255,28 +253,123 @@ export default function ActiveTimer({
         outputRange: [1, 0.8, 1],
     });
 
+    const renderPrecisionButton = (
+        onPress: () => void,
+        icon: string,
+        isPlay: boolean,
+        colorTheme: 'white' | 'black'
+    ) => {
+        const isBlack = colorTheme === 'black';
+        const buttonSize = isPlay ? 88 : 64;
+        const bezelSize = buttonSize + 12;
+        const iconSize = isPlay ? 44 : 24;
+
+        // Colors for depth and integration
+        const surfaceColor = isBlack ? 'rgba(0,0,0,0.05)' : 'rgba(255,255,255,0.03)';
+        const bezelBorderColor = isBlack ? 'rgba(0,0,0,0.12)' : 'rgba(255,255,255,0.12)';
+        const trackBg = isPlay && isRunning ? sliderButtonColor : 'rgba(0,0,0,0.15)';
+
+        return (
+            <View style={[styles.buttonBezel, { width: bezelSize, height: bezelSize, borderRadius: bezelSize / 2, backgroundColor: surfaceColor, borderColor: bezelBorderColor }]}>
+                <TouchableOpacity
+                    style={[
+                        styles.buttonTrack,
+                        {
+                            width: buttonSize,
+                            height: buttonSize,
+                            borderRadius: buttonSize / 2,
+                            backgroundColor: trackBg
+                        }
+                    ]}
+                    onPress={onPress}
+                    activeOpacity={0.7}
+                >
+                    {/* Concave Gradient */}
+                    <LinearGradient
+                        colors={isBlack ? ['rgba(0,0,0,0.3)', 'rgba(0,0,0,0.1)'] : ['rgba(255,255,255,0.05)', 'rgba(255,255,255,0.15)']}
+                        style={StyleSheet.absoluteFill}
+                        start={{ x: 0, y: 0 }}
+                        end={{ x: 0, y: 1 }}
+                    />
+
+                    {/* Interior Shadow */}
+                    <View style={[styles.interiorShadow, { borderRadius: buttonSize / 2, borderBottomWidth: 3, borderRightWidth: 1, borderColor: isBlack ? 'rgba(0,0,0,0.08)' : 'rgba(0,0,0,0.2)' }]} pointerEvents="none" />
+
+                    <MaterialIcons
+                        name={icon as any}
+                        size={iconSize}
+                        color={isPlay && isRunning ? "#000" : (isBlack ? "rgba(0,0,0,0.8)" : "#FFF")}
+                    />
+
+                    {/* Top Rim Highlight */}
+                    <View style={[styles.topRim, { borderRadius: buttonSize / 2, opacity: isBlack ? 0.3 : 1 }]} pointerEvents="none" />
+                </TouchableOpacity>
+
+                {/* Sharp Outer Boundary Highlight */}
+                <View style={[styles.outerBoundaryHighlight, { borderRadius: bezelSize / 2, borderColor: isBlack ? 'rgba(0,0,0,0.15)' : 'rgba(0,0,0,0.2)' }]} pointerEvents="none" />
+            </View>
+        );
+    };
+
+    const renderPrecisionPill = (
+        onPress: () => void,
+        text: string,
+        colorTheme: 'white' | 'black'
+    ) => {
+        const isBlack = colorTheme === 'black';
+        const height = 32; // Reduced from 44
+        const width = 68;  // Reduced from 84
+        const borderRadius = 10; // Adjusted for smaller size
+        const bezelPadding = 3;  // Reduced from 4
+
+        const surfaceColor = isBlack ? 'rgba(0,0,0,0.05)' : 'rgba(255,255,255,0.03)';
+        const bezelBorderColor = isBlack ? 'rgba(0,0,0,0.12)' : 'rgba(255,255,255,0.12)';
+
+        return (
+            <View style={[styles.buttonBezel, { width: width + (bezelPadding * 2), height: height + (bezelPadding * 2), borderRadius: borderRadius + bezelPadding, backgroundColor: surfaceColor, borderColor: bezelBorderColor, padding: bezelPadding }]}>
+                <TouchableOpacity
+                    style={[
+                        styles.buttonTrack,
+                        {
+                            width: width,
+                            height: height,
+                            borderRadius: borderRadius,
+                            backgroundColor: 'rgba(0,0,0,0.1)'
+                        }
+                    ]}
+                    onPress={onPress}
+                    activeOpacity={0.7}
+                >
+                    <LinearGradient
+                        colors={isBlack ? ['rgba(0,0,0,0.25)', 'rgba(0,0,0,0.1)'] : ['rgba(255,255,255,0.05)', 'rgba(255,255,255,0.15)']}
+                        style={StyleSheet.absoluteFill}
+                        start={{ x: 0, y: 0 }}
+                        end={{ x: 0, y: 1 }}
+                    />
+
+                    <View style={[styles.interiorShadow, { borderRadius: borderRadius, borderBottomWidth: 2, borderRightWidth: 1, borderColor: isBlack ? 'rgba(0,0,0,0.08)' : 'rgba(0,0,0,0.2)' }]} pointerEvents="none" />
+
+                    <Text style={[styles.borrowBtnText, { color: isBlack ? "rgba(0,0,0,0.6)" : timerTextColor }]}>{text}</Text>
+
+                    <View style={[styles.topRim, { borderRadius: borderRadius, borderTopWidth: 0.8, opacity: isBlack ? 0.3 : 1 }]} pointerEvents="none" />
+                </TouchableOpacity>
+                <View style={[styles.outerBoundaryHighlight, { borderRadius: borderRadius + bezelPadding, borderColor: isBlack ? 'rgba(0,0,0,0.1)' : 'rgba(0,0,0,0.15)' }]} pointerEvents="none" />
+            </View>
+        );
+    };
+
     const renderBorrowTime = (isLandscape: boolean, colorTheme: 'white' | 'black' = 'white') => {
         const isBlack = colorTheme === 'black';
-        const textColor = isBlack ? 'rgba(0,0,0,0.4)' : 'rgba(255,255,255,0.4)';
-        const btnBg = isBlack ? 'rgba(0,0,0,0.05)' : 'rgba(255,255,255,0.05)';
-        const btnBorder = isBlack ? 'rgba(0,0,0,0.1)' : 'rgba(255,255,255,0.1)';
+        const textColor = isBlack ? 'rgba(0,0,0,0.45)' : 'rgba(255,255,255,0.4)';
 
         return (
             <View style={[styles.borrowContainer, isLandscape && styles.borrowContainerLandscape]}>
                 <Text style={[styles.borrowLabel, { color: textColor }]}>BORROW TIME</Text>
                 <View style={[styles.borrowButtons, isLandscape && styles.borrowButtonsLandscape]}>
                     {[1, 5, 10].map((mins) => (
-                        <TouchableOpacity
-                            key={mins}
-                            style={[
-                                styles.borrowBtn,
-                                { backgroundColor: btnBg, borderColor: btnBorder }
-                            ]}
-                            onPress={() => onBorrowTime(mins * 60)}
-                            activeOpacity={0.7}
-                        >
-                            <Text style={[styles.borrowBtnText, { color: timerTextColor }]}>+{mins}m</Text>
-                        </TouchableOpacity>
+                        <View key={mins}>
+                            {renderPrecisionPill(() => onBorrowTime(mins * 60), `+${mins}m`, colorTheme)}
+                        </View>
                     ))}
                 </View>
             </View>
@@ -302,30 +395,12 @@ export default function ActiveTimer({
 
                 {/* Bottom Left: Controls (Repositioned to the right of the slider) */}
                 <View style={[styles.landscapeControlsContainer, { zIndex: 10 }]} pointerEvents="box-none">
-                    <TouchableOpacity
-                        style={[
-                            styles.landscapePlayBtn,
-                            { backgroundColor: btnBg, borderColor: btnBorder },
-                            isRunning && { backgroundColor: sliderButtonColor, borderColor: sliderButtonColor }
-                        ]}
-                        onPress={onPlayPause}
-                        activeOpacity={0.7}
-                    >
-                        <MaterialIcons name={isRunning ? "pause" : "play-arrow"} size={44} color={isRunning ? "#000" : textColor} />
-                    </TouchableOpacity>
-
-                    <TouchableOpacity
-                        style={[styles.landscapeCancelBtn, { backgroundColor: btnBg }]}
-                        onPress={onCancel}
-                        activeOpacity={0.7}
-                    >
-                        <MaterialIcons name="close" size={24} color={textColor} />
-                    </TouchableOpacity>
+                    {renderPrecisionButton(onPlayPause, isRunning ? "pause" : "play-arrow", true, colorTheme)}
+                    {renderPrecisionButton(onCancel, "close", false, colorTheme)}
                 </View>
 
                 {/* Right Side: Timer (Left Aligned for Stability) */}
                 <View style={styles.landscapeTimerContainer} pointerEvents="none">
-                    <Text style={[styles.landscapeTimerLabel, { color: labelColor }]}>TIMER ({timerName})</Text>
                     <Text
                         style={[styles.landscapeTimeText, { color: isBlack ? '#000' : timerTextColor }]}
                         numberOfLines={1}
@@ -341,101 +416,38 @@ export default function ActiveTimer({
         );
     };
 
-    const renderPortraitContent = () => {
+    const renderPortraitContent = (colorTheme: 'white' | 'black') => {
+        const isBlack = colorTheme === 'black';
+        const textColor = isBlack ? '#000' : '#fff';
+        const labelColor = isBlack ? 'rgba(0,0,0,0.4)' : 'rgba(255,255,255,0.4)';
+        const btnBg = isBlack ? 'rgba(0,0,0,0.05)' : 'rgba(255,255,255,0.05)';
+        const btnBorder = isBlack ? 'rgba(0,0,0,0.1)' : 'rgba(255,255,255,0.1)';
+
         return (
-            <View style={styles.mainContent} pointerEvents="box-none">
+            <View style={[styles.mainContent, { width, height }]} pointerEvents="box-none">
                 {/* Immersive Timer Section */}
-                <View style={styles.timerSection}>
-                    {/* Floating Glow Layer */}
-                    <View style={styles.floatingGlow} />
-
-                    <View style={styles.vesselWrapper}>
-                        {/* The Living Water Pill */}
-                        <View style={styles.vesselContainer}>
-                            <View style={styles.waterContainer}>
-                                <Animated.View style={[styles.waterFill, { height: waterHeight }]}>
-                                    <LinearGradient
-                                        colors={[`${fillerColor}73`, `${fillerColor}A6`, `${fillerColor}D9`]}
-                                        style={StyleSheet.absoluteFill}
-                                    />
-                                    <Animated.View style={[styles.waveLayer1, { transform: [{ translateX: waveTranslateX }, { scaleX: waveScale }], backgroundColor: `${fillerColor}66` }]} />
-                                    <Animated.View style={[styles.waveLayer2, { transform: [{ translateX: wave2TranslateX }], backgroundColor: `${fillerColor}59` }]} />
-                                    <Animated.View style={[styles.waveLayer3, { transform: [{ translateX: wave3TranslateX }, { scaleY: wave3ScaleY }] }]} />
-                                </Animated.View>
-                            </View>
-
-                            {/* Inner Shine Effect */}
-                            <LinearGradient
-                                colors={['rgba(255,255,255,0.1)', 'transparent', 'rgba(0,0,0,0.3)']}
-                                style={styles.vesselShine}
-                            />
-                        </View>
-
-                        {/* Centered Timer Content */}
-                        <View style={styles.timeDisplayPortrait}>
-                            <Text style={styles.timeTextPortrait}>
-                                <Text style={styles.timeUnitPortrait}>{hours}</Text>
-                                <Text style={styles.timeSepPortrait}>:</Text>
-                                <Text style={styles.timeUnitPortrait}>{minutes}</Text>
-                                <Text style={styles.timeSepPortrait}>:</Text>
-                                <Text style={styles.timeSecPortrait}>{seconds}</Text>
-                            </Text>
-                            <View style={styles.timeLabelsPortrait}>
-                                <Text style={styles.timeLabelSmall}>HOURS</Text>
-                                <Text style={styles.timeLabelSpacerSmall} />
-                                <Text style={styles.timeLabelSmall}>MINUTES</Text>
-                                <Text style={styles.timeLabelSpacerSmall} />
-                                <Text style={styles.timeLabelSmall}>SECONDS</Text>
-                            </View>
-                        </View>
-                    </View>
-
-                    {/* Simple Progress Pill */}
-                    <View style={styles.progressPillPortrait}>
-                        <View style={[styles.progressPillFill, { width: `${progress}%`, backgroundColor: `${fillerColor}25` }]} />
-                        <Text style={[styles.progressPillText, { color: fillerColor }]}>{progress}% COMPLETE</Text>
-                    </View>
+                <View style={styles.portraitTimerContainer} pointerEvents="none">
+                    <Text
+                        style={[styles.portraitTimeText, { color: isBlack ? '#000' : timerTextColor }]}
+                        numberOfLines={1}
+                        adjustsFontSizeToFit
+                    >
+                        {hours}:{minutes}:{seconds}
+                    </Text>
                 </View>
 
-                {/* Controls Section with Glass Finish */}
-                <View style={styles.controlsSectionPortrait}>
-                    {/* Borrow Time integrated more cleanly */}
-                    <View style={styles.borrowSectionPortrait}>
-                        <View style={styles.borrowDivider} />
-                        {renderBorrowTime(false)}
-                        <View style={styles.borrowDivider} />
+                {/* Controls Section */}
+                <View style={styles.portraitControlsWrapper} pointerEvents="box-none">
+                    {/* Borrow Time - Integrated inside controls for better spacing */}
+                    {renderBorrowTime(false, colorTheme)}
+
+                    <View style={styles.portraitMainControlsRow}>
+                        {renderPrecisionButton(onPlayPause, isRunning ? "pause" : "play-arrow", true, colorTheme)}
+                        {renderPrecisionButton(onCancel, "close", false, colorTheme)}
                     </View>
 
-                    <View style={styles.mainControlsRow}>
-                        <View style={styles.controlBtnWrapper}>
-                            <TouchableOpacity
-                                style={[
-                                    styles.actionButton,
-                                    isRunning && styles.actionButtonActive,
-                                    isRunning && { borderColor: `${sliderButtonColor}60`, backgroundColor: `${sliderButtonColor}15` }
-                                ]}
-                                onPress={onPlayPause}
-                                activeOpacity={0.8}
-                            >
-                                <MaterialIcons
-                                    name={isRunning ? 'pause' : 'play-arrow'}
-                                    size={32}
-                                    color={isRunning ? sliderButtonColor : '#fff'}
-                                />
-                            </TouchableOpacity>
-                            <Text style={styles.actionBtnLabel}>{isRunning ? 'PAUSE' : 'START'}</Text>
-                        </View>
-
-                        <View style={styles.controlBtnWrapper}>
-                            <TouchableOpacity style={styles.actionButton} onPress={onCancel} activeOpacity={0.8}>
-                                <MaterialIcons name="close" size={28} color="rgba(255,255,255,0.8)" />
-                            </TouchableOpacity>
-                            <Text style={styles.actionBtnLabel}>CANCEL</Text>
-                        </View>
-                    </View>
-
-                    <View style={styles.slideAreaPortrait}>
-                        <SlideToComplete onComplete={onComplete} />
+                    <View style={styles.portraitSlideContainer}>
+                        <SlideToComplete onComplete={onComplete} colorTheme={colorTheme} dynamicColor={sliderButtonColor} />
                     </View>
                 </View>
             </View>
@@ -443,66 +455,70 @@ export default function ActiveTimer({
     };
 
     return (
-        <LinearGradient
-            colors={['#000000', '#000000']}
-            locations={[0, 1]}
-            style={styles.container}
-        >
-            {/* Landscape Overlays - Moved outside SafeAreaView for true fullscreen */}
-            {isLandscape && (
-                <Animated.View
-                    style={[StyleSheet.absoluteFill, { opacity: orientationAnim }]}
-                    pointerEvents="box-none"
-                >
-                    {renderLandscapeContent('white')}
-                    <Animated.View
-                        pointerEvents="box-none"
-                        style={[
-                            styles.landscapeProgressFiller,
-                            {
-                                width: waterLevel.interpolate({
-                                    inputRange: [0, 100],
-                                    outputRange: ['0%', '100%'],
-                                }),
-                                backgroundColor: fillerColor,
-                                overflow: 'hidden',
-                                zIndex: 1,
-                            }
-                        ]}
-                    >
-                        {renderLandscapeContent('black')}
-                    </Animated.View>
-                </Animated.View>
-            )}
+        <View style={styles.container}>
+            {/* Absolute Base Layer (Always Black Background) */}
+            <View style={[StyleSheet.absoluteFill, { backgroundColor: '#000' }]} />
 
-            <SafeAreaView style={styles.safeArea} pointerEvents="box-none">
-                <Animated.View style={[{ flex: 1, opacity: orientationAnim }]} pointerEvents="box-none">
+            {/* Content Layer (White Theme / Base) */}
+            <Animated.View
+                style={[StyleSheet.absoluteFill, { opacity: orientationAnim }]}
+                pointerEvents="box-none"
+            >
+                <SafeAreaView style={styles.safeArea} pointerEvents="box-none">
+                    <View style={styles.contentContainer} pointerEvents="box-none">
+                        {isLandscape ? renderLandscapeContent('white') : renderPortraitContent('white')}
+                    </View>
+                </SafeAreaView>
+            </Animated.View>
+
+            {/* Filler Mask Layer (Black Theme / Progress) */}
+            <Animated.View
+                pointerEvents="box-none"
+                style={[StyleSheet.absoluteFill, { opacity: orientationAnim, zIndex: 1 }]}
+            >
+                <Animated.View
+                    pointerEvents="box-none"
+                    style={[
+                        isLandscape ? styles.landscapeProgressFiller : styles.portraitProgressFiller,
+                        {
+                            [isLandscape ? 'width' : 'height']: waterLevel.interpolate({
+                                inputRange: [0, 100],
+                                outputRange: ['0%', '100%'],
+                            }),
+                            backgroundColor: fillerColor,
+                            overflow: 'hidden',
+                        }
+                    ]}
+                >
+                    {/* Waves for Portrait Mode */}
                     {!isLandscape && (
-                        <>
-                            <View style={styles.header}>
-                                <View style={styles.headerLeft}>
-                                    <TouchableOpacity style={styles.backButton} onPress={onBack} activeOpacity={0.7}>
-                                        <MaterialIcons name="arrow-back-ios" size={20} color="rgba(255,255,255,0.7)" style={{ marginLeft: 6 }} />
-                                    </TouchableOpacity>
-                                </View>
-                                <View style={styles.headerPill}>
-                                    <View style={styles.categoryRow}>
-                                        <Text style={styles.timerName}>{timerName.toUpperCase()}</Text>
-                                    </View>
-                                    <View style={styles.headerInfo}>
-                                        <Text style={[styles.progressText, { color: fillerColor }]}>{progress}%</Text>
-                                        <Text style={styles.dotSeparator}>•</Text>
-                                        <Text style={styles.endTimeText}>{isRunning ? 'RUNNING' : 'PAUSED'}</Text>
-                                    </View>
-                                </View>
-                                <View style={styles.headerRight} />
-                            </View>
-                            {renderPortraitContent()}
-                        </>
+                        <View style={styles.waveContainer} pointerEvents="none">
+                            <Animated.View style={[styles.waveLayer1, { transform: [{ translateX: waveTranslateX }, { scaleY: waveScale }], backgroundColor: `${fillerColor}`, top: -30 }]} />
+                            <Animated.View style={[styles.waveLayer2, { transform: [{ translateX: wave2TranslateX }], backgroundColor: `${fillerColor}`, opacity: 0.8, top: -25 }]} />
+                            <Animated.View style={[styles.waveLayer3, { transform: [{ translateX: wave3TranslateX }, { scaleY: wave3ScaleY }], backgroundColor: `${fillerColor}`, opacity: 0.6, top: -20 }]} />
+                        </View>
                     )}
+
+                    {/* Content inside filler - perfectly identical to base layer for alignment */}
+                    <View
+                        style={{
+                            width,
+                            height,
+                            position: 'absolute',
+                            bottom: 0,
+                            left: 0
+                        }}
+                        pointerEvents="box-none"
+                    >
+                        <SafeAreaView style={styles.safeArea} pointerEvents="box-none">
+                            <View style={styles.contentContainer} pointerEvents="box-none">
+                                {isLandscape ? renderLandscapeContent('black') : renderPortraitContent('black')}
+                            </View>
+                        </SafeAreaView>
+                    </View>
                 </Animated.View>
-            </SafeAreaView>
-        </LinearGradient>
+            </Animated.View>
+        </View>
     );
 }
 
@@ -513,284 +529,116 @@ const styles = StyleSheet.create({
 
     waveContainer: {
         position: 'absolute',
-        bottom: 0,
+        top: 0,
         left: 0,
         right: 0,
-        overflow: 'hidden',
-    },
-
-    wave: {
-        position: 'absolute',
-        bottom: -50,
-        left: -50,
-        right: -50,
-        backgroundColor: '#00a0a0',
-        borderTopLeftRadius: 200,
-        borderTopRightRadius: 300,
-        opacity: 0.6,
+        height: 100, // Area for waves to oscillate
     },
 
     safeArea: {
         flex: 1,
     },
 
-    header: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        justifyContent: 'space-between',
-        paddingTop: 16,
-        paddingHorizontal: 24,
-    },
-
-    headerLeft: {
-        width: 44,
-        alignItems: 'flex-start',
-    },
-
-    headerRight: {
-        width: 44,
-    },
-
-    backButton: {
-        width: 44,
-        height: 44,
-        borderRadius: 22,
-        backgroundColor: 'rgba(255,255,255,0.08)',
-        alignItems: 'center',
-        justifyContent: 'center',
-        borderWidth: 1,
-        borderColor: 'rgba(255,255,255,0.1)',
-    },
-
-    headerPill: {
-        paddingHorizontal: 20,
-        paddingVertical: 12,
-        borderRadius: 24,
-        backgroundColor: 'rgba(255,255,255,0.08)',
-        borderWidth: 1,
-        borderColor: 'rgba(255,255,255,0.1)',
-        alignItems: 'center',
-    },
-
-    categoryRow: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        marginBottom: 2,
-    },
-
-    timerName: {
-        fontSize: 14,
-        fontWeight: '700',
-        letterSpacing: 2,
-        color: '#fff',
-        marginBottom: 4,
-    },
-
-    headerInfo: {
-        flexDirection: 'row',
-        alignItems: 'center',
-    },
-
-    progressText: {
-        fontSize: 12,
-        fontWeight: '600',
-        color: '#FFFFFF',
-        marginRight: 6,
-    },
-
-    dotSeparator: {
-        fontSize: 12,
-        color: 'rgba(255,255,255,0.4)',
-        marginRight: 6,
-    },
-
-    endTimeText: {
-        fontSize: 12,
-        fontWeight: '500',
-        color: 'rgba(255,255,255,0.6)',
-    },
-
     // ========== PORTRAIT STYLES REDESIGN ==========
     mainContent: {
         flex: 1,
         paddingHorizontal: 24,
+        paddingBottom: 40,
+        paddingTop: 40, // Added top padding to push content down
+        justifyContent: 'flex-start', // Shift to top-aligned flex to control spacing better
+        alignItems: 'center',
     },
 
-    timerSection: {
-        flex: 1.8,
+    contentContainer: {
+        flex: 1,
         justifyContent: 'center',
         alignItems: 'center',
-        paddingVertical: 20,
     },
 
-    floatingGlow: {
-        position: 'absolute',
-        width: 300,
-        height: 300,
-        borderRadius: 150,
-        backgroundColor: 'transparent',
-        zIndex: -1,
-    },
-
-    vesselWrapper: {
-        width: 260,
-        height: 320,
-        justifyContent: 'center',
+    portraitTimerContainer: {
         alignItems: 'center',
-        position: 'relative',
+        marginTop: 100, // Lowering the timer for better vertical weight
+        marginBottom: 40,
     },
 
-    vesselContainer: {
-        ...StyleSheet.absoluteFillObject,
-        borderRadius: 140,
-        backgroundColor: 'rgba(15, 30, 45, 0.4)',
-        borderWidth: 1.5,
-        borderColor: 'rgba(255, 255, 255, 0.08)',
-        overflow: 'hidden',
+    portraitTimerLabel: {
+        fontSize: 12,
+        fontWeight: '900',
+        letterSpacing: 8, // More aggressive letter spacing
+        marginBottom: 8,
+        opacity: 0.5,
     },
 
-    vesselShine: {
-        ...StyleSheet.absoluteFillObject,
-        borderRadius: 140,
-    },
-
-    timeDisplayPortrait: {
-        alignItems: 'center',
-        zIndex: 10,
-    },
-
-    timeTextPortrait: {
-        fontSize: 72,
-        fontWeight: '800',
-        color: '#fff',
-        letterSpacing: -2,
+    portraitTimeText: {
+        fontSize: 120, // Reverting to larger size for "Impact"
+        fontWeight: '900',
+        letterSpacing: -5,
+        lineHeight: 120,
         fontVariant: ['tabular-nums'],
     },
 
-    timeUnitPortrait: {
-        color: '#fff',
-    },
-
-    timeSepPortrait: {
-        color: 'rgba(255, 255, 255, 0.3)',
-        fontSize: 56,
-        marginHorizontal: -4,
-    },
-
-    timeSecPortrait: {
-        color: '#FFFFFF',
-    },
-
-    timeLabelsPortrait: {
-        flexDirection: 'row',
+    portraitControlsWrapper: {
+        width: '100%',
         alignItems: 'center',
-        marginTop: 4,
-    },
-
-    timeLabelSmall: {
-        fontSize: 9,
-        fontWeight: '800',
-        color: 'rgba(255, 255, 255, 0.4)',
-        letterSpacing: 1.5,
-        width: 50,
-        textAlign: 'center',
-    },
-
-    timeLabelSpacerSmall: {
-        width: 12,
-    },
-
-    progressPillPortrait: {
-        marginTop: 32,
-        width: 180,
-        height: 32,
-        borderRadius: 16,
-        backgroundColor: 'rgba(255, 255, 255, 0.05)',
-        borderWidth: 1,
-        borderColor: 'rgba(255, 255, 255, 0.1)',
-        overflow: 'hidden',
-        justifyContent: 'center',
-        alignItems: 'center',
-    },
-
-    progressPillFill: {
         position: 'absolute',
-        left: 0,
-        top: 0,
-        bottom: 0,
-        backgroundColor: 'rgba(255, 255, 255, 0.15)',
+        bottom: 70, // Raising the controls for better balance
     },
 
-    progressPillText: {
-        fontSize: 10,
-        fontWeight: '800',
-        color: '#FFFFFF',
-        letterSpacing: 1.5,
-    },
-
-    controlsSectionPortrait: {
-        flex: 1.4,
-        width: '100%',
-        paddingBottom: 10,
-    },
-
-    borrowSectionPortrait: {
-        marginBottom: 16,
-    },
-
-    borrowDivider: {
-        height: 1,
-        backgroundColor: 'rgba(255, 255, 255, 0.05)',
-        width: '100%',
-        marginVertical: 4,
-    },
-
-    mainControlsRow: {
+    portraitMainControlsRow: {
         flexDirection: 'row',
-        justifyContent: 'center',
-        gap: 40,
-        marginBottom: 24,
-    },
-
-    controlBtnWrapper: {
         alignItems: 'center',
-        gap: 10,
+        justifyContent: 'center',
+        gap: 30, // Balanced gap for bezels
+        marginTop: 24,
+        marginBottom: 40,
     },
 
-    actionButton: {
-        width: 68,
-        height: 68,
-        borderRadius: 34,
-        backgroundColor: 'rgba(255, 255, 255, 0.06)',
+    buttonBezel: {
+        justifyContent: 'center',
+        alignItems: 'center',
+        borderWidth: 0.8,
+        padding: 4,
+        position: 'relative',
+    },
+
+    buttonTrack: {
+        justifyContent: 'center',
+        alignItems: 'center',
         borderWidth: 1,
-        borderColor: 'rgba(255, 255, 255, 0.15)',
-        justifyContent: 'center',
-        alignItems: 'center',
-        ...Platform.select({
-            ios: {
-                shadowColor: '#000',
-                shadowOpacity: 0.3,
-                shadowRadius: 10,
-                shadowOffset: { width: 0, height: 4 },
-            },
-        }),
+        borderColor: 'rgba(0, 0, 0, 0.15)',
+        overflow: 'hidden',
+        position: 'relative',
     },
 
-    actionButtonActive: {
-        backgroundColor: 'rgba(255, 255, 255, 0.08)',
-        borderColor: 'rgba(255, 255, 255, 0.4)',
+    interiorShadow: {
+        ...StyleSheet.absoluteFillObject,
     },
 
-    actionBtnLabel: {
-        fontSize: 10,
-        fontWeight: '800',
-        color: 'rgba(255, 255, 255, 0.4)',
-        letterSpacing: 2,
+    topRim: {
+        ...StyleSheet.absoluteFillObject,
+        borderTopWidth: 1,
+        borderLeftWidth: 0.5,
+        borderRightWidth: 0.5,
+        borderColor: 'rgba(255,255,255,0.12)',
     },
 
-    slideAreaPortrait: {
+    outerBoundaryHighlight: {
+        ...StyleSheet.absoluteFillObject,
+        borderBottomWidth: 1.5,
+        borderRightWidth: 1,
+    },
+
+    portraitSlideContainer: {
         width: '100%',
-        paddingBottom: 10,
+        height: 64,
+        paddingHorizontal: 20,
+    },
+
+    portraitProgressFiller: {
+        position: 'absolute',
+        bottom: 0,
+        left: 0,
+        right: 0,
     },
 
     // ========== LANDSCAPE LAYOUT STYLES ==========
@@ -805,24 +653,7 @@ const styles = StyleSheet.create({
         left: 125,
         flexDirection: 'row',
         alignItems: 'center',
-    },
-
-    landscapePlayBtn: {
-        width: 80,
-        height: 80,
-        borderRadius: 40,
-        justifyContent: 'center',
-        alignItems: 'center',
-        marginRight: 20,
-        borderWidth: 1,
-    },
-
-    landscapeCancelBtn: {
-        width: 56,
-        height: 56,
-        borderRadius: 28,
-        justifyContent: 'center',
-        alignItems: 'center',
+        gap: 20, // Spacious gap for bezels
     },
 
     landscapeTimerContainer: {
@@ -899,17 +730,8 @@ const styles = StyleSheet.create({
         justifyContent: 'flex-end',
     },
 
-    borrowBtn: {
-        paddingHorizontal: 16,
-        paddingVertical: 10,
-        borderRadius: 12,
-        borderWidth: 1,
-        minWidth: 70,
-        alignItems: 'center',
-    },
-
     borrowBtnText: {
-        fontSize: 14,
+        fontSize: 12, // Reduced from 14
         fontWeight: '700',
     },
 
