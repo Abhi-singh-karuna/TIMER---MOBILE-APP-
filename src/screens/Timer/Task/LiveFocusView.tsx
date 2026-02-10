@@ -2532,6 +2532,7 @@ export default function LiveFocusView({
                                                                         style={[
                                                                             styles.timelineStageCard,
                                                                             { backgroundColor: STAGE_STATUS_CONFIG[stage.status || 'Upcoming'].color },
+                                                                            { borderLeftWidth: 3, borderLeftColor: section.category?.color || 'rgba(255,255,255,0.2)' },
                                                                             isBeingEdited && styles.stageCardDragging,
                                                                             isInResizeMode && styles.stageCardResizeMode,
                                                                             { left, width, top },
@@ -2922,6 +2923,7 @@ export default function LiveFocusView({
                                             const stages = task.stages || [];
                                             const liveStatus = getTaskLiveStatus(task);
                                             const isActive = liveStatus === 'ACTIVE';
+                                            const category = categories.find(c => c.id === task.categoryId);
 
                                             // Separate timed and untimed subtasks
                                             // Note: After defaults are applied, all stages should have startTimeMinutes
@@ -3116,26 +3118,23 @@ export default function LiveFocusView({
                                                                     <React.Fragment key={stage.id}>
                                                                         <View
                                                                             style={[
-                                                                                // Universal card design (same as untimed cards) for timeline too
                                                                                 styles.timelineStageCard,
                                                                                 { backgroundColor: STAGE_STATUS_CONFIG[stage.status || 'Upcoming'].color },
+                                                                                { borderLeftWidth: 3, borderLeftColor: category?.color || 'rgba(255,255,255,0.2)' },
                                                                                 isBeingEdited && styles.stageCardDragging,
                                                                                 isInResizeMode && styles.stageCardResizeMode,
-                                                                                { left, width, top }, // Apply position/size last to ensure it overrides any style changes
+                                                                                { left, width, top },
                                                                             ]}
                                                                             {...stagePanResponder.panHandlers}
                                                                         >
-                                                                            {/* Left Resize Handle - simple vertical line */}
                                                                             {isInResizeMode && (
                                                                                 <TouchableOpacity
                                                                                     style={styles.resizeHandleLeft}
                                                                                     onPressIn={() => {
-                                                                                        // Clear any previous drag state if switching to a different stage
                                                                                         if (activeStage && (activeStage.taskId !== task.id || activeStage.stageId !== stage.id)) {
                                                                                             clearEditingState();
                                                                                         }
                                                                                         Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                                                                                        // Reset scroll tracking for smooth resize during auto-scroll
                                                                                         resetScrollTracking();
                                                                                         resizeHandleSideRef.current = 'left';
                                                                                         setActiveStage({ taskId: task.id, stageId: stage.id });
@@ -3149,12 +3148,9 @@ export default function LiveFocusView({
                                                                                 </TouchableOpacity>
                                                                             )}
 
-                                                                            {/* Main content area */}
                                                                             <TouchableOpacity
                                                                                 onPress={() => {
-                                                                                    // Tap to enter resize mode (if not already in it)
                                                                                     if (!isInResizeMode && !isDragging && !isResizing) {
-                                                                                        // Clear any previous editing state if switching to a different stage
                                                                                         const isDifferentStage =
                                                                                             (activeStage && (activeStage.taskId !== task.id || activeStage.stageId !== stage.id)) ||
                                                                                             (resizeModeStage && (resizeModeStage.taskId !== task.id || resizeModeStage.stageId !== stage.id));
@@ -3164,7 +3160,6 @@ export default function LiveFocusView({
                                                                                         Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
                                                                                         setResizeModeStage({ taskId: task.id, stageId: stage.id });
                                                                                     } else if ((isInResizeMode || isDragging || isResizing)) {
-                                                                                        // If already in resize mode for this stage, do nothing (captures touch to prevent background dismissal)
                                                                                         const isDifferentStage =
                                                                                             (activeStage && (activeStage.taskId !== task.id || activeStage.stageId !== stage.id)) ||
                                                                                             (resizeModeStage && (resizeModeStage.taskId !== task.id || resizeModeStage.stageId !== stage.id));
@@ -3174,14 +3169,11 @@ export default function LiveFocusView({
                                                                                             Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
                                                                                             setResizeModeStage({ taskId: task.id, stageId: stage.id });
                                                                                         }
-                                                                                        // If same stage, we do nothing - but we CAPTURE the touch
                                                                                     }
                                                                                 }}
                                                                                 onLongPress={() => {
-                                                                                    // Long-press to move - only if not in resize mode
                                                                                     if (isInResizeMode) return;
 
-                                                                                    // Clear any previous editing state if switching to a different stage
                                                                                     const isDifferentStage =
                                                                                         (activeStage && (activeStage.taskId !== task.id || activeStage.stageId !== stage.id)) ||
                                                                                         (resizeModeStage && (resizeModeStage.taskId !== task.id || resizeModeStage.stageId !== stage.id));
@@ -3190,28 +3182,15 @@ export default function LiveFocusView({
                                                                                     }
 
                                                                                     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-
-                                                                                    // Reset scroll tracking for smooth drag during auto-scroll
                                                                                     resetScrollTracking();
 
-                                                                                    // Freeze lanes for this task at drag start so other stages stay put.
                                                                                     frozenLanesRef.current = {
                                                                                         taskId: task.id,
                                                                                         lanes: calculateStageLanes(sortedTimedStages),
                                                                                     };
-                                                                                    debugLog('freeze-lanes', {
-                                                                                        taskId: task.id,
-                                                                                        stageId: stage.id,
-                                                                                        maxLane: Math.max(
-                                                                                            ...Array.from(frozenLanesRef.current.lanes.values()),
-                                                                                            0
-                                                                                        ),
-                                                                                    });
 
-                                                                                    // Set active stage FIRST to disable scrolling immediately
                                                                                     setActiveStage({ taskId: task.id, stageId: stage.id });
                                                                                     setIsDragging(true);
-                                                                                    // Store initial layout including lane information for 2D drag
                                                                                     setInitialStageLayout({ left, width, top, lane });
                                                                                     setTempStageLayout({ left, width, top, lane });
                                                                                 }}
@@ -3221,16 +3200,14 @@ export default function LiveFocusView({
                                                                                     { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'flex-start' }
                                                                                 ]}
                                                                             >
-                                                                                {/* Stage Name */}
                                                                                 <Text style={[
                                                                                     styles.untimedStageName,
-                                                                                    { flexShrink: 1, color: '#FFFFFF' }, // White text for status backgrounds
+                                                                                    { flexShrink: 1, color: '#FFFFFF' },
                                                                                     isBeingEdited && styles.stageTextDragging,
                                                                                     isInResizeMode && styles.stageTextResizeMode
                                                                                 ]} numberOfLines={1} ellipsizeMode="tail">
                                                                                     {stage.text}
                                                                                 </Text>
-                                                                                {/* Time Display: Start Time & Duration */}
                                                                                 {(() => {
                                                                                     const { startTimeMinutes, durationMinutes } = effectiveTime;
                                                                                     const startTimeStr = formatTimeCompact(startTimeMinutes);
@@ -3256,26 +3233,21 @@ export default function LiveFocusView({
                                                                                         </View>
                                                                                     );
                                                                                 })()}
-                                                                                {/* REQUEST badge when stage is in the approval/notification list */}
                                                                                 {stageNeedsApproval(stage) != null && (
                                                                                     <View style={styles.stageRequestBadge}>
                                                                                         <MaterialIcons name="notification-important" size={10} color="#FFFFFF" />
-                                                                                        {/* <Text style={styles.stageRequestBadgeText}>REQUEST</Text> */}
                                                                                     </View>
                                                                                 )}
                                                                             </TouchableOpacity>
 
-                                                                            {/* Right Resize Handle - simple vertical line */}
                                                                             {isInResizeMode && (
                                                                                 <TouchableOpacity
                                                                                     style={styles.resizeHandleRight}
                                                                                     onPressIn={() => {
-                                                                                        // Clear any previous drag state if switching to a different stage
                                                                                         if (activeStage && (activeStage.taskId !== task.id || activeStage.stageId !== stage.id)) {
                                                                                             clearEditingState();
                                                                                         }
                                                                                         Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                                                                                        // Reset scroll tracking for smooth resize during auto-scroll
                                                                                         resetScrollTracking();
                                                                                         resizeHandleSideRef.current = 'right';
                                                                                         setActiveStage({ taskId: task.id, stageId: stage.id });
@@ -3289,7 +3261,6 @@ export default function LiveFocusView({
                                                                                 </TouchableOpacity>
                                                                             )}
 
-                                                                            {/* Delete button - visible only when NOT in resize mode */}
                                                                             {!isInResizeMode && (
                                                                                 <TouchableOpacity
                                                                                     style={styles.stageDeleteButton}
@@ -5201,28 +5172,35 @@ const styles = StyleSheet.create({
         fontWeight: '800',
         color: 'rgba(255,255,255,0.6)',
     },
-    // Universal card design for timed stages on timeline
+    // Modern Material Design 3 - Clean Floating Card
     timelineStageCard: {
         position: 'absolute',
-        top: 7, // align with untimed list top padding (7)
-        borderRadius: 8,
+        top: 7,
+        borderRadius: 12,
         backgroundColor: '#FFFFFF',
-        borderWidth: 1,
-        borderColor: 'rgba(0, 0, 0, 0.15)',
         minHeight: 21,
-        paddingHorizontal: 6,
-        paddingVertical: 3,
+        paddingHorizontal: 8,
+        paddingVertical: 4,
+
+        // Modern elevation shadows (two-layer for depth)
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 2 },
+        shadowOpacity: 0.15,
+        shadowRadius: 8,
+        elevation: 4,
+
+        // Subtle border for definition
+        borderWidth: 0.5,
+        borderColor: 'rgba(255, 255, 255, 0.25)',
+
+        // Content layout
         flexDirection: 'row',
         alignItems: 'center',
         justifyContent: 'flex-start',
         gap: 5.6,
         overflow: 'hidden',
-        shadowColor: '#000',
-        shadowOffset: { width: 0, height: 1 },
-        shadowOpacity: 0.1,
-        shadowRadius: 2,
-        elevation: 2,
     },
+
     stageBlock: {
         position: 'absolute',
         top: 15,
@@ -5296,22 +5274,22 @@ const styles = StyleSheet.create({
         flexDirection: 'row',
         alignItems: 'center',
         marginBottom: 3.5, // 5 * 0.7 = 3.5 (compressed by 30%)
-        borderRadius: 4, // Slightly more rounded for premium look
+        borderRadius: 12, // Increased from 4 for modern MD3 look
         backgroundColor: '#FFFFFF',
-        borderWidth: 1,
-        borderColor: 'rgba(0, 0, 0, 0.15)',
+        borderWidth: 0.5,
+        borderColor: 'rgba(255, 255, 255, 0.25)',
         minHeight: 21, // 30 * 0.7 = 21 (compressed by 30%)
-        paddingHorizontal: 6, // Slightly more padding
+        paddingHorizontal: 8, // Match timelineStageCard padding
         paddingVertical: 3,
         gap: 5.6, // 8 * 0.7 = 5.6 (compressed by 30%)
         width: '100%', // Take full width of container
         maxWidth: '100%', // Ensure it doesn't exceed container
         overflow: 'hidden', // Prevent content overflow
         shadowColor: '#000',
-        shadowOffset: { width: 0, height: 1 },
-        shadowOpacity: 0.1,
-        shadowRadius: 2,
-        elevation: 2,
+        shadowOffset: { width: 0, height: 2 },
+        shadowOpacity: 0.15,
+        shadowRadius: 8,
+        elevation: 4,
     },
     untimedStageName: {
         fontSize: 9,

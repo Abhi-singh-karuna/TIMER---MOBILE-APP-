@@ -50,7 +50,7 @@ npx react-native bundle \
 ## 🏛 Phase 3: Xcode Configuration
 1.  **Open the Project**:
     ```bash
-    open ios/TIMERAPP.xcworkspace
+    open ios/CHRONOSCAPE.xcworkspace
     ```
 2.  **Set Build Configuration to Release**:
     - Go to **Product > Scheme > Edit Scheme...**
@@ -61,7 +61,7 @@ npx react-native bundle \
     - If `main.jsbundle` is not visible in the Xcode file tree (under the TIMERAPP folder):
         - Right-click the **TIMERAPP** folder → **Add Files to "TIMERAPP"...**
         - Select `ios/main.jsbundle` and the `ios/assets` folder.
-        - **Check**: "Create folder references" and ensure the "TIMERAPP" target is selected.
+        - **Check**: "Create folder references" and ensure the "CHRONOSCAPE" target is selected.
 
 ---
 
@@ -84,6 +84,12 @@ npx react-native bundle \
 - **"Build input file cannot be found: main.jsbundle"**: Ensure you ran the bundling command in Phase 2 and that the file is added to your Xcode project.
 - **Push Notification Errors**: If you don't have a paid developer account, go to **Signing & Capabilities** and remove the "Push Notifications" capability.
 - **Icons not updating**: Run `npx expo prebuild --platform ios` and then rebuild in Xcode.
+- **"Provisioning Profile Expired"**: Apple's free personal team certificates expire every 7 days.
+    1. Open Xcode and go to **Signing & Capabilities**.
+    2. Look for the red "Expired" message.
+    3. If "Automatically manage signing" is checked, click the **"Try Again"** or **"Repair"** button if visible.
+    4. If not, uncheck and re-check **"Automatically manage signing"**. Xcode will attempt to regenerate the profile.
+    5. Ensure your Apple ID is still logged in under **Xcode > Settings > Accounts**.
 
 ---
 **Last Updated**: 2026-01-26

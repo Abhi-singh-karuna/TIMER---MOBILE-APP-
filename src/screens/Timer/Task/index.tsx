@@ -872,23 +872,27 @@ const styles = StyleSheet.create({
         flexShrink: 0,
     },
 
-    // Precision Status Button Styles
+    // Precision Status Button Styles - Raised/Embossed Design
     statusButtonBezel: {
         width: 36,
         height: 36,
         borderRadius: 999,
-        padding: 3,
-        backgroundColor: 'rgba(255,255,255,0.03)',
-        borderColor: 'rgba(255,255,255,0.12)',
+        padding: 2.5,
+        backgroundColor: 'rgba(255,255,255,0.08)',
+        borderColor: 'rgba(255,255,255,0.2)',
         borderWidth: 1.5,
         overflow: 'hidden',
         position: 'relative',
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 2 },
+        shadowOpacity: 0.3,
+        shadowRadius: 4,
     },
 
     statusButtonTrack: {
         borderRadius: 999,
         flex: 1,
-        backgroundColor: 'rgba(0,0,0,0.15)',
+        backgroundColor: 'rgba(20,20,20,0.6)',
         alignItems: 'center',
         justifyContent: 'center',
         position: 'relative',
@@ -896,22 +900,24 @@ const styles = StyleSheet.create({
 
     statusButtonInteriorShadow: {
         ...StyleSheet.absoluteFillObject,
-        borderBottomWidth: 1.5,
-        borderRightWidth: 0.8,
-        borderColor: 'rgba(0,0,0,0.25)',
+        borderTopWidth: 2,
+        borderLeftWidth: 1.5,
+        borderColor: 'rgba(0,0,0,0.4)',
         borderRadius: 999,
     },
 
     statusButtonTopRim: {
         ...StyleSheet.absoluteFillObject,
-        borderTopWidth: 0.8,
-        borderLeftWidth: 0.5,
-        borderColor: 'rgba(255,255,255,0.15)',
+        borderBottomWidth: 1.5,
+        borderRightWidth: 1,
+        borderColor: 'rgba(255,255,255,0.25)',
         borderRadius: 999,
     },
 
     statusButtonActive: {
-        backgroundColor: 'rgba(0,229,255,0.15)',
+        backgroundColor: 'rgba(0,229,255,0.25)',
+        borderTopColor: 'rgba(0,229,255,0.3)',
+        borderLeftColor: 'rgba(0,229,255,0.3)',
     },
 
     // Original checkbox styles (kept for compatibility)
@@ -3468,13 +3474,19 @@ function TaskCard({
                                 onPress={isLocked ? undefined : onToggle}
                                 activeOpacity={0.6}
                             >
-                                <View style={[
-                                    styles.checkbox,
-                                    isInProgress && styles.checkboxActive
-                                ]}>
-                                    {isInProgress && (
-                                        <MaterialIcons name="hourglass-empty" size={16} color="#00E5FF" />
-                                    )}
+                                <View style={styles.statusButtonBezel}>
+                                    <View
+                                        style={[
+                                            styles.statusButtonTrack,
+                                            isInProgress && styles.statusButtonActive
+                                        ]}
+                                    >
+                                        <View style={styles.statusButtonInteriorShadow} pointerEvents="none" />
+                                        <View style={styles.statusButtonTopRim} pointerEvents="none" />
+                                        {isInProgress && (
+                                            <MaterialIcons name="play-circle" size={16} color="#00E5FF" />
+                                        )}
+                                    </View>
                                 </View>
                             </TouchableOpacity>
                         )}
@@ -3632,18 +3644,30 @@ function TaskCard({
 
                             {!task.isBacklog && (
                                 <TouchableOpacity
-                                    style={[styles.fullViewToggleBtnCompact, isCompleted && styles.fullViewToggleBtnCompleted]}
+                                    style={styles.checkboxContainer}
                                     onPress={isLocked ? undefined : onToggle}
-                                    activeOpacity={0.7}
+                                    activeOpacity={0.6}
                                 >
-                                    <MaterialIcons
-                                        name={isCompleted ? "task-alt" : (isInProgress ? "play-circle" : "radio-button-unchecked")}
-                                        size={14}
-                                        color={isCompleted ? "#4CAF50" : (isInProgress ? "#00E5FF" : "rgba(255,255,255,0.5)")}
-                                    />
-                                    <Text style={[styles.fullViewToggleTextCompact, isCompleted && { color: '#4CAF50' }]}>
-                                        {isCompleted ? 'DONE' : (isInProgress ? 'IN PROGRESS' : 'MARK COMPLETE')}
-                                    </Text>
+                                    {isCompleted ? (
+                                        <View style={styles.completedCheckIcon}>
+                                            <MaterialIcons name="task-alt" size={28} color="#4CAF50" />
+                                        </View>
+                                    ) : (
+                                        <View style={styles.statusButtonBezel}>
+                                            <View
+                                                style={[
+                                                    styles.statusButtonTrack,
+                                                    isInProgress && styles.statusButtonActive
+                                                ]}
+                                            >
+                                                <View style={styles.statusButtonInteriorShadow} pointerEvents="none" />
+                                                <View style={styles.statusButtonTopRim} pointerEvents="none" />
+                                                {isInProgress && (
+                                                    <MaterialIcons name="play-circle" size={16} color="#00E5FF" />
+                                                )}
+                                            </View>
+                                        </View>
+                                    )}
                                 </TouchableOpacity>
                             )}
                         </View>
