@@ -9,6 +9,7 @@ import {
     StatusBar,
     ScrollView,
 } from 'react-native';
+import { LinearGradient } from 'expo-linear-gradient';
 import { MaterialIcons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
 import Animated, { Layout, FadeIn, FadeOut } from 'react-native-reanimated';
@@ -195,6 +196,157 @@ export default function FullScreenTimer({
         onClose();
     };
 
+    const renderPrecisionButton = (
+        onPress: () => void,
+        icon: string,
+        isPlay: boolean,
+        colorTheme: 'white' | 'black'
+    ) => {
+        const isBlack = colorTheme === 'black';
+        const buttonSize = isPlay ? 88 : 64;
+        const bezelSize = buttonSize + 12;
+        const iconSize = isPlay ? 44 : 24;
+
+        // Colors for depth and integration
+        const surfaceColor = isBlack ? 'rgba(0,0,0,0.05)' : 'rgba(255,255,255,0.03)';
+        const bezelBorderColor = isBlack ? 'rgba(0,0,0,0.12)' : 'rgba(255,255,255,0.12)';
+        const trackBg = 'rgba(0,0,0,0.15)';
+
+        return (
+            <View style={[styles.buttonBezel, { width: bezelSize, height: bezelSize, borderRadius: bezelSize / 2, backgroundColor: surfaceColor, borderColor: bezelBorderColor }]}>
+                <TouchableOpacity
+                    style={[
+                        styles.buttonTrack,
+                        {
+                            width: buttonSize,
+                            height: buttonSize,
+                            borderRadius: buttonSize / 2,
+                            backgroundColor: trackBg
+                        }
+                    ]}
+                    onPress={onPress}
+                    activeOpacity={0.7}
+                >
+                    {/* Concave Gradient */}
+                    <LinearGradient
+                        colors={isBlack ? ['rgba(0,0,0,0.3)', 'rgba(0,0,0,0.1)'] : ['rgba(255,255,255,0.05)', 'rgba(255,255,255,0.15)']}
+                        style={StyleSheet.absoluteFill}
+                        start={{ x: 0, y: 0 }}
+                        end={{ x: 0, y: 1 }}
+                    />
+
+                    {/* Interior Shadow */}
+                    <View style={[styles.interiorShadow, { borderRadius: buttonSize / 2, borderBottomWidth: 3, borderRightWidth: 1, borderColor: isBlack ? 'rgba(0,0,0,0.08)' : 'rgba(0,0,0,0.2)' }]} pointerEvents="none" />
+
+                    <MaterialIcons
+                        name={icon as any}
+                        size={iconSize}
+                        color={isBlack ? "rgba(0,0,0,0.8)" : "#FFF"}
+                    />
+
+                    {/* Top Rim Highlight */}
+                    <View style={[styles.topRim, { borderRadius: buttonSize / 2, opacity: isBlack ? 0.3 : 1 }]} pointerEvents="none" />
+                </TouchableOpacity>
+
+                {/* Sharp Outer Boundary Highlight */}
+                <View style={[styles.outerBoundaryHighlight, { borderRadius: bezelSize / 2, borderColor: isBlack ? 'rgba(0,0,0,0.15)' : 'rgba(0,0,0,0.2)' }]} pointerEvents="none" />
+            </View>
+        );
+    };
+
+    const renderPrecisionPill = (
+        onPress: () => void,
+        text: string,
+        backgroundColor: string,
+        textColor: string = '#000000'
+    ) => {
+        const height = 32;
+        const minWidth = text.length > 3 ? 80 : 68;
+        const borderRadius = 16;
+        const bezelPadding = 3;
+
+        const surfaceColor = 'rgba(255,255,255,0.03)';
+        const bezelBorderColor = 'rgba(255,255,255,0.12)';
+
+        return (
+            <View style={[styles.buttonBezel, { height: height + (bezelPadding * 2), minWidth: minWidth + (bezelPadding * 2), borderRadius: borderRadius + bezelPadding, backgroundColor: surfaceColor, borderColor: bezelBorderColor, padding: bezelPadding }]}>
+                <TouchableOpacity
+                    style={[
+                        styles.buttonTrack,
+                        {
+                            height: height,
+                            minWidth: minWidth,
+                            paddingHorizontal: 16,
+                            borderRadius: borderRadius,
+                            backgroundColor: backgroundColor
+                        }
+                    ]}
+                    onPress={onPress}
+                    activeOpacity={0.7}
+                >
+                    <LinearGradient
+                        colors={['rgba(255,255,255,0.1)', 'rgba(0,0,0,0.1)']}
+                        style={StyleSheet.absoluteFill}
+                        start={{ x: 0, y: 0 }}
+                        end={{ x: 0, y: 1 }}
+                    />
+
+                    <View style={[styles.interiorShadow, { borderRadius: borderRadius, borderBottomWidth: 2, borderRightWidth: 1, borderColor: 'rgba(0,0,0,0.2)' }]} pointerEvents="none" />
+
+                    <Text style={[styles.precisionPillText, { color: textColor }]}>{text}</Text>
+
+                    <View style={[styles.topRim, { borderRadius: borderRadius, borderTopWidth: 0.8 }]} pointerEvents="none" />
+                </TouchableOpacity>
+                <View style={[styles.outerBoundaryHighlight, { borderRadius: borderRadius + bezelPadding, borderColor: 'rgba(0,0,0,0.15)' }]} pointerEvents="none" />
+            </View>
+        );
+    };
+
+    const renderSmallRoundButton = (
+        onPress: () => void,
+        text: string
+    ) => {
+        const buttonSize = 32;
+        const bezelSize = buttonSize + 6;
+        const bezelPadding = 3;
+
+        const surfaceColor = 'rgba(255,255,255,0.03)';
+        const bezelBorderColor = 'rgba(255,255,255,0.12)';
+        const trackBg = 'rgba(255,255,255,0.15)';
+
+        return (
+            <View style={[styles.buttonBezel, { width: bezelSize, height: bezelSize, borderRadius: bezelSize / 2, backgroundColor: surfaceColor, borderColor: bezelBorderColor }]}>
+                <TouchableOpacity
+                    style={[
+                        styles.buttonTrack,
+                        {
+                            width: buttonSize,
+                            height: buttonSize,
+                            borderRadius: buttonSize / 2,
+                            backgroundColor: trackBg
+                        }
+                    ]}
+                    onPress={onPress}
+                    activeOpacity={0.7}
+                >
+                    <LinearGradient
+                        colors={['rgba(255,255,255,0.05)', 'rgba(255,255,255,0.15)']}
+                        style={StyleSheet.absoluteFill}
+                        start={{ x: 0, y: 0 }}
+                        end={{ x: 0, y: 1 }}
+                    />
+
+                    <View style={[styles.interiorShadow, { borderRadius: buttonSize / 2, borderBottomWidth: 2, borderRightWidth: 1, borderColor: 'rgba(0,0,0,0.2)' }]} pointerEvents="none" />
+
+                    <Text style={[styles.smallRoundButtonText, { color: '#FFFFFF' }]}>{text}</Text>
+
+                    <View style={[styles.topRim, { borderRadius: buttonSize / 2, borderTopWidth: 0.8 }]} pointerEvents="none" />
+                </TouchableOpacity>
+                <View style={[styles.outerBoundaryHighlight, { borderRadius: bezelSize / 2, borderColor: 'rgba(0,0,0,0.15)' }]} pointerEvents="none" />
+            </View>
+        );
+    };
+
     return (
         <Modal
             visible={visible}
@@ -225,45 +377,43 @@ export default function FullScreenTimer({
                     }}>
                         {/* Action Buttons Group */}
                         {activeStage?.status === 'Upcoming' && onStartStage && activeStage.id !== undefined && (
-                            <TouchableOpacity
-                                onPress={handlePlay}
-                                style={styles.actionBtnStartCompact}
-                            >
-                                <Text style={styles.actionBtnTextCompact}>START</Text>
-                            </TouchableOpacity>
+                            renderPrecisionPill(
+                                handlePlay,
+                                'START',
+                                '#FFCC00',
+                                '#000000'
+                            )
                         )}
 
                         {activeStage?.status === 'Process' && onCompleteStage && activeStage.id !== undefined && (
                             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-                                <TouchableOpacity
-                                    onPress={() => {
+                                {renderPrecisionPill(
+                                    () => {
                                         Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
                                         onCompleteStage(activeStage.taskId, activeStage.id!);
-                                    }}
-                                    style={styles.actionBtnCompleteCompact}
-                                >
-                                    <Text style={styles.actionBtnTextCompact}>DONE</Text>
-                                </TouchableOpacity>
+                                    },
+                                    'DONE',
+                                    '#00E676',
+                                    '#000000'
+                                )}
 
                                 {onExtendStage && (
                                     <View style={{ flexDirection: 'row', gap: 4 }}>
                                         {[5, 10, 20].map((mins) => (
-                                            <TouchableOpacity
-                                                key={`+${mins}`}
-                                                onPress={() => {
-                                                    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                                                    onExtendStage(activeStage.taskId, activeStage.id!, mins);
-                                                }}
-                                                style={styles.extendBtnCompact}
-                                            >
-                                                <Text style={styles.extendBtnTextCompact}>+{mins}</Text>
-                                            </TouchableOpacity>
+                                            <View key={`+${mins}`}>
+                                                {renderSmallRoundButton(
+                                                    () => {
+                                                        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                                                        onExtendStage(activeStage.taskId, activeStage.id!, mins);
+                                                    },
+                                                    `+${mins}`
+                                                )}
+                                            </View>
                                         ))}
                                     </View>
                                 )}
                             </View>
                         )}
-
                         {/* Task Name - Flexible and Truncated */}
                         <Text
                             style={[
@@ -560,13 +710,7 @@ export default function FullScreenTimer({
                         isLandscape ? styles.controlsContainerLandscape : styles.controlsContainerPortrait
                     ]}
                 >
-                    <TouchableOpacity
-                        style={styles.cancelBtn}
-                        onPress={handleCancel}
-                        activeOpacity={0.7}
-                    >
-                        <MaterialIcons name="close" size={24} color="#FFFFFF" />
-                    </TouchableOpacity>
+                    {renderPrecisionButton(handleCancel, "close", false, 'white')}
                 </Animated.View>
 
                 <StageActionPopup
@@ -767,15 +911,45 @@ const styles = StyleSheet.create({
         bottom: 40,
         alignSelf: 'center',
     },
-    cancelBtn: {
-        width: 56,
-        height: 56,
-        borderRadius: 28,
-        backgroundColor: 'rgba(60,60,60,0.8)',
-        borderWidth: 1,
-        borderColor: 'rgba(255,255,255,0.1)',
+    buttonBezel: {
         justifyContent: 'center',
         alignItems: 'center',
+        borderWidth: 0.8,
+        padding: 4,
+        position: 'relative',
+    },
+    buttonTrack: {
+        justifyContent: 'center',
+        alignItems: 'center',
+        borderWidth: 1,
+        borderColor: 'rgba(0, 0, 0, 0.15)',
+        overflow: 'hidden',
+        position: 'relative',
+    },
+    interiorShadow: {
+        ...StyleSheet.absoluteFillObject,
+    },
+    topRim: {
+        ...StyleSheet.absoluteFillObject,
+        borderTopWidth: 1,
+        borderLeftWidth: 0.5,
+        borderRightWidth: 0.5,
+        borderColor: 'rgba(255,255,255,0.12)',
+    },
+    outerBoundaryHighlight: {
+        ...StyleSheet.absoluteFillObject,
+        borderBottomWidth: 1.5,
+        borderRightWidth: 1,
+    },
+    precisionPillText: {
+        fontSize: 11,
+        fontWeight: '900',
+        letterSpacing: 0.5,
+    },
+    smallRoundButtonText: {
+        fontSize: 9,
+        fontWeight: '700',
+        letterSpacing: 0.2,
     },
     actionBtnStart: {
         backgroundColor: '#FFCC00',
