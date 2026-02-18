@@ -17,7 +17,7 @@ import {
     Alert,
     Animated,
 } from 'react-native';
-import { MaterialIcons } from '@expo/vector-icons';
+import { MaterialIcons, Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
 import { activateKeepAwakeAsync, deactivateKeepAwake } from 'expo-keep-awake';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -4471,6 +4471,24 @@ export default function LiveFocusView({
                 </View>
             </Modal>
 
+
+            {/* Full Screen floating button */}
+            <TouchableOpacity
+                style={[styles.fullScreenToggleBtn, !isLandscape && styles.fullScreenToggleBtnPortrait]}
+                onPress={() => {
+                    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                    setFullScreenTimerVisible(true);
+                }}
+                activeOpacity={0.85}
+            >
+                {isLandscape ? (
+                    <MaterialIcons name="fullscreen" size={16} color="rgba(255,255,255,0.7)" />
+                ) : (
+                    <Ionicons name="expand" size={20} color="#fff" />
+                )}
+                {isLandscape && <Text style={styles.fullScreenToggleBtnText}>FULL SCREEN</Text>}
+            </TouchableOpacity>
+
         </View >
     );
 }
@@ -5109,8 +5127,9 @@ const styles = StyleSheet.create({
         alignItems: 'center',
         gap: 8,
         paddingHorizontal: 14,
-        paddingVertical: 10,
-        borderRadius: 18,
+        paddingVertical: 9,
+        height: 38,
+        borderRadius: 19,
         backgroundColor: 'rgba(0,0,0,0.85)',
         borderWidth: 1,
         borderColor: 'rgba(255,255,255,0.12)',
@@ -6361,5 +6380,40 @@ const styles = StyleSheet.create({
         fontWeight: '600',
         color: 'rgba(255,255,255,0.5)',
         letterSpacing: 0.2,
+    },
+    fullScreenToggleBtn: {
+        position: 'absolute',
+        top: 50,
+        right: 16,
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 8,
+        paddingHorizontal: 14,
+        paddingVertical: 9,
+        height: 38,
+        borderRadius: 19,
+        backgroundColor: 'rgba(0,0,0,0.85)',
+        borderWidth: 1,
+        borderColor: 'rgba(255,255,255,0.12)',
+        zIndex: 9999,
+        // Elevation/Shadow for premium feel
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 2 },
+        shadowOpacity: 0.25,
+        shadowRadius: 3.84,
+        elevation: 5,
+    },
+    fullScreenToggleBtnPortrait: {
+        width: 38,
+        paddingHorizontal: 0,
+        justifyContent: 'center',
+        alignItems: 'center',
+        gap: 0,
+    },
+    fullScreenToggleBtnText: {
+        fontSize: 10,
+        fontWeight: '900',
+        color: 'rgba(255,255,255,0.55)',
+        letterSpacing: 2,
     },
 });
