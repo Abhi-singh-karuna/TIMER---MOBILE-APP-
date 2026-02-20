@@ -3154,20 +3154,7 @@ function DraggableStagesList({ stages, onReorder, onSetStageStatus, onDeleteStag
 
                     {/* Delete Button */}
                     <TouchableOpacity
-                        onPress={() => {
-                            Alert.alert(
-                                'Delete Stage',
-                                `Are you sure you want to delete "${item.text}"?`,
-                                [
-                                    { text: 'Cancel', style: 'cancel' },
-                                    {
-                                        text: 'Delete',
-                                        style: 'destructive',
-                                        onPress: () => onDeleteStage(item.id)
-                                    }
-                                ]
-                            );
-                        }}
+                        onPress={() => onDeleteStage(item.id)}
                         style={styles.deleteStageBtn}
                         disabled={isActive}
                         activeOpacity={0.7}
@@ -3330,9 +3317,52 @@ function TaskCard({
     };
 
     const handleDeleteStage = (stageId: number) => {
-        const updatedStages = (task.stages || []).filter(s => s.id !== stageId);
-        onUpdateStages?.(task, updatedStages);
-        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+        const stage = task.stages?.find(s => s.id === stageId);
+        const isLocalOnly = !stage?.syncMode || stage.syncMode === 'none';
+
+        if (task.recurrence && !task.recurrence.repeatSync && !isLocalOnly) {
+            Alert.alert(
+                'Delete Subtask',
+                'Do you want to delete this subtask from all days or just today?',
+                [
+                    { text: 'Cancel', style: 'cancel' },
+                    {
+                        text: 'Delete Current Day',
+                        onPress: () => {
+                            const updatedStages = (task.stages || []).filter(s => s.id !== stageId);
+                            onUpdateStages?.(task, updatedStages, 'none');
+                            Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+                        }
+                    },
+                    {
+                        text: 'Delete All Days',
+                        style: 'destructive',
+                        onPress: () => {
+                            const updatedStages = (task.stages || []).filter(s => s.id !== stageId);
+                            onUpdateStages?.(task, updatedStages, 'all');
+                            Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+                        }
+                    }
+                ]
+            );
+        } else {
+            Alert.alert(
+                'Delete Subtask',
+                'Are you sure you want to delete this subtask?',
+                [
+                    { text: 'Cancel', style: 'cancel' },
+                    {
+                        text: 'Delete',
+                        style: 'destructive',
+                        onPress: () => {
+                            const updatedStages = (task.stages || []).filter(s => s.id !== stageId);
+                            onUpdateStages?.(task, updatedStages);
+                            Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+                        }
+                    }
+                ]
+            );
+        }
     };
 
     const handleReorderStages = (newStages: TaskStage[]) => {

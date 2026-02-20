@@ -804,7 +804,7 @@ export default function LiveFocusView({
                     const adjustedDx = dx + currentAutoScrollOffsetRef.current;
                     const newLeft = Math.max(0, initial.left + adjustedDx);
 
-                    const CARD_HEIGHT = 21;
+                    const CARD_HEIGHT = 23;
                     const LANE_SPACING = 10;
                     const BASE_TOP = 7;
                     const laneHeight = CARD_HEIGHT + LANE_SPACING;
@@ -1079,7 +1079,7 @@ export default function LiveFocusView({
     // Stage position based on zoom level (relative to timeline start, not including label width)
     const getStageLayout = (stage: TaskStage, stageIndex: number, lane?: number): { left: number; width: number; top: number } => {
         // Constants for lane calculation
-        const CARD_HEIGHT = 21; // minHeight from timelineStageCard
+        const CARD_HEIGHT = 23; // minHeight from timelineStageCard
         const LANE_SPACING = 10; // 4px gap between consecutive subtasks (lanes)
         const BASE_TOP = 7; // Original top position
 
@@ -1710,7 +1710,7 @@ export default function LiveFocusView({
     // Calculate content height based on number of tasks and untimed subtasks
     // Calculate content height using measured heights or fallback to estimation
     const calculateContentHeight = useCallback(() => {
-        const CARD_HEIGHT = 21;
+        const CARD_HEIGHT = 23;
         const LANE_SPACING = 10;
         const BASE_TOP = 7;
 
@@ -1785,7 +1785,7 @@ export default function LiveFocusView({
                 const maxLane = timedStages.length > 0
                     ? Math.max(...Array.from(timedStageLanes.values()), -1)
                     : -1;
-                const CARD_HEIGHT = 21;
+                const CARD_HEIGHT = 23;
                 const LANE_SPACING = 10; // 4px gap between consecutive subtasks
                 const BASE_TOP = 7;
                 const timedStagesHeight = maxLane >= 0
@@ -1958,22 +1958,52 @@ export default function LiveFocusView({
         const task = tasks.find(t => t.id === taskId);
         if (!task) return;
 
-        Alert.alert(
-            'Delete Stage',
-            'Are you sure you want to delete this stage?',
-            [
-                { text: 'Cancel', style: 'cancel' },
-                {
-                    text: 'Delete',
-                    style: 'destructive',
-                    onPress: () => {
-                        const updatedStages = (task.stages || []).filter(s => s.id !== stageId);
-                        onUpdateStages(task, updatedStages);
-                        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+        const stage = task.stages?.find(s => s.id === stageId);
+        const isLocalOnly = !stage?.syncMode || stage.syncMode === 'none';
+
+        if (task.recurrence && !task.recurrence.repeatSync && !isLocalOnly) {
+            Alert.alert(
+                'Delete Subtask',
+                'Do you want to delete this subtask from all days or just today?',
+                [
+                    { text: 'Cancel', style: 'cancel' },
+                    {
+                        text: 'Delete Current Day',
+                        onPress: () => {
+                            const updatedStages = (task.stages || []).filter(s => s.id !== stageId);
+                            onUpdateStages(task, updatedStages, 'none');
+                            Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+                        }
+                    },
+                    {
+                        text: 'Delete All Days',
+                        style: 'destructive',
+                        onPress: () => {
+                            const updatedStages = (task.stages || []).filter(s => s.id !== stageId);
+                            onUpdateStages(task, updatedStages, 'all');
+                            Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+                        }
                     }
-                }
-            ]
-        );
+                ]
+            );
+        } else {
+            Alert.alert(
+                'Delete Subtask',
+                'Are you sure you want to delete this subtask?',
+                [
+                    { text: 'Cancel', style: 'cancel' },
+                    {
+                        text: 'Delete',
+                        style: 'destructive',
+                        onPress: () => {
+                            const updatedStages = (task.stages || []).filter(s => s.id !== stageId);
+                            onUpdateStages(task, updatedStages);
+                            Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+                        }
+                    }
+                ]
+            );
+        }
     }, [tasks, onUpdateStages]);
 
     // 6-to-6 day as one: use toDisplayMinutes so 23:55→00:25 and "now" 01:30 compare correctly across midnight.
@@ -2103,7 +2133,7 @@ export default function LiveFocusView({
                                 const maxLane = mergedTimedStages.length > 0
                                     ? Math.max(...Array.from(mergedLanes.values()), -1)
                                     : -1;
-                                const CARD_HEIGHT = 21;
+                                const CARD_HEIGHT = 23;
                                 const LANE_SPACING = 10;
                                 const BASE_TOP = 7;
                                 const timedStagesHeight = maxLane >= 0
@@ -2184,7 +2214,7 @@ export default function LiveFocusView({
                                 const maxLane = section.timedStages.length > 0
                                     ? Math.max(...Array.from(sectionLanes.values()), -1)
                                     : -1;
-                                const CARD_HEIGHT = 21;
+                                const CARD_HEIGHT = 23;
                                 const LANE_SPACING = 10;
                                 const BASE_TOP = 7;
                                 const timedStagesHeight = maxLane >= 0
@@ -2290,7 +2320,7 @@ export default function LiveFocusView({
                                 const maxLane = timedStages.length > 0
                                     ? Math.max(...Array.from(timedStageLanes.values()), -1)
                                     : -1;
-                                const CARD_HEIGHT = 21;
+                                const CARD_HEIGHT = 23;
                                 const LANE_SPACING = 10; // 4px gap between consecutive subtasks
                                 const BASE_TOP = 7;
                                 const timedStagesHeight = maxLane >= 0
@@ -2537,7 +2567,7 @@ export default function LiveFocusView({
                                             if (activeStage != null && frozenCategoryIdRef.current === section.categoryId && tempStageLayout?.lane != null) {
                                                 maxLane = Math.max(maxLane, tempStageLayout.lane);
                                             }
-                                            const CARD_HEIGHT = 21;
+                                            const CARD_HEIGHT = 23;
                                             const LANE_SPACING = 10;
                                             const BASE_TOP = 7;
                                             const timedStagesHeight = maxLane >= 0
@@ -2596,18 +2626,9 @@ export default function LiveFocusView({
                                                                     if (!task || !onUpdateStages) return;
                                                                     const stage = sortedMergedUntimed.find(s => s.id === stageId);
                                                                     if (stage) {
-                                                                        Alert.alert('Delete Stage', `Are you sure you want to delete "${stage.text}"?`, [
-                                                                            { text: 'Cancel', style: 'cancel' },
-                                                                            {
-                                                                                text: 'Delete', style: 'destructive', onPress: () => {
-                                                                                    const updatedStages = (task.stages || []).filter(s => s.id !== stageId);
-                                                                                    onUpdateStages(task, updatedStages);
-                                                                                    LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
-                                                                                    setTimeout(() => setCategorySectionHeights(prev => { const m = new Map(prev); m.delete(section.categoryId); return m; }), 150);
-                                                                                    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-                                                                                }
-                                                                            }
-                                                                        ]);
+                                                                        handleDeleteStage(task.id, stageId);
+                                                                        LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+                                                                        setTimeout(() => setCategorySectionHeights(prev => { const m = new Map(prev); m.delete(section.categoryId); return m; }), 150);
                                                                     }
                                                                 }}
                                                             />
@@ -2679,20 +2700,31 @@ export default function LiveFocusView({
                                                                             }}
                                                                             delayLongPress={300}
                                                                             activeOpacity={0.8}
-                                                                            style={[{ flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'flex-start' }]}
+                                                                            style={[{ flex: 1, flexDirection: 'column', alignItems: 'flex-start', justifyContent: 'center', gap: 1 }]}
                                                                         >
-                                                                            <Text style={[styles.untimedStageName, { flexShrink: 1, color: '#FFFFFF' }, isBeingEdited && styles.stageTextDragging, isInResizeMode && styles.stageTextResizeMode]} numberOfLines={1} ellipsizeMode="tail">
-                                                                                {stage.text}
-                                                                            </Text>{renderSyncIndicator(stage, { marginLeft: 4, paddingVertical: 1 })}
-                                                                            <View style={styles.stageTimeDisplay}>
-                                                                                <Text style={[styles.stageTimeText, { color: 'rgba(255, 255, 255, 0.8)' }, isBeingEdited && styles.stageTimeTextEditing, isInResizeMode && styles.stageTimeTextEditing]}>{formatTimeCompact(effectiveTime.startTimeMinutes)}</Text>
-                                                                                <Text style={[styles.stageDurationText, { color: 'rgba(255, 255, 255, 0.6)' }, isBeingEdited && styles.stageTimeTextEditing, isInResizeMode && styles.stageTimeTextEditing]}>{formatDurationCompact(effectiveTime.durationMinutes)}</Text>
-                                                                            </View>
-                                                                            {stageNeedsApproval(stage) != null && (
-                                                                                <View style={styles.stageRequestBadge}>
-                                                                                    <MaterialIcons name="notification-important" size={10} color="#FFFFFF" />
+                                                                            <View style={{ flexDirection: 'row', alignItems: 'center', width: '100%' }}>
+                                                                                <Text style={[styles.untimedStageName, { flexShrink: 1, color: '#FFFFFF', fontSize: 8.5 }, isBeingEdited && styles.stageTextDragging, isInResizeMode && styles.stageTextResizeMode]} numberOfLines={1} ellipsizeMode="tail">
+                                                                                    {stage.text}
+                                                                                </Text>
+                                                                                <View style={[{ backgroundColor: 'rgba(255,255,255,0.15)', paddingHorizontal: 4, paddingVertical: 1.5, borderRadius: 3, marginLeft: 5 }, isBeingEdited && { backgroundColor: 'rgba(0,0,0,0.1)' }, isInResizeMode && { backgroundColor: 'rgba(0,0,0,0.1)' }]}>
+                                                                                    <Text style={[{ color: '#FFFFFF', fontSize: 6.5, fontWeight: '800' }, isBeingEdited && styles.stageTimeTextEditing, isInResizeMode && styles.stageTimeTextEditing]}>
+                                                                                        {formatDurationCompact(effectiveTime.durationMinutes)}
+                                                                                    </Text>
                                                                                 </View>
-                                                                            )}
+                                                                                {renderSyncIndicator(stage, { marginLeft: 4, paddingVertical: 1 })}
+                                                                                {stageNeedsApproval(stage) != null && (
+                                                                                    <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: '#FF9800', marginLeft: 'auto' }} />
+                                                                                )}
+                                                                            </View>
+                                                                            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+                                                                                <Text style={[styles.stageTimeText, { color: 'rgba(255, 255, 255, 0.8)', fontSize: 7 }, isBeingEdited && styles.stageTimeTextEditing, isInResizeMode && styles.stageTimeTextEditing]}>
+                                                                                    {formatTimeRange(effectiveTime.startTimeMinutes, effectiveTime.startTimeMinutes + effectiveTime.durationMinutes)}
+                                                                                </Text>
+                                                                                <View style={{ width: 3, height: 3, borderRadius: 1.5, backgroundColor: 'rgba(255,255,255,0.4)', marginTop: 0.5 }} />
+                                                                                <Text style={[styles.stageDurationText, { color: 'rgba(255, 255, 255, 0.9)', fontSize: 6.5, fontWeight: '700', textTransform: 'uppercase' }, isBeingEdited && styles.stageTimeTextEditing, isInResizeMode && styles.stageTimeTextEditing]}>
+                                                                                    {STAGE_STATUS_LABELS[stage.status || 'Upcoming']}
+                                                                                </Text>
+                                                                            </View>
                                                                         </TouchableOpacity>
                                                                         {isInResizeMode && (
                                                                             <TouchableOpacity
@@ -2717,16 +2749,8 @@ export default function LiveFocusView({
                                                                                 style={styles.stageDeleteButton}
                                                                                 onPress={() => {
                                                                                     if (!onUpdateStages) return;
-                                                                                    Alert.alert('Delete Stage', `Are you sure you want to delete "${stage.text}"?`, [
-                                                                                        { text: 'Cancel', style: 'cancel' },
-                                                                                        {
-                                                                                            text: 'Delete', style: 'destructive', onPress: () => {
-                                                                                                const updatedStages = (task.stages || []).filter(s => s.id !== stage.id);
-                                                                                                onUpdateStages(task, updatedStages);
-                                                                                                LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
-                                                                                            }
-                                                                                        },
-                                                                                    ]);
+                                                                                    handleDeleteStage(task.id, stage.id);
+                                                                                    LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
                                                                                 }}
                                                                                 activeOpacity={0.7}
                                                                             >
@@ -2784,7 +2808,7 @@ export default function LiveFocusView({
                                             if (activeStage != null && tempStageLayout?.lane != null) {
                                                 maxLane = Math.max(maxLane, tempStageLayout.lane);
                                             }
-                                            const CARD_HEIGHT = 21;
+                                            const CARD_HEIGHT = 23;
                                             const LANE_SPACING = 10;
                                             const BASE_TOP = 7;
                                             const timedStagesHeight = maxLane >= 0
@@ -2842,18 +2866,9 @@ export default function LiveFocusView({
                                                                     if (!task || !onUpdateStages) return;
                                                                     const stage = sortedMergedUntimed.find(s => s.id === stageId);
                                                                     if (stage) {
-                                                                        Alert.alert('Delete Stage', `Are you sure you want to delete "${stage.text}"?`, [
-                                                                            { text: 'Cancel', style: 'cancel' },
-                                                                            {
-                                                                                text: 'Delete', style: 'destructive', onPress: () => {
-                                                                                    const updatedStages = (task.stages || []).filter(s => s.id !== stageId);
-                                                                                    onUpdateStages(task, updatedStages);
-                                                                                    LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
-                                                                                    setTimeout(() => setTaskHeights(prev => { const m = new Map(prev); m.delete(MERGED_TRACK_ID); return m; }), 150);
-                                                                                    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-                                                                                }
-                                                                            }
-                                                                        ]);
+                                                                        handleDeleteStage(task.id, stageId);
+                                                                        LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+                                                                        setTimeout(() => setTaskHeights(prev => { const m = new Map(prev); m.delete(MERGED_TRACK_ID); return m; }), 150);
                                                                     }
                                                                 }}
                                                             />
@@ -2925,20 +2940,31 @@ export default function LiveFocusView({
                                                                             }}
                                                                             delayLongPress={300}
                                                                             activeOpacity={0.8}
-                                                                            style={[{ flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'flex-start' }]}
+                                                                            style={[{ flex: 1, flexDirection: 'column', alignItems: 'flex-start', justifyContent: 'center', gap: 1 }]}
                                                                         >
-                                                                            <Text style={[styles.untimedStageName, { flexShrink: 1, color: '#FFFFFF' }, isBeingEdited && styles.stageTextDragging, isInResizeMode && styles.stageTextResizeMode]} numberOfLines={1} ellipsizeMode="tail">
-                                                                                {stage.text}
-                                                                            </Text>{renderSyncIndicator(stage, { marginLeft: 4, paddingVertical: 1 })}
-                                                                            <View style={styles.stageTimeDisplay}>
-                                                                                <Text style={[styles.stageTimeText, { color: 'rgba(255, 255, 255, 0.8)' }, isBeingEdited && styles.stageTimeTextEditing, isInResizeMode && styles.stageTimeTextEditing]}>{formatTimeCompact(effectiveTime.startTimeMinutes)}</Text>
-                                                                                <Text style={[styles.stageDurationText, { color: 'rgba(255, 255, 255, 0.6)' }, isBeingEdited && styles.stageTimeTextEditing, isInResizeMode && styles.stageTimeTextEditing]}>{formatDurationCompact(effectiveTime.durationMinutes)}</Text>
-                                                                            </View>
-                                                                            {stageNeedsApproval(stage) != null && (
-                                                                                <View style={styles.stageRequestBadge}>
-                                                                                    <MaterialIcons name="notification-important" size={10} color="#FFFFFF" />
+                                                                            <View style={{ flexDirection: 'row', alignItems: 'center', width: '100%' }}>
+                                                                                <Text style={[styles.untimedStageName, { flexShrink: 1, color: '#FFFFFF', fontSize: 8.5 }, isBeingEdited && styles.stageTextDragging, isInResizeMode && styles.stageTextResizeMode]} numberOfLines={1} ellipsizeMode="tail">
+                                                                                    {stage.text}
+                                                                                </Text>
+                                                                                <View style={[{ backgroundColor: 'rgba(255,255,255,0.15)', paddingHorizontal: 4, paddingVertical: 1.5, borderRadius: 3, marginLeft: 5 }, isBeingEdited && { backgroundColor: 'rgba(0,0,0,0.1)' }, isInResizeMode && { backgroundColor: 'rgba(0,0,0,0.1)' }]}>
+                                                                                    <Text style={[{ color: '#FFFFFF', fontSize: 6.5, fontWeight: '800' }, isBeingEdited && styles.stageTimeTextEditing, isInResizeMode && styles.stageTimeTextEditing]}>
+                                                                                        {formatDurationCompact(effectiveTime.durationMinutes)}
+                                                                                    </Text>
                                                                                 </View>
-                                                                            )}
+                                                                                {renderSyncIndicator(stage, { marginLeft: 4, paddingVertical: 1 })}
+                                                                                {stageNeedsApproval(stage) != null && (
+                                                                                    <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: '#FF9800', marginLeft: 'auto' }} />
+                                                                                )}
+                                                                            </View>
+                                                                            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+                                                                                <Text style={[styles.stageTimeText, { color: 'rgba(255, 255, 255, 0.8)', fontSize: 7 }, isBeingEdited && styles.stageTimeTextEditing, isInResizeMode && styles.stageTimeTextEditing]}>
+                                                                                    {formatTimeRange(effectiveTime.startTimeMinutes, effectiveTime.startTimeMinutes + effectiveTime.durationMinutes)}
+                                                                                </Text>
+                                                                                <View style={{ width: 3, height: 3, borderRadius: 1.5, backgroundColor: 'rgba(255,255,255,0.4)', marginTop: 0.5 }} />
+                                                                                <Text style={[styles.stageDurationText, { color: 'rgba(255, 255, 255, 0.9)', fontSize: 6.5, fontWeight: '700', textTransform: 'uppercase' }, isBeingEdited && styles.stageTimeTextEditing, isInResizeMode && styles.stageTimeTextEditing]}>
+                                                                                    {STAGE_STATUS_LABELS[stage.status || 'Upcoming']}
+                                                                                </Text>
+                                                                            </View>
                                                                         </TouchableOpacity>
                                                                         {isInResizeMode && (
                                                                             <TouchableOpacity
@@ -2963,16 +2989,8 @@ export default function LiveFocusView({
                                                                                 style={styles.stageDeleteButton}
                                                                                 onPress={() => {
                                                                                     if (!onUpdateStages) return;
-                                                                                    Alert.alert('Delete Stage', `Are you sure you want to delete "${stage.text}"?`, [
-                                                                                        { text: 'Cancel', style: 'cancel' },
-                                                                                        {
-                                                                                            text: 'Delete', style: 'destructive', onPress: () => {
-                                                                                                const updatedStages = (task.stages || []).filter(s => s.id !== stage.id);
-                                                                                                onUpdateStages(task, updatedStages);
-                                                                                                LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
-                                                                                            }
-                                                                                        },
-                                                                                    ]);
+                                                                                    handleDeleteStage(task.id, stage.id);
+                                                                                    LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
                                                                                 }}
                                                                                 activeOpacity={0.7}
                                                                             >
@@ -3067,7 +3085,7 @@ export default function LiveFocusView({
                                             if (activeStage?.taskId === task.id && tempStageLayout?.lane != null) {
                                                 maxLane = Math.max(maxLane, tempStageLayout.lane);
                                             }
-                                            const CARD_HEIGHT = 21;
+                                            const CARD_HEIGHT = 23;
                                             const LANE_SPACING = 10; // 4px gap between consecutive subtasks
                                             const BASE_TOP = 7;
                                             // Calculate height for all lanes: base + (number of lanes * (card height + spacing)) - last spacing + bottom padding (matches top)
@@ -3156,33 +3174,15 @@ export default function LiveFocusView({
                                                                     if (!onUpdateStages) return;
                                                                     const stage = sortedUntimedStages.find(s => s.id === stageId);
                                                                     if (stage) {
-                                                                        Alert.alert(
-                                                                            'Delete Stage',
-                                                                            `Are you sure you want to delete "${stage.text}"?`,
-                                                                            [
-                                                                                { text: 'Cancel', style: 'cancel' },
-                                                                                {
-                                                                                    text: 'Delete',
-                                                                                    style: 'destructive',
-                                                                                    onPress: () => {
-                                                                                        // Delete the stage
-                                                                                        const updatedStages = (task.stages || []).filter(s => s.id !== stageId);
-                                                                                        onUpdateStages(task, updatedStages);
-                                                                                        // Force height recalculation after deletion
-                                                                                        LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
-                                                                                        // Clear measured height to force recalculation on next render
-                                                                                        setTimeout(() => {
-                                                                                            setTaskHeights(prev => {
-                                                                                                const newMap = new Map(prev);
-                                                                                                newMap.delete(task.id);
-                                                                                                return newMap;
-                                                                                            });
-                                                                                        }, 150);
-                                                                                        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-                                                                                    }
-                                                                                }
-                                                                            ]
-                                                                        );
+                                                                        handleDeleteStage(task.id, stageId);
+                                                                        LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+                                                                        setTimeout(() => {
+                                                                            setTaskHeights(prev => {
+                                                                                const newMap = new Map(prev);
+                                                                                newMap.delete(task.id);
+                                                                                return newMap;
+                                                                            });
+                                                                        }, 150);
                                                                     }
                                                                 }}
                                                             />
@@ -3292,48 +3292,52 @@ export default function LiveFocusView({
                                                                                 delayLongPress={300}
                                                                                 activeOpacity={0.8}
                                                                                 style={[
-                                                                                    { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'flex-start' }
+                                                                                    { flex: 1, flexDirection: 'column', alignItems: 'flex-start', justifyContent: 'center', gap: 1 }
                                                                                 ]}
                                                                             >
-                                                                                <Text style={[
-                                                                                    styles.untimedStageName,
-                                                                                    { flexShrink: 1, color: '#FFFFFF' },
-                                                                                    isBeingEdited && styles.stageTextDragging,
-                                                                                    isInResizeMode && styles.stageTextResizeMode
-                                                                                ]} numberOfLines={1} ellipsizeMode="tail">
-                                                                                    {stage.text}
-                                                                                </Text>
-                                                                                {renderSyncIndicator(stage, { marginLeft: 4, paddingVertical: 1 })}
+                                                                                <View style={{ flexDirection: 'row', alignItems: 'center', width: '100%' }}>
+                                                                                    <Text style={[
+                                                                                        styles.untimedStageName,
+                                                                                        { flexShrink: 1, color: '#FFFFFF', fontSize: 8.5 },
+                                                                                        isBeingEdited && styles.stageTextDragging,
+                                                                                        isInResizeMode && styles.stageTextResizeMode
+                                                                                    ]} numberOfLines={1} ellipsizeMode="tail">
+                                                                                        {stage.text}
+                                                                                    </Text>
+                                                                                    <View style={[{ backgroundColor: 'rgba(255,255,255,0.15)', paddingHorizontal: 4, paddingVertical: 1.5, borderRadius: 3, marginLeft: 5 }, isBeingEdited && { backgroundColor: 'rgba(0,0,0,0.1)' }, isInResizeMode && { backgroundColor: 'rgba(0,0,0,0.1)' }]}>
+                                                                                        <Text style={[{ color: '#FFFFFF', fontSize: 6.5, fontWeight: '800' }, isBeingEdited && styles.stageTimeTextEditing, isInResizeMode && styles.stageTimeTextEditing]}>
+                                                                                            {formatDurationCompact(effectiveTime.durationMinutes)}
+                                                                                        </Text>
+                                                                                    </View>
+                                                                                    {renderSyncIndicator(stage, { marginLeft: 4, paddingVertical: 1 })}
+                                                                                    {stageNeedsApproval(stage) != null && (
+                                                                                        <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: '#FF9800', marginLeft: 'auto' }} />
+                                                                                    )}
+                                                                                </View>
                                                                                 {(() => {
                                                                                     const { startTimeMinutes, durationMinutes } = effectiveTime;
-                                                                                    const startTimeStr = formatTimeCompact(startTimeMinutes);
-                                                                                    const durationStr = formatDurationCompact(durationMinutes);
                                                                                     return (
-                                                                                        <View style={styles.stageTimeDisplay}>
+                                                                                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
                                                                                             <Text style={[
                                                                                                 styles.stageTimeText,
-                                                                                                { color: 'rgba(255, 255, 255, 0.8)' },
+                                                                                                { color: 'rgba(255, 255, 255, 0.8)', fontSize: 7 },
                                                                                                 isBeingEdited && styles.stageTimeTextEditing,
                                                                                                 isInResizeMode && styles.stageTimeTextEditing
                                                                                             ]}>
-                                                                                                {startTimeStr}
+                                                                                                {formatTimeRange(startTimeMinutes, startTimeMinutes + durationMinutes)}
                                                                                             </Text>
+                                                                                            <View style={{ width: 3, height: 3, borderRadius: 1.5, backgroundColor: 'rgba(255,255,255,0.4)', marginTop: 0.5 }} />
                                                                                             <Text style={[
                                                                                                 styles.stageDurationText,
-                                                                                                { color: 'rgba(255, 255, 255, 0.6)' },
+                                                                                                { color: 'rgba(255, 255, 255, 0.9)', fontSize: 6.5, fontWeight: '700', textTransform: 'uppercase' },
                                                                                                 isBeingEdited && styles.stageTimeTextEditing,
                                                                                                 isInResizeMode && styles.stageTimeTextEditing
                                                                                             ]}>
-                                                                                                {durationStr}
+                                                                                                {STAGE_STATUS_LABELS[stage.status || 'Upcoming']}
                                                                                             </Text>
                                                                                         </View>
                                                                                     );
                                                                                 })()}
-                                                                                {stageNeedsApproval(stage) != null && (
-                                                                                    <View style={styles.stageRequestBadge}>
-                                                                                        <MaterialIcons name="notification-important" size={10} color="#FFFFFF" />
-                                                                                    </View>
-                                                                                )}
                                                                             </TouchableOpacity>
 
                                                                             {isInResizeMode && (
@@ -3362,22 +3366,8 @@ export default function LiveFocusView({
                                                                                     style={styles.stageDeleteButton}
                                                                                     onPress={() => {
                                                                                         if (!onUpdateStages) return;
-                                                                                        Alert.alert(
-                                                                                            'Delete Stage',
-                                                                                            `Are you sure you want to delete "${stage.text}"?`,
-                                                                                            [
-                                                                                                { text: 'Cancel', style: 'cancel' },
-                                                                                                {
-                                                                                                    text: 'Delete',
-                                                                                                    style: 'destructive',
-                                                                                                    onPress: () => {
-                                                                                                        const updatedStages = (task.stages || []).filter(s => s.id !== stage.id);
-                                                                                                        onUpdateStages(task, updatedStages);
-                                                                                                        LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
-                                                                                                    },
-                                                                                                },
-                                                                                            ]
-                                                                                        );
+                                                                                        handleDeleteStage(task.id, stage.id);
+                                                                                        LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
                                                                                     }}
                                                                                     activeOpacity={0.7}
                                                                                 >
@@ -4722,18 +4712,7 @@ function UntimedStagesDraggableList({
                 <TouchableOpacity
                     style={styles.stageDeleteButton}
                     onPress={() => {
-                        Alert.alert(
-                            'Delete Stage',
-                            `Are you sure you want to delete "${item.text}"?`,
-                            [
-                                { text: 'Cancel', style: 'cancel' },
-                                {
-                                    text: 'Delete',
-                                    style: 'destructive',
-                                    onPress: () => onDeleteStage(item.id)
-                                }
-                            ]
-                        );
+                        onDeleteStage(item.id);
                     }}
                     disabled={isDragging2D}
                     activeOpacity={0.7}
@@ -5621,7 +5600,7 @@ const styles = StyleSheet.create({
         top: 7,
         borderRadius: 12,
         backgroundColor: '#FFFFFF',
-        minHeight: 21,
+        minHeight: 23,
         paddingHorizontal: 8,
         paddingVertical: 4,
 
@@ -5721,7 +5700,7 @@ const styles = StyleSheet.create({
         backgroundColor: '#FFFFFF',
         borderWidth: 0.5,
         borderColor: 'rgba(255, 255, 255, 0.25)',
-        minHeight: 21, // 30 * 0.7 = 21 (compressed by 30%)
+        minHeight: 23, // 30 * 0.7 = 21 (compressed by 30%)
         paddingHorizontal: 8, // Match timelineStageCard padding
         paddingVertical: 3,
         gap: 5.6, // 8 * 0.7 = 5.6 (compressed by 30%)
@@ -5776,7 +5755,7 @@ const styles = StyleSheet.create({
         backgroundColor: '#00E5FF', // Changed from white to cyan for consistency
         borderWidth: 1,
         borderColor: 'rgba(0, 0, 0, 0.2)',
-        minHeight: 21, // Match original card height
+        minHeight: 23, // Match original card height
         shadowColor: '#000',
         shadowOffset: { width: 0, height: 3 }, // Reduced for stability
         shadowOpacity: 0.3,
@@ -5860,7 +5839,7 @@ const styles = StyleSheet.create({
         borderRadius: 8, // Explicitly match base style
         paddingHorizontal: 6, // Explicitly match base style
         paddingVertical: 3, // Explicitly match base style
-        minHeight: 21, // Explicitly match base style
+        minHeight: 23, // Explicitly match base style
         // Keep all layout properties exactly the same - only change colors
     },
     stageTextDragging: {

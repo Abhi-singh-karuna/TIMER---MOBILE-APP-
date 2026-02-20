@@ -843,8 +843,8 @@ export default function App() {
               } else {
                 // Delta Sync (None/All/Future): Only touch subtasks that were added/updated/removed.
                 // This prevents "Local Only" subtasks from being copied to other dates.
-                // UPDATED: Global deletion - ALWAYS remove deleted IDs from all other dates
-                let nextOtherStages = otherStages.filter(s => !removedIds.has(s.id));
+                const delPropagate: boolean = Boolean(t.recurrence?.repeatSync) || syncMode === 'all' || syncMode === 'future';
+                let nextOtherStages: TaskStage[] = delPropagate ? otherStages.filter((s: TaskStage) => !removedIds.has(s.id)) : [...otherStages];
 
                 if (syncMode !== 'none' || t.recurrence?.repeatSync) {
                   for (const mod of modifiedStages) {
