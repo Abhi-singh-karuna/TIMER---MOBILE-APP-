@@ -191,6 +191,43 @@ export default function AddSubtaskModal({
         }
     };
 
+    const renderSyncSelector = () => {
+        if (!isRecurring || isRepeatSync) return null;
+
+        return (
+            <View style={styles.syncSelectorRow}>
+                <TouchableOpacity
+                    style={[styles.syncPill, syncMode === 'none' && styles.syncPillActive]}
+                    onPress={() => { setSyncMode('none'); Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); }}
+                    activeOpacity={0.7}
+                >
+                    <View style={[styles.localIcon, syncMode === 'none' && styles.localIconActive]}>
+                        <Text style={[styles.localIconText, syncMode === 'none' && styles.localIconTextActive]}>1</Text>
+                    </View>
+                    <Text style={[styles.syncPillText, syncMode === 'none' && styles.syncPillTextActive]}>Local Only</Text>
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                    style={[styles.syncPill, syncMode === 'all' && styles.syncPillActive]}
+                    onPress={() => { setSyncMode('all'); Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); }}
+                    activeOpacity={0.7}
+                >
+                    <MaterialIcons name="sync" size={14} color={syncMode === 'all' ? "#2196F3" : "rgba(33, 150, 243, 0.5)"} />
+                    <Text style={[styles.syncPillText, syncMode === 'all' && styles.syncPillTextActive]}>Sync All</Text>
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                    style={[styles.syncPill, syncMode === 'future' && styles.syncPillActive]}
+                    onPress={() => { setSyncMode('future'); Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); }}
+                    activeOpacity={0.7}
+                >
+                    <MaterialIcons name="update" size={14} color={syncMode === 'future' ? "#4CAF50" : "rgba(76, 175, 80, 0.5)"} />
+                    <Text style={[styles.syncPillText, syncMode === 'future' && styles.syncPillTextActive]}>Sync Future</Text>
+                </TouchableOpacity>
+            </View>
+        );
+    };
+
     const startHours = Math.floor(selectedStartMinutes / 60);
     const startMins = selectedStartMinutes % 60;
 
@@ -231,7 +268,8 @@ export default function AddSubtaskModal({
                                         <Text style={styles.label}>SUBTASK NAME</Text>
                                         <View style={[
                                             styles.unifiedInputWrapper,
-                                            errorName && styles.unifiedInputWrapperError
+                                            errorName && styles.unifiedInputWrapperError,
+                                            isRecurring && !isRepeatSync && { marginBottom: 8 }
                                         ]}>
                                             <TextInput
                                                 style={[
@@ -247,29 +285,8 @@ export default function AddSubtaskModal({
                                                 }}
                                                 autoFocus
                                             />
-                                            {isRecurring && !isRepeatSync && (
-                                                <TouchableOpacity
-                                                    style={[
-                                                        styles.toggleCircular,
-                                                        syncMode === 'all' && styles.toggleCircularAll,
-                                                        syncMode === 'future' && styles.toggleCircularActive,
-                                                        { alignSelf: 'center' }
-                                                    ]}
-                                                    onPress={() => {
-                                                        const nextMode: SyncMode = syncMode === 'none' ? 'all' : syncMode === 'all' ? 'future' : 'none';
-                                                        setSyncMode(nextMode);
-                                                        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                                                    }}
-                                                    activeOpacity={0.7}
-                                                >
-                                                    <MaterialIcons
-                                                        name={syncMode === 'all' ? "sync" : "update"}
-                                                        size={16}
-                                                        color={syncMode === 'all' ? "#2196F3" : syncMode === 'future' ? "#4CAF50" : "rgba(255,255,255,0.4)"}
-                                                    />
-                                                </TouchableOpacity>
-                                            )}
                                         </View>
+                                        {renderSyncSelector()}
                                     </View>
 
                                     {/* Start Time and Duration Cards in Same Row */}
@@ -427,7 +444,8 @@ export default function AddSubtaskModal({
                             <>
                                 <View style={[
                                     styles.unifiedInputWrapper,
-                                    errorName && styles.unifiedInputWrapperError
+                                    errorName && styles.unifiedInputWrapperError,
+                                    isRecurring && !isRepeatSync && { marginBottom: 8 }
                                 ]}>
                                     <TextInput
                                         style={styles.input}
@@ -440,29 +458,8 @@ export default function AddSubtaskModal({
                                         }}
                                         autoFocus
                                     />
-                                    {isRecurring && !isRepeatSync && (
-                                        <TouchableOpacity
-                                            style={[
-                                                styles.toggleCircular,
-                                                syncMode === 'all' && styles.toggleCircularAll,
-                                                syncMode === 'future' && styles.toggleCircularActive,
-                                                { alignSelf: 'center' }
-                                            ]}
-                                            onPress={() => {
-                                                const nextMode: SyncMode = syncMode === 'none' ? 'all' : syncMode === 'all' ? 'future' : 'none';
-                                                setSyncMode(nextMode);
-                                                Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                                            }}
-                                            activeOpacity={0.7}
-                                        >
-                                            <MaterialIcons
-                                                name={syncMode === 'all' ? "sync" : "update"}
-                                                size={16}
-                                                color={syncMode === 'all' ? "#2196F3" : syncMode === 'future' ? "#4CAF50" : "rgba(255,255,255,0.4)"}
-                                            />
-                                        </TouchableOpacity>
-                                    )}
                                 </View>
+                                {renderSyncSelector()}
 
                                 {/* Start Time and Duration Cards in Same Row */}
                                 <View style={styles.fieldGroup}>
@@ -1027,23 +1024,50 @@ const styles = StyleSheet.create({
     futureToggleActive: {
         color: 'rgba(255,255,255,0.8)',
     },
-    toggleCircular: {
-        width: 30,
-        height: 30,
-        borderRadius: 15,
-        justifyContent: 'center',
+    syncSelectorRow: {
+        flexDirection: 'row',
+        gap: 20, // More space between items since they lack borders
+        marginTop: 2,
+        marginBottom: 16,
+        paddingHorizontal: 4,
+    },
+    syncPill: {
+        flexDirection: 'row',
         alignItems: 'center',
-        backgroundColor: 'rgba(255,255,255,0.06)',
-        borderWidth: 1,
-        borderColor: 'rgba(255,255,255,0.08)',
-        alignSelf: 'center',
+        justifyContent: 'center',
+        gap: 6,
+        paddingVertical: 4, // Very compact
     },
-    toggleCircularAll: {
-        backgroundColor: 'rgba(33, 150, 243, 0.15)',
-        borderColor: 'rgba(33, 150, 243, 0.3)',
+    syncPillActive: {
+        // purely opacity or color changes, no background
     },
-    toggleCircularActive: {
-        backgroundColor: 'rgba(76, 175, 80, 0.15)',
-        borderColor: 'rgba(76, 175, 80, 0.3)',
+    localIcon: {
+        width: 16,
+        height: 16,
+        borderRadius: 8,
+        borderWidth: 1.5,
+        borderColor: 'rgba(255,255,255,0.3)',
+        alignItems: 'center',
+        justifyContent: 'center',
+    },
+    localIconActive: {
+        borderColor: 'rgba(255,255,255,0.7)',
+    },
+    localIconText: {
+        fontSize: 9,
+        fontWeight: 'bold',
+        color: 'rgba(255,255,255,0.3)',
+    },
+    localIconTextActive: {
+        color: 'rgba(255,255,255,0.7)',
+    },
+    syncPillText: {
+        fontSize: 11,
+        fontWeight: '700',
+        color: 'rgba(255,255,255,0.4)',
+        letterSpacing: 0.8,
+    },
+    syncPillTextActive: {
+        color: 'rgba(255,255,255,0.8)',
     },
 });

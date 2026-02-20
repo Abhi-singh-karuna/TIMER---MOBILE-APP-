@@ -825,17 +825,10 @@ export default function App() {
 
                 syncedStages = nextStages.map(src => {
                   const preserved = preservedByStageId.get(src.id);
-                  let useSourceStatus = false;
-                  if (syncMode === 'all' || (syncMode === 'future' && isFuture)) {
-                    const prevSrc = previousStages.find(p => p.id === src.id);
-                    if (!prevSrc || prevSrc.status !== src.status || prevSrc.isCompleted !== src.isCompleted) {
-                      useSourceStatus = true;
-                    }
-                  }
                   return {
                     ...src,
-                    status: useSourceStatus ? src.status : (preserved?.status ?? 'Upcoming'),
-                    isCompleted: useSourceStatus ? src.isCompleted : (preserved?.isCompleted ?? false),
+                    status: preserved?.status ?? 'Upcoming',
+                    isCompleted: preserved?.isCompleted ?? false,
                     startTimeMinutes: preserved?.startTimeMinutes ?? src.startTimeMinutes ?? 0,
                     durationMinutes: preserved?.durationMinutes ?? src.durationMinutes ?? 180,
                   };
@@ -848,23 +841,15 @@ export default function App() {
 
                 if (syncMode !== 'none' || t.recurrence?.repeatSync) {
                   for (const mod of modifiedStages) {
-                    let useSourceStatus = false;
-                    if (syncMode === 'all' || (syncMode === 'future' && isFuture)) {
-                      const prevSrc = previousStages.find(p => p.id === mod.id);
-                      if (!prevSrc || prevSrc.status !== mod.status || prevSrc.isCompleted !== mod.isCompleted) {
-                        useSourceStatus = true;
-                      }
-                    }
-
                     const existingIdx = nextOtherStages.findIndex(s => s.id === mod.id);
                     const preserved = existingIdx >= 0 ? nextOtherStages[existingIdx] : undefined;
 
                     const stagedMod: TaskStage = {
                       ...mod,
-                      status: useSourceStatus ? mod.status : (preserved?.status ?? 'Upcoming'),
-                      isCompleted: useSourceStatus ? mod.isCompleted : (preserved?.isCompleted ?? false),
-                      startTimeMinutes: preserved?.startTimeMinutes ?? mod.startTimeMinutes ?? 0,
-                      durationMinutes: preserved?.durationMinutes ?? mod.durationMinutes ?? 180,
+                      status: preserved?.status ?? 'Upcoming',
+                      isCompleted: preserved?.isCompleted ?? false,
+                      startTimeMinutes: mod.startTimeMinutes ?? preserved?.startTimeMinutes ?? 0,
+                      durationMinutes: mod.durationMinutes ?? preserved?.durationMinutes ?? 180,
                     };
 
                     if (existingIdx >= 0) {
@@ -877,14 +862,28 @@ export default function App() {
                 syncedStages = nextOtherStages;
               }
 
+              const oTotalCount = syncedStages.length;
+              const oCompletedCount = syncedStages.filter(s => s && (s.isCompleted || s.status === 'Done')).length;
+              const oAllCompleted = oTotalCount > 0 && oCompletedCount === oTotalCount;
+              const oSomeCompleted = oCompletedCount > 0 && oCompletedCount < oTotalCount;
+
+              let oNewStatus = (otherInstance.status || latestTaskStatus) as import('./src/constants/data').Task['status'];
+              if (oAllCompleted && oTotalCount > 0) {
+                oNewStatus = 'Completed';
+              } else if (oSomeCompleted) {
+                oNewStatus = 'In Progress';
+              } else if (oTotalCount > 0 && oCompletedCount === 0 && oNewStatus === 'Completed') {
+                oNewStatus = 'In Progress';
+              }
+
               updatedRecurrenceInstances = {
                 ...updatedRecurrenceInstances,
                 [otherDate]: {
                   ...otherInstance,
                   stages: syncedStages,
-                  status: otherInstance.status,
-                  startedAt: otherInstance.startedAt,
-                  completedAt: otherInstance.completedAt,
+                  status: oNewStatus,
+                  startedAt: oNewStatus === 'In Progress' && !otherInstance.startedAt ? now : otherInstance.startedAt,
+                  completedAt: oNewStatus === 'Completed' ? now : undefined,
                 },
               };
             }

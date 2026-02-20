@@ -1863,7 +1863,7 @@ export default function LiveFocusView({
         if (!task) return;
 
         const updatedStages = (task.stages || []).map(s =>
-            s.id === stageId ? { ...s, status } : s
+            s.id === stageId ? { ...s, status, isCompleted: status === 'Done' } : s
         );
         onUpdateStages(task, updatedStages, syncMode);
         Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);

@@ -564,6 +564,13 @@ const styles = StyleSheet.create({
         width: '100%',
         backgroundColor: 'rgba(76,175,80,0.15)',
     },
+    multiProgressWrapper: {
+        flex: 1,
+        flexDirection: 'row',
+    },
+    progressFillSegment: {
+        height: '100%',
+    },
     cardInset: {
         position: 'absolute',
         top: 0,
@@ -3439,12 +3446,70 @@ function TaskCard({
                 </TouchableOpacity>
             )}
 
-            {/* Progress indicator for completed */}
-            {isCompleted && (
-                <View style={styles.completedFillContainer}>
-                    <View style={styles.completedFill} />
-                </View>
-            )}
+            {/* Progress indicator for completed or subtasks */}
+            {(() => {
+                const totalStages = task.stages?.length || 0;
+
+                if (totalStages > 0) {
+                    const doneCount = task.stages?.filter(s => s && s.status === 'Done').length || 0;
+                    const undoneCount = task.stages?.filter(s => s && s.status === 'Undone').length || 0;
+                    const inProgressCount = task.stages?.filter(s => s && s.status === 'Process').length || 0;
+
+                    const donePct = (doneCount / totalStages) * 100;
+                    const undonePct = (undoneCount / totalStages) * 100;
+                    const inProgressPct = (inProgressCount / totalStages) * 100;
+
+                    return (
+                        <View style={styles.completedFillContainer} pointerEvents="none">
+                            <View style={styles.multiProgressWrapper}>
+                                {doneCount > 0 && (
+                                    <View
+                                        style={[
+                                            styles.progressFillSegment,
+                                            {
+                                                width: `${donePct}%`,
+                                                backgroundColor: 'rgba(76,175,80,0.25)' // Green for Done
+                                            }
+                                        ]}
+                                    />
+                                )}
+                                {inProgressCount > 0 && (
+                                    <View
+                                        style={[
+                                            styles.progressFillSegment,
+                                            {
+                                                width: `${inProgressPct}%`,
+                                                backgroundColor: 'rgba(255,183,77,0.2)' // Yellow for In Progress
+                                            }
+                                        ]}
+                                    />
+                                )}
+                                {undoneCount > 0 && (
+                                    <View
+                                        style={[
+                                            styles.progressFillSegment,
+                                            {
+                                                width: `${undonePct}%`,
+                                                backgroundColor: 'rgba(255,82,82,0.2)' // Red for Undone
+                                            }
+                                        ]}
+                                    />
+                                )}
+                            </View>
+                        </View>
+                    );
+                }
+
+                if (isCompleted) {
+                    return (
+                        <View style={styles.completedFillContainer} pointerEvents="none">
+                            <View style={styles.completedFill} />
+                        </View>
+                    );
+                }
+
+                return null;
+            })()}
 
             <LinearGradient
                 colors={['rgba(0,0,0,0.5)', 'rgba(0,0,0,0.2)', 'transparent']}
