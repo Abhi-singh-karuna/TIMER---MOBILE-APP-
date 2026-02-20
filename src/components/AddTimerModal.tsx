@@ -320,7 +320,7 @@ export default function AddTimerModal({ visible, onCancel, onAdd, onUpdate, init
         <View style={styles.categoryPickerContainer}>
             <Text style={styles.label}>CATEGORY</Text>
             <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.categoryScroll}>
-                {categories.map((cat) => (
+                {categories.filter(c => c.isEnabled !== false).map((cat) => (
                     <TouchableOpacity
                         key={cat.id}
                         style={[

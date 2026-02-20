@@ -1,4 +1,4 @@
-import React, { useRef, useEffect } from 'react';
+import React, { useRef, useEffect, useState } from 'react';
 import {
     View,
     Text,
@@ -12,12 +12,16 @@ import { MaterialIcons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
 import { StageStatus } from '../../../constants/data';
 
+type SyncMode = 'none' | 'all' | 'future';
+
 export interface StageActionPopupProps {
     visible: boolean;
     position: { x: number; y: number };
-    onSelectStatus: (status: StageStatus) => void;
+    onSelectStatus: (status: StageStatus, syncMode: SyncMode) => void;
     onClose: () => void;
     currentStatus: StageStatus;
+    showFutureToggle?: boolean;
+    initialSyncMode?: SyncMode;
 }
 
 const STAGE_STATUS_CONFIG: Record<StageStatus, { icon: keyof typeof MaterialIcons.glyphMap; color: string; label: string }> = {
@@ -65,15 +69,59 @@ const stagePopupStyles = StyleSheet.create({
         backgroundColor: 'rgba(255,255,255,0.08)',
         marginHorizontal: 10,
     },
+    futureToggle: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'center',
+        paddingHorizontal: 12,
+        paddingVertical: 6,
+        gap: 6,
+        borderTopWidth: 1,
+        borderTopColor: 'rgba(255,255,255,0.06)',
+        marginTop: 4,
+    },
+    syncBadge: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        paddingHorizontal: 8,
+        paddingVertical: 3,
+        borderRadius: 10,
+        backgroundColor: 'rgba(255,255,255,0.05)',
+        borderWidth: 0.5,
+        borderColor: 'rgba(255,255,255,0.1)',
+        gap: 5,
+    },
+    syncBadgeAll: {
+        backgroundColor: 'rgba(33, 150, 243, 0.08)',
+        borderColor: 'rgba(33, 150, 243, 0.2)',
+    },
+    syncBadgeFuture: {
+        backgroundColor: 'rgba(76, 175, 80, 0.08)',
+        borderColor: 'rgba(76, 175, 80, 0.2)',
+    },
+    futureToggleText: {
+        fontSize: 10,
+        color: 'rgba(255,255,255,0.4)',
+        fontWeight: '700',
+        letterSpacing: 0.2,
+    },
+    futureToggleActive: {
+        color: '#4CAF50',
+    },
+    futureToggleAll: {
+        color: '#2196F3',
+    },
 });
 
-export default function StageActionPopup({ visible, position, onSelectStatus, onClose, currentStatus }: StageActionPopupProps) {
+export default function StageActionPopup({ visible, position, onSelectStatus, onClose, currentStatus, showFutureToggle, initialSyncMode }: StageActionPopupProps) {
     const { width: screenWidth, height: screenHeight } = useWindowDimensions();
     const fadeAnim = useRef(new Animated.Value(0)).current;
     const scaleAnim = useRef(new Animated.Value(0.8)).current;
+    const [syncMode, setSyncMode] = useState<SyncMode>('none');
 
     useEffect(() => {
         if (visible) {
+            setSyncMode(initialSyncMode || 'none');
             Animated.parallel([
                 Animated.timing(fadeAnim, {
                     toValue: 1,
@@ -96,7 +144,7 @@ export default function StageActionPopup({ visible, position, onSelectStatus, on
     if (!visible) return null;
 
     const popupWidth = 140;
-    const popupHeight = 180;
+    const popupHeight = showFutureToggle ? 220 : 180;
     const padding = 12;
 
     let adjustedX = position.x - popupWidth / 2;
@@ -155,7 +203,7 @@ export default function StageActionPopup({ visible, position, onSelectStatus, on
                                     ]}
                                     onPress={() => {
                                         Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                                        onSelectStatus(status);
+                                        onSelectStatus(status, syncMode);
                                     }}
                                     activeOpacity={0.7}
                                 >
@@ -175,6 +223,29 @@ export default function StageActionPopup({ visible, position, onSelectStatus, on
                             </React.Fragment>
                         );
                     })}
+
+                    {showFutureToggle && (
+                        <View style={stagePopupStyles.futureToggle}>
+                            <View style={[
+                                stagePopupStyles.syncBadge,
+                                syncMode === 'all' && stagePopupStyles.syncBadgeAll,
+                                syncMode === 'future' && stagePopupStyles.syncBadgeFuture
+                            ]}>
+                                <MaterialIcons
+                                    name={syncMode === 'all' ? "sync" : syncMode === 'future' ? "update" : "query-builder"}
+                                    size={12}
+                                    color={syncMode === 'all' ? "#2196F3" : syncMode === 'future' ? "#4CAF50" : "rgba(255,255,255,0.4)"}
+                                />
+                                <Text style={[
+                                    stagePopupStyles.futureToggleText,
+                                    syncMode === 'all' && stagePopupStyles.futureToggleAll,
+                                    syncMode === 'future' && stagePopupStyles.futureToggleActive
+                                ]}>
+                                    {syncMode === 'all' ? 'Sync All' : syncMode === 'future' ? 'Sync Future' : 'Local Only'}
+                                </Text>
+                            </View>
+                        </View>
+                    )}
                 </Animated.View>
             </TouchableOpacity>
         </Modal>

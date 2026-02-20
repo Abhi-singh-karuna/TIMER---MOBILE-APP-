@@ -65,20 +65,35 @@ export default function DailyStartTimeSection({
 
     return (
         <>
-            <TouchableOpacity style={sharedStyles.settingRow} onPress={open} activeOpacity={0.7}>
-                <View style={sharedStyles.settingInfo}>
-                    <Text style={sharedStyles.settingLabel}>Daily start time</Text>
-                    <Text style={sharedStyles.settingDescription}>
-                        When the calendar day rolls over. Tasks, timers, and Live Focus use this.
-                    </Text>
+            <View style={sharedStyles.settingsCardBezelExtraSmall}>
+                <View style={[sharedStyles.settingsCardTrackExtraSmall]}>
+                    <TouchableOpacity
+                        style={[sharedStyles.settingRow, { paddingVertical: isLandscape ? 12 : 16 }]}
+                        onPress={open}
+                        activeOpacity={0.7}
+                    >
+                        <View style={sharedStyles.iconWell}>
+                            <MaterialIcons name="access-time" size={20} color="rgba(255,255,255,0.4)" />
+                        </View>
+
+                        <View style={sharedStyles.settingInfo}>
+                            <Text style={sharedStyles.settingLabel}>Daily start time</Text>
+                            <Text style={sharedStyles.settingDescription}>
+                                When the calendar day rolls over. Tasks, timers, and Live Focus use this.
+                            </Text>
+                        </View>
+                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                            <Text style={{ fontSize: 13, fontWeight: '700', color: 'rgba(255,255,255,0.9)' }}>
+                                {formatDailyStartForDisplay(dailyStartMinutes)}
+                            </Text>
+                            <MaterialIcons name="chevron-right" size={18} color="rgba(255,255,255,0.25)" />
+                        </View>
+                    </TouchableOpacity>
+                    <View style={sharedStyles.settingsCardInteriorShadowExtraSmall} pointerEvents="none" />
+                    <View style={sharedStyles.settingsCardTopRimExtraSmall} pointerEvents="none" />
                 </View>
-                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-                    <Text style={{ fontSize: 14, fontWeight: '600', color: 'rgba(255,255,255,0.9)' }}>
-                        {formatDailyStartForDisplay(dailyStartMinutes)}
-                    </Text>
-                    <MaterialIcons name="chevron-right" size={18} color="rgba(255,255,255,0.35)" />
-                </View>
-            </TouchableOpacity>
+                <View style={sharedStyles.settingsCardOuterGlowExtraSmall} pointerEvents="none" />
+            </View>
 
             <Modal
                 visible={pickerVisible}
@@ -111,6 +126,10 @@ export default function DailyStartTimeSection({
                                     <Text style={modalStyles.actionBtnTextPrimary}>Set</Text>
                                 </TouchableOpacity>
                             </View>
+
+                            {/* Bezel rim overlays for modal card too? optional but looks nice */}
+                            <View style={sharedStyles.settingsCardInteriorShadow} pointerEvents="none" />
+                            <View style={sharedStyles.settingsCardTopRim} pointerEvents="none" />
                         </Pressable>
                     </Pressable>
                 </GestureHandlerRootView>

@@ -59,7 +59,7 @@ export default function AddTaskModal({
     const [showDatePicker, setShowDatePicker] = useState(false);
     const [viewDate, setViewDate] = useState(new Date(selectedDate));
     const [errorTitle, setErrorTitle] = useState(false);
-    
+
     // Recurrence state
     const [isRecurring, setIsRecurring] = useState(false);
     const [repeatSync, setRepeatSync] = useState(false);
@@ -91,7 +91,7 @@ export default function AddTaskModal({
                 setSelectedDate(taskToEdit.forDate);
                 setViewDate(new Date(taskToEdit.forDate));
                 setIsBacklog(!!taskToEdit.isBacklog);
-                
+
                 // Load recurrence if exists
                 if (taskToEdit.recurrence) {
                     setIsRecurring(true);
@@ -125,7 +125,7 @@ export default function AddTaskModal({
                 setSelectedDate(date);
                 setViewDate(new Date(date));
                 setIsBacklog(false);
-                
+
                 // Reset recurrence
                 setIsRecurring(false);
                 setRepeatSync(false);
@@ -163,13 +163,13 @@ export default function AddTaskModal({
 
     const buildRecurrence = (): Recurrence | undefined => {
         if (!isRecurring) return undefined;
-        
+
         const base: RecurrenceBase = {
             startDate: recurrenceStartDate,
             ...(recurrenceEndEnabled && recurrenceEndDate ? { endDate: recurrenceEndDate } : {}),
             ...(repeatSync ? { repeatSync: true } : {}),
         };
-        
+
         switch (recurrenceType) {
             case 'daily':
                 return { ...base, type: 'daily' };
@@ -223,7 +223,7 @@ export default function AddTaskModal({
         }
 
         const recurrence = buildRecurrence();
-        
+
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
         if (taskToEdit && onUpdate) {
             onUpdate(taskToEdit.id, {
@@ -279,7 +279,7 @@ export default function AddTaskModal({
             : `${MONTHS[startDate.getMonth()]} ${startDate.getDate()}, ${startDate.getFullYear()}`;
 
         let frequencyPart = '';
-        
+
         switch (recurrenceType) {
             case 'daily':
                 frequencyPart = 'Daily task';
@@ -321,13 +321,13 @@ export default function AddTaskModal({
                     const weekdayNames = [...recurrenceMonthlyWeekdays]
                         .sort((a, b) => a - b)
                         .map(d => weekDayNames[d]);
-                    
+
                     if (weekNames.length === 1 && weekdayNames.length === 1) {
                         frequencyPart = `Monthly task on the ${weekNames[0]} ${weekdayNames[0]}`;
                     } else {
                         const weekStr = weekNames.join(' and ');
-                        const weekdayStr = weekdayNames.length === 1 
-                            ? weekdayNames[0] 
+                        const weekdayStr = weekdayNames.length === 1
+                            ? weekdayNames[0]
                             : weekdayNames.slice(0, -1).join(', ') + ', and ' + weekdayNames[weekdayNames.length - 1];
                         frequencyPart = `Monthly task on the ${weekStr} ${weekdayStr}`;
                     }
@@ -448,7 +448,7 @@ export default function AddTaskModal({
                 showsHorizontalScrollIndicator={false}
                 contentContainerStyle={styles.categoryScroll}
             >
-                {categories.map((cat) => (
+                {categories.filter(c => c.isEnabled !== false).map((cat) => (
                     <TouchableOpacity
                         key={cat.id}
                         style={[
@@ -481,7 +481,7 @@ export default function AddTaskModal({
 
     const toggleRecurrenceDay = (day: number) => {
         setRecurrenceDays(prev => {
-            const newDays = prev.includes(day) 
+            const newDays = prev.includes(day)
                 ? prev.filter(d => d !== day)
                 : [...prev, day].sort();
             return newDays.length > 0 ? newDays : prev; // Prevent removing all days
@@ -1130,14 +1130,14 @@ export default function AddTaskModal({
     }, [isRecurring, isBacklog]);
 
     const renderRecurrenceDatePicker = (isStart: boolean) => {
-        const currentViewDate = isStart 
-            ? recurrenceViewDate 
+        const currentViewDate = isStart
+            ? recurrenceViewDate
             : recurrenceEndViewDate;
         const setViewDateFn = isStart ? setRecurrenceViewDate : setRecurrenceEndViewDate;
         const selectedDateStr = isStart ? recurrenceStartDate : (recurrenceEndDate || '');
         const setSelectedDateFn = isStart ? setRecurrenceStartDate : setRecurrenceEndDate;
         const setShowPicker = isStart ? setShowRecurrenceStartPicker : setShowRecurrenceEndPicker;
-        
+
         const days = getDaysInMonth(currentViewDate.getFullYear(), currentViewDate.getMonth());
         const firstDay = getFirstDayOfMonth(currentViewDate.getFullYear(), currentViewDate.getMonth());
         const daysArray = [];
@@ -1314,93 +1314,93 @@ export default function AddTaskModal({
                                                 contentContainerStyle={styles.rightColumnScrollContent}
                                                 keyboardShouldPersistTaps="handled"
                                             >
-                                            {!isRecurring && (
-                                                <View style={styles.fieldGroup}>
-                                                    <View style={styles.backlogRow}>
-                                                        <Text style={styles.label}>ADD TO BACKLOG</Text>
-                                                        <TouchableOpacity
-                                                            style={[styles.backlogToggle, isBacklog && styles.backlogToggleActive]}
-                                                            onPress={() => {
-                                                                setIsBacklog(!isBacklog);
-                                                                Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                                                            }}
-                                                        >
-                                                            <View style={[styles.backlogToggleCircle, isBacklog && styles.backlogToggleCircleActive]} />
-                                                        </TouchableOpacity>
-                                                    </View>
-                                                </View>
-                                            )}
-
-                                            {!isBacklog && (
-                                                <>
+                                                {!isRecurring && (
                                                     <View style={styles.fieldGroup}>
                                                         <View style={styles.backlogRow}>
-                                                            <Text style={styles.label}>REPEAT</Text>
-                                                            <View style={styles.toggleRow}>
-                                                                <Text style={[styles.toggleLabel, !isRecurring && styles.toggleLabelActive]}>Off</Text>
-                                                                <TouchableOpacity
-                                                                    style={[styles.backlogToggle, isRecurring && styles.backlogToggleActive]}
-                                                                    onPress={() => {
-                                                                        setIsRecurring(!isRecurring);
-                                                                        if (!isRecurring) {
-                                                                            setRecurrenceStartDate(selectedDate);
-                                                                        }
-                                                                        if (isRecurring) setRepeatSync(false);
-                                                                        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                                                                    }}
-                                                                >
-                                                                    <View style={[styles.backlogToggleCircle, isRecurring && styles.backlogToggleCircleActive]} />
-                                                                </TouchableOpacity>
-                                                                <Text style={[styles.toggleLabel, isRecurring && styles.toggleLabelActive]}>On</Text>
-                                                            </View>
-                                                        </View>
-                                                    </View>
-
-                                                    {isRecurring && (
-                                                        <View style={styles.fieldGroup}>
-                                                            <View style={styles.backlogRow}>
-                                                                <Text style={styles.label}>REPEAT SYNC</Text>
-                                                                <View style={styles.toggleRow}>
-                                                                    <Text style={[styles.toggleLabel, !repeatSync && styles.toggleLabelActive]}>Off</Text>
-                                                                    <TouchableOpacity
-                                                                        style={[styles.backlogToggle, repeatSync && styles.backlogToggleActive]}
-                                                                        onPress={() => {
-                                                                            setRepeatSync(!repeatSync);
-                                                                            Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                                                                        }}
-                                                                    >
-                                                                        <View style={[styles.backlogToggleCircle, repeatSync && styles.backlogToggleCircleActive]} />
-                                                                    </TouchableOpacity>
-                                                                    <Text style={[styles.toggleLabel, repeatSync && styles.toggleLabelActive]}>On</Text>
-                                                                </View>
-                                                            </View>
-                                                        </View>
-                                                    )}
-
-                                                    {renderRecurrenceSection()}
-
-                                                    {/* When Repeat is enabled, "Starts on" becomes the effective date. Hide FOR DATE. */}
-                                                    {!isRecurring && (
-                                                        <View style={styles.fieldGroup}>
-                                                            <Text style={styles.label}>FOR DATE</Text>
+                                                            <Text style={styles.label}>ADD TO BACKLOG</Text>
                                                             <TouchableOpacity
-                                                                style={[
-                                                                    styles.dateDisplay,
-                                                                    styles.compactInput,
-                                                                    (isPastTasksDisabled && selectedDate < getLogicalDate(new Date(), dailyStartMinutes)) && styles.inputError
-                                                                ]}
+                                                                style={[styles.backlogToggle, isBacklog && styles.backlogToggleActive]}
                                                                 onPress={() => {
-                                                                    setShowDatePicker(true);
+                                                                    setIsBacklog(!isBacklog);
                                                                     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
                                                                 }}
                                                             >
-                                                                <Text style={styles.dateDisplayText}>{selectedDate}</Text>
-                                                                <MaterialIcons name="event" size={12.8} color="#fff" />
+                                                                <View style={[styles.backlogToggleCircle, isBacklog && styles.backlogToggleCircleActive]} />
                                                             </TouchableOpacity>
                                                         </View>
-                                                    )}
-                                                </>
-                                            )}
+                                                    </View>
+                                                )}
+
+                                                {!isBacklog && (
+                                                    <>
+                                                        <View style={styles.fieldGroup}>
+                                                            <View style={styles.backlogRow}>
+                                                                <Text style={styles.label}>REPEAT</Text>
+                                                                <View style={styles.toggleRow}>
+                                                                    <Text style={[styles.toggleLabel, !isRecurring && styles.toggleLabelActive]}>Off</Text>
+                                                                    <TouchableOpacity
+                                                                        style={[styles.backlogToggle, isRecurring && styles.backlogToggleActive]}
+                                                                        onPress={() => {
+                                                                            setIsRecurring(!isRecurring);
+                                                                            if (!isRecurring) {
+                                                                                setRecurrenceStartDate(selectedDate);
+                                                                            }
+                                                                            if (isRecurring) setRepeatSync(false);
+                                                                            Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                                                                        }}
+                                                                    >
+                                                                        <View style={[styles.backlogToggleCircle, isRecurring && styles.backlogToggleCircleActive]} />
+                                                                    </TouchableOpacity>
+                                                                    <Text style={[styles.toggleLabel, isRecurring && styles.toggleLabelActive]}>On</Text>
+                                                                </View>
+                                                            </View>
+                                                        </View>
+
+                                                        {isRecurring && (
+                                                            <View style={styles.fieldGroup}>
+                                                                <View style={styles.backlogRow}>
+                                                                    <Text style={styles.label}>REPEAT SYNC</Text>
+                                                                    <View style={styles.toggleRow}>
+                                                                        <Text style={[styles.toggleLabel, !repeatSync && styles.toggleLabelActive]}>Off</Text>
+                                                                        <TouchableOpacity
+                                                                            style={[styles.backlogToggle, repeatSync && styles.backlogToggleActive]}
+                                                                            onPress={() => {
+                                                                                setRepeatSync(!repeatSync);
+                                                                                Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                                                                            }}
+                                                                        >
+                                                                            <View style={[styles.backlogToggleCircle, repeatSync && styles.backlogToggleCircleActive]} />
+                                                                        </TouchableOpacity>
+                                                                        <Text style={[styles.toggleLabel, repeatSync && styles.toggleLabelActive]}>On</Text>
+                                                                    </View>
+                                                                </View>
+                                                            </View>
+                                                        )}
+
+                                                        {renderRecurrenceSection()}
+
+                                                        {/* When Repeat is enabled, "Starts on" becomes the effective date. Hide FOR DATE. */}
+                                                        {!isRecurring && (
+                                                            <View style={styles.fieldGroup}>
+                                                                <Text style={styles.label}>FOR DATE</Text>
+                                                                <TouchableOpacity
+                                                                    style={[
+                                                                        styles.dateDisplay,
+                                                                        styles.compactInput,
+                                                                        (isPastTasksDisabled && selectedDate < getLogicalDate(new Date(), dailyStartMinutes)) && styles.inputError
+                                                                    ]}
+                                                                    onPress={() => {
+                                                                        setShowDatePicker(true);
+                                                                        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                                                                    }}
+                                                                >
+                                                                    <Text style={styles.dateDisplayText}>{selectedDate}</Text>
+                                                                    <MaterialIcons name="event" size={12.8} color="#fff" />
+                                                                </TouchableOpacity>
+                                                            </View>
+                                                        )}
+                                                    </>
+                                                )}
                                             </ScrollView>
 
                                             {/* Fixed footer: always at bottom in landscape */}
@@ -1475,8 +1475,8 @@ export default function AddTaskModal({
 
                                                 {!isBacklog && (
                                                     <>
-                                                <View style={[styles.backlogRow, { marginBottom: 19.2 }]}>
-                                                    <Text style={styles.label}>REPEAT</Text>
+                                                        <View style={[styles.backlogRow, { marginBottom: 19.2 }]}>
+                                                            <Text style={styles.label}>REPEAT</Text>
                                                             <View style={styles.toggleRow}>
                                                                 <Text style={[styles.toggleLabel, !isRecurring && styles.toggleLabelActive]}>Off</Text>
                                                                 <TouchableOpacity

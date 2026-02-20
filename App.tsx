@@ -25,7 +25,7 @@ import SettingsScreen from './src/screens/Timer/Settings';
 import AddTimerModal from './src/components/AddTimerModal';
 import AddTaskModal from './src/components/AddTaskModal';
 import DeleteModal from './src/components/DeleteModal';
-import { Timer, Task, TaskStage, Category, QuickMessage, DEFAULT_CATEGORIES, DEFAULT_QUICK_MESSAGES, CATEGORIES_KEY, QUICK_MESSAGES_KEY, LANDSCAPE_PRESETS, Recurrence } from './src/constants/data';
+import { Timer, Task, TaskStage, Category, QuickMessage, DEFAULT_CATEGORIES, DEFAULT_QUICK_MESSAGES, CATEGORIES_KEY, QUICK_MESSAGES_KEY, LANDSCAPE_PRESETS, Recurrence, SyncMode, StageStatus } from './src/constants/data';
 import { Alert } from 'react-native';
 import { loadTimers, saveTimers } from './src/utils/storage';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -641,7 +641,7 @@ export default function App() {
   };
 
   // Handle updating stages (add, toggle, delete) with automatic status changes
-  const handleUpdateStages = (task: Task, stages: TaskStage[]) => {
+  const handleUpdateStages = (task: Task, stages: TaskStage[], syncMode: SyncMode = 'none') => {
     const now = new Date().toISOString();
 
     setTasks(prev => {
@@ -663,7 +663,19 @@ export default function App() {
       const previousStages = isRecurring ? (instanceData?.stages || []) : (latestTask.stages || []);
 
       const normalized = normalizeStages(stages, now);
-      const nextStages = normalized.stages;
+      let nextStages = normalized.stages;
+
+      // Persist syncMode on new/modified stages if syncMode is active
+      if (syncMode !== 'none') {
+        nextStages = nextStages.map(s => {
+          const prevS = previousStages.find(p => p.id === s.id);
+          // If it's a new stage OR it's being updated with a sync mode, store it
+          if (!prevS || (s.text !== prevS.text || s.status !== prevS.status || s.isCompleted !== prevS.isCompleted)) {
+            return { ...s, syncMode };
+          }
+          return s;
+        });
+      }
 
       // Determine if this is adding a new stage
       const stageCountChanged = nextStages.length !== previousStages.length;
@@ -757,11 +769,31 @@ export default function App() {
             },
           };
 
-          // Repeat Sync: replicate structure (create/update/delete) to all other instances; do NOT sync status
-          if (t.recurrence?.repeatSync) {
+          // Delta analysis for targeted sync (Sync All / Sync Future)
+          // We only want to propagate subtasks that were actually touched in this call.
+          const removedIds = new Set(previousStages.filter(p => !nextStages.find(s => s.id === p.id)).map(p => p.id));
+          const modifiedStages = nextStages.filter(s => {
+            const prev = previousStages.find(p => p.id === s.id);
+            if (!prev) return true; // Added
+            return prev.text !== s.text ||
+              prev.startTimeMinutes !== s.startTimeMinutes ||
+              prev.durationMinutes !== s.durationMinutes ||
+              prev.status !== s.status ||
+              prev.isCompleted !== s.isCompleted;
+          });
+
+          // Delete propagation: always propagate deletions for recurring tasks to all instances
+          // Repeat Sync: replicate structure (create/update) to all other instances; do NOT sync status unless syncMode is 'all' or 'future'
+          if (t.recurrence?.repeatSync || syncMode !== 'none' || removedIds.size > 0) {
             const allDates = getAllRecurringDates(t);
             for (const otherDate of allDates) {
               if (otherDate === normalizedInstanceDate) continue;
+
+              // If syncMode is 'future', only propagate to actually future dates.
+              // If syncMode is 'all', sync for all dates.
+              const isFuture = otherDate > normalizedInstanceDate;
+              if (syncMode === 'future' && !isFuture) continue;
+
               const findInstance = (inst: Record<string, import('./src/constants/data').RecurrenceInstance> | undefined) => {
                 if (!inst) return undefined;
                 const direct = inst[otherDate];
@@ -771,45 +803,85 @@ export default function App() {
               };
               const otherInstance = findInstance(updatedRecurrenceInstances) || findInstance(t.recurrenceInstances) || {};
               const otherStages = otherInstance.stages || [];
-              const preservedByStageId = new Map<number, {
-                status: import('./src/constants/data').StageStatus;
-                isCompleted: boolean;
-                startTime?: string;
-                endTime?: string;
-                startTimeMinutes?: number;
-                durationMinutes?: number;
-              }>();
-              for (const s of otherStages) {
-                if (s?.id) {
-                  preservedByStageId.set(s.id, {
+
+              let syncedStages: TaskStage[] = otherStages;
+
+              if (t.recurrence?.repeatSync) {
+                // Global Sync: Structure must match perfectly (Full Override)
+                const preservedByStageId = new Map<number, {
+                  status: import('./src/constants/data').StageStatus;
+                  isCompleted: boolean;
+                  startTimeMinutes?: number;
+                  durationMinutes?: number;
+                }>();
+                for (const s of otherStages) {
+                  if (s?.id) preservedByStageId.set(s.id, {
                     status: (s.status || 'Upcoming') as import('./src/constants/data').StageStatus,
                     isCompleted: s.isCompleted ?? (s.status === 'Done'),
-                    startTime: s.startTime,
-                    endTime: s.endTime,
                     startTimeMinutes: s.startTimeMinutes,
                     durationMinutes: s.durationMinutes,
                   });
                 }
+
+                syncedStages = nextStages.map(src => {
+                  const preserved = preservedByStageId.get(src.id);
+                  let useSourceStatus = false;
+                  if (syncMode === 'all' || (syncMode === 'future' && isFuture)) {
+                    const prevSrc = previousStages.find(p => p.id === src.id);
+                    if (!prevSrc || prevSrc.status !== src.status || prevSrc.isCompleted !== src.isCompleted) {
+                      useSourceStatus = true;
+                    }
+                  }
+                  return {
+                    ...src,
+                    status: useSourceStatus ? src.status : (preserved?.status ?? 'Upcoming'),
+                    isCompleted: useSourceStatus ? src.isCompleted : (preserved?.isCompleted ?? false),
+                    startTimeMinutes: preserved?.startTimeMinutes ?? src.startTimeMinutes ?? 0,
+                    durationMinutes: preserved?.durationMinutes ?? src.durationMinutes ?? 180,
+                  };
+                });
+              } else {
+                // Delta Sync (None/All/Future): Only touch subtasks that were added/updated/removed.
+                // This prevents "Local Only" subtasks from being copied to other dates.
+                // UPDATED: Global deletion - ALWAYS remove deleted IDs from all other dates
+                let nextOtherStages = otherStages.filter(s => !removedIds.has(s.id));
+
+                if (syncMode !== 'none' || t.recurrence?.repeatSync) {
+                  for (const mod of modifiedStages) {
+                    let useSourceStatus = false;
+                    if (syncMode === 'all' || (syncMode === 'future' && isFuture)) {
+                      const prevSrc = previousStages.find(p => p.id === mod.id);
+                      if (!prevSrc || prevSrc.status !== mod.status || prevSrc.isCompleted !== mod.isCompleted) {
+                        useSourceStatus = true;
+                      }
+                    }
+
+                    const existingIdx = nextOtherStages.findIndex(s => s.id === mod.id);
+                    const preserved = existingIdx >= 0 ? nextOtherStages[existingIdx] : undefined;
+
+                    const stagedMod: TaskStage = {
+                      ...mod,
+                      status: useSourceStatus ? mod.status : (preserved?.status ?? 'Upcoming'),
+                      isCompleted: useSourceStatus ? mod.isCompleted : (preserved?.isCompleted ?? false),
+                      startTimeMinutes: preserved?.startTimeMinutes ?? mod.startTimeMinutes ?? 0,
+                      durationMinutes: preserved?.durationMinutes ?? mod.durationMinutes ?? 180,
+                    };
+
+                    if (existingIdx >= 0) {
+                      nextOtherStages[existingIdx] = stagedMod;
+                    } else {
+                      nextOtherStages.push(stagedMod);
+                    }
+                  }
+                }
+                syncedStages = nextOtherStages;
               }
-              const syncedStages: TaskStage[] = nextStages.map(src => {
-                const preserved = preservedByStageId.get(src.id);
-                return {
-                  ...src,
-                  status: preserved?.status ?? 'Upcoming',
-                  isCompleted: preserved?.isCompleted ?? false,
-                  startTime: preserved?.startTime,
-                  endTime: preserved?.endTime,
-                  // Preserve per-date start/duration so same subtask can have different times on different days
-                  startTimeMinutes: preserved?.startTimeMinutes ?? src.startTimeMinutes ?? 0,
-                  durationMinutes: preserved?.durationMinutes ?? src.durationMinutes ?? 180,
-                };
-              });
+
               updatedRecurrenceInstances = {
                 ...updatedRecurrenceInstances,
                 [otherDate]: {
                   ...otherInstance,
                   stages: syncedStages,
-                  // Preserve instance-specific task status and timestamps (do not sync)
                   status: otherInstance.status,
                   startedAt: otherInstance.startedAt,
                   completedAt: otherInstance.completedAt,
@@ -824,7 +896,6 @@ export default function App() {
             updatedAt: now,
           };
 
-          // Calculate and update streak when status changes
           const newStreak = calculateStreak(updatedTask, dailyStartMinutes);
 
           return {

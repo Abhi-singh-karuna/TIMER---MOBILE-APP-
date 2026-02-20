@@ -16,6 +16,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { ScrollView, GestureHandlerRootView } from 'react-native-gesture-handler';
 import { MaterialIcons } from '@expo/vector-icons';
+import Slider from '@react-native-community/slider';
 import * as Haptics from 'expo-haptics';
 import { LinearGradient } from 'expo-linear-gradient';
 import {
@@ -66,6 +67,53 @@ const parseTimeToMinutes = (s: string, allow24 = false) => {
 };
 
 const isHex = (s: string) => /^#([0-9a-fA-F]{6}|[0-9a-fA-F]{3})$/.test((s || '').trim());
+
+/** Hue/HSV Helpers */
+const hsvToHex = (h: number) => {
+  const hNorm = h / 360;
+  const s = 0.85; // Vibrant
+  const v = 0.95; // Bright
+  let r, g, b;
+  let i = Math.floor(hNorm * 6);
+  let f = hNorm * 6 - i;
+  let p = v * (1 - s);
+  let q = v * (1 - s * f);
+  let t = v * (1 - s * (1 - f));
+  switch (i % 6) {
+    case 0: r = v, g = t, b = p; break;
+    case 1: r = q, g = v, b = p; break;
+    case 2: r = p, g = v, b = t; break;
+    case 3: r = p, g = q, b = v; break;
+    case 4: r = t, g = p, b = v; break;
+    case 5: r = v, g = p, b = q; break;
+    default: r = v, g = t, b = p;
+  }
+  const toHex = (x: number) => {
+    const hex = Math.round(x * 255).toString(16);
+    return hex.padStart(2, '0');
+  };
+  return `#${toHex(r)}${toHex(g)}${toHex(b)}`.toUpperCase();
+};
+
+const hexToHue = (hex: string) => {
+  if (!isHex(hex)) return 0;
+  const cleanHex = hex.trim().replace('#', '');
+  const r = parseInt(cleanHex.substring(0, 2), 16) / 255;
+  const g = parseInt(cleanHex.substring(2, 4), 16) / 255;
+  const b = parseInt(cleanHex.substring(4, 6), 16) / 255;
+  const max = Math.max(r, g, b), min = Math.min(r, g, b);
+  let h = 0;
+  if (max !== min) {
+    const d = max - min;
+    switch (max) {
+      case r: h = (g - b) / d + (g < b ? 6 : 0); break;
+      case g: h = (b - r) / d + 2; break;
+      case b: h = (r - g) / d + 4; break;
+    }
+    h /= 6;
+  }
+  return Math.round(h * 360);
+};
 
 /** Returns the WeekdayKey for the current logical day (6am–6am). */
 const getCurrentLogicalWeekday = (dailyStartMinutes: number): WeekdayKey => {
@@ -343,107 +391,135 @@ export default function TimeOfDayBackgroundScreen({
     onBack();
   };
 
-  const renderColorPicker = (s: SlotDraft, compact?: boolean) => (
-    <View style={[styles.colorPickerRow, compact && styles.colorPickerRowCompact]}>
-      {COLOR_SWATCHES.map((c) => {
-        const selected = (s.colorHex || '').trim().toLowerCase() === c.toLowerCase();
-        return (
-          <TouchableOpacity
-            key={c}
-            style={[
-              styles.colorDot,
-              compact && styles.colorDotCompact,
-              { backgroundColor: c },
-              selected && styles.colorDotSelected,
-            ]}
-            onPress={() => update(s.key, { colorHex: c })}
-            activeOpacity={0.8}
+  const renderColorSlider = (s: SlotDraft, compact?: boolean) => {
+    const currentHue = hexToHue(s.colorHex);
+    return (
+      <View style={[sharedStyles.sliderContainer, { marginTop: compact ? 12 : 16 }]}>
+        <View style={sharedStyles.sliderTrackBg}>
+          <LinearGradient
+            colors={['#FF0000', '#FFFF00', '#00FF00', '#00FFFF', '#0000FF', '#FF00FF', '#FF0000']}
+            start={{ x: 0, y: 0.5 }}
+            end={{ x: 1, y: 0.5 }}
+            style={sharedStyles.hueGradient}
           />
-        );
-      })}
-    </View>
-  );
+          <View style={sharedStyles.sliderTrenchShadow} />
+        </View>
+        <Slider
+          style={sharedStyles.hueSlider}
+          minimumValue={0}
+          maximumValue={360}
+          step={1}
+          value={currentHue}
+          onValueChange={(val) => {
+            const hex = hsvToHex(val);
+            update(s.key, { colorHex: hex });
+          }}
+          onSlidingComplete={() => {
+            Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+          }}
+          minimumTrackTintColor="transparent"
+          maximumTrackTintColor="transparent"
+          thumbTintColor="#fff"
+        />
+      </View>
+    );
+  };
 
   const renderSlotRow = (s: SlotDraft, compact?: boolean) => (
-    <View key={s.key} style={[styles.card, compact && styles.cardCompact]}>
-      <View style={[styles.cardHeader, compact && styles.cardHeaderCompact]}>
-        <Text style={[styles.cardTitle, compact && styles.cardTitleCompact]}>{s.label || s.key.toUpperCase()}</Text>
-        <View style={[styles.colorSwatch, compact && styles.colorSwatchCompact, { backgroundColor: isHex(s.colorHex) ? s.colorHex : '#000' }]} />
-      </View>
-
-      <View style={[styles.fieldRow, compact && styles.fieldRowCompact]}>
-        <Text style={[styles.fieldLabel, compact && styles.fieldLabelCompact]}>Label</Text>
-        <TextInput
-          value={s.label}
-          onChangeText={(v) => update(s.key, { label: v })}
-          placeholder="e.g. Morning"
-          placeholderTextColor="rgba(255,255,255,0.35)"
-          style={[styles.input, compact && styles.inputCompact]}
-        />
-      </View>
-
-      <View style={[styles.fieldRow, compact && styles.fieldRowCompact]}>
-        <Text style={[styles.fieldLabel, compact && styles.fieldLabelCompact]}>Color</Text>
-        <TextInput
-          value={s.colorHex}
-          onChangeText={(v) => update(s.key, { colorHex: v })}
-          placeholder="#102A43"
-          placeholderTextColor="rgba(255,255,255,0.35)"
-          autoCapitalize="none"
-          style={[styles.input, compact && styles.inputCompact]}
-        />
-        {renderColorPicker(s, compact)}
-      </View>
-
-      <View style={[styles.timeRow, compact && styles.timeRowCompact]}>
-        <View style={{ flex: 1 }}>
-          <Text style={[styles.fieldLabel, compact && styles.fieldLabelCompact]}>Start</Text>
-          <Pressable
-            style={[styles.timePickerButton, compact && styles.timePickerButtonCompact]}
-            onPress={() => {
-              const startMin = parseTimeToMinutes(s.start, false) ?? 0;
-              setTimePicker({
-                visible: true,
-                slotKey: s.key,
-                field: 'start',
-                hours: Math.floor(startMin / 60),
-                minutes: startMin % 60,
-              });
-              Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-            }}
-          >
-            <Text style={[styles.timePickerValue, compact && styles.timePickerValueCompact]}>{s.start}</Text>
-            <MaterialIcons name="keyboard-arrow-down" size={compact ? 14 : 18} color="rgba(255,255,255,0.35)" />
-          </Pressable>
+    <View style={[sharedStyles.settingsCardBezel, { marginBottom: 12 }]}>
+      <View style={sharedStyles.settingsCardTrackUnifiedLarge}>
+        <View style={[styles.cardHeader, compact && styles.cardHeaderCompact]}>
+          <Text style={[styles.cardTitle, compact && styles.cardTitleCompact]}>{s.label || s.key.toUpperCase()}</Text>
+          <View style={[styles.colorSwatch, compact && styles.colorSwatchCompact, { backgroundColor: isHex(s.colorHex) ? s.colorHex : '#000' }]} />
         </View>
-        <View style={{ width: compact ? 8 : 12 }} />
-        <View style={{ flex: 1 }}>
-          <Text style={[styles.fieldLabel, compact && styles.fieldLabelCompact]}>End</Text>
-          <Pressable
-            style={[styles.timePickerButton, compact && styles.timePickerButtonCompact]}
-            onPress={() => {
-              const endMin = parseTimeToMinutes(s.end, true) ?? 0;
-              setTimePicker({
-                visible: true,
-                slotKey: s.key,
-                field: 'end',
-                hours: Math.floor(endMin / 60),
-                minutes: endMin % 60,
-              });
-              Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-            }}
-          >
-            <Text style={[styles.timePickerValue, compact && styles.timePickerValueCompact]}>{s.end}</Text>
-            <MaterialIcons name="keyboard-arrow-down" size={compact ? 14 : 18} color="rgba(255,255,255,0.35)" />
-          </Pressable>
-        </View>
-      </View>
 
-      {!compact && (
-        <Text style={styles.hint}>
-          Tip: set end earlier than start to cross midnight (e.g. Night 20:00 → 06:00).
-        </Text>
-      )}
+        <View style={[styles.fieldRow, compact && styles.fieldRowCompact]}>
+          <Text style={[styles.fieldLabel, compact && styles.fieldLabelCompact]}>Label</Text>
+          <View style={styles.inputWell}>
+            <TextInput
+              value={s.label}
+              onChangeText={(v) => update(s.key, { label: v })}
+              placeholder="e.g. Morning"
+              placeholderTextColor="rgba(255,255,255,0.35)"
+              style={[styles.input, compact && styles.inputCompact]}
+            />
+            <View style={sharedStyles.settingsCardInteriorShadowExtraSmall} pointerEvents="none" />
+            <View style={sharedStyles.settingsCardTopRimExtraSmall} pointerEvents="none" />
+          </View>
+        </View>
+
+        <View style={[styles.fieldRow, compact && styles.fieldRowCompact]}>
+          <Text style={[styles.fieldLabel, compact && styles.fieldLabelCompact]}>Color</Text>
+          <View style={styles.inputWell}>
+            <TextInput
+              value={s.colorHex}
+              onChangeText={(v) => update(s.key, { colorHex: v })}
+              placeholder="#102A43"
+              placeholderTextColor="rgba(255,255,255,0.35)"
+              autoCapitalize="none"
+              style={[styles.input, compact && styles.inputCompact]}
+            />
+            <View style={sharedStyles.settingsCardInteriorShadowExtraSmall} pointerEvents="none" />
+            <View style={sharedStyles.settingsCardTopRimExtraSmall} pointerEvents="none" />
+          </View>
+          {renderColorSlider(s, compact)}
+        </View>
+
+        <View style={[styles.timeRow, compact && styles.timeRowCompact]}>
+          <View style={{ flex: 1 }}>
+            <Text style={[styles.fieldLabel, compact && styles.fieldLabelCompact]}>Start</Text>
+            <TouchableOpacity
+              style={[styles.timePickerButton, compact && styles.timePickerButtonCompact]}
+              onPress={() => {
+                const startMin = parseTimeToMinutes(s.start, false) ?? 0;
+                setTimePicker({
+                  visible: true,
+                  slotKey: s.key,
+                  field: 'start',
+                  hours: Math.floor(startMin / 60),
+                  minutes: startMin % 60,
+                });
+                Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+              }}
+              activeOpacity={0.7}
+            >
+              <Text style={[styles.timePickerValue, compact && styles.timePickerValueCompact]}>{s.start}</Text>
+              <MaterialIcons name="keyboard-arrow-down" size={compact ? 14 : 18} color="rgba(255,255,255,0.35)" />
+            </TouchableOpacity>
+          </View>
+          <View style={{ width: compact ? 8 : 12 }} />
+          <View style={{ flex: 1 }}>
+            <Text style={[styles.fieldLabel, compact && styles.fieldLabelCompact]}>End</Text>
+            <TouchableOpacity
+              style={[styles.timePickerButton, compact && styles.timePickerButtonCompact]}
+              onPress={() => {
+                const endMin = parseTimeToMinutes(s.end, true) ?? 0;
+                setTimePicker({
+                  visible: true,
+                  slotKey: s.key,
+                  field: 'end',
+                  hours: Math.floor(endMin / 60),
+                  minutes: endMin % 60,
+                });
+                Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+              }}
+              activeOpacity={0.7}
+            >
+              <Text style={[styles.timePickerValue, compact && styles.timePickerValueCompact]}>{s.end}</Text>
+              <MaterialIcons name="keyboard-arrow-down" size={compact ? 14 : 18} color="rgba(255,255,255,0.35)" />
+            </TouchableOpacity>
+          </View>
+        </View>
+
+        {!compact && (
+          <Text style={styles.hint}>
+            Tip: set end earlier than start to cross midnight (e.g. Night 20:00 → 06:00).
+          </Text>
+        )}
+        <View style={sharedStyles.settingsCardInteriorShadow} pointerEvents="none" />
+        <View style={sharedStyles.settingsCardTopRim} pointerEvents="none" />
+      </View>
+      <View style={sharedStyles.settingsCardOuterGlow} pointerEvents="none" />
     </View>
   );
 
@@ -463,68 +539,73 @@ export default function TimeOfDayBackgroundScreen({
           style={styles.modalOverlay}
           onPress={() => setTimePicker(prev => ({ ...prev, visible: false }))}
         >
-          <Pressable style={styles.timeModal} onPress={(e) => e.stopPropagation()}>
-            <Text style={styles.timeModalTitle}>
-              {timePicker.field === 'start' ? 'START TIME' : 'END TIME'}
-            </Text>
+          <View style={sharedStyles.settingsCardBezel}>
+            <Pressable style={[sharedStyles.settingsCardTrack, styles.timeModal]} onPress={(e) => e.stopPropagation()}>
+              <Text style={styles.timeModalTitle}>
+                {timePicker.field === 'start' ? 'START TIME' : 'END TIME'}
+              </Text>
 
-            <View style={styles.timeWheelRow}>
-              <View style={styles.timeWheelGroup}>
-                <WheelPicker
-                  data={timePicker.field === 'end' ? HOURS_END_DATA : HOURS_START_DATA}
-                  value={timePicker.hours}
-                  onChange={(h) => {
-                    setTimePicker(prev => {
-                      const nextH = h;
-                      const nextM = (prev.field === 'end' && nextH === 24) ? 0 : prev.minutes;
-                      return { ...prev, hours: nextH, minutes: nextM };
-                    });
+              <View style={styles.timeWheelRow}>
+                <View style={styles.timeWheelGroup}>
+                  <WheelPicker
+                    data={timePicker.field === 'end' ? HOURS_END_DATA : HOURS_START_DATA}
+                    value={timePicker.hours}
+                    onChange={(h) => {
+                      setTimePicker(prev => {
+                        const nextH = h;
+                        const nextM = (prev.field === 'end' && nextH === 24) ? 0 : prev.minutes;
+                        return { ...prev, hours: nextH, minutes: nextM };
+                      });
+                    }}
+                  />
+                  <Text style={styles.timeWheelLabel}>HH</Text>
+                </View>
+
+                <Text style={styles.colon}>:</Text>
+
+                <View style={styles.timeWheelGroup}>
+                  <WheelPicker
+                    data={(timePicker.field === 'end' && timePicker.hours === 24) ? [0] : MINUTES_DATA}
+                    value={(timePicker.field === 'end' && timePicker.hours === 24) ? 0 : timePicker.minutes}
+                    onChange={(m) => setTimePicker(prev => ({ ...prev, minutes: m }))}
+                  />
+                  <Text style={styles.timeWheelLabel}>MM</Text>
+                </View>
+              </View>
+
+              <View style={styles.timeModalActions}>
+                <TouchableOpacity
+                  style={styles.timeModalBtn}
+                  onPress={() => setTimePicker(prev => ({ ...prev, visible: false }))}
+                  activeOpacity={0.75}
+                >
+                  <Text style={styles.timeModalBtnText}>Cancel</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={styles.timeModalBtnPrimary}
+                  onPress={() => {
+                    if (!timePicker.slotKey) return;
+                    const hh = String(timePicker.hours).padStart(2, '0');
+                    const mm = String(timePicker.minutes).padStart(2, '0');
+                    update(
+                      timePicker.slotKey,
+                      timePicker.field === 'start' ? { start: `${hh}:${mm}` } : { end: `${hh}:${mm}` }
+                    );
+                    setTimePicker(prev => ({ ...prev, visible: false }));
                   }}
-                />
-                <Text style={styles.timeWheelLabel}>HH</Text>
+                  activeOpacity={0.75}
+                >
+                  <Text style={styles.timeModalBtnTextPrimary}>Set</Text>
+                </TouchableOpacity>
               </View>
-
-              <Text style={styles.colon}>:</Text>
-
-              <View style={styles.timeWheelGroup}>
-                <WheelPicker
-                  data={(timePicker.field === 'end' && timePicker.hours === 24) ? [0] : MINUTES_DATA}
-                  value={(timePicker.field === 'end' && timePicker.hours === 24) ? 0 : timePicker.minutes}
-                  onChange={(m) => setTimePicker(prev => ({ ...prev, minutes: m }))}
-                />
-                <Text style={styles.timeWheelLabel}>MM</Text>
-              </View>
-            </View>
-
-            <View style={styles.timeModalActions}>
-              <TouchableOpacity
-                style={styles.timeModalBtn}
-                onPress={() => setTimePicker(prev => ({ ...prev, visible: false }))}
-                activeOpacity={0.75}
-              >
-                <Text style={styles.timeModalBtnText}>Cancel</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={styles.timeModalBtnPrimary}
-                onPress={() => {
-                  if (!timePicker.slotKey) return;
-                  const hh = String(timePicker.hours).padStart(2, '0');
-                  const mm = String(timePicker.minutes).padStart(2, '0');
-                  update(
-                    timePicker.slotKey,
-                    timePicker.field === 'start' ? { start: `${hh}:${mm}` } : { end: `${hh}:${mm}` }
-                  );
-                  setTimePicker(prev => ({ ...prev, visible: false }));
-                }}
-                activeOpacity={0.75}
-              >
-                <Text style={styles.timeModalBtnTextPrimary}>Set</Text>
-              </TouchableOpacity>
-            </View>
-          </Pressable>
+              <View style={sharedStyles.settingsCardInteriorShadow} pointerEvents="none" />
+              <View style={sharedStyles.settingsCardTopRim} pointerEvents="none" />
+            </Pressable>
+            <View style={sharedStyles.settingsCardOuterGlow} pointerEvents="none" />
+          </View>
         </Pressable>
       </GestureHandlerRootView>
-    </Modal>
+    </Modal >
   );
 
   if (isLandscape) {
@@ -579,21 +660,34 @@ export default function TimeOfDayBackgroundScreen({
                   {draft.map((s) => {
                     const isActive = s.key === activeKey;
                     return (
-                      <TouchableOpacity
-                        key={s.key}
-                        style={[styles.landscapeSlotRow, isActive && styles.landscapeSlotRowActive]}
-                        onPress={() => setActiveKey(s.key)}
-                        activeOpacity={0.75}
-                      >
-                        <View style={[styles.landscapeSlotSwatch, { backgroundColor: isHex(s.colorHex) ? s.colorHex : '#000' }]} />
-                        <View style={styles.landscapeSlotInfo}>
-                          <Text style={[styles.landscapeSlotTitle, isActive && styles.landscapeSlotTitleActive]} numberOfLines={1}>
-                            {s.label || s.key.toUpperCase()}
-                          </Text>
-                          <Text style={styles.landscapeSlotTime} numberOfLines={1}>{s.start} → {s.end}</Text>
+                      <View key={s.key} style={sharedStyles.settingsCardBezelExtraSmall}>
+                        <View style={[sharedStyles.settingsCardTrackExtraSmall, isActive && { backgroundColor: 'rgba(255,255,255,0.08)' }]}>
+                          <TouchableOpacity
+                            style={[styles.landscapeSlotRow, isActive && styles.landscapeSlotRowActive]}
+                            onPress={() => {
+                              setActiveKey(s.key);
+                              Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                            }}
+                            activeOpacity={0.75}
+                          >
+                            <View style={[styles.landscapeSlotSwatch, { backgroundColor: isHex(s.colorHex) ? s.colorHex : '#000' }]} />
+                            <View style={styles.landscapeSlotInfo}>
+                              <Text style={[styles.landscapeSlotTitle, isActive && styles.landscapeSlotTitleActive]} numberOfLines={1}>
+                                {s.label || s.key.toUpperCase()}
+                              </Text>
+                              <Text style={styles.landscapeSlotTime} numberOfLines={1}>{s.start} → {s.end}</Text>
+                            </View>
+                            {isActive ? (
+                              <View style={sharedStyles.activeIndicatorSmall} />
+                            ) : (
+                              <MaterialIcons name="chevron-right" size={14} color="rgba(255,255,255,0.15)" />
+                            )}
+                          </TouchableOpacity>
+                          <View style={sharedStyles.settingsCardInteriorShadowExtraSmall} pointerEvents="none" />
+                          <View style={sharedStyles.settingsCardTopRimExtraSmall} pointerEvents="none" />
                         </View>
-                        <MaterialIcons name="chevron-right" size={14} color="rgba(255,255,255,0.2)" />
-                      </TouchableOpacity>
+                        {isActive && <View style={sharedStyles.settingsCardOuterGlowExtraSmall} pointerEvents="none" />}
+                      </View>
                     );
                   })}
                 </ScrollView>
@@ -606,17 +700,29 @@ export default function TimeOfDayBackgroundScreen({
 
             {/* Right Panel - header + slot editor + day at bottom */}
             <View style={sharedStyles.rightContentCard}>
-              <View style={styles.landscapeRightHeader}>
-                <Text style={sharedStyles.sectionTitleLandscape}>TIME-OF-DAY BACKGROUND</Text>
-                <View style={styles.landscapeRightActions}>
-                  <TouchableOpacity style={sharedStyles.addCategoryBtn} onPress={showCopyFromDayPicker} activeOpacity={0.7}>
-                    <MaterialIcons name="content-copy" size={18} color="#FFFFFF" />
-                    <Text style={sharedStyles.addCategoryBtnText}>Copy from day</Text>
+              <View style={[styles.landscapeRightHeader, { marginBottom: 16 }]}>
+                <View style={{ flex: 1 }} />
+                <View style={[styles.landscapeRightActions, { gap: 10 }]}>
+                  <TouchableOpacity
+                    style={[sharedStyles.actionBtn, { width: 'auto', height: 'auto', paddingHorizontal: 16, paddingVertical: 10 }]}
+                    onPress={showCopyFromDayPicker}
+                    activeOpacity={0.7}
+                  >
+                    <MaterialIcons name="content-copy" size={16} color="rgba(255,255,255,0.8)" />
+                    <Text style={[sharedStyles.addCategoryBtnText, { marginLeft: 8 }]}>Copy from day</Text>
                   </TouchableOpacity>
-                  <TouchableOpacity style={sharedStyles.categoryCancelBtn} onPress={handleReset} activeOpacity={0.7}>
+                  <TouchableOpacity
+                    style={[sharedStyles.actionBtn, { width: 'auto', height: 'auto', paddingHorizontal: 16, paddingVertical: 10 }]}
+                    onPress={handleReset}
+                    activeOpacity={0.7}
+                  >
                     <Text style={sharedStyles.categoryCancelText}>Reset</Text>
                   </TouchableOpacity>
-                  <TouchableOpacity style={sharedStyles.categorySaveBtn} onPress={handleSave} activeOpacity={0.7}>
+                  <TouchableOpacity
+                    style={[sharedStyles.categorySaveBtn, { width: 'auto', height: 'auto', paddingHorizontal: 22, paddingVertical: 10 }]}
+                    onPress={handleSave}
+                    activeOpacity={0.7}
+                  >
                     <Text style={sharedStyles.categorySaveText}>Save</Text>
                   </TouchableOpacity>
                 </View>
@@ -636,16 +742,34 @@ export default function TimeOfDayBackgroundScreen({
                   {WEEKDAY_ORDER.map((day) => {
                     const active = day === activeDay;
                     return (
-                      <TouchableOpacity
-                        key={day}
-                        style={[styles.landscapeDayChip, active && styles.landscapeDayChipActive]}
-                        onPress={() => setActiveDay(day)}
-                        activeOpacity={0.8}
-                      >
-                        <Text style={[styles.landscapeDayChipText, active && styles.landscapeDayChipTextActive]}>
-                          {WEEKDAY_LABEL[day]}
-                        </Text>
-                      </TouchableOpacity>
+                      <View key={day} style={sharedStyles.settingsCardBezelExtraSmall}>
+                        <View style={[
+                          sharedStyles.settingsCardTrackExtraSmall,
+                          active && { backgroundColor: '#fff', borderColor: 'rgba(255,255,255,0.2)' }
+                        ]}>
+                          <TouchableOpacity
+                            style={[
+                              styles.landscapeDayChip,
+                              { backgroundColor: 'transparent', borderWidth: 0 }
+                            ]}
+                            onPress={() => {
+                              setActiveDay(day);
+                              Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                            }}
+                            activeOpacity={0.8}
+                          >
+                            <Text style={[
+                              styles.landscapeDayChipText,
+                              active && { color: '#000', fontWeight: '900' }
+                            ]}>
+                              {WEEKDAY_LABEL[day]}
+                            </Text>
+                          </TouchableOpacity>
+                          <View style={sharedStyles.settingsCardInteriorShadowExtraSmall} pointerEvents="none" />
+                          <View style={sharedStyles.settingsCardTopRimExtraSmall} pointerEvents="none" />
+                        </View>
+                        {active && <View style={sharedStyles.settingsCardOuterGlowExtraSmall} pointerEvents="none" />}
+                      </View>
                     );
                   })}
                 </View>
@@ -792,6 +916,15 @@ const styles = StyleSheet.create({
     position: 'relative',
     overflow: 'hidden',
     backgroundColor: '#000',
+    borderRadius: 24,
+  },
+  inputWell: {
+    backgroundColor: '#050505',
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.03)',
+    position: 'relative',
+    overflow: 'hidden',
   },
   phonePreviewSlotSeg: {
     position: 'absolute',
@@ -854,28 +987,25 @@ const styles = StyleSheet.create({
   landscapeDayRow: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    gap: 4,
+    gap: 8,
     marginBottom: 8,
   },
   landscapeDayChip: {
-    paddingHorizontal: 6,
-    paddingVertical: 4,
+    paddingHorizontal: 8,
+    paddingVertical: 6,
     borderRadius: 8,
-    backgroundColor: 'rgba(255,255,255,0.06)',
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.08)',
+    backgroundColor: 'transparent',
+    borderWidth: 0,
   },
   landscapeDayChipActive: {
-    backgroundColor: 'rgba(255,255,255,0.14)',
-    borderColor: 'rgba(255,255,255,0.2)',
   },
   landscapeDayChipText: {
     fontSize: 10,
-    fontWeight: '700',
-    color: 'rgba(255,255,255,0.5)',
+    fontWeight: '800',
+    color: 'rgba(255,255,255,0.45)',
   },
   landscapeDayChipTextActive: {
-    color: '#fff',
+    color: '#000',
   },
   landscapeSlotList: {
     paddingBottom: 8,
@@ -883,25 +1013,20 @@ const styles = StyleSheet.create({
   landscapeSlotRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: 6,
-    paddingVertical: 6,
-    borderRadius: 8,
-    backgroundColor: 'rgba(255,255,255,0.03)',
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.06)',
-    marginBottom: 4,
+    paddingHorizontal: 10,
+    paddingVertical: 10,
+    backgroundColor: 'transparent',
+    borderWidth: 0,
   },
   landscapeSlotRowActive: {
-    backgroundColor: 'rgba(255,255,255,0.08)',
-    borderColor: 'rgba(255,255,255,0.12)',
   },
   landscapeSlotSwatch: {
-    width: 12,
-    height: 12,
-    borderRadius: 4,
-    marginRight: 6,
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.12)',
+    width: 14,
+    height: 14,
+    borderRadius: 5,
+    marginRight: 8,
+    borderWidth: 1.5,
+    borderColor: 'rgba(255,255,255,0.25)',
   },
   landscapeSlotInfo: {
     flex: 1,

@@ -12,6 +12,7 @@ import {
     KeyboardAvoidingView
 } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { LinearGradient } from 'expo-linear-gradient';
 import { MaterialIcons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
 import { styles } from './styles';
@@ -97,88 +98,96 @@ function LeaveActionModal({
                         style={[modalStyles.keyboardView, isLandscape && { justifyContent: 'center' }]}
                     >
                         <TouchableWithoutFeedback onPress={(e) => e.stopPropagation()}>
-                            <View style={[
-                                modalStyles.card,
-                                isLandscape && { width: '60%', maxWidth: 500, flexDirection: 'row', gap: 20, alignItems: 'center' }
-                            ]}>
-                                <View style={{ flex: 1 }}>
-                                    {/* Compact Header */}
-                                    <View style={[modalStyles.headerRow, isLandscape && { marginBottom: 12 }]}>
-                                        <View>
-                                            <Text style={modalStyles.modalTitle}>
-                                                {mode === 'add' ? 'ADD LEAVE' : (mode === 'edit' ? 'EDIT LEAVE' : 'LEAVE DETAILS')}
-                                            </Text>
-                                            <Text style={modalStyles.modalSubtitle}>
-                                                {formattedDate}
-                                            </Text>
-                                        </View>
-
-                                        {/* Close Button Top-Right for View Mode */}
-                                        {mode === 'view' && (
-                                            <TouchableOpacity style={modalStyles.iconBtn} onPress={onClose}>
-                                                <MaterialIcons name="close" size={22} color="rgba(255,255,255,0.6)" />
-                                            </TouchableOpacity>
-                                        )}
-                                    </View>
-
-                                    {mode === 'view' ? (
-                                        <View style={modalStyles.viewContent}>
-                                            <View style={modalStyles.reasonBox}>
-                                                <Text style={[
-                                                    modalStyles.viewReasonText,
-                                                    !existingReason && { color: 'rgba(255,255,255,0.3)', fontStyle: 'italic' }
-                                                ]}>
-                                                    {existingReason || "No reason provided"}
+                            <View style={styles.settingsCardBezel}>
+                                <View style={[
+                                    styles.settingsCardTrack,
+                                    modalStyles.card,
+                                    isLandscape && { width: '100%', maxWidth: 500, flexDirection: 'row', gap: 20, alignItems: 'center' }
+                                ]}>
+                                    <View style={{ flex: 1 }}>
+                                        {/* Compact Header */}
+                                        <View style={[modalStyles.headerRow, isLandscape && { marginBottom: 12 }]}>
+                                            <View>
+                                                <Text style={modalStyles.modalTitle}>
+                                                    {mode === 'add' ? 'ADD LEAVE' : (mode === 'edit' ? 'EDIT LEAVE' : 'LEAVE DETAILS')}
+                                                </Text>
+                                                <Text style={modalStyles.modalSubtitle}>
+                                                    {formattedDate}
                                                 </Text>
                                             </View>
 
-                                            <View style={modalStyles.viewActions}>
-                                                <TouchableOpacity
-                                                    style={modalStyles.destructiveBtn}
-                                                    onPress={handleDelete}
-                                                >
-                                                    <MaterialIcons name="delete-outline" size={20} color="#FF3B30" />
-                                                    <Text style={modalStyles.destructiveBtnText}>Delete</Text>
+                                            {/* Close Button Top-Right for View Mode */}
+                                            {mode === 'view' && (
+                                                <TouchableOpacity style={modalStyles.iconBtn} onPress={onClose}>
+                                                    <MaterialIcons name="close" size={22} color="rgba(255,255,255,0.6)" />
                                                 </TouchableOpacity>
-
-                                                <TouchableOpacity
-                                                    style={modalStyles.primaryActionBtn}
-                                                    onPress={() => setMode('edit')}
-                                                >
-                                                    <MaterialIcons name="edit" size={18} color="#000" />
-                                                    <Text style={modalStyles.primaryActionBtnText}>Edit</Text>
-                                                </TouchableOpacity>
-                                            </View>
+                                            )}
                                         </View>
-                                    ) : (
-                                        <View>
-                                            <TextInput
-                                                style={modalStyles.input}
-                                                value={reason}
-                                                onChangeText={setReason}
-                                                placeholder="Enter reason (optional)..."
-                                                placeholderTextColor="rgba(255,255,255,0.3)"
-                                                autoFocus={true}
-                                                multiline
-                                            />
 
-                                            <View style={modalStyles.editActions}>
-                                                <TouchableOpacity
-                                                    style={modalStyles.btnCancel}
-                                                    onPress={() => {
-                                                        if (mode === 'edit') setMode('view');
-                                                        else onClose();
-                                                    }}
-                                                >
-                                                    <Text style={modalStyles.btnText}>Cancel</Text>
-                                                </TouchableOpacity>
-                                                <TouchableOpacity style={modalStyles.btnConfirm} onPress={handleSave}>
-                                                    <Text style={modalStyles.btnTextPrimary}>Save</Text>
-                                                </TouchableOpacity>
+                                        {mode === 'view' ? (
+                                            <View style={modalStyles.viewContent}>
+                                                <Text style={modalStyles.inputLabel}>REASON</Text>
+                                                <View style={modalStyles.reasonWell}>
+                                                    <Text style={[
+                                                        modalStyles.viewReasonText,
+                                                        !existingReason && { color: 'rgba(255,255,255,0.2)', fontStyle: 'italic' }
+                                                    ]}>
+                                                        {existingReason || "No reason provided"}
+                                                    </Text>
+                                                </View>
+
+                                                <View style={modalStyles.viewActions}>
+                                                    <TouchableOpacity
+                                                        style={modalStyles.destructiveBtn}
+                                                        onPress={handleDelete}
+                                                    >
+                                                        <MaterialIcons name="delete-outline" size={20} color="#FF3B30" />
+                                                        <Text style={modalStyles.destructiveBtnText}>DELETE</Text>
+                                                    </TouchableOpacity>
+
+                                                    <TouchableOpacity
+                                                        style={modalStyles.primaryActionBtn}
+                                                        onPress={() => setMode('edit')}
+                                                    >
+                                                        <MaterialIcons name="edit" size={18} color="#000" />
+                                                        <Text style={modalStyles.primaryActionBtnText}>EDIT</Text>
+                                                    </TouchableOpacity>
+                                                </View>
                                             </View>
-                                        </View>
-                                    )}
+                                        ) : (
+                                            <View>
+                                                <Text style={modalStyles.inputLabel}>DESCRIBE LEAVE</Text>
+                                                <TextInput
+                                                    style={modalStyles.input3D}
+                                                    value={reason}
+                                                    onChangeText={setReason}
+                                                    placeholder="Enter reason (optional)..."
+                                                    placeholderTextColor="rgba(255,255,255,0.15)"
+                                                    autoFocus={true}
+                                                    multiline
+                                                />
+
+                                                <View style={modalStyles.editActions}>
+                                                    <TouchableOpacity
+                                                        style={modalStyles.btnCancel3D}
+                                                        onPress={() => {
+                                                            if (mode === 'edit') setMode('view');
+                                                            else onClose();
+                                                        }}
+                                                    >
+                                                        <Text style={modalStyles.btnText3D}>CANCEL</Text>
+                                                    </TouchableOpacity>
+                                                    <TouchableOpacity style={modalStyles.btnConfirm3D} onPress={handleSave}>
+                                                        <Text style={modalStyles.btnTextPrimary3D}>SAVE</Text>
+                                                    </TouchableOpacity>
+                                                </View>
+                                            </View>
+                                        )}
+                                    </View>
+                                    <View style={styles.settingsCardInteriorShadow} pointerEvents="none" />
+                                    <View style={styles.settingsCardTopRim} pointerEvents="none" />
                                 </View>
+                                <View style={styles.settingsCardOuterGlow} pointerEvents="none" />
                             </View>
                         </TouchableWithoutFeedback>
                     </KeyboardAvoidingView>
@@ -193,11 +202,13 @@ function MultiDateCalendar({
     onDayPress,
     viewDate,
     onChangeViewDate,
+    isLandscape,
 }: {
     leaveDays: LeaveDay[];
     onDayPress: (dateStr: string) => void;
     viewDate: Date;
     onChangeViewDate: (date: Date) => void;
+    isLandscape: boolean;
 }) {
     const days = getDaysInMonth(viewDate.getFullYear(), viewDate.getMonth());
     const firstDay = getFirstDayOfMonth(viewDate.getFullYear(), viewDate.getMonth());
@@ -218,70 +229,86 @@ function MultiDateCalendar({
     const weekDays = ['S', 'M', 'T', 'W', 'T', 'F', 'S'];
 
     return (
-        <View style={modalStyles.calendarCard}>
-            <View style={modalStyles.calHeader}>
-                <View style={{ width: 24 }} />
-                <Text style={modalStyles.calTitle}>{MONTHS[viewDate.getMonth()]} {viewDate.getFullYear()}</Text>
-                <View style={modalStyles.calNav}>
-                    <TouchableOpacity onPress={() => {
-                        const nextDate = new Date(viewDate.getFullYear(), viewDate.getMonth() - 1, 1);
-                        onChangeViewDate(nextDate);
-                        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                    }} style={modalStyles.calNavBtn}>
-                        <MaterialIcons name="chevron-left" size={20} color="#fff" />
-                    </TouchableOpacity>
-                    <TouchableOpacity onPress={() => {
-                        const nextDate = new Date(viewDate.getFullYear(), viewDate.getMonth() + 1, 1);
-                        onChangeViewDate(nextDate);
-                        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                    }} style={modalStyles.calNavBtn}>
-                        <MaterialIcons name="chevron-right" size={20} color="#fff" />
-                    </TouchableOpacity>
-                </View>
-            </View>
-
-            <View style={modalStyles.weekRow}>
-                {weekDays.map((d, i) => <Text key={i} style={modalStyles.weekText}>{d}</Text>)}
-            </View>
-
-            <View style={modalStyles.daysGrid}>
-                {daysArray.map((item, i) => {
-                    const dateStr = item.current
-                        ? formatDate(new Date(viewDate.getFullYear(), viewDate.getMonth(), item.day))
-                        : '';
-                    // Check if this date has a leave day
-                    const leaveDay = item.current ? leaveDays.find(d => d.date === dateStr) : undefined;
-                    const isSelected = !!leaveDay;
-                    const isToday = item.current && formatDate(new Date()) === dateStr;
-
-                    return (
-                        <TouchableOpacity
-                            key={i}
-                            style={modalStyles.dayCell}
-                            disabled={!item.current}
-                            onPress={() => {
-                                if (item.current) {
-                                    onDayPress(dateStr);
-                                    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                                }
-                            }}
-                        >
-                            <View style={[
-                                modalStyles.dayCircle,
-                                !item.current && { opacity: 0.2 },
-                                isToday && modalStyles.todayCircle,
-                                isSelected && modalStyles.selectedCircle
-                            ]}>
-                                <Text style={[
-                                    modalStyles.dayText,
-                                    isToday && { color: '#000' },
-                                    isSelected && { color: '#000', fontWeight: '800' }
-                                ]}>{item.day}</Text>
-                            </View>
+        <View style={[styles.settingsCardBezel, isLandscape && { maxWidth: 420, alignSelf: 'center', width: '100%' }]}>
+            <View style={[styles.settingsCardTrackUnifiedLarge, modalStyles.calendarCard, isLandscape && { paddingBottom: 16 }]}>
+                <View style={modalStyles.calHeader}>
+                    <View style={modalStyles.monthDisplayWell}>
+                        <Text style={modalStyles.calTitle}>{MONTHS[viewDate.getMonth()]} {viewDate.getFullYear()}</Text>
+                    </View>
+                    <View style={modalStyles.calNavWell}>
+                        <TouchableOpacity onPress={() => {
+                            const nextDate = new Date(viewDate.getFullYear(), viewDate.getMonth() - 1, 1);
+                            onChangeViewDate(nextDate);
+                            Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+                        }} style={modalStyles.calNavChip}>
+                            <MaterialIcons name="chevron-left" size={20} color="#fff" />
                         </TouchableOpacity>
-                    );
-                })}
+                        <TouchableOpacity onPress={() => {
+                            const nextDate = new Date(viewDate.getFullYear(), viewDate.getMonth() + 1, 1);
+                            onChangeViewDate(nextDate);
+                            Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+                        }} style={modalStyles.calNavChip}>
+                            <MaterialIcons name="chevron-right" size={20} color="#fff" />
+                        </TouchableOpacity>
+                    </View>
+                </View>
+
+                <View style={modalStyles.weekRow}>
+                    {weekDays.map((d, i) => <Text key={i} style={modalStyles.weekText}>{d}</Text>)}
+                </View>
+
+                <View style={modalStyles.daysGrid}>
+                    {daysArray.map((item, i) => {
+                        const dateStr = item.current
+                            ? formatDate(new Date(viewDate.getFullYear(), viewDate.getMonth(), item.day))
+                            : '';
+                        // Check if this date has a leave day
+                        const leaveDay = item.current ? leaveDays.find(d => d.date === dateStr) : undefined;
+                        const isSelected = !!leaveDay;
+                        const isToday = item.current && formatDate(new Date()) === dateStr;
+
+                        return (
+                            <TouchableOpacity
+                                key={i}
+                                style={[modalStyles.dayCell, isLandscape && modalStyles.dayCellLandscape]}
+                                disabled={!item.current}
+                                onPress={() => {
+                                    if (item.current) {
+                                        onDayPress(dateStr);
+                                        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                                    }
+                                }}
+                            >
+                                <View style={[
+                                    modalStyles.daySlab,
+                                    isLandscape && modalStyles.daySlabLandscape,
+                                    !item.current && { opacity: 0.15 },
+                                    isToday && modalStyles.todaySlab,
+                                    isSelected && modalStyles.leaveSlab
+                                ]}>
+                                    {isSelected && (
+                                        <LinearGradient
+                                            colors={['rgba(76,175,80,0.3)', 'rgba(76,175,80,0.1)', 'transparent']}
+                                            style={StyleSheet.absoluteFill}
+                                            start={{ x: 0, y: 0 }}
+                                            end={{ x: 1, y: 1 }}
+                                        />
+                                    )}
+                                    <Text style={[
+                                        modalStyles.dayText,
+                                        isToday && { color: '#000', fontWeight: '900' },
+                                        isSelected && { color: '#fff', fontWeight: '800' }
+                                    ]}>{item.day}</Text>
+                                    {isSelected && <View style={modalStyles.leaveIndicatorDot} />}
+                                </View>
+                            </TouchableOpacity>
+                        );
+                    })}
+                </View>
+                <View style={styles.settingsCardInteriorShadow} pointerEvents="none" />
+                <View style={styles.settingsCardTopRim} pointerEvents="none" />
             </View>
+            <View style={styles.settingsCardOuterGlow} pointerEvents="none" />
         </View>
     );
 }
@@ -345,21 +372,22 @@ export default function LeaveSection({ isLandscape }: LeaveSectionProps) {
     return (
         <View style={styles.categoriesSection}>
             <View style={[styles.categoriesHeader, isLandscape && { marginTop: 4, marginBottom: 12 }]}>
-                <Text style={isLandscape ? [styles.sectionTitleLandscape, { marginBottom: 0 }] : styles.inputLabel}>
+                <Text style={isLandscape ? [styles.sectionTitleLandscape, { marginBottom: 0 }] : styles.sectionTitle}>
                     MANAGE LEAVE
                 </Text>
             </View>
 
-            <Text style={styles.sectionDescription}>
+            <Text style={[styles.sectionDescription, { marginBottom: isLandscape ? 8 : 20 }]}>
                 Tap a date to add or edit leave. Leave days are excluded from streak calculations.
             </Text>
 
-            <View style={{ marginTop: 16 }}>
+            <View style={{ marginTop: isLandscape ? 4 : 16 }}>
                 <MultiDateCalendar
                     leaveDays={leaveDays}
                     onDayPress={handleDayPress}
                     viewDate={viewDate}
                     onChangeViewDate={setViewDate}
+                    isLandscape={isLandscape}
                 />
             </View>
 
@@ -378,12 +406,47 @@ export default function LeaveSection({ isLandscape }: LeaveSectionProps) {
 
 const modalStyles = StyleSheet.create({
     calendarCard: {
-        backgroundColor: '#111',
-        borderRadius: 20,
-        borderWidth: 1,
-        borderColor: 'rgba(255,255,255,0.1)',
+        backgroundColor: '#0a0a0a',
+        borderRadius: 24,
         padding: 16,
-        paddingBottom: 20,
+        paddingBottom: 24,
+    },
+    monthDisplayWell: {
+        backgroundColor: 'rgba(255,255,255,0.03)',
+        paddingVertical: 10,
+        paddingHorizontal: 20,
+        borderRadius: 16,
+        borderWidth: 1,
+        borderTopColor: 'rgba(0,0,0,0.3)',
+        borderLeftColor: 'rgba(0,0,0,0.2)',
+        borderRightColor: 'rgba(255,255,255,0.05)',
+        borderBottomColor: 'rgba(255,255,255,0.08)',
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 2 },
+        shadowOpacity: 0.5,
+        shadowRadius: 4,
+    },
+    calNavWell: {
+        flexDirection: 'row',
+        backgroundColor: 'rgba(255,255,255,0.02)',
+        borderRadius: 14,
+        padding: 4,
+        gap: 4,
+        borderWidth: 1,
+        borderColor: 'rgba(255,255,255,0.05)',
+    },
+    calNavChip: {
+        width: 36,
+        height: 36,
+        borderRadius: 10,
+        alignItems: 'center',
+        justifyContent: 'center',
+        backgroundColor: 'rgba(255,255,255,0.05)',
+        borderWidth: 1,
+        borderTopColor: 'rgba(255,255,255,0.1)',
+        borderLeftColor: 'rgba(255,255,255,0.05)',
+        borderRightColor: 'rgba(0,0,0,0.2)',
+        borderBottomColor: 'rgba(0,0,0,0.3)',
     },
     calHeader: {
         flexDirection: 'row',
@@ -423,27 +486,69 @@ const modalStyles = StyleSheet.create({
         justifyContent: 'flex-start',
     },
     dayCell: {
-        width: '14.28%', // 7 days
+        width: '14.28%',
         aspectRatio: 1,
         alignItems: 'center',
         justifyContent: 'center',
-        marginBottom: 4,
+        marginBottom: 6,
     },
-    dayCircle: {
-        width: 32,
-        height: 32,
-        borderRadius: 16,
+    dayCellLandscape: {
+        aspectRatio: undefined,
+        height: 40,
+        marginBottom: 2,
+    },
+    daySlab: {
+        width: 38,
+        height: 38,
+        borderRadius: 12,
         alignItems: 'center',
         justifyContent: 'center',
+        backgroundColor: 'rgba(255,255,255,0.04)',
+        borderWidth: 1,
+        borderTopColor: 'rgba(255,255,255,0.08)',
+        borderLeftColor: 'rgba(255,255,255,0.04)',
+        borderRightColor: 'rgba(0,0,0,0.15)',
+        borderBottomColor: 'rgba(0,0,0,0.25)',
+        overflow: 'hidden',
     },
-    todayCircle: {
+    daySlabLandscape: {
+        width: 32,
+        height: 32,
+        borderRadius: 10,
+    },
+    todaySlab: {
         backgroundColor: '#fff',
+        borderTopColor: 'rgba(255,255,255,1)',
+        borderLeftColor: 'rgba(255,255,255,0.8)',
+        shadowColor: '#fff',
+        shadowOffset: { width: 0, height: 0 },
+        shadowOpacity: 0.4,
+        shadowRadius: 10,
+        elevation: 5,
     },
-    selectedCircle: {
+    leaveSlab: {
+        backgroundColor: '#1E3A20', // Darker forest green base
+        borderColor: '#4CAF50',
+        borderWidth: 1.5,
+        shadowColor: '#4CAF50',
+        shadowOffset: { width: 0, height: 4 },
+        shadowOpacity: 0.5,
+        shadowRadius: 8,
+        elevation: 6,
+    },
+    leaveIndicatorDot: {
+        position: 'absolute',
+        bottom: 4,
+        width: 4,
+        height: 4,
+        borderRadius: 2,
         backgroundColor: '#4CAF50',
+        shadowColor: '#4CAF50',
+        shadowOpacity: 0.8,
+        shadowRadius: 4,
     },
     dayText: {
-        color: '#fff',
+        color: 'rgba(255,255,255,0.85)',
         fontSize: 14,
         fontWeight: '600',
     },
@@ -460,12 +565,15 @@ const modalStyles = StyleSheet.create({
         width: '85%',
         maxWidth: 340,
         borderWidth: 1,
-        borderColor: 'rgba(255,255,255,0.08)',
-        shadowColor: "#000",
-        shadowOffset: { width: 0, height: 10 },
-        shadowOpacity: 0.5,
-        shadowRadius: 20,
-        elevation: 10,
+        borderTopColor: 'rgba(255,255,255,0.12)',
+        borderLeftColor: 'rgba(255,255,255,0.08)',
+        borderRightColor: 'rgba(255,255,255,0.03)',
+        borderBottomColor: 'rgba(0,0,0,0.3)',
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 20 },
+        shadowOpacity: 0.8,
+        shadowRadius: 40,
+        elevation: 20,
     },
     headerRow: {
         flexDirection: 'row',
@@ -494,36 +602,41 @@ const modalStyles = StyleSheet.create({
     viewContent: {
         gap: 20,
     },
-    reasonBox: {
-        backgroundColor: 'rgba(255,255,255,0.03)',
-        borderRadius: 12,
-        padding: 12,
-        minHeight: 60,
+    itemDescription: {
+        fontSize: 12,
+        color: 'rgba(255,255,255,0.4)',
+        lineHeight: 18,
+        marginTop: 4,
     },
-    viewReasonText: {
-        color: '#fff',
-        fontSize: 15,
-        lineHeight: 22,
+    keyboardView: {
+        width: '100%',
+        alignItems: 'center',
     },
     viewActions: {
         flexDirection: 'row',
         justifyContent: 'space-between',
         alignItems: 'center',
-        marginTop: 8,
+        marginTop: 12,
     },
     destructiveBtn: {
         flexDirection: 'row',
         alignItems: 'center',
         gap: 6,
-        paddingVertical: 8,
+        paddingVertical: 10,
         paddingHorizontal: 16,
-        borderRadius: 20,
+        borderRadius: 16,
         backgroundColor: 'rgba(255,59,48,0.1)',
+        borderWidth: 1,
+        borderTopColor: 'rgba(255,59,48,0.15)',
+        borderLeftColor: 'rgba(255,59,48,0.1)',
+        borderRightColor: 'rgba(0,0,0,0.15)',
+        borderBottomColor: 'rgba(0,0,0,0.2)',
     },
     destructiveBtnText: {
         color: '#FF3B30',
-        fontSize: 14,
-        fontWeight: '600',
+        fontSize: 12,
+        fontWeight: '800',
+        letterSpacing: 1,
     },
     primaryActionBtn: {
         flexDirection: 'row',
@@ -532,53 +645,100 @@ const modalStyles = StyleSheet.create({
         backgroundColor: '#fff',
         paddingVertical: 10,
         paddingHorizontal: 20,
-        borderRadius: 20,
+        borderRadius: 16,
+        borderWidth: 0.5,
+        borderTopColor: 'rgba(255,255,255,1)',
+        borderLeftColor: 'rgba(255,255,255,0.8)',
+        shadowColor: '#fff',
+        shadowOpacity: 0.2,
+        shadowRadius: 10,
+        elevation: 4,
     },
     primaryActionBtnText: {
         color: '#000',
-        fontSize: 14,
-        fontWeight: '700',
+        fontSize: 12,
+        fontWeight: '900',
+        letterSpacing: 1,
     },
     editActions: {
         flexDirection: 'row',
         gap: 12,
-        marginTop: 16,
+        marginTop: 20,
     },
-    btnCancel: {
-        flex: 1,
-        padding: 12,
-        alignItems: 'center',
-        borderRadius: 12,
-        backgroundColor: 'rgba(255,255,255,0.08)',
+    inputLabel: {
+        fontSize: 10,
+        fontWeight: '800',
+        color: 'rgba(255,255,255,0.3)',
+        letterSpacing: 1,
+        marginBottom: 8,
     },
-    btnConfirm: {
-        flex: 1,
-        padding: 12,
-        alignItems: 'center',
-        borderRadius: 12,
-        backgroundColor: '#fff',
+    reasonWell: {
+        backgroundColor: 'rgba(255,255,255,0.03)',
+        borderRadius: 16,
+        padding: 16,
+        minHeight: 80,
+        borderWidth: 1,
+        borderTopColor: 'rgba(0,0,0,0.3)',
+        borderLeftColor: 'rgba(0,0,0,0.2)',
+        borderRightColor: 'rgba(255,255,255,0.05)',
+        borderBottomColor: 'rgba(255,255,255,0.08)',
     },
-    btnText: {
+    viewReasonText: {
         color: '#fff',
-        fontWeight: '600',
         fontSize: 15,
+        lineHeight: 22,
+        fontWeight: '500',
     },
-    btnTextPrimary: {
-        color: '#000',
-        fontWeight: '700',
-        fontSize: 15,
-    },
-    keyboardView: {
-        width: '100%',
-        alignItems: 'center',
-    },
-    input: {
-        backgroundColor: 'rgba(255,255,255,0.05)',
+    input3D: {
+        backgroundColor: 'rgba(255,255,255,0.03)',
         borderRadius: 16,
         padding: 16,
         color: '#fff',
         fontSize: 16,
-        minHeight: 80,
+        minHeight: 100,
         textAlignVertical: 'top',
+        borderWidth: 1,
+        borderTopColor: 'rgba(0,0,0,0.4)',
+        borderLeftColor: 'rgba(0,0,0,0.3)',
+        borderRightColor: 'rgba(255,255,255,0.05)',
+        borderBottomColor: 'rgba(255,255,255,0.08)',
+    },
+    btnCancel3D: {
+        flex: 1,
+        padding: 14,
+        alignItems: 'center',
+        borderRadius: 16,
+        backgroundColor: 'rgba(255,255,255,0.05)',
+        borderWidth: 1,
+        borderTopColor: 'rgba(255,255,255,0.1)',
+        borderLeftColor: 'rgba(255,255,255,0.05)',
+        borderRightColor: 'rgba(0,0,0,0.2)',
+        borderBottomColor: 'rgba(0,0,0,0.3)',
+    },
+    btnConfirm3D: {
+        flex: 1,
+        padding: 14,
+        alignItems: 'center',
+        borderRadius: 16,
+        backgroundColor: '#fff',
+        borderWidth: 0.5,
+        borderTopColor: 'rgba(255,255,255,1)',
+        borderLeftColor: 'rgba(255,255,255,0.8)',
+        shadowColor: '#fff',
+        shadowOpacity: 0.3,
+        shadowRadius: 12,
+        elevation: 6,
+    },
+    btnText3D: {
+        color: 'rgba(255,255,255,0.5)',
+        fontWeight: '800',
+        fontSize: 12,
+        letterSpacing: 1,
+    },
+    btnTextPrimary3D: {
+        color: '#000',
+        fontWeight: '900',
+        fontSize: 12,
+        letterSpacing: 1,
     },
 });

@@ -69,59 +69,65 @@ function ConfirmClearModalContent({
             >
                 <View style={[styles.restoreDimLayer, { width, height }]} pointerEvents="none" />
                 <TouchableWithoutFeedback onPress={(e) => e.stopPropagation()}>
-                    <View style={[
-                        styles.restoreModal,
-                        isLandscape && styles.restoreModalLandscape
-                    ]}>
-                        <Text style={styles.restoreTitle}>
-                            {clearConfirmType === 'time' ? 'Clear all timers?' : 'Clear all tasks?'}
-                        </Text>
-                        <Text style={styles.restoreSubtitle}>
-                            Type &quot;clear all&quot; below to confirm. This cannot be undone.
-                        </Text>
-                        <Text style={styles.restoreLabel}>CONFIRM</Text>
-                        <TextInput
-                            style={[
-                                styles.restoreInput,
-                                confirmError && styles.restoreInputError
-                            ]}
-                            placeholder="clear all"
-                            placeholderTextColor="rgba(255,255,255,0.3)"
-                            value={confirmInput}
-                            onChangeText={onInputChange}
-                            autoCapitalize="none"
-                            autoCorrect={false}
-                        />
-                        {confirmError && (
-                            <Text style={[styles.restoreSubtitle, { color: '#FF5050', marginBottom: 12, fontSize: 12 }]}>
-                                Type exactly &quot;clear all&quot; to confirm
-                            </Text>
-                        )}
+                    <View style={styles.settingsCardBezel}>
                         <View style={[
-                            styles.restoreButtonRow,
-                            isLandscape && styles.restoreButtonRowLandscape
+                            styles.settingsCardTrackUnifiedLarge,
+                            styles.restoreModal,
+                            isLandscape && styles.restoreModalLandscape
                         ]}>
-                            <TouchableOpacity
+                            <Text style={styles.sectionTitle}>
+                                {clearConfirmType === 'time' ? 'Clear all timers?' : 'Clear all tasks?'}
+                            </Text>
+                            <Text style={styles.restoreSubtitle}>
+                                Type &quot;clear all&quot; below to confirm. This cannot be undone.
+                            </Text>
+                            <Text style={styles.restoreLabel}>CONFIRM</Text>
+                            <TextInput
                                 style={[
-                                    styles.restorePrimaryBtn,
-                                    isLandscape && styles.restorePrimaryBtnLandscape
+                                    styles.restoreInput,
+                                    confirmError && styles.restoreInputError
                                 ]}
-                                onPress={onConfirmClear}
-                                activeOpacity={0.7}
-                            >
-                                <Text style={styles.restorePrimaryBtnText}>Confirm</Text>
-                            </TouchableOpacity>
-                            <TouchableOpacity
-                                style={[
-                                    styles.restoreSecondaryBtn,
-                                    isLandscape && styles.restoreSecondaryBtnLandscape
-                                ]}
-                                onPress={onClose}
-                                activeOpacity={0.7}
-                            >
-                                <Text style={styles.restoreSecondaryBtnText}>Cancel</Text>
-                            </TouchableOpacity>
+                                placeholder="clear all"
+                                placeholderTextColor="rgba(255,255,255,0.3)"
+                                value={confirmInput}
+                                onChangeText={onInputChange}
+                                autoCapitalize="none"
+                                autoCorrect={false}
+                            />
+                            {confirmError && (
+                                <Text style={[styles.restoreSubtitle, { color: '#FF5050', marginBottom: 12, fontSize: 12 }]}>
+                                    Type exactly &quot;clear all&quot; to confirm
+                                </Text>
+                            )}
+                            <View style={[
+                                styles.restoreButtonRow,
+                                isLandscape && styles.restoreButtonRowLandscape
+                            ]}>
+                                <TouchableOpacity
+                                    style={[
+                                        styles.restorePrimaryBtn,
+                                        isLandscape && styles.restorePrimaryBtnLandscape
+                                    ]}
+                                    onPress={onConfirmClear}
+                                    activeOpacity={0.7}
+                                >
+                                    <Text style={styles.restorePrimaryBtnText}>Confirm</Text>
+                                </TouchableOpacity>
+                                <TouchableOpacity
+                                    style={[
+                                        styles.restoreSecondaryBtn,
+                                        isLandscape && styles.restoreSecondaryBtnLandscape
+                                    ]}
+                                    onPress={onClose}
+                                    activeOpacity={0.7}
+                                >
+                                    <Text style={styles.restoreSecondaryBtnText}>Cancel</Text>
+                                </TouchableOpacity>
+                            </View>
+                            <View style={styles.settingsCardInteriorShadow} pointerEvents="none" />
+                            <View style={styles.settingsCardTopRim} pointerEvents="none" />
                         </View>
+                        <View style={styles.settingsCardOuterGlow} pointerEvents="none" />
                     </View>
                 </TouchableWithoutFeedback>
             </KeyboardAvoidingView>
@@ -170,9 +176,10 @@ export default function SettingsScreen({
     const [confirmInput, setConfirmInput] = useState('');
     const [confirmError, setConfirmError] = useState(false);
 
-    // Widen sidebar to 38% for a larger preview
+    // Restored original sidebar width
     const sidebarWidth = width * 0.38;
-    const previewWidth = isLandscape ? sidebarWidth - 34 : width - 48;
+    // Overflowing preview: 90% of sidebar in landscape (decreased by ~20% from 1.12), 94% of screen in portrait
+    const previewWidth = isLandscape ? sidebarWidth * 0.9 : width * 0.94;
 
     const handleResetToDefaults = async () => {
         try {
@@ -241,84 +248,137 @@ export default function SettingsScreen({
             alwaysBounceVertical={true}
             showsVerticalScrollIndicator={false}
         >
-            <ThemeSection
-                isLandscape={false}
-                fillerColor={fillerColor}
-                sliderButtonColor={sliderButtonColor}
-                timerTextColor={timerTextColor}
-                activePresetIndex={activePresetIndex}
-                previewWidth={previewWidth}
-                onFillerColorChange={onFillerColorChange}
-                onSliderButtonColorChange={onSliderButtonColorChange}
-                onTimerTextColorChange={onTimerTextColorChange}
-                onPresetChange={onPresetChange}
-                onResetToDefaults={handleResetToDefaults}
-                resetKey={resetKey}
-            />
-            <AudioSection
-                isLandscape={false}
-                selectedSound={selectedSound}
-                soundRepetition={soundRepetition}
-                onSoundChange={onSoundChange}
-                onRepetitionChange={onRepetitionChange}
-            />
-            <View style={styles.section}>
-                <Text style={styles.sectionTitle}>CATEGORIES</Text>
-                <CategorySection
-                    isLandscape={false}
-                    categories={categories}
-                    onCategoriesChange={onCategoriesChange}
-                />
+            {/* Theme Section */}
+            <View style={styles.settingsCardBezel}>
+                <View style={styles.settingsCardTrackUnifiedLarge}>
+                    <ThemeSection
+                        isLandscape={false}
+                        fillerColor={fillerColor}
+                        sliderButtonColor={sliderButtonColor}
+                        timerTextColor={timerTextColor}
+                        activePresetIndex={activePresetIndex}
+                        previewWidth={previewWidth}
+                        onFillerColorChange={onFillerColorChange}
+                        onSliderButtonColorChange={onSliderButtonColorChange}
+                        onTimerTextColorChange={onTimerTextColorChange}
+                        onPresetChange={onPresetChange}
+                        onResetToDefaults={handleResetToDefaults}
+                        resetKey={resetKey}
+                    />
+                </View>
+                <View style={styles.settingsCardOuterGlow} pointerEvents="none" />
             </View>
-            <View style={styles.section}>
-                <Text style={styles.sectionTitle}>LEAVE MANAGEMENT</Text>
-                <LeaveSection isLandscape={false} />
+
+            {/* Audio Section */}
+            <View style={styles.settingsCardBezel}>
+                <View style={styles.settingsCardTrackUnifiedLarge}>
+                    <AudioSection
+                        isLandscape={false}
+                        selectedSound={selectedSound}
+                        soundRepetition={soundRepetition}
+                        onSoundChange={onSoundChange}
+                        onRepetitionChange={onRepetitionChange}
+                    />
+                </View>
+                <View style={styles.settingsCardOuterGlow} pointerEvents="none" />
             </View>
-            <View style={styles.section}>
-                <Text style={styles.sectionTitle}>QUICK MESSAGES</Text>
-                <QuickMessageSection
-                    isLandscape={false}
-                    quickMessages={quickMessages}
-                    onQuickMessagesChange={onQuickMessagesChange}
-                />
+
+            {/* Categories Section */}
+            <View style={styles.settingsCardBezel}>
+                <View style={styles.settingsCardTrackUnifiedLarge}>
+                    <CategorySection
+                        isLandscape={false}
+                        categories={categories}
+                        onCategoriesChange={onCategoriesChange}
+                    />
+                </View>
+                <View style={styles.settingsCardOuterGlow} pointerEvents="none" />
             </View>
-            <View style={styles.section}>
-                <Text style={styles.sectionTitle}>GENERAL SETTINGS</Text>
-                <GeneralSection
-                    isLandscape={false}
-                    isPastTimersDisabled={isPastTimersDisabled}
-                    onPastTimersDisabledChange={onPastTimersDisabledChange}
-                    isPastTasksDisabled={isPastTasksDisabled}
-                    onPastTasksDisabledChange={onPastTasksDisabledChange}
-                    dailyStartMinutes={dailyStartMinutes}
-                    onDailyStartMinutesChange={onDailyStartMinutesChange}
-                />
+
+            {/* Leave Management Section */}
+            <View style={styles.settingsCardBezel}>
+                <View style={styles.settingsCardTrackUnifiedLarge}>
+                    <Text style={styles.sectionTitle}>LEAVE MANAGEMENT</Text>
+                    <LeaveSection isLandscape={false} />
+                </View>
+                <View style={styles.settingsCardOuterGlow} pointerEvents="none" />
             </View>
-            <View style={styles.section}>
-                <Text style={styles.sectionTitle}>TIMELINE</Text>
-                <TouchableOpacity
-                    style={styles.resetButton}
-                    onPress={() => setActiveSubPage('timeOfDayBackground')}
-                    activeOpacity={0.7}
-                >
-                    <MaterialIcons name="timeline" size={20} color="#FFFFFF" />
-                    <Text style={styles.resetButtonText}>Time-of-Day Background</Text>
-                </TouchableOpacity>
+
+            {/* Quick Messages Section */}
+            <View style={styles.settingsCardBezel}>
+                <View style={styles.settingsCardTrackUnifiedLarge}>
+                    <QuickMessageSection
+                        isLandscape={false}
+                        quickMessages={quickMessages}
+                        onQuickMessagesChange={onQuickMessagesChange}
+                    />
+                </View>
+                <View style={styles.settingsCardOuterGlow} pointerEvents="none" />
             </View>
-            <View style={styles.section}>
-                <Text style={styles.sectionTitle}>DEFAULTS</Text>
-                <TouchableOpacity style={styles.resetButton} onPress={handleResetToDefaults} activeOpacity={0.7}>
-                    <MaterialIcons name="refresh" size={20} color="#FFFFFF" /><Text style={styles.resetButtonText}>Reset Theme to Defaults</Text>
-                </TouchableOpacity>
+
+            {/* General Settings Section */}
+            <View style={styles.settingsCardBezel}>
+                <View style={styles.settingsCardTrackUnifiedLarge}>
+                    <Text style={styles.sectionTitle}>GENERAL SETTINGS</Text>
+                    <GeneralSection
+                        isLandscape={false}
+                        isPastTimersDisabled={isPastTimersDisabled}
+                        onPastTimersDisabledChange={onPastTimersDisabledChange}
+                        isPastTasksDisabled={isPastTasksDisabled}
+                        onPastTasksDisabledChange={onPastTasksDisabledChange}
+                        dailyStartMinutes={dailyStartMinutes}
+                        onDailyStartMinutesChange={onDailyStartMinutesChange}
+                    />
+                </View>
+                <View style={styles.settingsCardOuterGlow} pointerEvents="none" />
             </View>
-            <RestoreSection
-                isLandscape={false}
-                onClearTime={() => openClearConfirm('time')}
-                onClearTask={() => openClearConfirm('task')}
-            />
-            <View style={styles.section}>
-                <Text style={styles.sectionTitle}>ABOUT</Text>
-                <InfoSection isLandscape={false} />
+
+            {/* Timeline Section */}
+            <View style={styles.settingsCardBezel}>
+                <View style={styles.settingsCardTrackUnifiedLarge}>
+                    <Text style={styles.sectionTitle}>TIMELINE</Text>
+                    <TouchableOpacity
+                        style={styles.resetButton}
+                        onPress={() => setActiveSubPage('timeOfDayBackground')}
+                        activeOpacity={0.7}
+                    >
+                        <MaterialIcons name="timeline" size={20} color="#FFFFFF" />
+                        <Text style={styles.resetButtonText}>Time-of-Day Background</Text>
+                    </TouchableOpacity>
+                </View>
+                <View style={styles.settingsCardOuterGlow} pointerEvents="none" />
+            </View>
+
+            {/* Defaults Section */}
+            <View style={styles.settingsCardBezel}>
+                <View style={styles.settingsCardTrackUnifiedLarge}>
+                    <Text style={styles.sectionTitle}>DEFAULTS</Text>
+                    <TouchableOpacity style={styles.resetButton} onPress={handleResetToDefaults} activeOpacity={0.7}>
+                        <MaterialIcons name="refresh" size={20} color="#FFFFFF" /><Text style={styles.resetButtonText}>Reset Theme to Defaults</Text>
+                    </TouchableOpacity>
+                </View>
+                <View style={styles.settingsCardOuterGlow} pointerEvents="none" />
+            </View>
+
+            {/* Restore Section */}
+            <View style={styles.settingsCardBezel}>
+                <View style={styles.settingsCardTrackUnifiedLarge}>
+                    <RestoreSection
+                        isLandscape={false}
+                        onClearTime={() => openClearConfirm('time')}
+                        onClearTask={() => openClearConfirm('task')}
+                    />
+                </View>
+                <View style={styles.settingsCardOuterGlow} pointerEvents="none" />
+            </View>
+
+            {/* About Section */}
+            <View style={styles.settingsCardBezel}>
+                <View style={styles.settingsCardTrackUnifiedLarge}>
+                    <Text style={styles.sectionTitle}>ABOUT</Text>
+                    <InfoSection isLandscape={false} />
+                </View>
+                <View style={styles.settingsCardOuterGlow} pointerEvents="none" />
             </View>
         </ScrollView>
     );
@@ -417,6 +477,11 @@ export default function SettingsScreen({
                     >
                         <MaterialIcons name="arrow-back" size={18} color="rgba(255,255,255,0.6)" />
                     </TouchableOpacity>
+
+                    {/* Bezel rim overlays */}
+                    <View style={styles.settingsCardInteriorShadow} pointerEvents="none" />
+                    <View style={styles.settingsCardTopRim} pointerEvents="none" />
+                    <View style={styles.settingsCardOuterGlow} pointerEvents="none" />
                 </View>
 
                 {/* Right Panel - Content Card */}
@@ -498,6 +563,11 @@ export default function SettingsScreen({
                             <InfoSection isLandscape={true} />
                         )}
                     </ScrollView>
+
+                    {/* Bezel rim overlays */}
+                    <View style={styles.settingsCardInteriorShadow} pointerEvents="none" />
+                    <View style={styles.settingsCardTopRim} pointerEvents="none" />
+                    <View style={styles.settingsCardOuterGlow} pointerEvents="none" />
                 </View>
             </KeyboardAvoidingView>
         );
@@ -506,8 +576,8 @@ export default function SettingsScreen({
     return (
         <GestureHandlerRootView style={{ flex: 1 }}>
             <LinearGradient
-                colors={['#000000', '#000000']}
-                locations={[0, 1]}
+                colors={['#0A0A12', '#050508', '#000000']}
+                locations={[0, 0.4, 1]}
                 style={styles.container}
             >
                 <SafeAreaView

@@ -723,7 +723,7 @@ const styles = StyleSheet.create({
     expandedDivider: {
         height: 1,
         backgroundColor: 'rgba(255,255,255,0.06)',
-        marginBottom: 16,
+        marginBottom: 8,
     },
     inlineAddComment: {
         flexDirection: 'row',
@@ -1346,7 +1346,7 @@ const styles = StyleSheet.create({
     },
     fullViewCommentListWrapper: {
         flex: 1,
-        marginTop: 8,
+        marginTop: 0,
         minHeight: 0, // Critical for ScrollView in flex container
         overflow: 'hidden',
     },
@@ -1502,6 +1502,25 @@ const styles = StyleSheet.create({
         flex: 1,
         fontWeight: '500',
     },
+    stageSyncIndicator: {
+        marginLeft: 6,
+        paddingHorizontal: 4,
+        paddingVertical: 2,
+        borderRadius: 4,
+        backgroundColor: 'rgba(255,255,255,0.05)',
+        borderWidth: 0.5,
+        borderColor: 'rgba(255,255,255,0.1)',
+        flexDirection: 'row',
+        alignItems: 'center',
+    },
+    stageSyncIndicatorAll: {
+        borderColor: 'rgba(33, 150, 243, 0.3)',
+        backgroundColor: 'rgba(33, 150, 243, 0.05)',
+    },
+    stageSyncIndicatorFuture: {
+        borderColor: 'rgba(76, 175, 80, 0.3)',
+        backgroundColor: 'rgba(76, 175, 80, 0.05)',
+    },
     deleteStageBtn: {
         padding: 6,
         opacity: 0.4,
@@ -1642,7 +1661,79 @@ const styles = StyleSheet.create({
         right: 6,
         transform: [{ rotate: '4deg' }],
     },
+    stageInputWrapper: {
+        flex: 1,
+        flexDirection: 'row',
+        alignItems: 'center',
+        backgroundColor: 'rgba(255,255,255,0.05)',
+        borderRadius: 22,
+        paddingLeft: 12,
+        paddingRight: 6,
+        borderWidth: 1,
+        borderColor: 'rgba(255,255,255,0.1)',
+        minHeight: 40,
+    },
+    stageTextInput: {
+        flex: 1,
+        color: '#fff',
+        fontSize: 13,
+        paddingVertical: 8,
+    },
+    futureToggleEmbedded: {
+        width: 30,
+        height: 30,
+        borderRadius: 15,
+        justifyContent: 'center',
+        alignItems: 'center',
+        backgroundColor: 'rgba(255,255,255,0.06)',
+        borderWidth: 1,
+        borderColor: 'rgba(255,255,255,0.08)',
+        marginLeft: 8,
+    },
+    futureToggleEmbeddedAll: {
+        backgroundColor: 'rgba(33, 150, 243, 0.15)',
+        borderColor: 'rgba(33, 150, 243, 0.3)',
+    },
+    futureToggleEmbeddedActive: {
+        backgroundColor: 'rgba(76, 175, 80, 0.15)',
+        borderColor: 'rgba(76, 175, 80, 0.3)',
+    },
+    syncLegend: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        paddingHorizontal: 4,
+        marginBottom: 4,
+        gap: 12,
+    },
+    syncLegendItem: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 4,
+    },
+    syncLegendCircle: {
+        width: 14,
+        height: 14,
+        borderRadius: 7,
+        backgroundColor: 'rgba(255,255,255,0.08)',
+        borderWidth: 1,
+        borderColor: 'rgba(255,255,255,0.15)',
+        alignItems: 'center',
+        justifyContent: 'center',
+    },
+    syncLegendCircleText: {
+        fontSize: 7,
+        fontWeight: '800',
+        color: 'rgba(255,255,255,0.5)',
+    },
+    syncLegendText: {
+        fontSize: 8,
+        fontWeight: '600',
+        color: 'rgba(255,255,255,0.4)',
+        letterSpacing: 0.2,
+    },
 });
+type SyncMode = 'none' | 'all' | 'future';
+
 interface TaskListProps {
     tasks: Task[];
     onAddTask: () => void;
@@ -1660,7 +1751,7 @@ interface TaskListProps {
     onUpdateComment?: (task: Task, comment: string) => void;
     onEditComment?: (task: Task, commentId: number, newText: string) => void;
     onDeleteComment?: (task: Task, commentId: number) => void;
-    onUpdateStages?: (task: Task, stages: TaskStage[]) => void;
+    onUpdateStages?: (task: Task, stages: TaskStage[], syncMode?: SyncMode) => void;
     onPinTask?: (task: Task) => void;
     quickMessages?: QuickMessage[];
     timeOfDaySlots?: TimeOfDaySlotConfigList;
@@ -2927,7 +3018,7 @@ interface TaskCardProps {
     onUpdateComment?: (task: Task, comment: string) => void;
     onEditComment?: (task: Task, commentId: number, newText: string) => void;
     onDeleteComment?: (task: Task, commentId: number) => void;
-    onUpdateStages?: (task: Task, stages: TaskStage[]) => void;
+    onUpdateStages?: (task: Task, stages: TaskStage[], syncMode?: SyncMode) => void;
     isFullView?: boolean;
     quickMessages?: QuickMessage[];
     /** Original tasks array for accessing full recurrence data */
@@ -2939,12 +3030,14 @@ interface TaskCardProps {
 interface DraggableStagesListProps {
     stages: TaskStage[];
     onReorder: (newStages: TaskStage[]) => void;
-    onSetStageStatus: (stageId: number, status: StageStatus) => void;
+    onSetStageStatus: (stageId: number, status: StageStatus, syncMode?: SyncMode) => void;
     onDeleteStage: (stageId: number) => void;
+    isRecurring?: boolean;
+    isRepeatSync?: boolean;
 }
 
 // Draggable Stages List Component
-function DraggableStagesList({ stages, onReorder, onSetStageStatus, onDeleteStage }: DraggableStagesListProps) {
+function DraggableStagesList({ stages, onReorder, onSetStageStatus, onDeleteStage, isRecurring, isRepeatSync }: DraggableStagesListProps) {
     const [data, setData] = useState<TaskStage[]>(stages);
     const [popupVisible, setPopupVisible] = useState(false);
     const [popupPosition, setPopupPosition] = useState({ x: 0, y: 0 });
@@ -2962,9 +3055,9 @@ function DraggableStagesList({ stages, onReorder, onSetStageStatus, onDeleteStag
         Haptics.selectionAsync();
     }, []);
 
-    const handleSelectStatus = useCallback((status: StageStatus) => {
+    const handleSelectStatus = useCallback((status: StageStatus, syncMode: SyncMode) => {
         if (selectedStage) {
-            onSetStageStatus(selectedStage.id, status);
+            onSetStageStatus(selectedStage.id, status, syncMode);
         }
         setPopupVisible(false);
         setSelectedStage(null);
@@ -3031,23 +3124,33 @@ function DraggableStagesList({ stages, onReorder, onSetStageStatus, onDeleteStag
                         disabled={isActive}
                         activeOpacity={0.7}
                     >
-                        <Text style={[
-                            styles.stageOrderText,
-                            (status === 'Done' || status === 'Undone') && { color: '#fff' },
-                            isActive && styles.stageOrderTextDragging
-                        ]}>
-                            {orderNumber}
-                        </Text>
+                        {item.syncMode && item.syncMode !== 'none' ? (
+                            <MaterialIcons
+                                name={item.syncMode === 'all' ? "sync" : "update"}
+                                size={14}
+                                color={(status === 'Done' || status === 'Undone') ? "#fff" : (item.syncMode === 'all' ? "#2196F3" : "#4CAF50")}
+                            />
+                        ) : (
+                            <Text style={[
+                                styles.stageOrderText,
+                                (status === 'Done' || status === 'Undone') && { color: '#fff' },
+                                isActive && styles.stageOrderTextDragging
+                            ]}>
+                                {orderNumber}
+                            </Text>
+                        )}
                     </TouchableOpacity>
 
                     {/* Stage Text */}
-                    <Text style={[
-                        styles.portraitStageText,
-                        isDone && styles.stageTextCompleted,
-                        isActive && styles.stageTextDragging
-                    ]}>
-                        {item.text}
-                    </Text>
+                    <View style={{ flex: 1, flexDirection: 'row', alignItems: 'center' }}>
+                        <Text style={[
+                            styles.portraitStageText,
+                            isDone && styles.stageTextCompleted,
+                            isActive && styles.stageTextDragging
+                        ]}>
+                            {item.text}
+                        </Text>
+                    </View>
 
                     {/* Delete Button */}
                     <TouchableOpacity
@@ -3110,6 +3213,8 @@ function DraggableStagesList({ stages, onReorder, onSetStageStatus, onDeleteStag
                 onSelectStatus={handleSelectStatus}
                 onClose={handleClosePopup}
                 currentStatus={selectedStage?.status || 'Upcoming'}
+                showFutureToggle={isRecurring && !isRepeatSync}
+                initialSyncMode={selectedStage?.syncMode || 'none'}
             />
         </>
     );
@@ -3160,12 +3265,35 @@ function TaskCard({
 }: TaskCardProps) {
     const [commentText, setCommentText] = useState('');
     const [stageText, setStageText] = useState('');
+    const [syncMode, setSyncMode] = useState<SyncMode>('none');
     const [activeRightTab, setActiveRightTab] = useState<'comments' | 'stages'>('stages');
     const [editingCommentId, setEditingCommentId] = useState<number | null>(null);
     // Safety check: ensure task has status property
     const taskStatus = task?.status || 'Pending';
     const isCompleted = taskStatus === 'Completed';
     const isInProgress = taskStatus === 'In Progress';
+
+    const renderSyncLegend = () => {
+        if (!task.recurrence || task.recurrence.repeatSync) return null;
+        return (
+            <View style={styles.syncLegend}>
+                <View style={styles.syncLegendItem}>
+                    <View style={styles.syncLegendCircle}>
+                        <Text style={styles.syncLegendCircleText}>1</Text>
+                    </View>
+                    <Text style={styles.syncLegendText}>Local Only</Text>
+                </View>
+                <View style={styles.syncLegendItem}>
+                    <MaterialIcons name="sync" size={12} color="#2196F3" />
+                    <Text style={styles.syncLegendText}>Sync All</Text>
+                </View>
+                <View style={styles.syncLegendItem}>
+                    <MaterialIcons name="update" size={12} color="#4CAF50" />
+                    <Text style={styles.syncLegendText}>Sync Future</Text>
+                </View>
+            </View>
+        );
+    };
 
     const handleAddStage = () => {
         if (!stageText.trim()) return;
@@ -3187,16 +3315,17 @@ function TaskCard({
             durationMinutes: 180,
         };
         const updatedStages = [...(task.stages || []), newStage];
-        onUpdateStages?.(task, updatedStages);
+        onUpdateStages?.(task, updatedStages, syncMode);
         setStageText('');
+        if (syncMode !== 'none') setSyncMode('none');
         Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     };
 
-    const handleSetStageStatus = (stageId: number, status: StageStatus) => {
+    const handleSetStageStatus = (stageId: number, status: StageStatus, sync?: SyncMode) => {
         const updatedStages = (task.stages || []).map(s =>
             s.id === stageId ? { ...s, status, isCompleted: status === 'Done' } : s
         );
-        onUpdateStages?.(task, updatedStages);
+        onUpdateStages?.(task, updatedStages, sync);
         Haptics.selectionAsync();
     };
 
@@ -3741,7 +3870,7 @@ function TaskCard({
                                     {/* Quick Messages (Landscape) - hide when editing */}
                                     {editingCommentId == null && (
                                         <ScrollView horizontal showsHorizontalScrollIndicator={false} style={[styles.quickMessagesScroll, { marginTop: 4, marginBottom: 4 }]}>
-                                            {(quickMessages || []).map((msg) => (
+                                            {(quickMessages || []).filter(m => m.isEnabled !== false).map((msg) => (
                                                 <TouchableOpacity
                                                     key={msg.id}
                                                     style={[styles.quickMessageChip, { borderColor: `${msg.color}30` }]}
@@ -3757,23 +3886,48 @@ function TaskCard({
                                     )}
                                 </>
                             ) : (
-                                <View style={styles.inlineAddComment}>
-                                    <TextInput
-                                        style={styles.inlineCommentInput}
-                                        placeholder="Add a stage..."
-                                        placeholderTextColor="rgba(255,255,255,0.3)"
-                                        value={stageText}
-                                        onChangeText={setStageText}
-                                        onSubmitEditing={handleAddStage}
-                                    />
-                                    <TouchableOpacity
-                                        style={[styles.inlineSendBtn, !stageText.trim() && styles.inlineSendBtnDisabled]}
-                                        onPress={handleAddStage}
-                                        disabled={!stageText.trim()}
-                                    >
-                                        <MaterialIcons name="add" size={20} color={stageText.trim() ? "#000" : "rgba(0,0,0,0.2)"} />
-                                    </TouchableOpacity>
-                                </View>
+                                <>
+                                    <View style={styles.inlineAddComment}>
+                                        <View style={styles.stageInputWrapper}>
+                                            <TextInput
+                                                style={styles.stageTextInput}
+                                                placeholder="Add a stage..."
+                                                placeholderTextColor="rgba(255,255,255,0.3)"
+                                                value={stageText}
+                                                onChangeText={setStageText}
+                                                onSubmitEditing={handleAddStage}
+                                            />
+                                            {!!task.recurrence && !task.recurrence.repeatSync && (
+                                                <TouchableOpacity
+                                                    style={[
+                                                        styles.futureToggleEmbedded,
+                                                        syncMode === 'all' && styles.futureToggleEmbeddedAll,
+                                                        syncMode === 'future' && styles.futureToggleEmbeddedActive
+                                                    ]}
+                                                    onPress={() => {
+                                                        const nextMode: SyncMode = syncMode === 'none' ? 'all' : syncMode === 'all' ? 'future' : 'none';
+                                                        setSyncMode(nextMode);
+                                                        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                                                    }}
+                                                    activeOpacity={0.7}
+                                                >
+                                                    <MaterialIcons
+                                                        name={syncMode === 'all' ? "sync" : "update"}
+                                                        size={16}
+                                                        color={syncMode === 'all' ? "#2196F3" : syncMode === 'future' ? "#4CAF50" : "rgba(255,255,255,0.4)"}
+                                                    />
+                                                </TouchableOpacity>
+                                            )}
+                                        </View>
+                                        <TouchableOpacity
+                                            style={[styles.inlineSendBtn, !stageText.trim() && styles.inlineSendBtnDisabled]}
+                                            onPress={handleAddStage}
+                                            disabled={!stageText.trim()}
+                                        >
+                                            <MaterialIcons name="add" size={20} color={stageText.trim() ? "#000" : "rgba(0,0,0,0.2)"} />
+                                        </TouchableOpacity>
+                                    </View>
+                                </>
                             )}
                             <View style={styles.expandedDivider} />
                         </View>
@@ -3859,7 +4013,8 @@ function TaskCard({
                                 (task.stages || []).length > 0 ? (
                                     <View style={{ flex: 1 }}>
                                         {/* Progress Bar - Static (Outside ScrollView) */}
-                                        <View style={{ marginBottom: 12, paddingHorizontal: 4 }}>
+                                        <View style={{ marginBottom: 8, paddingHorizontal: 4 }}>
+                                            {renderSyncLegend()}
                                             <View style={[styles.metaRow, { marginBottom: 0 }]}>
                                                 <Text style={[styles.metaLabel, { width: 'auto', marginRight: 12 }]}>PROGRESS</Text>
                                                 <View style={styles.stagesProgressWrapper}>
@@ -3889,6 +4044,8 @@ function TaskCard({
                                             onReorder={handleReorderStages}
                                             onSetStageStatus={handleSetStageStatus}
                                             onDeleteStage={handleDeleteStage}
+                                            isRecurring={!!task.recurrence}
+                                            isRepeatSync={task.recurrence?.repeatSync}
                                         />
                                     </View>
                                 ) : (
@@ -3929,27 +4086,53 @@ function TaskCard({
                         /* Stages Section (Portrait) */
                         <View style={{ flex: 1, paddingHorizontal: 16, overflow: 'hidden' }}>
                             {/* Stage Input - same as comment input */}
-                            <View style={styles.inlineAddComment}>
-                                <TextInput
-                                    style={styles.inlineCommentInput}
-                                    placeholder="Add a stage..."
-                                    placeholderTextColor="rgba(255,255,255,0.3)"
-                                    value={stageText}
-                                    onChangeText={setStageText}
-                                    onSubmitEditing={handleAddStage}
-                                />
-                                <TouchableOpacity
-                                    style={[styles.inlineSendBtn, !stageText.trim() && styles.inlineSendBtnDisabled]}
-                                    onPress={handleAddStage}
-                                    disabled={!stageText.trim()}
-                                >
-                                    <MaterialIcons name="add" size={18} color={stageText.trim() ? "#000" : "rgba(0,0,0,0.2)"} />
-                                </TouchableOpacity>
-                            </View>
+                            <>
+                                <View style={styles.inlineAddComment}>
+                                    <View style={styles.stageInputWrapper}>
+                                        <TextInput
+                                            style={styles.stageTextInput}
+                                            placeholder="Add a stage..."
+                                            placeholderTextColor="rgba(255,255,255,0.3)"
+                                            value={stageText}
+                                            onChangeText={setStageText}
+                                            onSubmitEditing={handleAddStage}
+                                        />
+                                        {!!task.recurrence && !task.recurrence.repeatSync && (
+                                            <TouchableOpacity
+                                                style={[
+                                                    styles.futureToggleEmbedded,
+                                                    syncMode === 'all' && styles.futureToggleEmbeddedAll,
+                                                    syncMode === 'future' && styles.futureToggleEmbeddedActive
+                                                ]}
+                                                onPress={() => {
+                                                    const nextMode: SyncMode = syncMode === 'none' ? 'all' : syncMode === 'all' ? 'future' : 'none';
+                                                    setSyncMode(nextMode);
+                                                    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                                                }}
+                                                activeOpacity={0.7}
+                                            >
+                                                <MaterialIcons
+                                                    name={syncMode === 'all' ? "sync" : "update"}
+                                                    size={16}
+                                                    color={syncMode === 'all' ? "#2196F3" : syncMode === 'future' ? "#4CAF50" : "rgba(255,255,255,0.4)"}
+                                                />
+                                            </TouchableOpacity>
+                                        )}
+                                    </View>
+                                    <TouchableOpacity
+                                        style={[styles.inlineSendBtn, !stageText.trim() && styles.inlineSendBtnDisabled]}
+                                        onPress={handleAddStage}
+                                        disabled={!stageText.trim()}
+                                    >
+                                        <MaterialIcons name="add" size={18} color={stageText.trim() ? "#000" : "rgba(0,0,0,0.2)"} />
+                                    </TouchableOpacity>
+                                </View>
+                            </>
 
                             {/* Progress Bar */}
                             {(task.stages || []).length > 0 && (
-                                <View style={{ marginTop: 8, marginBottom: 8 }}>
+                                <View style={{ marginTop: 4, marginBottom: 8 }}>
+                                    {renderSyncLegend()}
                                     <View style={[styles.metaRow, { marginBottom: 4 }]}>
                                         <Text style={[styles.metaLabel, { width: 'auto', marginRight: 8, fontSize: 9 }]}>PROGRESS</Text>
                                         <View style={[styles.stagesProgressWrapper, { flex: 1 }]}>
@@ -3984,6 +4167,8 @@ function TaskCard({
                                     onReorder={handleReorderStages}
                                     onSetStageStatus={handleSetStageStatus}
                                     onDeleteStage={handleDeleteStage}
+                                    isRecurring={!!task.recurrence}
+                                    isRepeatSync={task.recurrence?.repeatSync}
                                 />
                             ) : (
                                 <View style={[styles.noStagesContainer, { flex: 1 }]}>
@@ -4036,7 +4221,7 @@ function TaskCard({
                             {/* Quick Messages (Portrait) - hide when editing */}
                             {editingCommentId == null && (
                                 <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.quickMessagesScroll}>
-                                    {(quickMessages || []).map((msg) => (
+                                    {(quickMessages || []).filter(m => m.isEnabled !== false).map((msg) => (
                                         <TouchableOpacity
                                             key={msg.id}
                                             style={[styles.quickMessageChip, { borderColor: `${msg.color}30` }]}
@@ -4132,7 +4317,8 @@ function TaskCard({
                         </View>
                     )}
                 </View>
-            )}
+            )
+            }
         </>
 
     );

@@ -89,20 +89,24 @@ const WheelPicker = ({ data, value, onChange }: { data: number[]; value: number;
     );
 };
 
+type SyncMode = 'none' | 'all' | 'future';
+
 interface AddSubtaskModalProps {
     visible: boolean;
     taskId: number | null;
     startTimeMinutes: number;
     onClose: () => void;
-    onAdd: (taskId: number, title: string, startTimeMinutes: number, durationMinutes: number) => void;
+    onAdd: (taskId: number, title: string, startTimeMinutes: number, durationMinutes: number, syncMode?: SyncMode) => void;
     // Edit mode props
     mode?: 'add' | 'edit';
     stageId?: number | null;
     existingText?: string;
     existingStartTime?: number;
     existingDuration?: number;
-    onUpdate?: (taskId: number, stageId: number, title: string, startTimeMinutes: number, durationMinutes: number) => void;
+    onUpdate?: (taskId: number, stageId: number, title: string, startTimeMinutes: number, durationMinutes: number, syncMode?: SyncMode) => void;
     timeOfDaySlots?: TimeOfDaySlotConfigList;
+    isRecurring?: boolean;
+    isRepeatSync?: boolean;
 }
 
 const DURATION_OPTIONS = [10, 20, 30, 40, 50, 60]; // minutes
@@ -120,6 +124,8 @@ export default function AddSubtaskModal({
     existingDuration,
     onUpdate,
     timeOfDaySlots = DEFAULT_TIME_OF_DAY_SLOTS,
+    isRecurring = false,
+    isRepeatSync = false,
 }: AddSubtaskModalProps) {
     const { width: screenWidth, height: screenHeight } = useWindowDimensions();
     const isLandscape = screenWidth > screenHeight;
@@ -128,8 +134,9 @@ export default function AddSubtaskModal({
     const [selectedStartMinutes, setSelectedStartMinutes] = useState(startTimeMinutes);
     const [selectedDurationMinutes, setSelectedDurationMinutes] = useState(60); // Default 1 hour
     const [activePicker, setActivePicker] = useState<'start' | 'duration' | null>(null);
+    const [syncMode, setSyncMode] = useState<SyncMode>('none');
     const [errorName, setErrorName] = useState(false);
-    
+
     // Get current time slot based on selected start time
     const currentTimeSlot = resolveTimeOfDaySlot(selectedStartMinutes, timeOfDaySlots);
     const selectedTimeSlotKey = currentTimeSlot?.key || 'morning';
@@ -149,9 +156,10 @@ export default function AddSubtaskModal({
             }
             setActivePicker('start'); // Default to start time selected
             setErrorName(false);
+            setSyncMode('none');
         }
     }, [visible, startTimeMinutes, mode, existingText, existingStartTime, existingDuration]);
-    
+
     // Handler for time slot selection
     const handleTimeSlotSelect = (slotKey: string) => {
         const slot = timeOfDaySlots.find(s => s.key === slotKey);
@@ -160,7 +168,7 @@ export default function AddSubtaskModal({
             Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
         }
     };
-    
+
     // Handler for duration selection
     const handleDurationSelect = (duration: number) => {
         setSelectedDurationMinutes(duration);
@@ -174,9 +182,9 @@ export default function AddSubtaskModal({
         if (hasName && taskId !== null) {
             Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
             if (mode === 'edit' && stageId !== null && onUpdate) {
-                onUpdate(taskId, stageId, text.trim(), selectedStartMinutes, selectedDurationMinutes);
+                onUpdate(taskId, stageId, text.trim(), selectedStartMinutes, selectedDurationMinutes, syncMode);
             } else {
-                onAdd(taskId, text.trim(), selectedStartMinutes, selectedDurationMinutes);
+                onAdd(taskId, text.trim(), selectedStartMinutes, selectedDurationMinutes, syncMode);
             }
         } else {
             Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
@@ -221,21 +229,47 @@ export default function AddSubtaskModal({
                                 <View style={styles.leftColumn}>
                                     <View style={styles.fieldGroup}>
                                         <Text style={styles.label}>SUBTASK NAME</Text>
-                                        <TextInput
-                                            style={[
-                                                styles.input,
-                                                styles.compactInput,
-                                                errorName && styles.inputError
-                                            ]}
-                                            placeholder="Subtask name..."
-                                            placeholderTextColor="rgba(255,255,255,0.3)"
-                                            value={text}
-                                            onChangeText={(val) => {
-                                                setText(val);
-                                                if (val.trim()) setErrorName(false);
-                                            }}
-                                            autoFocus
-                                        />
+                                        <View style={[
+                                            styles.unifiedInputWrapper,
+                                            errorName && styles.unifiedInputWrapperError
+                                        ]}>
+                                            <TextInput
+                                                style={[
+                                                    styles.input,
+                                                    styles.compactInput,
+                                                ]}
+                                                placeholder="Subtask name..."
+                                                placeholderTextColor="rgba(255,255,255,0.3)"
+                                                value={text}
+                                                onChangeText={(val) => {
+                                                    setText(val);
+                                                    if (val.trim()) setErrorName(false);
+                                                }}
+                                                autoFocus
+                                            />
+                                            {isRecurring && !isRepeatSync && (
+                                                <TouchableOpacity
+                                                    style={[
+                                                        styles.toggleCircular,
+                                                        syncMode === 'all' && styles.toggleCircularAll,
+                                                        syncMode === 'future' && styles.toggleCircularActive,
+                                                        { alignSelf: 'center' }
+                                                    ]}
+                                                    onPress={() => {
+                                                        const nextMode: SyncMode = syncMode === 'none' ? 'all' : syncMode === 'all' ? 'future' : 'none';
+                                                        setSyncMode(nextMode);
+                                                        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                                                    }}
+                                                    activeOpacity={0.7}
+                                                >
+                                                    <MaterialIcons
+                                                        name={syncMode === 'all' ? "sync" : "update"}
+                                                        size={16}
+                                                        color={syncMode === 'all' ? "#2196F3" : syncMode === 'future' ? "#4CAF50" : "rgba(255,255,255,0.4)"}
+                                                    />
+                                                </TouchableOpacity>
+                                            )}
+                                        </View>
                                     </View>
 
                                     {/* Start Time and Duration Cards in Same Row */}
@@ -391,17 +425,44 @@ export default function AddSubtaskModal({
                             </View>
                         ) : (
                             <>
-                                <TextInput
-                                    style={[styles.input, errorName && styles.inputError]}
-                                    placeholder="Subtask name..."
-                                    placeholderTextColor="rgba(255,255,255,0.4)"
-                                    value={text}
-                                    onChangeText={(val) => {
-                                        setText(val);
-                                        if (val.trim()) setErrorName(false);
-                                    }}
-                                    autoFocus
-                                />
+                                <View style={[
+                                    styles.unifiedInputWrapper,
+                                    errorName && styles.unifiedInputWrapperError
+                                ]}>
+                                    <TextInput
+                                        style={styles.input}
+                                        placeholder="Subtask name..."
+                                        placeholderTextColor="rgba(255,255,255,0.4)"
+                                        value={text}
+                                        onChangeText={(val) => {
+                                            setText(val);
+                                            if (val.trim()) setErrorName(false);
+                                        }}
+                                        autoFocus
+                                    />
+                                    {isRecurring && !isRepeatSync && (
+                                        <TouchableOpacity
+                                            style={[
+                                                styles.toggleCircular,
+                                                syncMode === 'all' && styles.toggleCircularAll,
+                                                syncMode === 'future' && styles.toggleCircularActive,
+                                                { alignSelf: 'center' }
+                                            ]}
+                                            onPress={() => {
+                                                const nextMode: SyncMode = syncMode === 'none' ? 'all' : syncMode === 'all' ? 'future' : 'none';
+                                                setSyncMode(nextMode);
+                                                Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                                            }}
+                                            activeOpacity={0.7}
+                                        >
+                                            <MaterialIcons
+                                                name={syncMode === 'all' ? "sync" : "update"}
+                                                size={16}
+                                                color={syncMode === 'all' ? "#2196F3" : syncMode === 'future' ? "#4CAF50" : "rgba(255,255,255,0.4)"}
+                                            />
+                                        </TouchableOpacity>
+                                    )}
+                                </View>
 
                                 {/* Start Time and Duration Cards in Same Row */}
                                 <View style={styles.fieldGroup}>
@@ -539,6 +600,7 @@ export default function AddSubtaskModal({
                                         </View>
                                     </View>
                                 </View>
+
 
                                 <View style={styles.actions}>
                                     <Pressable
@@ -717,21 +779,30 @@ const styles = StyleSheet.create({
         letterSpacing: 1.35, // 1.5 * 0.9
         marginBottom: 9, // 10 * 0.9
     },
-    input: {
+    unifiedInputWrapper: {
+        flexDirection: 'row',
+        alignItems: 'center',
         backgroundColor: 'rgba(20,20,20,0.5)',
         borderRadius: 14.4, // 16 * 0.9
+        borderWidth: 1,
+        borderColor: 'rgba(255,255,255,0.06)',
+        marginBottom: 14.4, // 16 * 0.9
+        width: '100%',
+        paddingRight: 6.3, // 7 * 0.9
+    },
+    unifiedInputWrapperError: {
+        borderColor: '#FF5050',
+        backgroundColor: 'rgba(255, 80, 80, 0.05)',
+    },
+    input: {
+        flex: 1,
         paddingHorizontal: 16.2, // 18 * 0.9
         paddingVertical: 14.4, // 16 * 0.9
         fontSize: 14.4, // 16 * 0.9
         color: '#FFFFFF',
-        marginBottom: 14.4, // 16 * 0.9
-        borderWidth: 1,
-        borderColor: 'rgba(255,255,255,0.06)',
-        width: '100%',
     },
     inputError: {
-        borderColor: '#FF5050',
-        backgroundColor: 'rgba(255, 80, 80, 0.05)',
+        // Handled by wrapper now
     },
     pickerContainer: {
         marginBottom: 18, // 20 * 0.9
@@ -946,5 +1017,33 @@ const styles = StyleSheet.create({
     timeSlotChipTextSelected: {
         color: '#4CAF50',
         fontWeight: '800',
+    },
+    futureToggleText: {
+        fontSize: 12.6,
+        color: 'rgba(255,255,255,0.4)',
+        fontWeight: '700',
+        letterSpacing: 0.3,
+    },
+    futureToggleActive: {
+        color: 'rgba(255,255,255,0.8)',
+    },
+    toggleCircular: {
+        width: 30,
+        height: 30,
+        borderRadius: 15,
+        justifyContent: 'center',
+        alignItems: 'center',
+        backgroundColor: 'rgba(255,255,255,0.06)',
+        borderWidth: 1,
+        borderColor: 'rgba(255,255,255,0.08)',
+        alignSelf: 'center',
+    },
+    toggleCircularAll: {
+        backgroundColor: 'rgba(33, 150, 243, 0.15)',
+        borderColor: 'rgba(33, 150, 243, 0.3)',
+    },
+    toggleCircularActive: {
+        backgroundColor: 'rgba(76, 175, 80, 0.15)',
+        borderColor: 'rgba(76, 175, 80, 0.3)',
     },
 });

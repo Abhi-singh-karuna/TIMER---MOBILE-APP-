@@ -16,6 +16,17 @@ export const styles = StyleSheet.create({
         paddingTop: 16,
         paddingHorizontal: 24,
         paddingBottom: 16,
+        borderBottomWidth: 1,
+        borderBottomColor: 'rgba(255,255,255,0.04)',
+        ...Platform.select({
+            ios: {
+                shadowColor: '#000',
+                shadowOffset: { width: 0, height: 6 },
+                shadowOpacity: 0.5,
+                shadowRadius: 12,
+            },
+            android: { elevation: 8 },
+        }),
     },
 
     headerLandscape: {
@@ -27,11 +38,23 @@ export const styles = StyleSheet.create({
         width: 44,
         height: 44,
         borderRadius: 22,
-        backgroundColor: 'rgba(255,255,255,0.08)',
+        backgroundColor: 'rgba(255,255,255,0.06)',
         alignItems: 'center',
         justifyContent: 'center',
         borderWidth: 1,
-        borderColor: 'rgba(255,255,255,0.1)',
+        borderTopColor: 'rgba(255,255,255,0.18)',
+        borderLeftColor: 'rgba(255,255,255,0.12)',
+        borderRightColor: 'rgba(255,255,255,0.05)',
+        borderBottomColor: 'rgba(0,0,0,0.3)',
+        ...Platform.select({
+            ios: {
+                shadowColor: '#000',
+                shadowOffset: { width: 0, height: 4 },
+                shadowOpacity: 0.5,
+                shadowRadius: 8,
+            },
+            android: { elevation: 6 },
+        }),
     },
 
     headerTitle: {
@@ -51,19 +74,220 @@ export const styles = StyleSheet.create({
 
     scrollContent: {
         padding: 24,
-        paddingBottom: 40,
+        paddingBottom: 50,
+        gap: 6,
     },
 
+    // ========== Timer-Card-Style Bezel/Track/Rim System ==========
+    settingsCardBezel: {
+        marginBottom: 20,
+        borderRadius: 24,
+        padding: 3,
+        backgroundColor: 'rgba(255,255,255,0.03)',
+        borderWidth: 1.5,
+        borderColor: 'rgba(255,255,255,0.12)',
+        position: 'relative' as const,
+        zIndex: 1,
+    },
+
+    settingsCardTrack: {
+        borderRadius: 21,
+        padding: 16,
+        backgroundColor: '#0A0A0A',
+        position: 'relative' as const,
+    },
+
+    settingsCardInteriorShadow: {
+        position: 'absolute' as const,
+        top: 0,
+        left: 0,
+        right: 0,
+        bottom: 0,
+        borderBottomWidth: 1.5,
+        borderRightWidth: 0.8,
+        borderColor: 'rgba(0,0,0,0.4)',
+        borderRadius: 21,
+    },
+
+    settingsCardTopRim: {
+        position: 'absolute' as const,
+        top: 0,
+        left: 0,
+        right: 0,
+        bottom: 0,
+        borderTopWidth: 0.8,
+        borderLeftWidth: 0.4,
+        borderColor: 'rgba(255,255,255,0.08)',
+        borderRadius: 21,
+    },
+
+    settingsCardOuterGlow: {
+        position: 'absolute' as const,
+        top: 0,
+        left: 0,
+        right: 0,
+        bottom: 0,
+        borderRadius: 24,
+        borderWidth: 1,
+        borderColor: 'rgba(255,255,255,0.08)',
+    },
+
+    // Small version for internal cards (color pickers, sound cards)
+    settingsCardBezelSmall: {
+        borderRadius: 20,
+        padding: 3,
+        backgroundColor: 'rgba(255,255,255,0.03)',
+        borderWidth: 1.5,
+        borderColor: 'rgba(255,255,255,0.12)',
+        overflow: 'hidden' as const,
+        position: 'relative' as const,
+        marginBottom: 12,
+    },
+
+    settingsCardTrackSmall: {
+        borderRadius: 17,
+        padding: 10,
+        backgroundColor: '#0A0A0A',
+        position: 'relative' as const,
+    },
+    settingsCardTrackUnified: {
+        borderRadius: 17,
+        backgroundColor: 'transparent',
+        position: 'relative' as const,
+        overflow: 'visible',
+    },
+    settingsCardTrackUnifiedLarge: {
+        borderRadius: 21,
+        backgroundColor: 'transparent',
+        padding: 20,
+        position: 'relative' as const,
+        overflow: 'visible',
+    },
+    settingsCardInteriorShadowSmall: {
+        position: 'absolute' as const,
+        top: 0,
+        left: 0,
+        right: 0,
+        bottom: 0,
+        borderBottomWidth: 1.5,
+        borderRightWidth: 0.8,
+        borderColor: 'rgba(0,0,0,0.25)',
+        borderRadius: 17,
+    },
+
+    settingsCardTopRimSmall: {
+        position: 'absolute' as const,
+        top: 0,
+        left: 0,
+        right: 0,
+        bottom: 0,
+        borderTopWidth: 0.8,
+        borderLeftWidth: 0.4,
+        borderColor: 'rgba(255,255,255,0.15)',
+        borderRadius: 17,
+    },
+
+    settingsCardOuterGlowSmall: {
+        position: 'absolute' as const,
+        top: 0,
+        left: 0,
+        right: 0,
+        bottom: 0,
+        borderRadius: 20,
+        borderWidth: 1,
+        borderColor: 'rgba(255,255,255,0.08)',
+    },
+
+    // Extra small version for list items (categories, quick messages)
+    settingsCardBezelExtraSmall: {
+        borderRadius: 16,
+        padding: 4,
+        backgroundColor: '#111111',
+        borderWidth: 1.5,
+        borderTopColor: 'rgba(255,255,255,0.18)',
+        borderLeftColor: 'rgba(255,255,255,0.12)',
+        borderRightColor: 'rgba(0,0,0,0.3)',
+        borderBottomColor: 'rgba(0,0,0,0.4)',
+        position: 'relative' as const,
+        marginBottom: 10,
+        // Protruding slab look
+        ...Platform.select({
+            ios: {
+                shadowColor: '#000',
+                shadowOffset: { width: 0, height: 4 },
+                shadowOpacity: 0.5,
+                shadowRadius: 6,
+            },
+            android: { elevation: 6 },
+        }),
+    },
+
+    settingsCardTrackExtraSmall: {
+        borderRadius: 12,
+        padding: 4,
+        paddingHorizontal: 6,
+        backgroundColor: '#0A0A0A',
+        overflow: 'hidden' as const,
+        position: 'relative' as const,
+        flexDirection: 'row',
+        alignItems: 'center',
+    },
+
+    settingsCardInteriorShadowExtraSmall: {
+        position: 'absolute' as const,
+        top: 0,
+        left: 0,
+        right: 0,
+        bottom: 0,
+        borderBottomWidth: 1.2,
+        borderRightWidth: 0.6,
+        borderColor: 'rgba(0,0,0,0.25)',
+        borderRadius: 12,
+    },
+
+    settingsCardTopRimExtraSmall: {
+        position: 'absolute' as const,
+        top: 0,
+        left: 0,
+        right: 0,
+        bottom: 0,
+        borderTopWidth: 0.6,
+        borderLeftWidth: 0.3,
+        borderColor: 'rgba(255,255,255,0.15)',
+        borderRadius: 12,
+    },
+
+    settingsCardOuterGlowExtraSmall: {
+        position: 'absolute' as const,
+        top: 0,
+        left: 0,
+        right: 0,
+        bottom: 0,
+        borderRadius: 14,
+        borderWidth: 1,
+        borderColor: 'rgba(255,255,255,0.08)',
+    },
+
+    // Legacy section kept for sub-components that use it directly
     section: {
-        marginBottom: 24,
+        marginBottom: 20,
+        padding: 16,
     },
 
     sectionTitle: {
         fontSize: 12,
-        fontWeight: '700',
-        letterSpacing: 2,
-        color: 'rgba(255,255,255,0.5)',
-        marginBottom: 12,
+        fontWeight: '800',
+        letterSpacing: 2.5,
+        color: 'rgba(255,255,255,0.45)',
+        marginBottom: 14,
+        textTransform: 'uppercase',
+        ...Platform.select({
+            ios: {
+                textShadowColor: 'rgba(255,255,255,0.08)',
+                textShadowOffset: { width: 0, height: 1 },
+                textShadowRadius: 2,
+            },
+        }),
     },
 
     sectionTitleLandscape: {
@@ -72,6 +296,13 @@ export const styles = StyleSheet.create({
         letterSpacing: 2,
         color: 'rgba(255,255,255,0.5)',
         marginBottom: 10,
+        ...Platform.select({
+            ios: {
+                textShadowColor: 'rgba(255,255,255,0.06)',
+                textShadowOffset: { width: 0, height: 1 },
+                textShadowRadius: 2,
+            },
+        }),
     },
 
     sectionDescription: {
@@ -85,14 +316,19 @@ export const styles = StyleSheet.create({
         flex: 1,
         flexDirection: 'row',
         paddingVertical: 12,
-        gap: 25,
+        gap: 20,
     },
 
     leftSidebarCard: {
-        backgroundColor: 'transparent',
+        backgroundColor: '#080808',
         paddingVertical: 12,
-        paddingHorizontal: 8,
+        paddingHorizontal: 10,
         justifyContent: 'flex-start',
+        borderRadius: 24,
+        borderWidth: 1.5,
+        borderColor: 'rgba(255,255,255,0.06)',
+        position: 'relative' as const,
+        zIndex: 10,
     },
 
     sidebarSectionTitle: {
@@ -110,6 +346,8 @@ export const styles = StyleSheet.create({
         justifyContent: 'center',
         width: '100%',
         minHeight: 140,
+        zIndex: 50,
+        paddingVertical: 10,
     },
 
     sidebarNavSection: {
@@ -134,12 +372,12 @@ export const styles = StyleSheet.create({
 
     rightContentCard: {
         flex: 1,
-        backgroundColor: 'rgba(255,255,255,0.03)',
+        backgroundColor: '#080808',
         borderRadius: 24,
-        overflow: 'hidden',
-        borderWidth: 1,
+        borderWidth: 1.5,
         borderColor: 'rgba(255,255,255,0.06)',
-        display: 'flex',
+        padding: 1,
+        position: 'relative' as const,
     },
 
     sectionDivider: {
@@ -147,6 +385,10 @@ export const styles = StyleSheet.create({
         backgroundColor: 'rgba(255,255,255,0.06)',
         marginVertical: 12,
         width: '100%',
+        borderTopWidth: 0.5,
+        borderTopColor: 'rgba(0,0,0,0.3)',
+        borderBottomWidth: 0.5,
+        borderBottomColor: 'rgba(255,255,255,0.04)',
     },
 
     sidebarButtonRow: {
@@ -156,12 +398,27 @@ export const styles = StyleSheet.create({
         alignItems: 'center',
         paddingVertical: 9,
         paddingHorizontal: 12,
-        borderRadius: 12,
+        borderRadius: 14,
         backgroundColor: 'transparent',
+        borderWidth: 1,
+        borderColor: 'transparent',
     },
 
     sidebarButtonRowActive: {
-        backgroundColor: 'rgba(255, 255, 255, 0.05)',
+        backgroundColor: 'rgba(255, 255, 255, 0.06)',
+        borderTopColor: 'rgba(255,255,255,0.10)',
+        borderLeftColor: 'rgba(255,255,255,0.06)',
+        borderRightColor: 'rgba(255,255,255,0.03)',
+        borderBottomColor: 'rgba(0,0,0,0.15)',
+        ...Platform.select({
+            ios: {
+                shadowColor: '#000',
+                shadowOffset: { width: 0, height: 3 },
+                shadowOpacity: 0.4,
+                shadowRadius: 6,
+            },
+            android: { elevation: 4 },
+        }),
     },
 
     sidebarButtonText: {
@@ -201,7 +458,19 @@ export const styles = StyleSheet.create({
         alignItems: 'center',
         justifyContent: 'center',
         borderWidth: 1,
-        borderColor: 'rgba(255,255,255,0.1)',
+        borderTopColor: 'rgba(255,255,255,0.15)',
+        borderLeftColor: 'rgba(255,255,255,0.10)',
+        borderRightColor: 'rgba(255,255,255,0.04)',
+        borderBottomColor: 'rgba(0,0,0,0.25)',
+        ...Platform.select({
+            ios: {
+                shadowColor: '#000',
+                shadowOffset: { width: 0, height: 4 },
+                shadowOpacity: 0.5,
+                shadowRadius: 8,
+            },
+            android: { elevation: 5 },
+        }),
     },
 
     permanentPreviewHeader: {
@@ -224,6 +493,9 @@ export const styles = StyleSheet.create({
     // ========== Phone Preview Styles ==========
     phoneFrameContainer: {
         marginBottom: 20,
+        zIndex: 100,
+        alignItems: 'center',
+        justifyContent: 'center',
     },
 
     phoneFrameContainerLandscape: {
@@ -235,16 +507,19 @@ export const styles = StyleSheet.create({
         borderRadius: 38,
         padding: 6,
         borderWidth: 1.5,
-        borderColor: '#333',
+        borderTopColor: 'rgba(255,255,255,0.15)',
+        borderLeftColor: 'rgba(255,255,255,0.10)',
+        borderRightColor: 'rgba(50,50,50,0.5)',
+        borderBottomColor: 'rgba(0,0,0,0.8)',
         alignSelf: 'center',
         ...Platform.select({
             ios: {
                 shadowColor: '#000',
-                shadowOpacity: 0.6,
-                shadowRadius: 15,
-                shadowOffset: { width: 0, height: 10 },
+                shadowOpacity: 0.9,
+                shadowRadius: 35,
+                shadowOffset: { width: 0, height: 20 },
             },
-            android: { elevation: 12 }
+            android: { elevation: 25 }
         }),
     },
 
@@ -412,29 +687,21 @@ export const styles = StyleSheet.create({
         marginHorizontal: 5,
     },
 
-    // ========== Color Picker Card Styles ==========
+    // ========== Color Picker Card Styles (Now simplified shells) ==========
     colorPickerCard: {
-        backgroundColor: 'rgba(255,255,255,0.05)',
-        borderRadius: 16,
-        padding: 16,
         marginBottom: 12,
-        borderWidth: 1,
-        borderColor: 'rgba(255,255,255,0.08)',
     },
 
     colorPickerCardLandscape: {
-        backgroundColor: 'transparent',
-        borderWidth: 0,
-        padding: 0,
-        paddingHorizontal: 4,
         marginBottom: 8,
     },
 
     colorPickerHeader: {
         flexDirection: 'row',
-        alignItems: 'center',
         justifyContent: 'space-between',
-        marginBottom: 12,
+        alignItems: 'center',
+        marginBottom: 4,
+        paddingHorizontal: 2,
     },
 
     colorPickerTitleRow: {
@@ -442,23 +709,58 @@ export const styles = StyleSheet.create({
         alignItems: 'center',
     },
 
+    iconWell: {
+        width: 30,
+        height: 30,
+        borderRadius: 15,
+        backgroundColor: '#050505',
+        justifyContent: 'center',
+        alignItems: 'center',
+        marginRight: 10,
+        borderWidth: 1,
+        borderColor: 'rgba(255,255,255,0.03)',
+        // Inner shadow effect
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 1 },
+        shadowOpacity: 0.5,
+        shadowRadius: 1,
+    },
+
     colorPickerTitle: {
         fontSize: 14,
         fontWeight: '600',
-        color: 'rgba(255,255,255,0.9)',
-        marginLeft: 10,
+        color: '#FFFFFF',
+        opacity: 0.8,
+        letterSpacing: 0.3,
     },
 
     colorPickerTitleLandscape: {
-        fontSize: 13,
-        marginLeft: 8,
+        fontSize: 14,
     },
 
     currentColorBadge: {
         width: 24,
         height: 24,
         borderRadius: 12,
-        borderWidth: 2,
+        borderWidth: 1.5,
+        borderColor: 'rgba(255,255,255,0.15)',
+        // 3D Gem Effect
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 2 },
+        shadowOpacity: 0.4,
+        shadowRadius: 3,
+        elevation: 4,
+    },
+
+    colorGemInnerGlow: {
+        position: 'absolute' as const,
+        top: 0,
+        left: 0,
+        right: 0,
+        bottom: 0,
+        borderRadius: 12,
+        borderTopWidth: 1,
+        borderLeftWidth: 1,
         borderColor: 'rgba(255,255,255,0.2)',
     },
 
@@ -476,11 +778,11 @@ export const styles = StyleSheet.create({
         ...Platform.select({
             ios: {
                 shadowColor: '#000',
-                shadowOpacity: 0.2,
-                shadowRadius: 3,
-                shadowOffset: { width: 0, height: 2 },
+                shadowOpacity: 0.45,
+                shadowRadius: 6,
+                shadowOffset: { width: 0, height: 4 },
             },
-            android: { elevation: 2 }
+            android: { elevation: 5 }
         }),
     },
 
@@ -494,17 +796,98 @@ export const styles = StyleSheet.create({
         borderRadius: 16,
         alignItems: 'center',
         justifyContent: 'center',
+        borderWidth: 0.5,
+        borderTopColor: 'rgba(255,255,255,0.25)',
+        borderLeftColor: 'rgba(255,255,255,0.15)',
+        borderRightColor: 'rgba(0,0,0,0.1)',
+        borderBottomColor: 'rgba(0,0,0,0.2)',
         ...Platform.select({
             ios: {
                 shadowColor: '#000',
-                shadowOpacity: 0.3,
-                shadowRadius: 3,
-                shadowOffset: { width: 0, height: 2 },
+                shadowOpacity: 0.5,
+                shadowRadius: 5,
+                shadowOffset: { width: 0, height: 3 },
             },
         }),
     },
 
-    // ========== Sound Section Styles ==========
+    // ========== Slider Styles ==========
+    sliderContainer: {
+        marginTop: 14,
+        paddingHorizontal: 2,
+    },
+    hueSlider: {
+        width: '100%',
+        height: 40,
+    },
+    sliderTrackBg: {
+        height: 8,
+        borderRadius: 4,
+        position: 'absolute',
+        left: 12,
+        right: 12,
+        top: 16,
+        backgroundColor: '#050505',
+        borderWidth: 1,
+        borderColor: 'rgba(255,255,255,0.02)',
+        overflow: 'hidden',
+    },
+    sliderTrenchShadow: {
+        position: 'absolute' as const,
+        top: 0,
+        left: 0,
+        right: 0,
+        height: 2,
+        backgroundColor: 'rgba(0,0,0,0.5)',
+    },
+    hueGradient: {
+        height: '100%',
+        width: '100%',
+        opacity: 0.9,
+    },
+
+    // ========== Reset Button Styles ==========
+    headerWithReset: {
+        flexDirection: 'row',
+        justifyContent: 'space-between',
+        alignItems: 'center',
+        marginBottom: 12,
+    },
+    topRightResetBezel: {
+        padding: 2,
+        borderRadius: 12,
+        backgroundColor: 'rgba(255,255,255,0.03)',
+        borderWidth: 1.2,
+        borderColor: 'rgba(255,255,255,0.08)',
+    },
+    topRightResetTrack: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        paddingHorizontal: 10,
+        paddingVertical: 5,
+        backgroundColor: '#111',
+        borderRadius: 10,
+        position: 'relative' as const,
+    },
+    resetTextCompact: {
+        color: '#FFF',
+        fontSize: 12,
+        fontWeight: '600',
+        marginLeft: 6,
+        opacity: 0.9,
+    },
+    soundTrench: {
+        height: 8,
+        borderRadius: 4,
+        position: 'absolute',
+        left: 12,
+        right: 12,
+        top: 12,
+        backgroundColor: '#050505',
+        borderWidth: 1,
+        borderColor: 'rgba(255,255,255,0.02)',
+        overflow: 'hidden',
+    },
     soundSection: {
         marginBottom: 8,
     },
@@ -520,40 +903,35 @@ export const styles = StyleSheet.create({
 
     soundCard: {
         flex: 1,
-        backgroundColor: 'rgba(255,255,255,0.05)',
-        borderRadius: 16,
-        padding: 16,
-        alignItems: 'center',
-        borderWidth: 1.5,
-        borderColor: 'rgba(255,255,255,0.05)',
         position: 'relative',
     },
 
     soundCardLandscape: {
-        backgroundColor: 'rgba(255,255,255,0.04)',
-        borderColor: 'transparent',
-        padding: 12,
+        flex: 1,
+        position: 'relative',
     },
 
     soundCardSelected: {
-        backgroundColor: 'rgba(255,255,255,0.08)',
+        borderColor: 'transparent',
     },
-
+    soundCardSelectedThemed: {
+        borderWidth: 0,
+        // Glow effect is handled by animation
+    },
     soundIconContainer: {
-        width: 42,
-        height: 42,
-        borderRadius: 21,
-        backgroundColor: 'rgba(255,255,255,0.08)',
-        alignItems: 'center',
+        width: 48,
+        height: 48,
+        borderRadius: 24,
+        backgroundColor: 'transparent',
         justifyContent: 'center',
-        marginBottom: 6,
+        alignItems: 'center',
+        marginBottom: 8,
     },
-
     soundName: {
         fontSize: 12,
         fontWeight: '600',
-        color: 'rgba(255,255,255,0.7)',
-        marginBottom: 12,
+        color: 'rgba(255,255,255,0.6)',
+        marginBottom: 8,
     },
 
     previewButton: {
@@ -562,7 +940,7 @@ export const styles = StyleSheet.create({
         borderRadius: 18,
         alignItems: 'center',
         justifyContent: 'center',
-        borderWidth: 1,
+        backgroundColor: 'transparent',
     },
 
     selectedIndicator: {
@@ -578,73 +956,72 @@ export const styles = StyleSheet.create({
 
     // ========== Repetition Section Styles ==========
     repetitionSection: {
-        backgroundColor: 'rgba(255,255,255,0.05)',
-        borderRadius: 16,
-        padding: 16,
-        borderWidth: 1,
-        borderColor: 'rgba(255,255,255,0.08)',
+        marginTop: 4,
     },
-
     repetitionSectionLandscape: {
-        backgroundColor: 'transparent',
-        borderWidth: 0,
-        padding: 0,
-        paddingHorizontal: 4,
+        marginTop: 0,
     },
-
     repetitionHeader: {
         flexDirection: 'row',
-        alignItems: 'center',
         justifyContent: 'space-between',
-        marginBottom: 12,
+        alignItems: 'center',
+        marginBottom: 8,
+        paddingHorizontal: 12,
+        paddingTop: 12,
     },
-
     repetitionTitleRow: {
         flexDirection: 'row',
         alignItems: 'center',
     },
-
     repetitionTitle: {
         fontSize: 14,
         fontWeight: '600',
         color: 'rgba(255,255,255,0.9)',
         marginLeft: 10,
     },
-
     repetitionValue: {
         fontSize: 16,
         fontWeight: '700',
         color: '#FFFFFF',
     },
-
-    repetitionOptionsRow: {
-        flexDirection: 'row',
-        gap: 8,
+    repetitionSliderContainer: {
+        marginTop: 4,
+        paddingHorizontal: 12,
+        paddingBottom: 16,
     },
-
     repetitionPill: {
         flex: 1,
         paddingVertical: 12,
         paddingHorizontal: 16,
-        borderRadius: 12,
-        backgroundColor: 'rgba(255,255,255,0.08)',
+        borderRadius: 14,
+        backgroundColor: 'rgba(255,255,255,0.06)',
         alignItems: 'center',
         justifyContent: 'center',
         borderWidth: 1,
-        borderColor: 'rgba(255,255,255,0.1)',
+        borderTopColor: 'rgba(255,255,255,0.12)',
+        borderLeftColor: 'rgba(255,255,255,0.08)',
+        borderRightColor: 'rgba(255,255,255,0.03)',
+        borderBottomColor: 'rgba(0,0,0,0.15)',
+        ...Platform.select({
+            ios: {
+                shadowColor: '#000',
+                shadowOffset: { width: 0, height: 3 },
+                shadowOpacity: 0.3,
+                shadowRadius: 6,
+            },
+            android: { elevation: 3 },
+        }),
     },
-
     repetitionPillSelected: {
-        backgroundColor: 'rgba(255, 255, 255, 0.1)',
-        borderColor: 'rgba(255, 255, 255, 0.2)',
+        backgroundColor: 'rgba(255, 255, 255, 0.12)',
+        borderTopColor: 'rgba(255,255,255,0.22)',
+        borderLeftColor: 'rgba(255,255,255,0.15)',
     },
-
     repetitionPillText: {
         fontSize: 14,
         fontWeight: '600',
         color: 'rgba(255,255,255,0.6)',
     },
-
     repetitionPillTextSelected: {
         color: '#FFFFFF',
     },
@@ -656,9 +1033,21 @@ export const styles = StyleSheet.create({
         justifyContent: 'center',
         padding: 16,
         borderRadius: 16,
-        backgroundColor: 'rgba(255, 255, 255, 0.1)',
+        backgroundColor: 'rgba(255, 255, 255, 0.08)',
         borderWidth: 1,
-        borderColor: 'rgba(255, 255, 255, 0.3)',
+        borderTopColor: 'rgba(255,255,255,0.25)',
+        borderLeftColor: 'rgba(255,255,255,0.15)',
+        borderRightColor: 'rgba(255,255,255,0.05)',
+        borderBottomColor: 'rgba(0,0,0,0.3)',
+        ...Platform.select({
+            ios: {
+                shadowColor: '#000',
+                shadowOffset: { width: 0, height: 6 },
+                shadowOpacity: 0.5,
+                shadowRadius: 12,
+            },
+            android: { elevation: 6 },
+        }),
     },
 
     resetButtonText: {
@@ -674,19 +1063,43 @@ export const styles = StyleSheet.create({
         justifyContent: 'center',
         padding: 14,
         borderRadius: 14,
-        backgroundColor: 'rgba(255, 255, 255, 0.08)',
+        backgroundColor: 'rgba(255, 255, 255, 0.06)',
         borderWidth: 1,
-        borderColor: 'rgba(255, 255, 255, 0.2)',
+        borderTopColor: 'rgba(255,255,255,0.18)',
+        borderLeftColor: 'rgba(255,255,255,0.10)',
+        borderRightColor: 'rgba(255,255,255,0.04)',
+        borderBottomColor: 'rgba(0,0,0,0.2)',
         marginTop: 20,
+        ...Platform.select({
+            ios: {
+                shadowColor: '#000',
+                shadowOffset: { width: 0, height: 4 },
+                shadowOpacity: 0.4,
+                shadowRadius: 8,
+            },
+            android: { elevation: 5 },
+        }),
     },
 
     // ========== About Styles ==========
     aboutCard: {
         padding: 20,
-        borderRadius: 16,
+        borderRadius: 18,
         backgroundColor: 'rgba(255,255,255,0.05)',
         borderWidth: 1,
-        borderColor: 'rgba(255,255,255,0.1)',
+        borderTopColor: 'rgba(255,255,255,0.12)',
+        borderLeftColor: 'rgba(255,255,255,0.08)',
+        borderRightColor: 'rgba(255,255,255,0.03)',
+        borderBottomColor: 'rgba(0,0,0,0.2)',
+        ...Platform.select({
+            ios: {
+                shadowColor: '#000',
+                shadowOffset: { width: 0, height: 8 },
+                shadowOpacity: 0.6,
+                shadowRadius: 16,
+            },
+            android: { elevation: 8 },
+        }),
     },
 
     aboutText: {
@@ -719,6 +1132,20 @@ export const styles = StyleSheet.create({
         alignItems: 'center',
         justifyContent: 'center',
         marginRight: 16,
+        borderWidth: 0.5,
+        borderTopColor: 'rgba(255,255,255,0.15)',
+        borderLeftColor: 'rgba(255,255,255,0.10)',
+        borderRightColor: 'rgba(0,0,0,0.05)',
+        borderBottomColor: 'rgba(0,0,0,0.1)',
+        ...Platform.select({
+            ios: {
+                shadowColor: '#000',
+                shadowOffset: { width: 0, height: 4 },
+                shadowOpacity: 0.4,
+                shadowRadius: 8,
+            },
+            android: { elevation: 4 },
+        }),
     },
 
     aboutTextMain: {
@@ -787,18 +1214,31 @@ export const styles = StyleSheet.create({
         flexDirection: 'row',
         alignItems: 'center',
         backgroundColor: 'rgba(255, 255, 255, 0.1)',
-        paddingVertical: 6,
-        paddingHorizontal: 12,
-        borderRadius: 20,
+        paddingVertical: 8,
+        paddingHorizontal: 16,
+        borderRadius: 14,
         borderWidth: 1,
-        borderColor: 'rgba(255, 255, 255, 0.2)',
+        borderTopColor: 'rgba(255,255,255,0.25)',
+        borderLeftColor: 'rgba(255,255,255,0.15)',
+        borderRightColor: 'rgba(255,255,255,0.05)',
+        borderBottomColor: 'rgba(0,0,0,0.3)',
+        ...Platform.select({
+            ios: {
+                shadowColor: '#000',
+                shadowOffset: { width: 0, height: 4 },
+                shadowOpacity: 0.5,
+                shadowRadius: 8,
+            },
+            android: { elevation: 6 },
+        }),
     },
 
     addCategoryBtnText: {
-        fontSize: 10,
+        fontSize: 11,
         fontWeight: '800',
         color: '#FFFFFF',
-        marginLeft: 4,
+        marginLeft: 6,
+        letterSpacing: 0.5,
     },
 
     categoriesList: {
@@ -813,13 +1253,19 @@ export const styles = StyleSheet.create({
     },
 
     categoryIconCircle: {
-        width: 28,
-        height: 28,
-        borderRadius: 14,
-        backgroundColor: 'rgba(255,255,255,0.15)',
+        width: 32,
+        height: 32,
+        borderRadius: 16,
+        backgroundColor: '#050505',
         alignItems: 'center',
         justifyContent: 'center',
-        marginRight: 6,
+        marginRight: 8,
+        // Deep recessed well effect
+        borderWidth: 1.5,
+        borderTopColor: 'rgba(0,0,0,0.6)',
+        borderLeftColor: 'rgba(0,0,0,0.4)',
+        borderRightColor: 'rgba(255,255,255,0.05)',
+        borderBottomColor: 'rgba(255,255,255,0.08)',
     },
 
     categoryInfo: {
@@ -860,80 +1306,95 @@ export const styles = StyleSheet.create({
 
     categoryActions: {
         flexDirection: 'row',
-        gap: 4,
+        gap: 6,
+        alignItems: 'center',
     },
 
     actionBtn: {
         width: 28,
         height: 28,
         borderRadius: 8,
-        backgroundColor: 'rgba(255,255,255,0.08)',
+        backgroundColor: 'rgba(255,255,255,0.06)',
         alignItems: 'center',
         justifyContent: 'center',
+        borderWidth: 0.5,
+        borderTopColor: 'rgba(255,255,255,0.15)',
+        borderLeftColor: 'rgba(255,255,255,0.10)',
+        borderRightColor: 'rgba(0,0,0,0.05)',
+        borderBottomColor: 'rgba(0,0,0,0.1)',
     },
 
     // Draggable category card (compact – black background, like Quick Message)
     categoryCardItem: {
         flexDirection: 'row',
         alignItems: 'center',
-        gap: 5,
-        marginBottom: 3,
-        paddingVertical: 5,
-        paddingHorizontal: 6,
-        borderRadius: 8,
-        minHeight: 40,
-        borderWidth: 1,
-        borderColor: 'rgba(255,255,255,0.12)',
-        backgroundColor: '#000000',
+        gap: 8,
+        minHeight: 44,
+        backgroundColor: 'transparent',
     },
     categoryCardDragging: {
-        backgroundColor: 'rgba(255,255,255,0.95)',
-        borderRadius: 8,
+        backgroundColor: 'rgba(255,255,255,0.22)',
+        borderRadius: 16,
         shadowColor: '#000',
-        shadowOffset: { width: 0, height: 4 },
-        shadowOpacity: 0.25,
-        shadowRadius: 8,
-        elevation: 10,
+        shadowOffset: { width: 0, height: 24 },
+        shadowOpacity: 0.9,
+        shadowRadius: 36,
+        elevation: 35,
         zIndex: 1000,
     },
+    categoryBezelDragging: {
+        borderColor: 'rgba(255,255,255,0.5)',
+        backgroundColor: 'rgba(255,255,255,0.12)',
+    },
     categoryCardDragHandle: {
-        paddingHorizontal: 2,
-        paddingVertical: 4,
+        width: 32,
+        height: 32,
+        alignItems: 'center',
+        justifyContent: 'center',
         opacity: 0.5,
     },
     categoryOrderCircle: {
-        width: 19,
-        height: 19,
-        borderRadius: 9.5,
-        backgroundColor: 'rgba(255,255,255,0.12)',
+        width: 24,
+        height: 24,
+        borderRadius: 12,
+        backgroundColor: '#050505',
         alignItems: 'center',
         justifyContent: 'center',
         borderWidth: 1,
-        borderColor: 'rgba(255,255,255,0.2)',
+        borderColor: 'rgba(255,255,255,0.03)',
+        // Deep recessed look
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 2 },
+        shadowOpacity: 0.8,
+        shadowRadius: 3,
     },
     categoryOrderText: {
-        fontSize: 9,
-        fontWeight: '700',
-        color: 'rgba(255,255,255,0.6)',
+        fontSize: 10,
+        fontWeight: '800',
+        color: 'rgba(255,255,255,0.5)',
     },
     categoryOrderTextDragging: {
-        color: 'rgba(0,0,0,0.5)',
+        color: '#FFFFFF',
     },
     categoryCardName: {
-        fontSize: 11,
+        fontSize: 13,
         color: '#fff',
-        flex: 1,
-        fontWeight: '600',
+        fontWeight: '700',
         minWidth: 0,
-        lineHeight: 14,
-        ...(Platform.OS === 'android' && { textAlignVertical: 'center' as const }),
+        textAlignVertical: 'center',
     },
     categoryCardNameDragging: {
-        color: '#1a1a1a',
+        color: '#FFFFFF',
     },
     categoryCardDeleteBtn: {
-        padding: 4,
-        opacity: 0.5,
+        width: 28,
+        height: 28,
+        borderRadius: 8,
+        backgroundColor: 'rgba(255,59,48,0.1)',
+        alignItems: 'center',
+        justifyContent: 'center',
+        borderWidth: 0.5,
+        borderColor: 'rgba(255,59,48,0.2)',
     },
 
     categoryForm: {
@@ -955,11 +1416,14 @@ export const styles = StyleSheet.create({
     },
 
     categoryInput: {
-        backgroundColor: 'rgba(255,255,255,0.05)',
-        borderRadius: 12,
+        backgroundColor: 'rgba(255,255,255,0.04)',
+        borderRadius: 14,
         padding: 12,
         borderWidth: 1,
-        borderColor: 'rgba(255,255,255,0.1)',
+        borderTopColor: 'rgba(0,0,0,0.15)',
+        borderLeftColor: 'rgba(0,0,0,0.10)',
+        borderRightColor: 'rgba(255,255,255,0.06)',
+        borderBottomColor: 'rgba(255,255,255,0.08)',
         color: '#fff',
         fontSize: 14,
         fontWeight: '600',
@@ -1021,6 +1485,20 @@ export const styles = StyleSheet.create({
         paddingVertical: 10,
         paddingHorizontal: 20,
         borderRadius: 12,
+        borderWidth: 0.5,
+        borderTopColor: 'rgba(255,255,255,0.9)',
+        borderLeftColor: 'rgba(255,255,255,0.7)',
+        borderRightColor: 'rgba(0,0,0,0.1)',
+        borderBottomColor: 'rgba(0,0,0,0.2)',
+        ...Platform.select({
+            ios: {
+                shadowColor: '#000',
+                shadowOffset: { width: 0, height: 4 },
+                shadowOpacity: 0.3,
+                shadowRadius: 8,
+            },
+            android: { elevation: 4 },
+        }),
     },
 
     categorySaveText: {
@@ -1059,10 +1537,22 @@ export const styles = StyleSheet.create({
         paddingVertical: 14,
         paddingHorizontal: 16,
         borderRadius: 16,
-        backgroundColor: 'rgba(255, 255, 255, 0.1)',
+        backgroundColor: 'rgba(255, 255, 255, 0.08)',
         borderWidth: 1,
-        borderColor: 'rgba(255, 255, 255, 0.3)',
+        borderTopColor: 'rgba(255,255,255,0.22)',
+        borderLeftColor: 'rgba(255,255,255,0.14)',
+        borderRightColor: 'rgba(255,255,255,0.05)',
+        borderBottomColor: 'rgba(0,0,0,0.25)',
         marginBottom: 10,
+        ...Platform.select({
+            ios: {
+                shadowColor: '#000',
+                shadowOffset: { width: 0, height: 5 },
+                shadowOpacity: 0.45,
+                shadowRadius: 10,
+            },
+            android: { elevation: 5 },
+        }),
     },
     restorePageButtonText: {
         fontSize: 14,
@@ -1086,12 +1576,24 @@ export const styles = StyleSheet.create({
         width: 48,
         height: 48,
         borderRadius: 14,
-        backgroundColor: 'rgba(255,255,255,0.08)',
+        backgroundColor: 'rgba(255,255,255,0.06)',
         alignItems: 'center',
         justifyContent: 'center',
         marginRight: 14,
         borderWidth: 1,
-        borderColor: 'rgba(255,255,255,0.12)',
+        borderTopColor: 'rgba(255,255,255,0.15)',
+        borderLeftColor: 'rgba(255,255,255,0.10)',
+        borderRightColor: 'rgba(255,255,255,0.04)',
+        borderBottomColor: 'rgba(0,0,0,0.15)',
+        ...Platform.select({
+            ios: {
+                shadowColor: '#000',
+                shadowOffset: { width: 0, height: 4 },
+                shadowOpacity: 0.4,
+                shadowRadius: 8,
+            },
+            android: { elevation: 4 },
+        }),
     },
     restoreLandscapeTitle: {
         fontSize: 17,
@@ -1121,20 +1623,37 @@ export const styles = StyleSheet.create({
         alignItems: 'center',
         paddingVertical: 16,
         paddingHorizontal: 18,
-        borderRadius: 16,
-        backgroundColor: 'rgba(255,255,255,0.06)',
+        borderRadius: 18,
+        backgroundColor: 'rgba(255,255,255,0.05)',
         borderWidth: 1,
-        borderColor: 'rgba(255,255,255,0.1)',
+        borderTopColor: 'rgba(255,255,255,0.12)',
+        borderLeftColor: 'rgba(255,255,255,0.08)',
+        borderRightColor: 'rgba(255,255,255,0.03)',
+        borderBottomColor: 'rgba(0,0,0,0.2)',
         marginBottom: 12,
+        ...Platform.select({
+            ios: {
+                shadowColor: '#000',
+                shadowOffset: { width: 0, height: 6 },
+                shadowOpacity: 0.5,
+                shadowRadius: 12,
+            },
+            android: { elevation: 6 },
+        }),
     },
     restoreActionCardIconWrap: {
         width: 44,
         height: 44,
         borderRadius: 12,
-        backgroundColor: 'rgba(255,255,255,0.1)',
+        backgroundColor: 'rgba(255,255,255,0.08)',
         alignItems: 'center',
         justifyContent: 'center',
         marginRight: 14,
+        borderWidth: 0.5,
+        borderTopColor: 'rgba(255,255,255,0.15)',
+        borderLeftColor: 'rgba(255,255,255,0.10)',
+        borderRightColor: 'rgba(0,0,0,0.05)',
+        borderBottomColor: 'rgba(0,0,0,0.1)',
     },
     restoreActionCardContent: {
         flex: 1,
@@ -1191,8 +1710,13 @@ export const styles = StyleSheet.create({
         width: 44,
         height: 24,
         borderRadius: 12,
-        backgroundColor: 'rgba(255,255,255,0.1)',
+        backgroundColor: 'rgba(255,255,255,0.08)',
         padding: 2,
+        borderWidth: 1,
+        borderTopColor: 'rgba(0,0,0,0.2)',
+        borderLeftColor: 'rgba(0,0,0,0.15)',
+        borderRightColor: 'rgba(255,255,255,0.06)',
+        borderBottomColor: 'rgba(255,255,255,0.08)',
     },
 
     customSwitchActive: {
@@ -1204,6 +1728,20 @@ export const styles = StyleSheet.create({
         height: 20,
         borderRadius: 10,
         backgroundColor: 'rgba(255,255,255,1)',
+        borderWidth: 0.5,
+        borderTopColor: 'rgba(255,255,255,1)',
+        borderLeftColor: 'rgba(255,255,255,0.9)',
+        borderRightColor: 'rgba(0,0,0,0.08)',
+        borderBottomColor: 'rgba(0,0,0,0.15)',
+        ...Platform.select({
+            ios: {
+                shadowColor: '#000',
+                shadowOffset: { width: 0, height: 2 },
+                shadowOpacity: 0.4,
+                shadowRadius: 4,
+            },
+            android: { elevation: 4 },
+        }),
     },
 
     switchKnobActive: {
@@ -1225,13 +1763,25 @@ export const styles = StyleSheet.create({
     restoreModal: {
         width: '88%',
         maxWidth: 400,
-        backgroundColor: '#000000',
-        borderRadius: 22,
+        backgroundColor: '#050508',
+        borderRadius: 24,
         borderWidth: 1,
-        borderColor: 'rgba(255,255,255,0.08)',
+        borderTopColor: 'rgba(255,255,255,0.12)',
+        borderLeftColor: 'rgba(255,255,255,0.08)',
+        borderRightColor: 'rgba(255,255,255,0.03)',
+        borderBottomColor: 'rgba(0,0,0,0.3)',
         paddingTop: 24,
         paddingBottom: 22,
         paddingHorizontal: 20,
+        ...Platform.select({
+            ios: {
+                shadowColor: '#000',
+                shadowOffset: { width: 0, height: 20 },
+                shadowOpacity: 0.9,
+                shadowRadius: 40,
+            },
+            android: { elevation: 24 },
+        }),
     },
     restoreModalLandscape: {
         width: '90%',
@@ -1261,14 +1811,17 @@ export const styles = StyleSheet.create({
         marginBottom: 8,
     },
     restoreInput: {
-        backgroundColor: 'rgba(20,20,20,0.5)',
-        borderRadius: 12,
+        backgroundColor: 'rgba(10,10,15,0.6)',
+        borderRadius: 14,
         paddingHorizontal: 14,
         paddingVertical: 12,
         color: '#fff',
         fontSize: 14,
         borderWidth: 1,
-        borderColor: 'rgba(255,255,255,0.06)',
+        borderTopColor: 'rgba(0,0,0,0.2)',
+        borderLeftColor: 'rgba(0,0,0,0.15)',
+        borderRightColor: 'rgba(255,255,255,0.05)',
+        borderBottomColor: 'rgba(255,255,255,0.06)',
         marginBottom: 20,
     },
     restoreInputError: {
@@ -1283,10 +1836,24 @@ export const styles = StyleSheet.create({
         alignItems: 'stretch',
     },
     restorePrimaryBtn: {
-        borderRadius: 12,
+        borderRadius: 14,
         backgroundColor: '#FFFFFF',
         paddingVertical: 14,
         alignItems: 'center',
+        borderWidth: 0.5,
+        borderTopColor: 'rgba(255,255,255,0.9)',
+        borderLeftColor: 'rgba(255,255,255,0.7)',
+        borderRightColor: 'rgba(0,0,0,0.08)',
+        borderBottomColor: 'rgba(0,0,0,0.15)',
+        ...Platform.select({
+            ios: {
+                shadowColor: '#000',
+                shadowOffset: { width: 0, height: 4 },
+                shadowOpacity: 0.3,
+                shadowRadius: 8,
+            },
+            android: { elevation: 4 },
+        }),
     },
     restorePrimaryBtnLandscape: {
         flex: 1,
@@ -1297,12 +1864,24 @@ export const styles = StyleSheet.create({
         color: '#000000',
     },
     restoreSecondaryBtn: {
-        borderRadius: 12,
+        borderRadius: 14,
         paddingVertical: 14,
         alignItems: 'center',
         borderWidth: 1,
-        borderColor: 'rgba(255,255,255,0.2)',
+        borderTopColor: 'rgba(255,255,255,0.15)',
+        borderLeftColor: 'rgba(255,255,255,0.10)',
+        borderRightColor: 'rgba(255,255,255,0.04)',
+        borderBottomColor: 'rgba(0,0,0,0.2)',
         backgroundColor: 'rgba(255,255,255,0.05)',
+        ...Platform.select({
+            ios: {
+                shadowColor: '#000',
+                shadowOffset: { width: 0, height: 3 },
+                shadowOpacity: 0.3,
+                shadowRadius: 6,
+            },
+            android: { elevation: 3 },
+        }),
     },
     restoreSecondaryBtnLandscape: {
         flex: 1,
@@ -1317,11 +1896,23 @@ export const styles = StyleSheet.create({
         alignItems: 'center',
         justifyContent: 'center',
         paddingVertical: 14,
-        borderRadius: 12,
-        backgroundColor: 'rgba(255,255,255,0.08)',
+        borderRadius: 14,
+        backgroundColor: 'rgba(255,255,255,0.06)',
         borderWidth: 1,
-        borderColor: 'rgba(255,255,255,0.15)',
+        borderTopColor: 'rgba(255,255,255,0.15)',
+        borderLeftColor: 'rgba(255,255,255,0.10)',
+        borderRightColor: 'rgba(255,255,255,0.04)',
+        borderBottomColor: 'rgba(0,0,0,0.15)',
         marginBottom: 10,
+        ...Platform.select({
+            ios: {
+                shadowColor: '#000',
+                shadowOffset: { width: 0, height: 3 },
+                shadowOpacity: 0.3,
+                shadowRadius: 6,
+            },
+            android: { elevation: 3 },
+        }),
     },
     restoreMenuButtonText: {
         fontSize: 14,

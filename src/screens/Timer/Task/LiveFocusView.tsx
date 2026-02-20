@@ -29,6 +29,8 @@ import FullScreenTimer from './FullScreenTimer';
 import { buildTimeOfDayBackgroundSegments, DEFAULT_TIME_OF_DAY_SLOTS, TimeOfDaySlotConfigList } from '../../../utils/timeOfDaySlots';
 import { getLogicalDate, getStartOfLogicalDay, getStartOfLogicalDayFromString, isSameLogicalDay, toDisplayMinutes, DEFAULT_DAILY_START_MINUTES } from '../../../utils/dailyStartTime';
 
+type SyncMode = 'none' | 'all' | 'future';
+
 interface LiveFocusViewProps {
     tasks: Task[];
     selectedDate: Date;
@@ -38,7 +40,7 @@ interface LiveFocusViewProps {
     onToggleTask?: (task: Task) => void;
     onExpandTask?: (task: Task) => void;
     onUpdateStageLayout?: (taskId: number, stageId: number, startTimeMinutes: number, durationMinutes: number) => void;
-    onUpdateStages?: (task: Task, stages: TaskStage[]) => void;
+    onUpdateStages?: (task: Task, stages: TaskStage[], syncMode?: SyncMode) => void;
     timeOfDaySlots?: TimeOfDaySlotConfigList;
     /** Daily start time (minutes from midnight) from General Settings. Used for date rollover: when the clock crosses this time, the calendar day changes. Must match the app config (Daily start time) so Live Focus stays in sync with TaskList and TimerList. */
     dailyStartMinutes?: number;
@@ -468,6 +470,23 @@ export default function LiveFocusView({
     useEffect(() => {
         commitLayoutChangeRef.current = commitLayoutChange;
     }, [commitLayoutChange]);
+
+    const renderSyncIndicator = useCallback((stage: TaskStage, customStyles?: any, size: number = 8) => {
+        if (!stage.syncMode || stage.syncMode === 'none') return null;
+        return (
+            <View style={[
+                styles.stageSyncIndicator,
+                stage.syncMode === 'all' ? styles.stageSyncIndicatorAll : styles.stageSyncIndicatorFuture,
+                customStyles
+            ]}>
+                <MaterialIcons
+                    name={stage.syncMode === 'all' ? "sync" : "update"}
+                    size={size}
+                    color={stage.syncMode === 'all' ? "#2196F3" : "#4CAF50"}
+                />
+            </View>
+        );
+    }, []);
 
     const resetScrollTracking = useCallback(() => {
         dragStartScrollXRef.current = timelineScrollXRef.current;
@@ -1838,7 +1857,7 @@ export default function LiveFocusView({
         setApprovalPopupVisible(false);
     }, [tasks, onUpdateStages]);
 
-    const handleUpdateStageStatus = useCallback((taskId: number, stageId: number, status: StageStatus) => {
+    const handleUpdateStageStatus = useCallback((taskId: number, stageId: number, status: StageStatus, syncMode?: SyncMode) => {
         if (!onUpdateStages) return;
         const task = tasks.find(t => t.id === taskId);
         if (!task) return;
@@ -1846,7 +1865,7 @@ export default function LiveFocusView({
         const updatedStages = (task.stages || []).map(s =>
             s.id === stageId ? { ...s, status } : s
         );
-        onUpdateStages(task, updatedStages);
+        onUpdateStages(task, updatedStages, syncMode);
         Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     }, [tasks, onUpdateStages]);
 
@@ -2664,7 +2683,7 @@ export default function LiveFocusView({
                                                                         >
                                                                             <Text style={[styles.untimedStageName, { flexShrink: 1, color: '#FFFFFF' }, isBeingEdited && styles.stageTextDragging, isInResizeMode && styles.stageTextResizeMode]} numberOfLines={1} ellipsizeMode="tail">
                                                                                 {stage.text}
-                                                                            </Text>
+                                                                            </Text>{renderSyncIndicator(stage, { marginLeft: 4, paddingVertical: 1 })}
                                                                             <View style={styles.stageTimeDisplay}>
                                                                                 <Text style={[styles.stageTimeText, { color: 'rgba(255, 255, 255, 0.8)' }, isBeingEdited && styles.stageTimeTextEditing, isInResizeMode && styles.stageTimeTextEditing]}>{formatTimeCompact(effectiveTime.startTimeMinutes)}</Text>
                                                                                 <Text style={[styles.stageDurationText, { color: 'rgba(255, 255, 255, 0.6)' }, isBeingEdited && styles.stageTimeTextEditing, isInResizeMode && styles.stageTimeTextEditing]}>{formatDurationCompact(effectiveTime.durationMinutes)}</Text>
@@ -2910,7 +2929,7 @@ export default function LiveFocusView({
                                                                         >
                                                                             <Text style={[styles.untimedStageName, { flexShrink: 1, color: '#FFFFFF' }, isBeingEdited && styles.stageTextDragging, isInResizeMode && styles.stageTextResizeMode]} numberOfLines={1} ellipsizeMode="tail">
                                                                                 {stage.text}
-                                                                            </Text>
+                                                                            </Text>{renderSyncIndicator(stage, { marginLeft: 4, paddingVertical: 1 })}
                                                                             <View style={styles.stageTimeDisplay}>
                                                                                 <Text style={[styles.stageTimeText, { color: 'rgba(255, 255, 255, 0.8)' }, isBeingEdited && styles.stageTimeTextEditing, isInResizeMode && styles.stageTimeTextEditing]}>{formatTimeCompact(effectiveTime.startTimeMinutes)}</Text>
                                                                                 <Text style={[styles.stageDurationText, { color: 'rgba(255, 255, 255, 0.6)' }, isBeingEdited && styles.stageTimeTextEditing, isInResizeMode && styles.stageTimeTextEditing]}>{formatDurationCompact(effectiveTime.durationMinutes)}</Text>
@@ -3284,6 +3303,7 @@ export default function LiveFocusView({
                                                                                 ]} numberOfLines={1} ellipsizeMode="tail">
                                                                                     {stage.text}
                                                                                 </Text>
+                                                                                {renderSyncIndicator(stage, { marginLeft: 4, paddingVertical: 1 })}
                                                                                 {(() => {
                                                                                     const { startTimeMinutes, durationMinutes } = effectiveTime;
                                                                                     const startTimeStr = formatTimeCompact(startTimeMinutes);
@@ -4113,7 +4133,9 @@ export default function LiveFocusView({
                 existingStartTime={addSubtaskModal.existingStartTime}
                 existingDuration={addSubtaskModal.existingDuration}
                 onClose={() => setAddSubtaskModal({ visible: false, taskId: null, startTimeMinutes: 0, mode: 'add' })}
-                onAdd={(taskId, text, startTime, duration) => {
+                isRecurring={!!tasks.find(t => t.id === addSubtaskModal.taskId)?.recurrence}
+                isRepeatSync={tasks.find(t => t.id === addSubtaskModal.taskId)?.recurrence?.repeatSync}
+                onAdd={(taskId, text, startTime, duration, syncMode) => {
                     if (!onUpdateStages) return;
                     const task = tasks.find(t => t.id === taskId);
                     if (!task) return;
@@ -4135,12 +4157,12 @@ export default function LiveFocusView({
                     };
 
                     const updatedStages = [...(task.stages || []), newStage];
-                    onUpdateStages(task, updatedStages);
+                    onUpdateStages(task, updatedStages, syncMode);
 
                     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
                     setAddSubtaskModal({ visible: false, taskId: null, startTimeMinutes: 0, mode: 'add' });
                 }}
-                onUpdate={(taskId, stageId, text, startTime, duration) => {
+                onUpdate={(taskId, stageId, text, startTime, duration, syncMode) => {
                     if (!onUpdateStages) return;
                     const task = tasks.find(t => t.id === taskId);
                     if (!task) return;
@@ -4155,7 +4177,7 @@ export default function LiveFocusView({
                             }
                             : s
                     );
-                    onUpdateStages(task, updatedStages);
+                    onUpdateStages(task, updatedStages, syncMode);
 
                     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
                     setAddSubtaskModal({ visible: false, taskId: null, startTimeMinutes: 0, mode: 'add' });
@@ -4207,9 +4229,9 @@ export default function LiveFocusView({
             <StageActionPopup
                 visible={stageStatusPopupVisible}
                 position={stageStatusPopupPosition}
-                onSelectStatus={(status) => {
+                onSelectStatus={(status, sync) => {
                     if (resizeModeStage) {
-                        handleUpdateStageStatus(resizeModeStage.taskId, resizeModeStage.stageId, status);
+                        handleUpdateStageStatus(resizeModeStage.taskId, resizeModeStage.stageId, status, sync);
                     }
                     setStageStatusPopupVisible(false);
                 }}
@@ -4219,6 +4241,16 @@ export default function LiveFocusView({
                     const t = tasks.find(t_ => t_.id === resizeModeStage.taskId);
                     const s = t?.stages?.find(s_ => s_.id === resizeModeStage.stageId);
                     return (s?.status ?? 'Upcoming') as StageStatus;
+                })()}
+                showFutureToggle={(() => {
+                    const task = tasks.find(t => t.id === resizeModeStage?.taskId);
+                    return !!task?.recurrence && !task.recurrence.repeatSync;
+                })()}
+                initialSyncMode={(() => {
+                    if (!resizeModeStage) return 'none';
+                    const t = tasks.find(t_ => t_.id === resizeModeStage.taskId);
+                    const s = t?.stages?.find(s_ => s_.id === resizeModeStage.stageId);
+                    return s?.syncMode || 'none';
                 })()}
             />
 
@@ -4371,9 +4403,12 @@ export default function LiveFocusView({
                                             <MaterialIcons name={config.icon} size={14} color="#FFFFFF" />
                                         </View>
                                         <View style={styles.taskSubtasksPopupCardContent}>
-                                            <Text style={styles.taskSubtasksPopupRowText} numberOfLines={1}>
-                                                {stage.text}
-                                            </Text>
+                                            <View style={{ flex: 1, flexDirection: 'row', alignItems: 'center' }}>
+                                                <Text style={styles.taskSubtasksPopupRowText} numberOfLines={1}>
+                                                    {stage.text}
+                                                </Text>
+                                                {renderSyncIndicator(stage, { marginLeft: 6 }, 10)}
+                                            </View>
                                             <Text style={styles.taskSubtasksPopupTimeRow}>
                                                 {startStr} – {endStr}  ·  {durationStr}
                                             </Text>
@@ -6415,5 +6450,24 @@ const styles = StyleSheet.create({
         fontWeight: '900',
         color: 'rgba(255,255,255,0.55)',
         letterSpacing: 2,
+    },
+    stageSyncIndicator: {
+        marginLeft: 6,
+        paddingHorizontal: 4,
+        paddingVertical: 2,
+        borderRadius: 4,
+        backgroundColor: 'rgba(255,255,255,0.05)',
+        borderWidth: 0.5,
+        borderColor: 'rgba(255,255,255,0.1)',
+        flexDirection: 'row',
+        alignItems: 'center',
+    },
+    stageSyncIndicatorAll: {
+        borderColor: 'rgba(33, 150, 243, 0.3)',
+        backgroundColor: 'rgba(33, 150, 243, 0.05)',
+    },
+    stageSyncIndicatorFuture: {
+        borderColor: 'rgba(76, 175, 80, 0.3)',
+        backgroundColor: 'rgba(76, 175, 80, 0.05)',
     },
 });

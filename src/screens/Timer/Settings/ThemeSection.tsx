@@ -10,6 +10,7 @@ import { ScrollView } from 'react-native-gesture-handler';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { LinearGradient } from 'expo-linear-gradient';
 import { MaterialIcons } from '@expo/vector-icons';
+import Slider from '@react-native-community/slider';
 import { LANDSCAPE_PRESETS, COLOR_PRESETS } from '../../../constants/data';
 import { styles } from './styles';
 import {
@@ -17,11 +18,37 @@ import {
     FILLER_COLOR_KEY,
     SLIDER_BUTTON_COLOR_KEY,
     TEXT_COLOR_KEY,
-    PRESET_INDEX_KEY,
-    DEFAULT_FILLER_COLOR,
-    DEFAULT_SLIDER_BUTTON_COLOR,
-    DEFAULT_TEXT_COLOR,
 } from './types';
+
+// Helper to convert hue (0-360) to Hex (Full Saturation/Value)
+const hsvToHex = (h: number) => {
+    const hNorm = h / 360;
+    const s = 0.85; // Vibrant
+    const v = 0.95; // Bright
+
+    let r, g, b;
+    let i = Math.floor(hNorm * 6);
+    let f = hNorm * 6 - i;
+    let p = v * (1 - s);
+    let q = v * (1 - s * f);
+    let t = v * (1 - s * (1 - f));
+
+    switch (i % 6) {
+        case 0: r = v, g = t, b = p; break;
+        case 1: r = q, g = v, b = p; break;
+        case 2: r = p, g = v, b = t; break;
+        case 3: r = p, g = q, b = v; break;
+        case 4: r = t, g = p, b = v; break;
+        case 5: r = v, g = p, b = q; break;
+        default: r = v, g = t, b = p;
+    }
+
+    const toHex = (x: number) => {
+        const hex = Math.round(x * 255).toString(16);
+        return hex.padStart(2, '0');
+    };
+    return `#${toHex(r)}${toHex(g)}${toHex(b)}`.toUpperCase();
+};
 
 interface ThemeSectionFullProps extends ThemeSectionProps {
     scrollRef?: React.RefObject<ScrollView>;
@@ -44,6 +71,19 @@ export default function ThemeSection({
 }: ThemeSectionFullProps) {
     const scrollRef = useRef<ScrollView>(null);
     const pulseAnim = useRef(new Animated.Value(1)).current;
+
+    // Track slider values independently to avoid jitter during drag
+    const [fillerHue, setFillerHue] = useState(0);
+    const [buttonHue, setButtonHue] = useState(0);
+    const [textHue, setTextHue] = useState(0);
+
+    // Reset hues to 0 when global reset is triggered
+    useEffect(() => {
+        setFillerHue(0);
+        setButtonHue(0);
+        setTextHue(0);
+    }, [resetKey]);
+
     const lastScrolledIndex = useRef(activePresetIndex);
     const isProgrammaticScroll = useRef(false);
 
@@ -171,61 +211,119 @@ export default function ThemeSection({
         </Animated.View >
     );
 
-    const renderColorPickerRow = (title: string, icon: keyof typeof MaterialIcons.glyphMap, currentColor: string, onSelect: (color: string) => void) => (
-        <View style={[styles.colorPickerCard, isLandscape && styles.colorPickerCardLandscape]}>
-            <View style={styles.colorPickerHeader}>
-                <View style={styles.colorPickerTitleRow}>
-                    <MaterialIcons name={icon} size={18} color={currentColor} />
-                    <Text style={[styles.colorPickerTitle, isLandscape && styles.colorPickerTitleLandscape]}>{title}</Text>
-                </View>
-                <View style={[styles.currentColorBadge, { backgroundColor: currentColor }]} />
-            </View>
-            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.colorScrollerContent}>
-                {COLOR_PRESETS.map((preset) => (
-                    <TouchableOpacity key={preset.hex} style={[styles.colorChip, currentColor === preset.hex && styles.colorChipSelected, { borderColor: currentColor === preset.hex ? preset.hex : 'transparent' }]} onPress={() => onSelect(preset.hex)} activeOpacity={0.7}>
-                        <View style={[styles.colorChipSwatch, { backgroundColor: preset.hex }]}>
-                            {currentColor === preset.hex && <MaterialIcons name="check" size={14} color={preset.hex === '#FFFFFF' ? '#000' : '#fff'} />}
+    const renderColorPickerRow = (
+        title: string,
+        icon: keyof typeof MaterialIcons.glyphMap,
+        currentColor: string,
+        onSelect: (color: string) => void
+    ) => (
+        <View style={styles.settingsCardBezelSmall}>
+            <View style={styles.settingsCardTrackUnified}>
+                <View style={[styles.colorPickerCard, isLandscape && styles.colorPickerCardLandscape, { marginBottom: 0, padding: 12 }]}>
+                    <View style={styles.colorPickerHeader}>
+                        <View style={styles.colorPickerTitleRow}>
+                            <View style={styles.iconWell}>
+                                <MaterialIcons name={icon} size={16} color={currentColor} />
+                            </View>
+                            <Text style={[styles.colorPickerTitle, isLandscape && styles.colorPickerTitleLandscape]}>{title}</Text>
                         </View>
-                    </TouchableOpacity>
-                ))}
-            </ScrollView>
+                        <View style={[styles.currentColorBadge, { backgroundColor: currentColor }]}>
+                            <View style={styles.colorGemInnerGlow} />
+                        </View>
+                    </View>
+
+                    <View style={styles.sliderContainer}>
+                        <View style={styles.sliderTrackBg}>
+                            <LinearGradient
+                                colors={['#FF0000', '#FFFF00', '#00FF00', '#00FFFF', '#0000FF', '#FF00FF', '#FF0000']}
+                                start={{ x: 0, y: 0.5 }}
+                                end={{ x: 1, y: 0.5 }}
+                                style={styles.hueGradient}
+                            />
+                            <View style={styles.sliderTrenchShadow} />
+                        </View>
+                        <Slider
+                            style={styles.hueSlider}
+                            minimumValue={0}
+                            maximumValue={360}
+                            step={1}
+                            value={title.includes('Filler') ? fillerHue : title.includes('Button') ? buttonHue : textHue}
+                            onValueChange={(val) => {
+                                const hex = hsvToHex(val);
+                                if (title.includes('Filler')) {
+                                    setFillerHue(val);
+                                    onFillerColorChange(hex);
+                                } else if (title.includes('Button')) {
+                                    setButtonHue(val);
+                                    onSliderButtonColorChange(hex);
+                                } else {
+                                    setTextHue(val);
+                                    onTimerTextColorChange(hex);
+                                }
+                            }}
+                            onSlidingComplete={(val) => {
+                                const hex = hsvToHex(val);
+                                const key = title.includes('Filler') ? FILLER_COLOR_KEY : title.includes('Button') ? SLIDER_BUTTON_COLOR_KEY : TEXT_COLOR_KEY;
+                                AsyncStorage.setItem(key, hex).catch(err => console.error(err));
+                                triggerPulse();
+                            }}
+                            minimumTrackTintColor="transparent"
+                            maximumTrackTintColor="transparent"
+                            thumbTintColor="#fff"
+                        />
+                    </View>
+                </View>
+            </View>
+            <View style={styles.settingsCardOuterGlowSmall} pointerEvents="none" />
         </View>
+    );
+
+    const renderResetButton = () => (
+        <TouchableOpacity
+            onPress={onResetToDefaults}
+            activeOpacity={0.7}
+            style={styles.topRightResetBezel}
+        >
+            <View style={styles.topRightResetTrack}>
+                <MaterialIcons name="refresh" size={14} color="#FFF" />
+                <Text style={styles.resetTextCompact}>Reset</Text>
+            </View>
+        </TouchableOpacity>
     );
 
     if (isLandscape) {
         return (
             <View>
-                <Text style={styles.sectionTitleLandscape}>CUSTOMIZE COLORS</Text>
-                {renderColorPickerRow('Filler Color', 'gradient', fillerColor, handleFillerColorSelect)}
-                <View style={styles.sectionDivider} />
-                {renderColorPickerRow('Button Color', 'touch-app', sliderButtonColor, handleSliderButtonColorSelect)}
-                <View style={styles.sectionDivider} />
-                {renderColorPickerRow('Text Color', 'text-fields', timerTextColor, handleTextColorSelect)}
+                <View style={[styles.headerWithReset, { marginBottom: 15 }]}>
+                    <Text style={[styles.sectionTitleLandscape, { marginBottom: 0 }]}>CUSTOMIZE COLORS</Text>
+                    {renderResetButton()}
+                </View>
 
-                <TouchableOpacity
-                    style={styles.landscapeResetButton}
-                    onPress={onResetToDefaults}
-                    activeOpacity={0.7}
-                >
-                    <MaterialIcons name="refresh" size={18} color="#FFFFFF" />
-                    <Text style={styles.resetButtonText}>Reset to Defaults</Text>
-                </TouchableOpacity>
+                {renderColorPickerRow('Filler Color', 'gradient', fillerColor, handleFillerColorSelect)}
+                <View style={{ height: 10 }} />
+                {renderColorPickerRow('Button Color', 'touch-app', sliderButtonColor, handleSliderButtonColorSelect)}
+                <View style={{ height: 10 }} />
+                {renderColorPickerRow('Timer Text Color', 'text-fields', timerTextColor, handleTextColorSelect)}
             </View>
         );
     }
 
     return (
         <>
-            <View style={styles.section}>
-                <Text style={styles.sectionTitle}>LANDSCAPE PREVIEW</Text>
-                {renderLandscapePreview()}
+            <Text style={styles.sectionTitle}>LANDSCAPE PREVIEW</Text>
+            {renderLandscapePreview()}
+            <View style={[styles.sectionDivider, { marginVertical: 16 }]} />
+
+            <View style={styles.headerWithReset}>
+                <Text style={[styles.sectionTitle, { marginBottom: 0 }]}>CUSTOMIZE COLORS</Text>
+                {renderResetButton()}
             </View>
-            <View style={styles.section}>
-                <Text style={styles.sectionTitle}>CUSTOMIZE COLORS</Text>
-                {renderColorPickerRow('Filler Color', 'gradient', fillerColor, handleFillerColorSelect)}
-                {renderColorPickerRow('Slider & Button', 'touch-app', sliderButtonColor, handleSliderButtonColorSelect)}
-                {renderColorPickerRow('Timer Text', 'text-fields', timerTextColor, handleTextColorSelect)}
-            </View>
+
+            {renderColorPickerRow('Filler Color', 'gradient', fillerColor, handleFillerColorSelect)}
+            <View style={{ height: 8 }} />
+            {renderColorPickerRow('Button Color', 'touch-app', sliderButtonColor, handleSliderButtonColorSelect)}
+            <View style={{ height: 8 }} />
+            {renderColorPickerRow('Timer Text Color', 'text-fields', timerTextColor, handleTextColorSelect)}
         </>
     );
 }

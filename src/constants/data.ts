@@ -13,6 +13,7 @@ export interface Category {
   name: string;
   icon: keyof typeof MaterialIcons.glyphMap;
   color: string;
+  isEnabled?: boolean;
 }
 
 export const DEFAULT_CATEGORIES: Category[] = [
@@ -25,6 +26,7 @@ export interface QuickMessage {
   id: string;
   text: string;
   color: string;
+  isEnabled?: boolean;
 }
 
 export const QUICK_MESSAGES_KEY = '@timer_quick_messages';
@@ -69,6 +71,8 @@ export interface Comment {
 }
 
 export type StageStatus = 'Upcoming' | 'Process' | 'Done' | 'Undone';
+
+export type SyncMode = 'none' | 'all' | 'future';
 
 // Recurrence types
 export type RecurrenceType = 'daily' | 'weekly' | 'monthly';
@@ -117,6 +121,7 @@ export interface TaskStage {
   startTime?: string;        // ISO string when subtask was started
   endTime?: string;          // ISO string when subtask was ended
   endTimeMinutes?: number;    // End time in minutes from 00:00 (calculated from startTimeMinutes + durationMinutes)
+  syncMode?: SyncMode;        // Per-date sync mode (persisted)
 }
 
 /**
