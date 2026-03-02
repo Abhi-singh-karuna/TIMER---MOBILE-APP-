@@ -14,7 +14,7 @@ import {
 import { ScrollView, GestureHandlerRootView } from 'react-native-gesture-handler';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { LinearGradient } from 'expo-linear-gradient';
+
 import { MaterialIcons } from '@expo/vector-icons';
 
 import ThemeSection, { LandscapePreviewComponent } from './ThemeSection';
@@ -583,11 +583,7 @@ export default function SettingsScreen({
 
     return (
         <GestureHandlerRootView style={{ flex: 1 }}>
-            <LinearGradient
-                colors={['#0A0A12', '#050508', '#000000']}
-                locations={[0, 0.4, 1]}
-                style={styles.container}
-            >
+            <View style={[styles.container, { backgroundColor: '#000000' }]}>
                 <SafeAreaView
                     style={styles.safeArea}
                     edges={isLandscape ? ['left', 'right'] : ['top', 'left', 'right', 'bottom']}
@@ -630,7 +626,7 @@ export default function SettingsScreen({
                         )}
                     </Modal>
                 </SafeAreaView>
-            </LinearGradient>
+            </View>
         </GestureHandlerRootView>
     );
 }

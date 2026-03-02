@@ -594,8 +594,11 @@ export default function LiveFocusView({
         else if (minutesPerCell < 60) labelStep = 60;
         else if (minutesPerCell < 120) labelStep = 120;
 
+        // Round to nearest integer so floating-point zoom values don't produce decimal time labels
+        labelStep = Math.round(labelStep);
+
         for (let minutes = 0; minutes <= TOTAL_MINUTES; minutes += labelStep) {
-            const wallMinutes = (minutes + dailyStartMinutes) % 1440;
+            const wallMinutes = Math.round((minutes + dailyStartMinutes) % 1440);
             const hours = Math.floor(wallMinutes / 60);
             const mins = wallMinutes % 60;
             labels.push({
@@ -2706,22 +2709,24 @@ export default function LiveFocusView({
                                                                                 <Text style={[styles.untimedStageName, { flexShrink: 1, color: '#FFFFFF', fontSize: 8.5 }, isBeingEdited && styles.stageTextDragging, isInResizeMode && styles.stageTextResizeMode]} numberOfLines={1} ellipsizeMode="tail">
                                                                                     {stage.text}
                                                                                 </Text>
-                                                                                <View style={[{ backgroundColor: 'rgba(255,255,255,0.15)', paddingHorizontal: 4, paddingVertical: 1.5, borderRadius: 3, marginLeft: 5 }, isBeingEdited && { backgroundColor: 'rgba(0,0,0,0.1)' }, isInResizeMode && { backgroundColor: 'rgba(0,0,0,0.1)' }]}>
-                                                                                    <Text style={[{ color: '#FFFFFF', fontSize: 6.5, fontWeight: '800' }, isBeingEdited && styles.stageTimeTextEditing, isInResizeMode && styles.stageTimeTextEditing]}>
-                                                                                        {formatDurationCompact(effectiveTime.durationMinutes)}
-                                                                                    </Text>
-                                                                                </View>
+                                                                                {width > 80 && (
+                                                                                    <View style={[{ backgroundColor: 'rgba(255,255,255,0.15)', paddingHorizontal: 4, paddingVertical: 1.5, borderRadius: 3, marginLeft: 5 }, isBeingEdited && { backgroundColor: 'rgba(0,0,0,0.1)' }, isInResizeMode && { backgroundColor: 'rgba(0,0,0,0.1)' }]}>
+                                                                                        <Text style={[{ color: '#FFFFFF', fontSize: 6.5, fontWeight: '800' }, isBeingEdited && styles.stageTimeTextEditing, isInResizeMode && styles.stageTimeTextEditing]}>
+                                                                                            {formatDurationCompact(effectiveTime.durationMinutes)}
+                                                                                        </Text>
+                                                                                    </View>
+                                                                                )}
                                                                                 {renderSyncIndicator(stage, { marginLeft: 4, paddingVertical: 1 })}
                                                                                 {stageNeedsApproval(stage) != null && (
                                                                                     <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: '#FF9800', marginLeft: 'auto' }} />
                                                                                 )}
                                                                             </View>
                                                                             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
-                                                                                <Text style={[styles.stageTimeText, { color: 'rgba(255, 255, 255, 0.8)', fontSize: 7 }, isBeingEdited && styles.stageTimeTextEditing, isInResizeMode && styles.stageTimeTextEditing]}>
+                                                                                <Text style={[styles.stageTimeText, { color: 'rgba(255, 255, 255, 0.8)', fontSize: 7 }, isBeingEdited && styles.stageTimeTextEditing, isInResizeMode && styles.stageTimeTextEditing]} numberOfLines={1}>
                                                                                     {formatTimeRange(effectiveTime.startTimeMinutes, effectiveTime.startTimeMinutes + effectiveTime.durationMinutes)}
                                                                                 </Text>
                                                                                 <View style={{ width: 3, height: 3, borderRadius: 1.5, backgroundColor: 'rgba(255,255,255,0.4)', marginTop: 0.5 }} />
-                                                                                <Text style={[styles.stageDurationText, { color: 'rgba(255, 255, 255, 0.9)', fontSize: 6.5, fontWeight: '700', textTransform: 'uppercase' }, isBeingEdited && styles.stageTimeTextEditing, isInResizeMode && styles.stageTimeTextEditing]}>
+                                                                                <Text style={[styles.stageDurationText, { color: 'rgba(255, 255, 255, 0.9)', fontSize: 6.5, fontWeight: '700', textTransform: 'uppercase' }, isBeingEdited && styles.stageTimeTextEditing, isInResizeMode && styles.stageTimeTextEditing]} numberOfLines={1}>
                                                                                     {STAGE_STATUS_LABELS[stage.status || 'Upcoming']}
                                                                                 </Text>
                                                                             </View>
@@ -2946,22 +2951,24 @@ export default function LiveFocusView({
                                                                                 <Text style={[styles.untimedStageName, { flexShrink: 1, color: '#FFFFFF', fontSize: 8.5 }, isBeingEdited && styles.stageTextDragging, isInResizeMode && styles.stageTextResizeMode]} numberOfLines={1} ellipsizeMode="tail">
                                                                                     {stage.text}
                                                                                 </Text>
-                                                                                <View style={[{ backgroundColor: 'rgba(255,255,255,0.15)', paddingHorizontal: 4, paddingVertical: 1.5, borderRadius: 3, marginLeft: 5 }, isBeingEdited && { backgroundColor: 'rgba(0,0,0,0.1)' }, isInResizeMode && { backgroundColor: 'rgba(0,0,0,0.1)' }]}>
-                                                                                    <Text style={[{ color: '#FFFFFF', fontSize: 6.5, fontWeight: '800' }, isBeingEdited && styles.stageTimeTextEditing, isInResizeMode && styles.stageTimeTextEditing]}>
-                                                                                        {formatDurationCompact(effectiveTime.durationMinutes)}
-                                                                                    </Text>
-                                                                                </View>
+                                                                                {width > 80 && (
+                                                                                    <View style={[{ backgroundColor: 'rgba(255,255,255,0.15)', paddingHorizontal: 4, paddingVertical: 1.5, borderRadius: 3, marginLeft: 5 }, isBeingEdited && { backgroundColor: 'rgba(0,0,0,0.1)' }, isInResizeMode && { backgroundColor: 'rgba(0,0,0,0.1)' }]}>
+                                                                                        <Text style={[{ color: '#FFFFFF', fontSize: 6.5, fontWeight: '800' }, isBeingEdited && styles.stageTimeTextEditing, isInResizeMode && styles.stageTimeTextEditing]}>
+                                                                                            {formatDurationCompact(effectiveTime.durationMinutes)}
+                                                                                        </Text>
+                                                                                    </View>
+                                                                                )}
                                                                                 {renderSyncIndicator(stage, { marginLeft: 4, paddingVertical: 1 })}
                                                                                 {stageNeedsApproval(stage) != null && (
                                                                                     <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: '#FF9800', marginLeft: 'auto' }} />
                                                                                 )}
                                                                             </View>
                                                                             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
-                                                                                <Text style={[styles.stageTimeText, { color: 'rgba(255, 255, 255, 0.8)', fontSize: 7 }, isBeingEdited && styles.stageTimeTextEditing, isInResizeMode && styles.stageTimeTextEditing]}>
+                                                                                <Text style={[styles.stageTimeText, { color: 'rgba(255, 255, 255, 0.8)', fontSize: 7 }, isBeingEdited && styles.stageTimeTextEditing, isInResizeMode && styles.stageTimeTextEditing]} numberOfLines={1}>
                                                                                     {formatTimeRange(effectiveTime.startTimeMinutes, effectiveTime.startTimeMinutes + effectiveTime.durationMinutes)}
                                                                                 </Text>
                                                                                 <View style={{ width: 3, height: 3, borderRadius: 1.5, backgroundColor: 'rgba(255,255,255,0.4)', marginTop: 0.5 }} />
-                                                                                <Text style={[styles.stageDurationText, { color: 'rgba(255, 255, 255, 0.9)', fontSize: 6.5, fontWeight: '700', textTransform: 'uppercase' }, isBeingEdited && styles.stageTimeTextEditing, isInResizeMode && styles.stageTimeTextEditing]}>
+                                                                                <Text style={[styles.stageDurationText, { color: 'rgba(255, 255, 255, 0.9)', fontSize: 6.5, fontWeight: '700', textTransform: 'uppercase' }, isBeingEdited && styles.stageTimeTextEditing, isInResizeMode && styles.stageTimeTextEditing]} numberOfLines={1}>
                                                                                     {STAGE_STATUS_LABELS[stage.status || 'Upcoming']}
                                                                                 </Text>
                                                                             </View>
@@ -3304,40 +3311,37 @@ export default function LiveFocusView({
                                                                                     ]} numberOfLines={1} ellipsizeMode="tail">
                                                                                         {stage.text}
                                                                                     </Text>
-                                                                                    <View style={[{ backgroundColor: 'rgba(255,255,255,0.15)', paddingHorizontal: 4, paddingVertical: 1.5, borderRadius: 3, marginLeft: 5 }, isBeingEdited && { backgroundColor: 'rgba(0,0,0,0.1)' }, isInResizeMode && { backgroundColor: 'rgba(0,0,0,0.1)' }]}>
-                                                                                        <Text style={[{ color: '#FFFFFF', fontSize: 6.5, fontWeight: '800' }, isBeingEdited && styles.stageTimeTextEditing, isInResizeMode && styles.stageTimeTextEditing]}>
-                                                                                            {formatDurationCompact(effectiveTime.durationMinutes)}
-                                                                                        </Text>
-                                                                                    </View>
+                                                                                    {width > 80 && (
+                                                                                        <View style={[{ backgroundColor: 'rgba(255,255,255,0.15)', paddingHorizontal: 4, paddingVertical: 1.5, borderRadius: 3, marginLeft: 5 }, isBeingEdited && { backgroundColor: 'rgba(0,0,0,0.1)' }, isInResizeMode && { backgroundColor: 'rgba(0,0,0,0.1)' }]}>
+                                                                                            <Text style={[{ color: '#FFFFFF', fontSize: 6.5, fontWeight: '800' }, isBeingEdited && styles.stageTimeTextEditing, isInResizeMode && styles.stageTimeTextEditing]}>
+                                                                                                {formatDurationCompact(effectiveTime.durationMinutes)}
+                                                                                            </Text>
+                                                                                        </View>
+                                                                                    )}
                                                                                     {renderSyncIndicator(stage, { marginLeft: 4, paddingVertical: 1 })}
                                                                                     {stageNeedsApproval(stage) != null && (
                                                                                         <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: '#FF9800', marginLeft: 'auto' }} />
                                                                                     )}
                                                                                 </View>
-                                                                                {(() => {
-                                                                                    const { startTimeMinutes, durationMinutes } = effectiveTime;
-                                                                                    return (
-                                                                                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
-                                                                                            <Text style={[
-                                                                                                styles.stageTimeText,
-                                                                                                { color: 'rgba(255, 255, 255, 0.8)', fontSize: 7 },
-                                                                                                isBeingEdited && styles.stageTimeTextEditing,
-                                                                                                isInResizeMode && styles.stageTimeTextEditing
-                                                                                            ]}>
-                                                                                                {formatTimeRange(startTimeMinutes, startTimeMinutes + durationMinutes)}
-                                                                                            </Text>
-                                                                                            <View style={{ width: 3, height: 3, borderRadius: 1.5, backgroundColor: 'rgba(255,255,255,0.4)', marginTop: 0.5 }} />
-                                                                                            <Text style={[
-                                                                                                styles.stageDurationText,
-                                                                                                { color: 'rgba(255, 255, 255, 0.9)', fontSize: 6.5, fontWeight: '700', textTransform: 'uppercase' },
-                                                                                                isBeingEdited && styles.stageTimeTextEditing,
-                                                                                                isInResizeMode && styles.stageTimeTextEditing
-                                                                                            ]}>
-                                                                                                {STAGE_STATUS_LABELS[stage.status || 'Upcoming']}
-                                                                                            </Text>
-                                                                                        </View>
-                                                                                    );
-                                                                                })()}
+                                                                                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+                                                                                    <Text style={[
+                                                                                        styles.stageTimeText,
+                                                                                        { color: 'rgba(255, 255, 255, 0.8)', fontSize: 7 },
+                                                                                        isBeingEdited && styles.stageTimeTextEditing,
+                                                                                        isInResizeMode && styles.stageTimeTextEditing
+                                                                                    ]} numberOfLines={1}>
+                                                                                        {formatTimeRange(effectiveTime.startTimeMinutes, effectiveTime.startTimeMinutes + effectiveTime.durationMinutes)}
+                                                                                    </Text>
+                                                                                    <View style={{ width: 3, height: 3, borderRadius: 1.5, backgroundColor: 'rgba(255,255,255,0.4)', marginTop: 0.5 }} />
+                                                                                    <Text style={[
+                                                                                        styles.stageDurationText,
+                                                                                        { color: 'rgba(255, 255, 255, 0.9)', fontSize: 6.5, fontWeight: '700', textTransform: 'uppercase' },
+                                                                                        isBeingEdited && styles.stageTimeTextEditing,
+                                                                                        isInResizeMode && styles.stageTimeTextEditing
+                                                                                    ]} numberOfLines={1}>
+                                                                                        {STAGE_STATUS_LABELS[stage.status || 'Upcoming']}
+                                                                                    </Text>
+                                                                                </View>
                                                                             </TouchableOpacity>
 
                                                                             {isInResizeMode && (
@@ -5602,7 +5606,7 @@ const styles = StyleSheet.create({
         backgroundColor: '#FFFFFF',
         minHeight: 23,
         paddingHorizontal: 8,
-        paddingVertical: 4,
+        paddingVertical: 4, // No vertical padding — height is fixed
 
         // Modern elevation shadows (two-layer for depth)
         shadowColor: '#000',
@@ -5838,7 +5842,8 @@ const styles = StyleSheet.create({
         borderWidth: 1, // Explicitly match base style
         borderRadius: 8, // Explicitly match base style
         paddingHorizontal: 6, // Explicitly match base style
-        paddingVertical: 3, // Explicitly match base style
+        paddingVertical: 0, // Match fixed-height base style
+        height: 23, // Explicitly match base style
         minHeight: 23, // Explicitly match base style
         // Keep all layout properties exactly the same - only change colors
     },
