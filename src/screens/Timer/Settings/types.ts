@@ -99,6 +99,7 @@ export interface RestoreSectionProps {
     isLandscape: boolean;
     onClearTime: () => void;
     onClearTask: () => void;
+    onClearAllData: () => void;
 }
 
 // Storage keys

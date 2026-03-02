@@ -8,6 +8,7 @@ export default function RestoreSection({
     isLandscape,
     onClearTime,
     onClearTask,
+    onClearAllData,
 }: RestoreSectionProps) {
     const renderRestoreCard = () => (
         <View style={styles.settingsCardBezelSmall}>
@@ -56,6 +57,32 @@ export default function RestoreSection({
                     <MaterialIcons name="chevron-right" size={20} color="rgba(255,255,255,0.4)" style={styles.restoreActionCardChevron} />
                 </TouchableOpacity>
 
+                {/* Divider */}
+                <View style={{
+                    height: 1,
+                    backgroundColor: 'rgba(255,255,255,0.06)',
+                    marginVertical: 4,
+                    marginHorizontal: 12
+                }} />
+
+                {/* Clear All App Data Action */}
+                <TouchableOpacity
+                    style={[styles.restoreActionCard, { padding: 0 }]}
+                    onPress={onClearAllData}
+                    activeOpacity={0.75}
+                >
+                    <View style={[styles.restoreActionCardIconWrap, { backgroundColor: 'rgba(255, 60, 60, 0.25)' }]}>
+                        <MaterialIcons name="delete-forever" size={22} color="#FF4444" />
+                    </View>
+                    <View style={styles.restoreActionCardContent}>
+                        <Text style={[styles.restoreActionCardTitle, { color: '#FF6B6B' }]}>Clear All App Data</Text>
+                        <Text style={styles.restoreActionCardDesc}>
+                            Remove all local storage data including timers, tasks, settings, themes and preferences.
+                        </Text>
+                    </View>
+                    <MaterialIcons name="chevron-right" size={20} color="rgba(255,80,80,0.4)" style={styles.restoreActionCardChevron} />
+                </TouchableOpacity>
+
                 <View style={styles.settingsCardInteriorShadowSmall} pointerEvents="none" />
                 <View style={styles.settingsCardTopRimSmall} pointerEvents="none" />
             </View>
@@ -84,7 +111,7 @@ export default function RestoreSection({
                 {renderRestoreCard()}
 
                 <Text style={styles.restoreLandscapeWarning}>
-                    Settings, themes, categories and quick messages are not affected. Only timers or tasks are removed.
+                    Settings, themes, categories and quick messages are not affected by time/task clear. "Clear All App Data" removes everything.
                 </Text>
             </View>
         );
@@ -102,7 +129,7 @@ export default function RestoreSection({
             {renderRestoreCard()}
 
             <Text style={[styles.restoreLandscapeWarning, { marginTop: 8, paddingHorizontal: 4 }]}>
-                Settings, themes, categories and quick messages are not affected.
+                Settings, themes, categories and quick messages are not affected by time/task clear. "Clear All App Data" removes everything.
             </Text>
         </View>
     );

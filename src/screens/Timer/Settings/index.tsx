@@ -51,7 +51,7 @@ function ConfirmClearModalContent({
     onConfirmClear,
     onClose,
 }: {
-    clearConfirmType: 'time' | 'task';
+    clearConfirmType: 'time' | 'task' | 'alldata';
     confirmInput: string;
     confirmError: boolean;
     onInputChange: (text: string) => void;
@@ -76,10 +76,12 @@ function ConfirmClearModalContent({
                             isLandscape && styles.restoreModalLandscape
                         ]}>
                             <Text style={styles.sectionTitle}>
-                                {clearConfirmType === 'time' ? 'Clear all timers?' : 'Clear all tasks?'}
+                                {clearConfirmType === 'alldata' ? 'Clear all app data?' : clearConfirmType === 'time' ? 'Clear all timers?' : 'Clear all tasks?'}
                             </Text>
                             <Text style={styles.restoreSubtitle}>
-                                Type &quot;clear all&quot; below to confirm. This cannot be undone.
+                                {clearConfirmType === 'alldata'
+                                    ? 'This will remove ALL app data including timers, tasks, settings, themes, and preferences. Type "clear all" to confirm.'
+                                    : 'Type "clear all" below to confirm. This cannot be undone.'}
                             </Text>
                             <Text style={styles.restoreLabel}>CONFIRM</Text>
                             <TextInput
@@ -172,7 +174,7 @@ export default function SettingsScreen({
     const [activeSubPage, setActiveSubPage] = useState<null | 'timeOfDayBackground'>(null);
 
     // Clear confirm popup (type "Clear all" to confirm)
-    const [clearConfirmType, setClearConfirmType] = useState<'time' | 'task' | null>(null);
+    const [clearConfirmType, setClearConfirmType] = useState<'time' | 'task' | 'alldata' | null>(null);
     const [confirmInput, setConfirmInput] = useState('');
     const [confirmError, setConfirmError] = useState(false);
 
@@ -197,7 +199,7 @@ export default function SettingsScreen({
         } catch (e) { console.error('Failed to reset defaults:', e); }
     };
 
-    const openClearConfirm = (type: 'time' | 'task') => {
+    const openClearConfirm = (type: 'time' | 'task' | 'alldata') => {
         setClearConfirmType(type);
         setConfirmInput('');
         setConfirmError(false);
@@ -216,7 +218,11 @@ export default function SettingsScreen({
         }
         if (!clearConfirmType) return;
         try {
-            if (clearConfirmType === 'time') {
+            if (clearConfirmType === 'alldata') {
+                await AsyncStorage.clear();
+                onAfterClearTimers?.();
+                onAfterClearTasks?.();
+            } else if (clearConfirmType === 'time') {
                 await AsyncStorage.removeItem(TIMERS_STORAGE_KEY);
                 onAfterClearTimers?.();
             } else {
@@ -367,6 +373,7 @@ export default function SettingsScreen({
                         isLandscape={false}
                         onClearTime={() => openClearConfirm('time')}
                         onClearTask={() => openClearConfirm('task')}
+                        onClearAllData={() => openClearConfirm('alldata')}
                     />
                 </View>
                 <View style={styles.settingsCardOuterGlow} pointerEvents="none" />
@@ -556,6 +563,7 @@ export default function SettingsScreen({
                                 isLandscape={true}
                                 onClearTime={() => openClearConfirm('time')}
                                 onClearTask={() => openClearConfirm('task')}
+                                onClearAllData={() => openClearConfirm('alldata')}
                             />
                         )}
 
