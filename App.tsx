@@ -16,7 +16,7 @@ import {
 } from '@expo-google-fonts/plus-jakarta-sans';
 import { Inter_900Black } from '@expo-google-fonts/inter';
 
-import EmptyState from './src/screens/Timer/EmptyState';
+
 import TimerList from './src/screens/Timer/TimerList';
 import TaskList from './src/screens/Timer/Task';
 import ActiveTimer from './src/screens/Timer/ActivityTimer';
@@ -1713,9 +1713,6 @@ export default function App() {
 
       default:
         // Show TimerList when activeView is 'timer'
-        if (timers.length === 0 && tasks.length === 0) {
-          return <EmptyState onAddTimer={() => activeView === 'timer' ? setAddModalVisible(true) : setAddTaskModalVisible(true)} />;
-        }
         return (
           <TimerList
             timers={timers}
