@@ -23,6 +23,7 @@ import { Audio } from 'expo-av';
 import { activateKeepAwakeAsync, deactivateKeepAwake } from 'expo-keep-awake';
 import { Timer, Category, SOUND_OPTIONS } from '../../../constants/data';
 import { getLogicalDate, getStartOfLogicalDay, DEFAULT_DAILY_START_MINUTES, formatDailyStartRangeCompact } from '../../../utils/dailyStartTime';
+import NotesPanel, { NotesIconButton, hasDayNote } from '../Task/NotesPanel';
 
 // SOUND_OPTIONS moved to constants/data.ts
 
@@ -148,6 +149,8 @@ export default function TimerList({
     const { width: screenWidth, height: screenHeight } = useWindowDimensions();
     const isLandscape = screenWidth > screenHeight;
     const [showReportPopup, setShowReportPopup] = useState(false);
+    const [showNotesPanel, setShowNotesPanel] = useState(false);
+    const [selectedDateHasNote, setSelectedDateHasNote] = useState(false);
     const [showCalendar, setShowCalendar] = useState(false);
     const [showFiltersPortrait, setShowFiltersPortrait] = useState(false);
     const [isPortraitHeaderExpanded, setIsPortraitHeaderExpanded] = useState(true);
@@ -267,6 +270,15 @@ export default function TimerList({
 
     // Logical date for the selected day (uses daily start time for rollover)
     const selectedLogical = getLogicalDate(propSelectedDate, dailyStartMinutes);
+
+    // Notes badge (per selected logical day)
+    useEffect(() => {
+        let cancelled = false;
+        hasDayNote(selectedLogical).then((v) => {
+            if (!cancelled) setSelectedDateHasNote(v);
+        }).catch(() => { });
+        return () => { cancelled = true; };
+    }, [selectedLogical]);
 
     const dateFilteredTimers = timers.filter(t => t.forDate === selectedLogical);
 
@@ -889,15 +901,27 @@ export default function TimerList({
 
                                 {/* Footer Row: Settings icon & Detailed Reports */}
                                 <View style={styles.leftPanelFooterRow}>
-                                    {onSettings && (
-                                        <TouchableOpacity
-                                            style={styles.settingsIconBtn}
-                                            onPress={onSettings}
-                                            activeOpacity={0.7}
-                                        >
-                                            <MaterialIcons name="settings" size={20} color="rgba(255,255,255,0.7)" />
-                                        </TouchableOpacity>
-                                    )}
+                                    <View style={styles.footerLeftIcons}>
+                                        {onSettings && (
+                                            <TouchableOpacity
+                                                style={styles.settingsIconBtn}
+                                                onPress={onSettings}
+                                                activeOpacity={0.7}
+                                            >
+                                                <MaterialIcons name="settings" size={20} color="rgba(255,255,255,0.7)" />
+                                            </TouchableOpacity>
+                                        )}
+
+                                        <NotesIconButton
+                                            active={showNotesPanel}
+                                            hasNote={selectedDateHasNote}
+                                            onPress={() => {
+                                                LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+                                                setShowReportPopup(false);
+                                                setShowNotesPanel(!showNotesPanel);
+                                            }}
+                                        />
+                                    </View>
 
                                     <TouchableOpacity
                                         style={styles.detailedReportsBtn}
@@ -1204,15 +1228,27 @@ export default function TimerList({
 
                                             {/* Footer Row: Settings & Reports */}
                                             <View style={styles.leftPanelFooterRow}>
-                                                {onSettings && (
-                                                    <TouchableOpacity
-                                                        style={styles.settingsIconBtn}
-                                                        onPress={onSettings}
-                                                        activeOpacity={0.7}
-                                                    >
-                                                        <MaterialIcons name="settings" size={20} color="rgba(255,255,255,0.7)" />
-                                                    </TouchableOpacity>
-                                                )}
+                                                <View style={styles.footerLeftIcons}>
+                                                    {onSettings && (
+                                                        <TouchableOpacity
+                                                            style={styles.settingsIconBtn}
+                                                            onPress={onSettings}
+                                                            activeOpacity={0.7}
+                                                        >
+                                                            <MaterialIcons name="settings" size={20} color="rgba(255,255,255,0.7)" />
+                                                        </TouchableOpacity>
+                                                    )}
+
+                                                    <NotesIconButton
+                                                        active={showNotesPanel}
+                                                        hasNote={selectedDateHasNote}
+                                                        onPress={() => {
+                                                            LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+                                                            setShowReportPopup(false);
+                                                            setShowNotesPanel(!showNotesPanel);
+                                                        }}
+                                                    />
+                                                </View>
 
                                                 <TouchableOpacity
                                                     style={styles.detailedReportsBtn}
@@ -1255,6 +1291,17 @@ export default function TimerList({
                     </>
                 )}
             </SafeAreaView>
+
+            {showNotesPanel && (
+                <View style={styles.notesTakeoverOverlay}>
+                    <NotesPanel
+                        visible={showNotesPanel}
+                        dateKey={selectedLogical}
+                        onClose={() => setShowNotesPanel(false)}
+                        onPresenceChange={setSelectedDateHasNote}
+                    />
+                </View>
+            )}
 
             {/* Detailed Report Upcoming Feature Modal */}
             <Modal
@@ -2647,6 +2694,15 @@ const styles = StyleSheet.create({
         borderTopWidth: 1,
         borderColor: 'rgba(255,255,255,0.06)',
         marginTop: 8,
+    },
+    footerLeftIcons: {
+        flexDirection: 'row',
+        alignItems: 'center',
+    },
+    notesTakeoverOverlay: {
+        ...StyleSheet.absoluteFillObject,
+        zIndex: 999,
+        elevation: 999,
     },
 
     settingsIconBtn: {

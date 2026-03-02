@@ -12,7 +12,6 @@ import {
     Animated,
     Easing,
     useWindowDimensions,
-    Modal,
     PanResponder,
     TextInput,
     LayoutAnimation,
@@ -29,6 +28,7 @@ import { Category, Task, TaskStage, QuickMessage, StageStatus, Timer, LEAVE_DAYS
 import TaskActionModal from '../../../components/TaskActionModal';
 import LiveFocusView from './LiveFocusView';
 import StageActionPopup from './StageActionPopup';
+import NotesPanel, { NotesIconButton, hasDayNote } from './NotesPanel';
 import * as Haptics from 'expo-haptics';
 import { TimeOfDaySlotConfigList } from '../../../utils/timeOfDaySlots';
 import { getLogicalDate, getStartOfLogicalDay, DEFAULT_DAILY_START_MINUTES, formatDailyStartRangeCompact } from '../../../utils/dailyStartTime';
@@ -880,6 +880,381 @@ const styles = StyleSheet.create({
     },
 
     // Precision Status Button Styles - Raised/Embossed Design
+    previousSubtasksCard: {
+        marginHorizontal: 16,
+        marginBottom: 12,
+        borderRadius: 24,
+        backgroundColor: 'rgba(255, 61, 0, 0.08)',
+        borderWidth: 1,
+        borderColor: 'rgba(255, 61, 0, 0.2)',
+        overflow: 'hidden',
+    },
+    previousSubtasksHeader: {
+        paddingHorizontal: 16,
+        paddingVertical: 14,
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+    },
+    previousSubtasksTitleRow: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 8,
+    },
+    previousSubtasksTitle: {
+        fontSize: 14,
+        fontWeight: '800',
+        color: '#FF3D00',
+        letterSpacing: 0.5,
+    },
+    previousSubtasksBadge: {
+        backgroundColor: 'rgba(255, 61, 0, 0.2)',
+        paddingHorizontal: 8,
+        paddingVertical: 2,
+        borderRadius: 10,
+    },
+    previousSubtasksBadgeText: {
+        fontSize: 10,
+        fontWeight: '800',
+        color: '#FF3D00',
+    },
+    previousSubtasksContent: {
+        paddingHorizontal: 16,
+        paddingBottom: 16,
+        gap: 8,
+    },
+    previousSubtasksFilters: {
+        gap: 8,
+        marginBottom: 4,
+    },
+    previousSubtasksSearchInput: {
+        backgroundColor: 'rgba(0,0,0,0.2)',
+        borderRadius: 12,
+        borderWidth: 1,
+        borderColor: 'rgba(255, 61, 0, 0.18)',
+        paddingHorizontal: 12,
+        paddingVertical: 10,
+        color: '#fff',
+        fontSize: 12,
+        fontWeight: '600',
+    },
+    previousSubtasksChipsRow: {
+        flexDirection: 'row',
+        flexWrap: 'wrap',
+        gap: 6,
+    },
+    previousSubtasksChip: {
+        paddingHorizontal: 10,
+        paddingVertical: 6,
+        borderRadius: 999,
+        backgroundColor: 'rgba(255,255,255,0.04)',
+        borderWidth: 1,
+        borderColor: 'rgba(255,255,255,0.06)',
+    },
+    previousSubtasksChipActive: {
+        backgroundColor: 'rgba(255, 61, 0, 0.12)',
+        borderColor: 'rgba(255, 61, 0, 0.35)',
+    },
+    previousSubtasksChipText: {
+        fontSize: 9,
+        fontWeight: '800',
+        color: 'rgba(255,255,255,0.45)',
+        letterSpacing: 0.5,
+    },
+    previousSubtasksChipTextActive: {
+        color: '#FF3D00',
+    },
+    previousSubtasksEmpty: {
+        paddingVertical: 8,
+        alignItems: 'center',
+        justifyContent: 'center',
+        opacity: 0.7,
+    },
+    previousSubtasksEmptyText: {
+        fontSize: 12,
+        fontWeight: '700',
+        color: 'rgba(255,255,255,0.5)',
+    },
+    historyControls: {
+        gap: 6,
+        marginBottom: 6,
+        marginTop: 6,
+    },
+    historyTopBar: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 8,
+        paddingVertical: 0,
+    },
+    historyTopSearchInput: {
+        flex: 1,
+        backgroundColor: 'rgba(0,0,0,0.16)',
+        borderRadius: 10,
+        borderWidth: 1,
+        borderColor: 'rgba(255, 61, 0, 0.16)',
+        paddingHorizontal: 12,
+        paddingVertical: 6,
+        color: '#fff',
+        fontSize: 10,
+        fontWeight: '600',
+    },
+    historySearchRow: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 8,
+    },
+    historySearchInput: {
+        flex: 1,
+        backgroundColor: 'rgba(0,0,0,0.16)',
+        borderRadius: 12,
+        borderWidth: 1,
+        borderColor: 'rgba(255, 61, 0, 0.16)',
+        paddingHorizontal: 12,
+        paddingVertical: 8,
+        color: '#fff',
+        fontSize: 11,
+        fontWeight: '600',
+    },
+    historyIconBtn: {
+        width: 28,
+        height: 28,
+        borderRadius: 999,
+        backgroundColor: 'rgba(0,0,0,0.18)',
+        borderWidth: 1,
+        borderColor: 'rgba(255,255,255,0.10)',
+        alignItems: 'center',
+        justifyContent: 'center',
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 6 },
+        shadowOpacity: 0.35,
+        shadowRadius: 10,
+        elevation: 10,
+    },
+    historyIconBtnActive: {
+        backgroundColor: 'rgba(255, 61, 0, 0.10)',
+        borderColor: 'rgba(255, 61, 0, 0.26)',
+    },
+    historyFiltersExpanded: {
+        gap: 6,
+        paddingTop: 2,
+    },
+    historyDropdownContainer: {
+        padding: 8,
+        borderRadius: 14,
+        backgroundColor: 'rgba(0,0,0,0.18)',
+        borderWidth: 1,
+        borderColor: 'rgba(255,255,255,0.08)',
+    },
+    historyChipsContent: {
+        gap: 6,
+        paddingRight: 6,
+    },
+    historyBody: {
+        paddingHorizontal: 12,
+        paddingBottom: 12,
+        gap: 8,
+    },
+    historyBodyLandscape: {
+        flex: 1,
+        minHeight: 0,
+    },
+    historyListInset: {
+        flex: 1,
+        minHeight: 0,
+        borderRadius: 18,
+        backgroundColor: 'rgba(0,0,0,0.18)',
+        borderWidth: 1,
+        borderColor: 'rgba(255,255,255,0.08)',
+        paddingHorizontal: 10,
+        paddingTop: 4,
+    },
+    historyTableHeaderRow: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 10,
+        paddingVertical: 8,
+        borderBottomWidth: 1,
+        borderBottomColor: 'rgba(255,255,255,0.06)',
+    },
+    historyTableHeaderText: {
+        fontSize: 9,
+        fontWeight: '900',
+        color: 'rgba(255,255,255,0.35)',
+        letterSpacing: 1.2,
+    },
+    historyDateHeaderRow: {
+        marginTop: 8,
+        marginBottom: 4,
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        paddingHorizontal: 2,
+    },
+    historyDateHeaderText: {
+        fontSize: 10,
+        fontWeight: '900',
+        color: 'rgba(255,255,255,0.55)',
+        letterSpacing: 1,
+    },
+    historyDateHeaderBadge: {
+        paddingHorizontal: 8,
+        paddingVertical: 2,
+        borderRadius: 999,
+        backgroundColor: 'rgba(255,255,255,0.06)',
+        borderWidth: 1,
+        borderColor: 'rgba(255,255,255,0.08)',
+    },
+    historyDateHeaderBadgeText: {
+        fontSize: 9,
+        fontWeight: '900',
+        color: 'rgba(255,255,255,0.5)',
+    },
+    historyTaskGroupRow: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        paddingVertical: 6,
+        paddingHorizontal: 8,
+        borderRadius: 10,
+        backgroundColor: 'rgba(255,255,255,0.035)',
+        borderWidth: 1,
+        borderColor: 'rgba(255,255,255,0.06)',
+        marginBottom: 4,
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 8 },
+        shadowOpacity: 0.25,
+        shadowRadius: 14,
+        elevation: 10,
+    },
+    historyTaskGroupLeftPress: {
+        flex: 1,
+        minWidth: 0,
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 6,
+        paddingRight: 8,
+    },
+    historyTaskGroupRight: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 8,
+        flexShrink: 0,
+    },
+    historyTaskGroupTitle: {
+        fontSize: 11,
+        fontWeight: '800',
+        color: 'rgba(255,255,255,0.8)',
+        flex: 1,
+        paddingRight: 8,
+    },
+    historyTaskGroupBadge: {
+        paddingHorizontal: 8,
+        paddingVertical: 2,
+        borderRadius: 999,
+        backgroundColor: 'rgba(255,255,255,0.06)',
+        borderWidth: 1,
+        borderColor: 'rgba(255,255,255,0.08)',
+    },
+    historyTaskGroupBadgeText: {
+        fontSize: 9,
+        fontWeight: '900',
+        color: 'rgba(255,255,255,0.5)',
+    },
+    historyStageRow: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        paddingVertical: 7,
+        paddingLeft: 12,
+        paddingRight: 2,
+        borderBottomWidth: 1,
+        borderBottomColor: 'rgba(255,255,255,0.05)',
+        gap: 10,
+    },
+    historyStageRowText: {
+        flex: 1,
+        fontSize: 11,
+        fontWeight: '600',
+        color: 'rgba(255,255,255,0.7)',
+    },
+    historyTableRow: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        paddingVertical: 10,
+        borderBottomWidth: 1,
+        borderBottomColor: 'rgba(255,255,255,0.05)',
+        gap: 10,
+    },
+    historyColTask: {
+        flex: 1.05,
+        minWidth: 0,
+    },
+    historyColStage: {
+        flex: 1.35,
+        minWidth: 0,
+    },
+    historyColStatus: {
+        width: 86,
+        alignItems: 'flex-end',
+        justifyContent: 'center',
+    },
+    historyTaskText: {
+        fontSize: 12,
+        fontWeight: '700',
+        color: 'rgba(255,255,255,0.85)',
+    },
+    historyStageText: {
+        fontSize: 12,
+        fontWeight: '600',
+        color: 'rgba(255,255,255,0.65)',
+    },
+    historyStatusPill: {
+        paddingHorizontal: 8,
+        paddingVertical: 3,
+        borderRadius: 999,
+        borderWidth: 1,
+        maxWidth: 86,
+        alignItems: 'center',
+        justifyContent: 'center',
+    },
+    historyTaskStatusPill: {
+        maxWidth: 110,
+    },
+    historyStatusText: {
+        fontSize: 8,
+        fontWeight: '900',
+        letterSpacing: 0.6,
+    },
+    previousSubtaskItem: {
+        backgroundColor: 'rgba(255,255,255,0.05)',
+        borderRadius: 12,
+        padding: 12,
+        borderWidth: 1,
+        borderColor: 'rgba(255,255,255,0.08)',
+    },
+    previousSubtaskTopRow: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        marginBottom: 6,
+    },
+    previousSubtaskTaskTitle: {
+        fontSize: 12,
+        fontWeight: '700',
+        color: 'rgba(255,255,255,0.6)',
+        flex: 1,
+    },
+    previousSubtaskDate: {
+        fontSize: 10,
+        fontWeight: '600',
+        color: 'rgba(255,255,255,0.4)',
+    },
+    previousSubtaskText: {
+        fontSize: 14,
+        fontWeight: '600',
+        color: '#fff',
+    },
+
     statusButtonBezel: {
         width: 36,
         height: 36,
@@ -1173,6 +1548,10 @@ const styles = StyleSheet.create({
         borderColor: 'rgba(255,255,255,0.06)',
         marginTop: 8,
     },
+    footerLeftIcons: {
+        flexDirection: 'row',
+        alignItems: 'center',
+    },
     settingsIconBtn: {
         width: 40,
         height: 40,
@@ -1199,6 +1578,11 @@ const styles = StyleSheet.create({
         alignItems: 'center',
         marginBottom: 4,
     },
+    filterHeaderActions: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 8,
+    },
     backlogHeaderBtn: {
         flexDirection: 'row',
         alignItems: 'center',
@@ -1223,10 +1607,89 @@ const styles = StyleSheet.create({
     backlogHeaderBtnTextActive: {
         color: '#4CAF50',
     },
+    historyHeaderBtn: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 6,
+        paddingHorizontal: 8,
+        paddingVertical: 4,
+        borderRadius: 8,
+        backgroundColor: 'rgba(255, 61, 0, 0.08)',
+        borderWidth: 1,
+        borderColor: 'rgba(255, 61, 0, 0.2)',
+    },
+    historyHeaderBtnActive: {
+        backgroundColor: 'rgba(255, 61, 0, 0.14)',
+        borderColor: 'rgba(255, 61, 0, 0.32)',
+    },
+    historyHeaderBtnText: {
+        fontSize: 9,
+        fontWeight: '800',
+        color: '#FF3D00',
+        letterSpacing: 0.5,
+    },
+    historyHeaderBadge: {
+        backgroundColor: 'rgba(255, 61, 0, 0.2)',
+        paddingHorizontal: 6,
+        paddingVertical: 1,
+        borderRadius: 10,
+        marginLeft: 2,
+    },
+    historyHeaderBadgeText: {
+        fontSize: 9,
+        fontWeight: '800',
+        color: '#FF3D00',
+    },
+    historyPanelCard: {
+        marginHorizontal: 0,
+        marginBottom: 0,
+    },
+    historyPanelCardLandscape: {
+        flex: 1,
+        marginHorizontal: 0,
+        marginBottom: 0,
+    },
+    historyPanelCloseBtn: {
+        width: 28,
+        height: 28,
+        borderRadius: 999,
+        backgroundColor: 'rgba(255,255,255,0.05)',
+        alignItems: 'center',
+        justifyContent: 'center',
+        borderWidth: 1,
+        borderColor: 'rgba(255,255,255,0.08)',
+    },
+    historyPanel3D: {
+        backgroundColor: 'rgba(6, 6, 6, 0.62)',
+        borderColor: 'rgba(255,255,255,0.10)',
+        // Keep the outside shadow subtle; the "deep" look comes from the inset list panel.
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 10 },
+        shadowOpacity: 0.35,
+        shadowRadius: 16,
+        elevation: 14,
+    },
+    // historyPanelTopGlow removed (was adding unwanted shade)
+    historyPanelInnerBorder: {
+        position: 'absolute',
+        top: 1,
+        left: 1,
+        right: 1,
+        bottom: 1,
+        borderRadius: 24,
+        borderWidth: 1,
+        borderColor: 'rgba(255,255,255,0.06)',
+        opacity: 0.8,
+    },
     expandedTakeoverContainer: {
         flex: 1,
         padding: 15,
         overflow: 'hidden', // Contain child cards
+    },
+    notesTakeoverOverlay: {
+        ...StyleSheet.absoluteFillObject,
+        zIndex: 999,
+        elevation: 999,
     },
     expandedTakeoverHeader: {
         flexDirection: 'row',
@@ -1851,6 +2314,508 @@ export default function TaskList({
     const [selectedActionTask, setSelectedActionTask] = useState<Task | null>(null);
     const [expandedTaskId, setExpandedTaskId] = useState<number | null>(null);
 
+    const [showHistoryPanel, setShowHistoryPanel] = useState(false);
+    const [showNotesPanel, setShowNotesPanel] = useState(false);
+    const [selectedDateHasNote, setSelectedDateHasNote] = useState(false);
+    const [historyFiltersExpanded, setHistoryFiltersExpanded] = useState(false);
+    const [historyDatePickerExpanded, setHistoryDatePickerExpanded] = useState(false);
+    const [historySelectedDate, setHistorySelectedDate] = useState<string | null>(null);
+    const [historyStatusPopupVisible, setHistoryStatusPopupVisible] = useState(false);
+    const [historyStatusPopupPosition, setHistoryStatusPopupPosition] = useState({ x: 0, y: 0 });
+    const [historySelectedItem, setHistorySelectedItem] = useState<{ task: Task, stage: TaskStage, date: string } | null>(null);
+    const [collapsedHistoryGroups, setCollapsedHistoryGroups] = useState<Record<string, boolean>>({});
+    const [previousSubtasksQuery, setPreviousSubtasksQuery] = useState('');
+    const [previousSubtasksRange, setPreviousSubtasksRange] = useState<'ALL' | '7D' | '30D'>('ALL');
+    const [previousSubtasksStageStatus, setPreviousSubtasksStageStatus] = useState<'ALL' | StageStatus>('ALL');
+
+    const previousIncompleteStages = React.useMemo(() => {
+        const logicalToday = getLogicalDate(new Date(), dailyStartMinutes);
+        const incomplete: { task: Task, stage: TaskStage, date: string }[] = [];
+
+        tasks.forEach(t => {
+            if (!t || !t.id) return;
+            if (t.isBacklog) return;
+            const matchesCategory = filterCategoryIds.length === 0 || (t.categoryId != null && filterCategoryIds.includes(t.categoryId));
+            if (!matchesCategory) return;
+
+            if (t.recurrence && t.recurrenceInstances) {
+                Object.keys(t.recurrenceInstances).forEach(date => {
+                    if (date < logicalToday) {
+                        const inst = t.recurrenceInstances![date];
+                        if (inst.stages) {
+                            inst.stages.forEach(s => {
+                                // Important: pass the instance date via task.forDate so stage updates target the right recurrence instance.
+                                incomplete.push({ task: { ...t, forDate: date }, stage: s, date });
+                            });
+                        }
+                    }
+                });
+            } else if (t.forDate && t.forDate < logicalToday) {
+                if (t.stages) {
+                    t.stages.forEach(s => {
+                        incomplete.push({ task: t, stage: s, date: t.forDate });
+                    });
+                }
+            }
+        });
+
+        incomplete.sort((a, b) => b.date.localeCompare(a.date));
+        return incomplete;
+    }, [tasks, dailyStartMinutes, filterCategoryIds]);
+
+    useEffect(() => {
+        if (!showHistoryPanel) {
+            setHistoryFiltersExpanded(false);
+            setHistoryDatePickerExpanded(false);
+            setHistorySelectedDate(null);
+            setHistoryStatusPopupVisible(false);
+            setHistorySelectedItem(null);
+            setCollapsedHistoryGroups({});
+        }
+    }, [showHistoryPanel]);
+
+    const filteredPreviousIncompleteStages = React.useMemo(() => {
+        const q = previousSubtasksQuery.trim().toLowerCase();
+        const logicalToday = getLogicalDate(new Date(), dailyStartMinutes);
+
+        let cutoffLogical: string | null = null;
+        if (previousSubtasksRange !== 'ALL') {
+            const start = getStartOfLogicalDay(new Date(), dailyStartMinutes);
+            const daysBack = previousSubtasksRange === '7D' ? 7 : 30;
+            const cutoffDate = new Date(start.getTime() - daysBack * 24 * 60 * 60 * 1000);
+            cutoffLogical = getLogicalDate(cutoffDate, dailyStartMinutes);
+        }
+
+        return previousIncompleteStages.filter(item => {
+            // Defensive: avoid showing anything from today
+            if (item.date >= logicalToday) return false;
+            if (cutoffLogical && item.date < cutoffLogical) return false;
+
+            const stageStatus = (item.stage.status || 'Upcoming') as StageStatus;
+            const isDone = stageStatus === 'Done' || !!item.stage.isCompleted;
+
+            // Default view: unfinished only
+            if (previousSubtasksStageStatus === 'ALL') {
+                if (isDone) return false;
+            } else if (previousSubtasksStageStatus === 'Done') {
+                if (!isDone) return false;
+            } else {
+                if (stageStatus !== previousSubtasksStageStatus) return false;
+            }
+
+            if (historySelectedDate && item.date !== historySelectedDate) return false;
+
+            if (!q) return true;
+            return (
+                (item.task.title || '').toLowerCase().includes(q) ||
+                (item.stage.text || '').toLowerCase().includes(q) ||
+                (item.date || '').toLowerCase().includes(q)
+            );
+        });
+    }, [previousIncompleteStages, previousSubtasksQuery, previousSubtasksRange, previousSubtasksStageStatus, historySelectedDate, dailyStartMinutes]);
+
+    const historyAvailableDates = React.useMemo(() => {
+        const logicalToday = getLogicalDate(new Date(), dailyStartMinutes);
+
+        let cutoffLogical: string | null = null;
+        if (previousSubtasksRange !== 'ALL') {
+            const start = getStartOfLogicalDay(new Date(), dailyStartMinutes);
+            const daysBack = previousSubtasksRange === '7D' ? 7 : 30;
+            const cutoffDate = new Date(start.getTime() - daysBack * 24 * 60 * 60 * 1000);
+            cutoffLogical = getLogicalDate(cutoffDate, dailyStartMinutes);
+        }
+
+        const set = new Set<string>();
+        previousIncompleteStages.forEach(item => {
+            if (item.date >= logicalToday) return;
+            if (cutoffLogical && item.date < cutoffLogical) return;
+            const stageStatus = (item.stage.status || 'Upcoming') as StageStatus;
+            const isDone = stageStatus === 'Done' || !!item.stage.isCompleted;
+            if (previousSubtasksStageStatus === 'ALL') {
+                if (isDone) return;
+            } else if (previousSubtasksStageStatus === 'Done') {
+                if (!isDone) return;
+            } else {
+                if (stageStatus !== previousSubtasksStageStatus) return;
+            }
+            set.add(item.date);
+        });
+        return Array.from(set).sort((a, b) => b.localeCompare(a));
+    }, [previousIncompleteStages, previousSubtasksRange, previousSubtasksStageStatus, dailyStartMinutes]);
+
+    const historyDateCounts = React.useMemo(() => {
+        const m: Record<string, number> = {};
+        (filteredPreviousIncompleteStages as { date: string }[]).forEach(it => {
+            m[it.date] = (m[it.date] || 0) + 1;
+        });
+        return m;
+    }, [filteredPreviousIncompleteStages]);
+
+    type HistoryStageItem = { task: Task, stage: TaskStage, date: string };
+    type HistoryRow =
+        | { type: 'date', date: string }
+        | { type: 'task', date: string, task: Task, count: number }
+        | { type: 'stage', date: string, task: Task, stage: TaskStage };
+
+    const formatHistoryDateLabel = (dateStr: string) => {
+        const d = new Date(dateStr);
+        if (Number.isNaN(d.getTime())) return dateStr;
+        return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+    };
+
+    const getHistoryStatusStyle = (status: StageStatus) => {
+        if (status === 'Done') return { bg: 'rgba(76, 175, 80, 0.14)', border: 'rgba(76, 175, 80, 0.3)', text: '#4CAF50' };
+        if (status === 'Process') return { bg: 'rgba(0, 229, 255, 0.12)', border: 'rgba(0, 229, 255, 0.28)', text: '#00E5FF' };
+        if (status === 'Upcoming') return { bg: 'rgba(255, 255, 255, 0.08)', border: 'rgba(255, 255, 255, 0.16)', text: 'rgba(255,255,255,0.75)' };
+        if (status === 'Undone') return { bg: 'rgba(255, 61, 0, 0.14)', border: 'rgba(255, 61, 0, 0.3)', text: '#FF3D00' };
+        return { bg: 'rgba(255, 255, 255, 0.08)', border: 'rgba(255, 255, 255, 0.16)', text: 'rgba(255,255,255,0.75)' };
+    };
+
+    const historyRows = React.useMemo(() => {
+        const byDate = new Map<string, Map<number, { task: Task, stages: TaskStage[] }>>();
+        (filteredPreviousIncompleteStages as HistoryStageItem[]).forEach(it => {
+            const date = it.date;
+            if (!byDate.has(date)) byDate.set(date, new Map());
+            const byTask = byDate.get(date)!;
+            const taskId = it.task.id;
+            if (!byTask.has(taskId)) byTask.set(taskId, { task: it.task, stages: [] });
+            byTask.get(taskId)!.stages.push(it.stage);
+        });
+
+        const dates = Array.from(byDate.keys()).sort((a, b) => b.localeCompare(a));
+        const rows: HistoryRow[] = [];
+
+        for (const date of dates) {
+            rows.push({ type: 'date', date });
+            const groups = Array.from(byDate.get(date)!.values()).sort((a, b) => (a.task.title || '').localeCompare(b.task.title || ''));
+            for (const g of groups) {
+                const key = `${date}-${g.task.id}`;
+                const isCollapsed = !!collapsedHistoryGroups[key];
+                rows.push({ type: 'task', date, task: g.task, count: g.stages.length });
+                if (!isCollapsed) {
+                    for (const stage of g.stages) {
+                        rows.push({ type: 'stage', date, task: g.task, stage });
+                    }
+                }
+            }
+        }
+
+        return rows;
+    }, [filteredPreviousIncompleteStages, collapsedHistoryGroups]);
+
+    const handleOpenHistoryStatusPopup = useCallback((it: HistoryStageItem, event: any) => {
+        const { pageX, pageY } = event?.nativeEvent || {};
+        if (typeof pageX === 'number' && typeof pageY === 'number') {
+            setHistoryStatusPopupPosition({ x: pageX, y: pageY });
+        }
+        setHistorySelectedItem(it);
+        setHistoryStatusPopupVisible(true);
+        Haptics.selectionAsync();
+    }, []);
+
+    const handleCloseHistoryStatusPopup = useCallback(() => {
+        setHistoryStatusPopupVisible(false);
+        setHistorySelectedItem(null);
+    }, []);
+
+    const handleSelectHistoryStatus = useCallback((status: StageStatus) => {
+        const it = historySelectedItem;
+        if (!it || !onUpdateStages) {
+            handleCloseHistoryStatusPopup();
+            return;
+        }
+
+        const sourceStages: TaskStage[] = it.task.recurrence
+            ? (it.task.recurrenceInstances?.[it.date]?.stages || [])
+            : (it.task.stages || []);
+
+        const updatedStages = sourceStages.map(s => {
+            if (s.id !== it.stage.id) return s;
+            const isCompleted = status === 'Done';
+            return { ...s, status, isCompleted };
+        });
+
+        // For recurring tasks, task.forDate must be the instance date (we already enforce this when building history items)
+        onUpdateStages(it.task, updatedStages, 'none');
+        handleCloseHistoryStatusPopup();
+    }, [historySelectedItem, onUpdateStages, handleCloseHistoryStatusPopup]);
+
+    const getHistoryTaskStatus = useCallback((task: Task, date: string): Task['status'] => {
+        if (task.recurrence) {
+            const inst = task.recurrenceInstances?.[date];
+            if (inst?.status) return inst.status;
+        }
+        return task.status || 'Pending';
+    }, []);
+
+    const updateTaskStatusViaStages = useCallback((task: Task, date: string, nextStatus: Task['status']) => {
+        if (!onUpdateStages) return;
+
+        const sourceStages: TaskStage[] = task.recurrence
+            ? (task.recurrenceInstances?.[date]?.stages || [])
+            : (task.stages || []);
+
+        if (!sourceStages || sourceStages.length === 0) return;
+
+        let updatedStages: TaskStage[] = sourceStages;
+
+        if (nextStatus === 'Completed') {
+            updatedStages = sourceStages.map(s => ({ ...s, status: 'Done' as StageStatus, isCompleted: true }));
+        } else if (nextStatus === 'Pending') {
+            updatedStages = sourceStages.map(s => ({ ...s, status: 'Upcoming' as StageStatus, isCompleted: false }));
+        } else {
+            // In Progress: keep Done as Done, reset others to Upcoming, then set first non-done to Process
+            const base = sourceStages.map(s => {
+                if (s.status === 'Done' || s.isCompleted) return { ...s, status: 'Done' as StageStatus, isCompleted: true };
+                return { ...s, status: 'Upcoming' as StageStatus, isCompleted: false };
+            });
+            const idx = base.findIndex(s => s.status !== 'Done');
+            if (idx >= 0) {
+                base[idx] = { ...base[idx], status: 'Process' as StageStatus, isCompleted: false };
+            }
+            updatedStages = base;
+        }
+
+        onUpdateStages(task, updatedStages, 'none');
+    }, [onUpdateStages]);
+
+    const historyCountLabel =
+        (previousSubtasksQuery.trim() || previousSubtasksRange !== 'ALL' || previousSubtasksStageStatus !== 'ALL' || historySelectedDate)
+            ? `${filteredPreviousIncompleteStages.length}/${previousIncompleteStages.length}`
+            : `${previousIncompleteStages.length}`;
+
+    const renderHistoryPanel = (variant: 'landscape' | 'portrait') => {
+        return (
+            <View style={[
+                styles.previousSubtasksCard,
+                styles.historyPanelCard,
+                variant === 'landscape' && styles.historyPanelCardLandscape,
+                styles.historyPanel3D,
+            ]}>
+                <View pointerEvents="none" style={styles.historyPanelInnerBorder} />
+                <View style={[styles.historyBody, variant === 'landscape' && styles.historyBodyLandscape]}>
+                    <View style={styles.historyControls}>
+                        <View style={styles.historyTopBar}>
+                            <TextInput
+                                value={previousSubtasksQuery}
+                                onChangeText={setPreviousSubtasksQuery}
+                                placeholder="Search history…"
+                                placeholderTextColor="rgba(255,255,255,0.35)"
+                                style={styles.historyTopSearchInput}
+                                autoCorrect={false}
+                                autoCapitalize="none"
+                                clearButtonMode="while-editing"
+                            />
+
+                            <TouchableOpacity
+                                style={[styles.historyIconBtn, historyDatePickerExpanded && styles.historyIconBtnActive]}
+                                onPress={() => {
+                                    LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+                                    setHistoryDatePickerExpanded(!historyDatePickerExpanded);
+                                }}
+                                activeOpacity={0.7}
+                            >
+                                <MaterialIcons name="calendar-today" size={16} color="rgba(255,255,255,0.65)" />
+                            </TouchableOpacity>
+
+                            <TouchableOpacity
+                                style={[styles.historyIconBtn, historyFiltersExpanded && styles.historyIconBtnActive]}
+                                onPress={() => {
+                                    LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+                                    setHistoryFiltersExpanded(!historyFiltersExpanded);
+                                }}
+                                activeOpacity={0.7}
+                            >
+                                <MaterialIcons name={historyFiltersExpanded ? "expand-less" : "tune"} size={16} color="rgba(255,255,255,0.65)" />
+                            </TouchableOpacity>
+
+                            <TouchableOpacity
+                                style={styles.historyIconBtn}
+                                onPress={() => setShowHistoryPanel(false)}
+                                activeOpacity={0.7}
+                            >
+                                <MaterialIcons name="close" size={16} color="rgba(255,255,255,0.7)" />
+                            </TouchableOpacity>
+                        </View>
+
+                        {historyDatePickerExpanded && (
+                            <View style={styles.historyDropdownContainer}>
+                                <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.historyChipsContent} keyboardShouldPersistTaps="handled">
+                                    <TouchableOpacity
+                                        style={[styles.previousSubtasksChip, !historySelectedDate && styles.previousSubtasksChipActive]}
+                                        onPress={() => setHistorySelectedDate(null)}
+                                        activeOpacity={0.7}
+                                    >
+                                        <Text style={[styles.previousSubtasksChipText, !historySelectedDate && styles.previousSubtasksChipTextActive]}>All dates</Text>
+                                    </TouchableOpacity>
+                                    {historyAvailableDates.slice(0, 30).map(d => {
+                                        const active = historySelectedDate === d;
+                                        return (
+                                            <TouchableOpacity
+                                                key={d}
+                                                style={[styles.previousSubtasksChip, active && styles.previousSubtasksChipActive]}
+                                                onPress={() => setHistorySelectedDate(d)}
+                                                activeOpacity={0.7}
+                                            >
+                                                <Text style={[styles.previousSubtasksChipText, active && styles.previousSubtasksChipTextActive]}>{formatHistoryDateLabel(d)}</Text>
+                                            </TouchableOpacity>
+                                        );
+                                    })}
+                                </ScrollView>
+                            </View>
+                        )}
+
+                        {historyFiltersExpanded && (
+                            <View style={styles.historyDropdownContainer}>
+                                <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.historyChipsContent} keyboardShouldPersistTaps="handled">
+                                    {(['ALL', '7D', '30D'] as const).map(r => {
+                                        const active = previousSubtasksRange === r;
+                                        return (
+                                            <TouchableOpacity
+                                                key={r}
+                                                style={[styles.previousSubtasksChip, active && styles.previousSubtasksChipActive]}
+                                                onPress={() => setPreviousSubtasksRange(r)}
+                                                activeOpacity={0.7}
+                                            >
+                                                <Text style={[styles.previousSubtasksChipText, active && styles.previousSubtasksChipTextActive]}>{r}</Text>
+                                            </TouchableOpacity>
+                                        );
+                                    })}
+                                </ScrollView>
+
+                                <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.historyChipsContent} keyboardShouldPersistTaps="handled">
+                                    {(['ALL', 'Upcoming', 'Process', 'Undone', 'Done'] as const).map(s => {
+                                        const active = previousSubtasksStageStatus === s;
+                                        return (
+                                            <TouchableOpacity
+                                                key={s}
+                                                style={[styles.previousSubtasksChip, active && styles.previousSubtasksChipActive]}
+                                                onPress={() => setPreviousSubtasksStageStatus(s)}
+                                                activeOpacity={0.7}
+                                            >
+                                                <Text style={[styles.previousSubtasksChipText, active && styles.previousSubtasksChipTextActive]}>
+                                                    {s === 'Done' ? 'Completed' : s}
+                                                </Text>
+                                            </TouchableOpacity>
+                                        );
+                                    })}
+                                </ScrollView>
+                            </View>
+                        )}
+                    </View>
+
+                    <View style={styles.historyListInset}>
+                        {historyRows.length === 0 ? (
+                        <View style={styles.previousSubtasksEmpty}>
+                            <Text style={styles.previousSubtasksEmptyText}>No matches.</Text>
+                        </View>
+                    ) : (
+                        <FlatList
+                            data={historyRows}
+                            keyExtractor={(row, idx) => `${row.type}-${'date' in row ? row.date : ''}-${'task' in row ? row.task.id : ''}-${'stage' in row ? row.stage.id : ''}-${idx}`}
+                            renderItem={({ item }) => {
+                                if (item.type === 'date') {
+                                    const date = item.date;
+                                    const countForDate = historyDateCounts[date] || 0;
+                                    return (
+                                        <View style={styles.historyDateHeaderRow}>
+                                            <Text style={styles.historyDateHeaderText}>{formatHistoryDateLabel(date)}</Text>
+                                            <View style={styles.historyDateHeaderBadge}>
+                                                <Text style={styles.historyDateHeaderBadgeText}>{countForDate}</Text>
+                                            </View>
+                                        </View>
+                                    );
+                                }
+
+                                if (item.type === 'task') {
+                                    const key = `${item.date}-${item.task.id}`;
+                                    const isCollapsed = !!collapsedHistoryGroups[key];
+                                    const taskStatus = getHistoryTaskStatus(item.task, item.date);
+                                    const taskStatusStyle = taskStatus === 'Completed'
+                                        ? { bg: 'rgba(76, 175, 80, 0.14)', border: 'rgba(76, 175, 80, 0.3)', text: '#4CAF50' }
+                                        : taskStatus === 'In Progress'
+                                            ? { bg: 'rgba(0, 229, 255, 0.12)', border: 'rgba(0, 229, 255, 0.28)', text: '#00E5FF' }
+                                            : { bg: 'rgba(255, 255, 255, 0.08)', border: 'rgba(255, 255, 255, 0.16)', text: 'rgba(255,255,255,0.75)' };
+                                    return (
+                                        <View style={styles.historyTaskGroupRow}>
+                                            <TouchableOpacity
+                                                style={styles.historyTaskGroupLeftPress}
+                                                activeOpacity={0.7}
+                                                onPress={() => {
+                                                    LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+                                                    setCollapsedHistoryGroups(prev => ({ ...prev, [key]: !prev[key] }));
+                                                }}
+                                            >
+                                                <MaterialIcons
+                                                    name={isCollapsed ? "chevron-right" : "expand-more"}
+                                                    size={18}
+                                                    color="rgba(255,255,255,0.45)"
+                                                />
+                                                <Text style={styles.historyTaskGroupTitle} numberOfLines={1}>{item.task.title}</Text>
+                                            </TouchableOpacity>
+
+                                            <View style={styles.historyTaskGroupRight}>
+                                            <TouchableOpacity
+                                                style={[styles.historyStatusPill, styles.historyTaskStatusPill, { backgroundColor: taskStatusStyle.bg, borderColor: taskStatusStyle.border }]}
+                                                onPress={() => {
+                                                    Alert.alert(
+                                                        'Update task status',
+                                                        item.task.title,
+                                                        [
+                                                            { text: 'Pending', onPress: () => updateTaskStatusViaStages(item.task, item.date, 'Pending') },
+                                                            { text: 'In Progress', onPress: () => updateTaskStatusViaStages(item.task, item.date, 'In Progress') },
+                                                            { text: 'Completed', onPress: () => updateTaskStatusViaStages(item.task, item.date, 'Completed') },
+                                                            { text: 'Cancel', style: 'cancel' },
+                                                        ]
+                                                    );
+                                                }}
+                                                activeOpacity={0.8}
+                                            >
+                                                <Text style={[styles.historyStatusText, { color: taskStatusStyle.text }]} numberOfLines={1}>
+                                                    {taskStatus}
+                                                </Text>
+                                            </TouchableOpacity>
+
+                                            <View style={styles.historyTaskGroupBadge}>
+                                                <Text style={styles.historyTaskGroupBadgeText}>{item.count}</Text>
+                                            </View>
+                                            </View>
+                                        </View>
+                                    );
+                                }
+
+                                const statusStyle = getHistoryStatusStyle(item.stage.status || 'Upcoming');
+                                const stageItem: HistoryStageItem = { task: item.task, stage: item.stage, date: item.date };
+
+                                return (
+                                    <View style={styles.historyStageRow}>
+                                        <Text style={styles.historyStageRowText} numberOfLines={1}>{item.stage.text}</Text>
+                                        <TouchableOpacity
+                                            style={[styles.historyStatusPill, { backgroundColor: statusStyle.bg, borderColor: statusStyle.border }]}
+                                            onPress={(e) => handleOpenHistoryStatusPopup(stageItem, e)}
+                                            activeOpacity={0.8}
+                                        >
+                                            <Text style={[styles.historyStatusText, { color: statusStyle.text }]} numberOfLines={1}>
+                                                {item.stage.status}
+                                            </Text>
+                                        </TouchableOpacity>
+                                    </View>
+                                );
+                            }}
+                            style={variant === 'landscape' ? { flex: 1 } : undefined}
+                            scrollEnabled={variant === 'landscape'}
+                            contentContainerStyle={{ paddingBottom: 12 }}
+                            showsVerticalScrollIndicator={false}
+                            keyboardShouldPersistTaps="handled"
+                            nestedScrollEnabled={variant === 'landscape'}
+                        />
+                    )}
+                    </View>
+                </View>
+            </View>
+        );
+    };
+
     // LiveFocusView: zoom (minutesPerCell), scroll X, and view mode — persisted across close/reopen
     const [liveFocusZoom, setLiveFocusZoom] = useState(60);
     const [liveFocusScrollX, setLiveFocusScrollX] = useState(0);
@@ -1889,6 +2854,16 @@ export default function TaskList({
 
     // Logical date for the selected day (uses daily start time for rollover)
     const selectedLogical = getLogicalDate(selectedDate, dailyStartMinutes);
+    const isToday = selectedLogical === getLogicalDate(new Date(), dailyStartMinutes);
+
+    // Notes badge (per selected logical day)
+    useEffect(() => {
+        let cancelled = false;
+        hasDayNote(selectedLogical).then((v) => {
+            if (!cancelled) setSelectedDateHasNote(v);
+        }).catch(() => { });
+        return () => { cancelled = true; };
+    }, [selectedLogical]);
 
     // Filter tasks by selected date OR backlog status
     // For recurring tasks, expand them to show instances for the selected date
@@ -1929,7 +2904,6 @@ export default function TaskList({
     const dayNum = selectedDate.getDate();
     const monthName = MONTHS[selectedDate.getMonth()].toUpperCase();
 
-    const isToday = selectedLogical === getLogicalDate(new Date(), dailyStartMinutes);
     const dateLabel = isToday ? 'TODAY' : `on ${dayName} ${dayNum}`;
 
     // Calendar helpers
@@ -2369,20 +3343,43 @@ export default function TaskList({
                                             <View style={styles.filtersSection}>
                                                 <View style={styles.filterHeaderRow}>
                                                     <Text style={styles.filterHeaderLabel}>FILTERS</Text>
-                                                    <TouchableOpacity
-                                                        style={[styles.backlogHeaderBtn, showBacklog && styles.backlogHeaderBtnActive]}
-                                                        onPress={() => setShowBacklog(!showBacklog)}
-                                                        activeOpacity={0.7}
-                                                    >
-                                                        <MaterialIcons
-                                                            name={showBacklog ? "event-note" : "event-busy"}
-                                                            size={14}
-                                                            color={showBacklog ? "#4CAF50" : "rgba(255,255,255,0.4)"}
-                                                        />
-                                                        <Text style={[styles.backlogHeaderBtnText, showBacklog && styles.backlogHeaderBtnTextActive]}>
-                                                            BACKLOG
-                                                        </Text>
-                                                    </TouchableOpacity>
+                                                    <View style={styles.filterHeaderActions}>
+                                                        <TouchableOpacity
+                                                            style={[styles.historyHeaderBtn, showHistoryPanel && styles.historyHeaderBtnActive]}
+                                                            onPress={() => {
+                                                                LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+                                                                setShowNotesPanel(false);
+                                                                if (!showHistoryPanel) setExpandedTaskId(null);
+                                                                setShowHistoryPanel(!showHistoryPanel);
+                                                            }}
+                                                            activeOpacity={0.7}
+                                                        >
+                                                            <MaterialIcons name="history" size={14} color="#FF3D00" />
+                                                            <Text style={styles.historyHeaderBtnText}>HISTORY</Text>
+                                                            <View style={styles.historyHeaderBadge}>
+                                                                <Text style={styles.historyHeaderBadgeText}>
+                                                                    {(previousSubtasksQuery.trim() || previousSubtasksRange !== 'ALL' || previousSubtasksStageStatus !== 'ALL')
+                                                                        ? `${filteredPreviousIncompleteStages.length}/${previousIncompleteStages.length}`
+                                                                        : `${previousIncompleteStages.length}`}
+                                                                </Text>
+                                                            </View>
+                                                        </TouchableOpacity>
+
+                                                        <TouchableOpacity
+                                                            style={[styles.backlogHeaderBtn, showBacklog && styles.backlogHeaderBtnActive]}
+                                                            onPress={() => setShowBacklog(!showBacklog)}
+                                                            activeOpacity={0.7}
+                                                        >
+                                                            <MaterialIcons
+                                                                name={showBacklog ? "event-note" : "event-busy"}
+                                                                size={14}
+                                                                color={showBacklog ? "#4CAF50" : "rgba(255,255,255,0.4)"}
+                                                            />
+                                                            <Text style={[styles.backlogHeaderBtnText, showBacklog && styles.backlogHeaderBtnTextActive]}>
+                                                                BACKLOG
+                                                            </Text>
+                                                        </TouchableOpacity>
+                                                    </View>
                                                 </View>
 
                                                 {/* Category Filter (multi-select) */}
@@ -2481,15 +3478,30 @@ export default function TaskList({
 
                                 {/* Footer Row: Settings icon & Detailed Reports */}
                                 <View style={styles.leftPanelFooterRow}>
-                                    {onSettings && (
-                                        <TouchableOpacity
-                                            style={styles.settingsIconBtn}
-                                            onPress={onSettings}
-                                            activeOpacity={0.7}
-                                        >
-                                            <MaterialIcons name="settings" size={20} color="rgba(255,255,255,0.7)" />
-                                        </TouchableOpacity>
-                                    )}
+                                    <View style={styles.footerLeftIcons}>
+                                        {onSettings && (
+                                            <TouchableOpacity
+                                                style={styles.settingsIconBtn}
+                                                onPress={onSettings}
+                                                activeOpacity={0.7}
+                                            >
+                                                <MaterialIcons name="settings" size={20} color="rgba(255,255,255,0.7)" />
+                                            </TouchableOpacity>
+                                        )}
+
+                                        <NotesIconButton
+                                            active={showNotesPanel}
+                                            hasNote={selectedDateHasNote}
+                                            onPress={() => {
+                                                LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+                                                if (!showNotesPanel) {
+                                                    setShowHistoryPanel(false);
+                                                    setExpandedTaskId(null);
+                                                }
+                                                setShowNotesPanel(!showNotesPanel);
+                                            }}
+                                        />
+                                    </View>
 
                                     <TouchableOpacity
                                         style={styles.detailedReportsBtn}
@@ -2504,7 +3516,11 @@ export default function TaskList({
 
                         {/* Right Panel - Task Grid */}
                         <View style={styles.rightPanel}>
-                            {isLandscape && expandedTaskId ? (
+                            {showHistoryPanel ? (
+                                <View style={styles.expandedTakeoverContainer}>
+                                    {renderHistoryPanel('landscape')}
+                                </View>
+                            ) : isLandscape && expandedTaskId ? (
                                 <View style={styles.expandedTakeoverContainer}>
                                     {(() => {
                                         const expandedTask = filteredTasks.find(t => t && t.id === expandedTaskId);
@@ -2625,7 +3641,7 @@ export default function TaskList({
                     // PORTRAIT LAYOUT
                     <>
                         <FlatList
-                            data={filteredTasks}
+                            data={showHistoryPanel ? [] : filteredTasks}
                             keyExtractor={(item) => String(item.id)}
                             renderItem={({ item: task }) => {
                                 // Safety check: skip null/undefined tasks
@@ -2821,20 +3837,43 @@ export default function TaskList({
                                                         <View style={styles.filtersSection}>
                                                             <View style={styles.filterHeaderRow}>
                                                                 <Text style={styles.filterHeaderLabel}>FILTERS</Text>
-                                                                <TouchableOpacity
-                                                                    style={[styles.backlogHeaderBtn, showBacklog && styles.backlogHeaderBtnActive]}
-                                                                    onPress={() => setShowBacklog(!showBacklog)}
-                                                                    activeOpacity={0.7}
-                                                                >
-                                                                    <MaterialIcons
-                                                                        name={showBacklog ? "event-note" : "event-busy"}
-                                                                        size={14}
-                                                                        color={showBacklog ? "#4CAF50" : "rgba(255,255,255,0.4)"}
-                                                                    />
-                                                                    <Text style={[styles.backlogHeaderBtnText, showBacklog && styles.backlogHeaderBtnTextActive]}>
-                                                                        BACKLOG
-                                                                    </Text>
-                                                                </TouchableOpacity>
+                                                                <View style={styles.filterHeaderActions}>
+                                                                    <TouchableOpacity
+                                                                        style={[styles.historyHeaderBtn, showHistoryPanel && styles.historyHeaderBtnActive]}
+                                                                        onPress={() => {
+                                                                            LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+                                                                            setShowNotesPanel(false);
+                                                                            if (!showHistoryPanel) setExpandedTaskId(null);
+                                                                            setShowHistoryPanel(!showHistoryPanel);
+                                                                        }}
+                                                                        activeOpacity={0.7}
+                                                                    >
+                                                                        <MaterialIcons name="history" size={14} color="#FF3D00" />
+                                                                        <Text style={styles.historyHeaderBtnText}>HISTORY</Text>
+                                                                        <View style={styles.historyHeaderBadge}>
+                                                                            <Text style={styles.historyHeaderBadgeText}>
+                                                                                {(previousSubtasksQuery.trim() || previousSubtasksRange !== 'ALL' || previousSubtasksStageStatus !== 'ALL')
+                                                                                    ? `${filteredPreviousIncompleteStages.length}/${previousIncompleteStages.length}`
+                                                                                    : `${previousIncompleteStages.length}`}
+                                                                            </Text>
+                                                                        </View>
+                                                                    </TouchableOpacity>
+
+                                                                    <TouchableOpacity
+                                                                        style={[styles.backlogHeaderBtn, showBacklog && styles.backlogHeaderBtnActive]}
+                                                                        onPress={() => setShowBacklog(!showBacklog)}
+                                                                        activeOpacity={0.7}
+                                                                    >
+                                                                        <MaterialIcons
+                                                                            name={showBacklog ? "event-note" : "event-busy"}
+                                                                            size={14}
+                                                                            color={showBacklog ? "#4CAF50" : "rgba(255,255,255,0.4)"}
+                                                                        />
+                                                                        <Text style={[styles.backlogHeaderBtnText, showBacklog && styles.backlogHeaderBtnTextActive]}>
+                                                                            BACKLOG
+                                                                        </Text>
+                                                                    </TouchableOpacity>
+                                                                </View>
                                                             </View>
 
                                                             {/* Category Filter */}
@@ -2929,15 +3968,30 @@ export default function TaskList({
 
                                                         {/* Footer: Detailed Reports */}
                                                         <View style={styles.leftPanelFooterRow}>
-                                                            {onSettings && (
-                                                                <TouchableOpacity
-                                                                    style={styles.settingsIconBtn}
-                                                                    onPress={onSettings}
-                                                                    activeOpacity={0.7}
-                                                                >
-                                                                    <MaterialIcons name="settings" size={20} color="rgba(255,255,255,0.7)" />
-                                                                </TouchableOpacity>
-                                                            )}
+                                                            <View style={styles.footerLeftIcons}>
+                                                                {onSettings && (
+                                                                    <TouchableOpacity
+                                                                        style={styles.settingsIconBtn}
+                                                                        onPress={onSettings}
+                                                                        activeOpacity={0.7}
+                                                                    >
+                                                                        <MaterialIcons name="settings" size={20} color="rgba(255,255,255,0.7)" />
+                                                                    </TouchableOpacity>
+                                                                )}
+
+                                                                <NotesIconButton
+                                                                    active={showNotesPanel}
+                                                                    hasNote={selectedDateHasNote}
+                                                                    onPress={() => {
+                                                                        LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+                                                                        if (!showNotesPanel) {
+                                                                            setShowHistoryPanel(false);
+                                                                            setExpandedTaskId(null);
+                                                                        }
+                                                                        setShowNotesPanel(!showNotesPanel);
+                                                                    }}
+                                                                />
+                                                            </View>
                                                             <TouchableOpacity
                                                                 style={styles.detailedReportsBtn}
                                                                 onPress={() => {/* TODO: Add reports popup */ }}
@@ -2952,24 +4006,31 @@ export default function TaskList({
                                         ) : null}
 
                                     </View>
+
                                 </View>
                             )}
                             ListEmptyComponent={() => (
-                                <View style={{ gap: 16, paddingHorizontal: 16 }}>
-                                    {[1, 2].map(i => (
-                                        <TouchableOpacity
-                                            key={`p${i}`}
-                                            style={[styles.taskCard, styles.placeholderCard]}
-                                            onPress={onAddTask}
-                                            activeOpacity={0.7}
-                                        >
-                                            <View style={styles.placeholderContent}>
-                                                <MaterialIcons name="add-task" size={32} color="rgba(255,255,255,0.2)" />
-                                                <Text style={styles.placeholderText}>NEW TASK</Text>
-                                            </View>
-                                        </TouchableOpacity>
-                                    ))}
-                                </View>
+                                showHistoryPanel ? (
+                                    <View style={{ paddingHorizontal: 16, paddingTop: 8, paddingBottom: 16, flex: 1 }}>
+                                        {renderHistoryPanel('portrait')}
+                                    </View>
+                                ) : (
+                                    <View style={{ gap: 16, paddingHorizontal: 16 }}>
+                                        {[1, 2].map(i => (
+                                            <TouchableOpacity
+                                                key={`p${i}`}
+                                                style={[styles.taskCard, styles.placeholderCard]}
+                                                onPress={onAddTask}
+                                                activeOpacity={0.7}
+                                            >
+                                                <View style={styles.placeholderContent}>
+                                                    <MaterialIcons name="add-task" size={32} color="rgba(255,255,255,0.2)" />
+                                                    <Text style={styles.placeholderText}>NEW TASK</Text>
+                                                </View>
+                                            </TouchableOpacity>
+                                        ))}
+                                    </View>
+                                )
                             )}
                             contentContainerStyle={[styles.scrollContent, { paddingHorizontal: 0 }]}
                             showsVerticalScrollIndicator={false}
@@ -2977,16 +4038,29 @@ export default function TaskList({
                         />
 
                         {/* FAB */}
-                        <TouchableOpacity
-                            style={[styles.addButton, !isLandscape && styles.addButtonPortrait]}
-                            onPress={onAddTask}
-                            activeOpacity={0.8}
-                        >
-                            <MaterialIcons name="add" size={28} color="#000" />
-                        </TouchableOpacity>
+                        {!showHistoryPanel && (
+                            <TouchableOpacity
+                                style={[styles.addButton, !isLandscape && styles.addButtonPortrait]}
+                                onPress={onAddTask}
+                                activeOpacity={0.8}
+                            >
+                                <MaterialIcons name="add" size={28} color="#000" />
+                            </TouchableOpacity>
+                        )}
                     </>
                 )
                 }
+
+                {showNotesPanel && (
+                    <View style={styles.notesTakeoverOverlay}>
+                        <NotesPanel
+                            visible={showNotesPanel}
+                            dateKey={selectedLogical}
+                            onClose={() => setShowNotesPanel(false)}
+                            onPresenceChange={setSelectedDateHasNote}
+                        />
+                    </View>
+                )}
 
                 <TaskActionModal
                     visible={actionModalVisible}
@@ -3003,6 +4077,17 @@ export default function TaskList({
                         setActionModalVisible(false);
                     }}
                 />
+
+                <StageActionPopup
+                    visible={historyStatusPopupVisible}
+                    position={historyStatusPopupPosition}
+                    onSelectStatus={(status) => handleSelectHistoryStatus(status)}
+                    onClose={handleCloseHistoryStatusPopup}
+                    currentStatus={(historySelectedItem?.stage.status || 'Upcoming') as StageStatus}
+                    showFutureToggle={false}
+                    initialSyncMode={'none'}
+                />
+
             </SafeAreaView >
         </LinearGradient >
     );
