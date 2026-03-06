@@ -2223,6 +2223,7 @@ interface TaskListProps {
     onDeleteComment?: (task: Task, commentId: number) => void;
     onUpdateStages?: (task: Task, stages: TaskStage[], syncMode?: SyncMode) => void;
     onPinTask?: (task: Task) => void;
+    onDisableTask?: (task: Task) => void;
     quickMessages?: QuickMessage[];
     timeOfDaySlots?: TimeOfDaySlotConfigList;
     runningTimer?: Timer | null;
@@ -2257,6 +2258,7 @@ export default function TaskList({
     onDeleteComment,
     onUpdateStages,
     onPinTask,
+    onDisableTask,
     quickMessages,
     timeOfDaySlots,
     runningTimer,
@@ -2286,6 +2288,7 @@ export default function TaskList({
     const [showBacklog, setShowBacklog] = useState(false);
     const [showLive, setShowLive] = useState(initialShowLive);
     const [actionModalVisible, setActionModalVisible] = useState(false);
+    const [showDisabledTasks, setShowDisabledTasks] = useState(false);
     const [leaveDays, setLeaveDays] = useState<string[]>([]);
     const cameFromTimerView = useRef(false);
 
@@ -2706,110 +2709,110 @@ export default function TaskList({
 
                     <View style={styles.historyListInset}>
                         {historyRows.length === 0 ? (
-                        <View style={styles.previousSubtasksEmpty}>
-                            <Text style={styles.previousSubtasksEmptyText}>No matches.</Text>
-                        </View>
-                    ) : (
-                        <FlatList
-                            data={historyRows}
-                            keyExtractor={(row, idx) => `${row.type}-${'date' in row ? row.date : ''}-${'task' in row ? row.task.id : ''}-${'stage' in row ? row.stage.id : ''}-${idx}`}
-                            renderItem={({ item }) => {
-                                if (item.type === 'date') {
-                                    const date = item.date;
-                                    const countForDate = historyDateCounts[date] || 0;
-                                    return (
-                                        <View style={styles.historyDateHeaderRow}>
-                                            <Text style={styles.historyDateHeaderText}>{formatHistoryDateLabel(date)}</Text>
-                                            <View style={styles.historyDateHeaderBadge}>
-                                                <Text style={styles.historyDateHeaderBadgeText}>{countForDate}</Text>
+                            <View style={styles.previousSubtasksEmpty}>
+                                <Text style={styles.previousSubtasksEmptyText}>No matches.</Text>
+                            </View>
+                        ) : (
+                            <FlatList
+                                data={historyRows}
+                                keyExtractor={(row, idx) => `${row.type}-${'date' in row ? row.date : ''}-${'task' in row ? row.task.id : ''}-${'stage' in row ? row.stage.id : ''}-${idx}`}
+                                renderItem={({ item }) => {
+                                    if (item.type === 'date') {
+                                        const date = item.date;
+                                        const countForDate = historyDateCounts[date] || 0;
+                                        return (
+                                            <View style={styles.historyDateHeaderRow}>
+                                                <Text style={styles.historyDateHeaderText}>{formatHistoryDateLabel(date)}</Text>
+                                                <View style={styles.historyDateHeaderBadge}>
+                                                    <Text style={styles.historyDateHeaderBadgeText}>{countForDate}</Text>
+                                                </View>
                                             </View>
-                                        </View>
-                                    );
-                                }
+                                        );
+                                    }
 
-                                if (item.type === 'task') {
-                                    const key = `${item.date}-${item.task.id}`;
-                                    const isCollapsed = !!collapsedHistoryGroups[key];
-                                    const taskStatus = getHistoryTaskStatus(item.task, item.date);
-                                    const taskStatusStyle = taskStatus === 'Completed'
-                                        ? { bg: 'rgba(76, 175, 80, 0.14)', border: 'rgba(76, 175, 80, 0.3)', text: '#4CAF50' }
-                                        : taskStatus === 'In Progress'
-                                            ? { bg: 'rgba(0, 229, 255, 0.12)', border: 'rgba(0, 229, 255, 0.28)', text: '#00E5FF' }
-                                            : { bg: 'rgba(255, 255, 255, 0.08)', border: 'rgba(255, 255, 255, 0.16)', text: 'rgba(255,255,255,0.75)' };
+                                    if (item.type === 'task') {
+                                        const key = `${item.date}-${item.task.id}`;
+                                        const isCollapsed = !!collapsedHistoryGroups[key];
+                                        const taskStatus = getHistoryTaskStatus(item.task, item.date);
+                                        const taskStatusStyle = taskStatus === 'Completed'
+                                            ? { bg: 'rgba(76, 175, 80, 0.14)', border: 'rgba(76, 175, 80, 0.3)', text: '#4CAF50' }
+                                            : taskStatus === 'In Progress'
+                                                ? { bg: 'rgba(0, 229, 255, 0.12)', border: 'rgba(0, 229, 255, 0.28)', text: '#00E5FF' }
+                                                : { bg: 'rgba(255, 255, 255, 0.08)', border: 'rgba(255, 255, 255, 0.16)', text: 'rgba(255,255,255,0.75)' };
+                                        return (
+                                            <View style={styles.historyTaskGroupRow}>
+                                                <TouchableOpacity
+                                                    style={styles.historyTaskGroupLeftPress}
+                                                    activeOpacity={0.7}
+                                                    onPress={() => {
+                                                        LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+                                                        setCollapsedHistoryGroups(prev => ({ ...prev, [key]: !prev[key] }));
+                                                    }}
+                                                >
+                                                    <MaterialIcons
+                                                        name={isCollapsed ? "chevron-right" : "expand-more"}
+                                                        size={18}
+                                                        color="rgba(255,255,255,0.45)"
+                                                    />
+                                                    <Text style={styles.historyTaskGroupTitle} numberOfLines={1}>{item.task.title}</Text>
+                                                </TouchableOpacity>
+
+                                                <View style={styles.historyTaskGroupRight}>
+                                                    <TouchableOpacity
+                                                        style={[styles.historyStatusPill, styles.historyTaskStatusPill, { backgroundColor: taskStatusStyle.bg, borderColor: taskStatusStyle.border }]}
+                                                        onPress={() => {
+                                                            Alert.alert(
+                                                                'Update task status',
+                                                                item.task.title,
+                                                                [
+                                                                    { text: 'Pending', onPress: () => updateTaskStatusViaStages(item.task, item.date, 'Pending') },
+                                                                    { text: 'In Progress', onPress: () => updateTaskStatusViaStages(item.task, item.date, 'In Progress') },
+                                                                    { text: 'Completed', onPress: () => updateTaskStatusViaStages(item.task, item.date, 'Completed') },
+                                                                    { text: 'Cancel', style: 'cancel' },
+                                                                ]
+                                                            );
+                                                        }}
+                                                        activeOpacity={0.8}
+                                                    >
+                                                        <Text style={[styles.historyStatusText, { color: taskStatusStyle.text }]} numberOfLines={1}>
+                                                            {taskStatus}
+                                                        </Text>
+                                                    </TouchableOpacity>
+
+                                                    <View style={styles.historyTaskGroupBadge}>
+                                                        <Text style={styles.historyTaskGroupBadgeText}>{item.count}</Text>
+                                                    </View>
+                                                </View>
+                                            </View>
+                                        );
+                                    }
+
+                                    const statusStyle = getHistoryStatusStyle(item.stage.status || 'Upcoming');
+                                    const stageItem: HistoryStageItem = { task: item.task, stage: item.stage, date: item.date };
+
                                     return (
-                                        <View style={styles.historyTaskGroupRow}>
+                                        <View style={styles.historyStageRow}>
+                                            <Text style={styles.historyStageRowText} numberOfLines={1}>{item.stage.text}</Text>
                                             <TouchableOpacity
-                                                style={styles.historyTaskGroupLeftPress}
-                                                activeOpacity={0.7}
-                                                onPress={() => {
-                                                    LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
-                                                    setCollapsedHistoryGroups(prev => ({ ...prev, [key]: !prev[key] }));
-                                                }}
-                                            >
-                                                <MaterialIcons
-                                                    name={isCollapsed ? "chevron-right" : "expand-more"}
-                                                    size={18}
-                                                    color="rgba(255,255,255,0.45)"
-                                                />
-                                                <Text style={styles.historyTaskGroupTitle} numberOfLines={1}>{item.task.title}</Text>
-                                            </TouchableOpacity>
-
-                                            <View style={styles.historyTaskGroupRight}>
-                                            <TouchableOpacity
-                                                style={[styles.historyStatusPill, styles.historyTaskStatusPill, { backgroundColor: taskStatusStyle.bg, borderColor: taskStatusStyle.border }]}
-                                                onPress={() => {
-                                                    Alert.alert(
-                                                        'Update task status',
-                                                        item.task.title,
-                                                        [
-                                                            { text: 'Pending', onPress: () => updateTaskStatusViaStages(item.task, item.date, 'Pending') },
-                                                            { text: 'In Progress', onPress: () => updateTaskStatusViaStages(item.task, item.date, 'In Progress') },
-                                                            { text: 'Completed', onPress: () => updateTaskStatusViaStages(item.task, item.date, 'Completed') },
-                                                            { text: 'Cancel', style: 'cancel' },
-                                                        ]
-                                                    );
-                                                }}
+                                                style={[styles.historyStatusPill, { backgroundColor: statusStyle.bg, borderColor: statusStyle.border }]}
+                                                onPress={(e) => handleOpenHistoryStatusPopup(stageItem, e)}
                                                 activeOpacity={0.8}
                                             >
-                                                <Text style={[styles.historyStatusText, { color: taskStatusStyle.text }]} numberOfLines={1}>
-                                                    {taskStatus}
+                                                <Text style={[styles.historyStatusText, { color: statusStyle.text }]} numberOfLines={1}>
+                                                    {item.stage.status}
                                                 </Text>
                                             </TouchableOpacity>
-
-                                            <View style={styles.historyTaskGroupBadge}>
-                                                <Text style={styles.historyTaskGroupBadgeText}>{item.count}</Text>
-                                            </View>
-                                            </View>
                                         </View>
                                     );
-                                }
-
-                                const statusStyle = getHistoryStatusStyle(item.stage.status || 'Upcoming');
-                                const stageItem: HistoryStageItem = { task: item.task, stage: item.stage, date: item.date };
-
-                                return (
-                                    <View style={styles.historyStageRow}>
-                                        <Text style={styles.historyStageRowText} numberOfLines={1}>{item.stage.text}</Text>
-                                        <TouchableOpacity
-                                            style={[styles.historyStatusPill, { backgroundColor: statusStyle.bg, borderColor: statusStyle.border }]}
-                                            onPress={(e) => handleOpenHistoryStatusPopup(stageItem, e)}
-                                            activeOpacity={0.8}
-                                        >
-                                            <Text style={[styles.historyStatusText, { color: statusStyle.text }]} numberOfLines={1}>
-                                                {item.stage.status}
-                                            </Text>
-                                        </TouchableOpacity>
-                                    </View>
-                                );
-                            }}
-                            style={variant === 'landscape' ? { flex: 1 } : undefined}
-                            scrollEnabled={variant === 'landscape'}
-                            contentContainerStyle={{ paddingBottom: 12 }}
-                            showsVerticalScrollIndicator={false}
-                            keyboardShouldPersistTaps="handled"
-                            nestedScrollEnabled={variant === 'landscape'}
-                        />
-                    )}
+                                }}
+                                style={variant === 'landscape' ? { flex: 1 } : undefined}
+                                scrollEnabled={variant === 'landscape'}
+                                contentContainerStyle={{ paddingBottom: 12 }}
+                                showsVerticalScrollIndicator={false}
+                                keyboardShouldPersistTaps="handled"
+                                nestedScrollEnabled={variant === 'landscape'}
+                            />
+                        )}
                     </View>
                 </View>
             </View>
@@ -2875,6 +2878,8 @@ export default function TaskList({
     const filteredTasks = dateFilteredTasks.filter(t => {
         // Safety check: ensure task exists and has required properties
         if (!t || !t.id || !t.status || !t.forDate) return false;
+        // Hide disabled tasks unless showDisabledTasks is on
+        if (t.isDisabled && !showDisabledTasks) return false;
         const matchesCategory = filterCategoryIds.length === 0 || (t.categoryId != null && filterCategoryIds.includes(t.categoryId));
         const matchesStatus = filterStatus === 'All' || t.status === filterStatus;
         return matchesCategory && matchesStatus;
@@ -2889,6 +2894,19 @@ export default function TaskList({
         }
 
         // 3. Keep relative order for others
+        return 0;
+    });
+
+    // Tasks for LiveFocusView — always includes disabled tasks (shown dimmed on timeline)
+    const liveViewTasks = dateFilteredTasks.filter(t => {
+        if (!t || !t.id || !t.status || !t.forDate) return false;
+        const matchesCategory = filterCategoryIds.length === 0 || (t.categoryId != null && filterCategoryIds.includes(t.categoryId));
+        const matchesStatus = filterStatus === 'All' || t.status === filterStatus;
+        return matchesCategory && matchesStatus;
+    }).sort((a, b) => {
+        if (a.isPinned && !b.isPinned) return -1;
+        if (!a.isPinned && b.isPinned) return 1;
+        if (a.isPinned && b.isPinned) return (b.pinTimestamp || 0) - (a.pinTimestamp || 0);
         return 0;
     });
 
@@ -3166,7 +3184,7 @@ export default function TaskList({
         return (
             <View style={styles.container}>
                 <LiveFocusView
-                    tasks={filteredTasks}
+                    tasks={liveViewTasks}
                     selectedDate={selectedDate}
                     onDateChange={onDateChange}
                     categories={categories}
@@ -3214,6 +3232,8 @@ export default function TaskList({
                         }
                         onOpenActiveTimer?.(timer);
                     }}
+                    showDisabledTasks={showDisabledTasks}
+                    onToggleDisabledTasks={() => setShowDisabledTasks(prev => !prev)}
                 />
             </View>
         );
@@ -3488,6 +3508,18 @@ export default function TaskList({
                                                 <MaterialIcons name="settings" size={20} color="rgba(255,255,255,0.7)" />
                                             </TouchableOpacity>
                                         )}
+
+                                        <TouchableOpacity
+                                            style={styles.settingsIconBtn}
+                                            onPress={() => setShowDisabledTasks(!showDisabledTasks)}
+                                            activeOpacity={0.7}
+                                        >
+                                            <MaterialIcons
+                                                name={showDisabledTasks ? 'visibility' : 'visibility-off'}
+                                                size={20}
+                                                color={showDisabledTasks ? '#FF9100' : 'rgba(255,255,255,0.4)'}
+                                            />
+                                        </TouchableOpacity>
 
                                         <NotesIconButton
                                             active={showNotesPanel}
@@ -3788,9 +3820,27 @@ export default function TaskList({
                                             <TouchableOpacity
                                                 style={[styles.todayNavBtn, showLive && { backgroundColor: 'rgba(255, 61, 0, 0.08)', borderColor: 'rgba(255, 61, 0, 0.2)' }]}
                                                 onPress={() => setShowLive(!showLive)}
+                                                onLongPress={() => setShowDisabledTasks(!showDisabledTasks)}
                                                 activeOpacity={0.7}
                                             >
-                                                <MaterialIcons name="sensors" size={12} color={showLive ? "#FF3D00" : "#FF3D00"} />
+                                                <View style={{ position: 'relative' }}>
+                                                    <MaterialIcons name="sensors" size={12} color={showLive ? "#FF3D00" : "#FF3D00"} />
+                                                    {!showDisabledTasks && (
+                                                        <View style={{
+                                                            position: 'absolute',
+                                                            top: -3,
+                                                            right: -4,
+                                                            width: 7,
+                                                            height: 7,
+                                                            borderRadius: 3.5,
+                                                            backgroundColor: '#FF9100',
+                                                            alignItems: 'center',
+                                                            justifyContent: 'center',
+                                                        }}>
+                                                            <MaterialIcons name="block" size={5} color="#fff" />
+                                                        </View>
+                                                    )}
+                                                </View>
                                             </TouchableOpacity>
 
                                             <TouchableOpacity
@@ -3979,6 +4029,18 @@ export default function TaskList({
                                                                     </TouchableOpacity>
                                                                 )}
 
+                                                                <TouchableOpacity
+                                                                    style={styles.settingsIconBtn}
+                                                                    onPress={() => setShowDisabledTasks(!showDisabledTasks)}
+                                                                    activeOpacity={0.7}
+                                                                >
+                                                                    <MaterialIcons
+                                                                        name={showDisabledTasks ? 'visibility' : 'visibility-off'}
+                                                                        size={20}
+                                                                        color={showDisabledTasks ? '#FF9100' : 'rgba(255,255,255,0.4)'}
+                                                                    />
+                                                                </TouchableOpacity>
+
                                                                 <NotesIconButton
                                                                     active={showNotesPanel}
                                                                     hasNote={selectedDateHasNote}
@@ -4074,6 +4136,10 @@ export default function TaskList({
                     onAddComment={(t, c) => onUpdateComment?.(t, c)}
                     onPin={(t) => {
                         onPinTask?.(t);
+                        setActionModalVisible(false);
+                    }}
+                    onDisable={(t) => {
+                        onDisableTask?.(t);
                         setActionModalVisible(false);
                     }}
                 />
@@ -4645,6 +4711,23 @@ function TaskCard({
                                 {task.title}
                             </Text>
                         </View>
+                        {task.isDisabled && (
+                            <View style={{
+                                flexDirection: 'row',
+                                alignItems: 'center',
+                                backgroundColor: 'rgba(255, 145, 0, 0.12)',
+                                borderColor: 'rgba(255, 145, 0, 0.4)',
+                                borderWidth: 1,
+                                borderRadius: 6,
+                                paddingHorizontal: 5,
+                                paddingVertical: 2,
+                                marginLeft: 6,
+                                flexShrink: 0,
+                            }}>
+                                <MaterialIcons name="block" size={8} color="#FF9100" />
+                                <Text style={{ fontSize: 8, fontWeight: '800', color: '#FF9100', letterSpacing: 0.8, marginLeft: 2 }}>OFF</Text>
+                            </View>
+                        )}
                         <View style={[styles.categoryBadge, { backgroundColor: `${priorityConfig.color}15`, borderColor: `${priorityConfig.color}30` }]}>
                             <MaterialIcons name={priorityConfig.icon} size={10} color={priorityConfig.color} />
                             {isExpanded && (
@@ -5563,6 +5646,7 @@ function TaskCard({
                 styles.taskCardBezel,
                 isLandscape && styles.taskCardBezelLandscape,
                 isLocked && { opacity: 0.5 },
+                task.isDisabled && { opacity: 0.45 },
             ]}
         >
             <View style={[styles.taskCardOuterBoundaryHighlight, isLandscape && styles.taskCardOuterBoundaryHighlightLandscape]} />

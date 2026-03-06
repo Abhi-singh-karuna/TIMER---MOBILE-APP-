@@ -29,6 +29,7 @@ interface TaskActionModalProps {
     onUpdate: (task: Task) => void;
     onAddComment: (task: Task, comment: string) => void;
     onPin: (task: Task) => void;
+    onDisable?: (task: Task) => void;
 }
 
 export default function TaskActionModal({
@@ -39,6 +40,7 @@ export default function TaskActionModal({
     onUpdate,
     onAddComment,
     onPin,
+    onDisable,
 }: TaskActionModalProps) {
     const { width: screenWidth, height: screenHeight } = useWindowDimensions();
     const isLandscape = screenWidth > screenHeight;
@@ -140,6 +142,30 @@ export default function TaskActionModal({
                                             >
                                                 <Text style={styles.actionBtnTextSecondary}>{task.isPinned ? 'UNPIN TASK' : 'PIN TASK'}</Text>
                                             </TouchableOpacity>
+
+                                            {onDisable && (
+                                                <TouchableOpacity
+                                                    style={[
+                                                        styles.actionBtnSecondary,
+                                                        task.isDisabled
+                                                            ? { borderColor: 'rgba(76, 175, 80, 0.4)', backgroundColor: 'rgba(76, 175, 80, 0.08)' }
+                                                            : { borderColor: 'rgba(255, 145, 0, 0.4)', backgroundColor: 'rgba(255, 145, 0, 0.08)' },
+                                                    ]}
+                                                    onPress={() => {
+                                                        onDisable(task);
+                                                        onClose();
+                                                        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+                                                    }}
+                                                    activeOpacity={0.7}
+                                                >
+                                                    <Text style={[
+                                                        styles.actionBtnTextSecondary,
+                                                        task.isDisabled ? { color: '#4CAF50' } : { color: '#FF9100' },
+                                                    ]}>
+                                                        {task.isDisabled ? 'ENABLE TASK' : 'DISABLE TASK'}
+                                                    </Text>
+                                                </TouchableOpacity>
+                                            )}
 
                                             <TouchableOpacity
                                                 style={styles.actionBtnSecondary}

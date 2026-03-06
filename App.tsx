@@ -943,6 +943,20 @@ export default function App() {
     });
   };
 
+  const handleDisableTask = async (task: Task) => {
+    const isDisabled = !task.isDisabled;
+    const now = new Date().toISOString();
+    setTasks(prev => {
+      const updated = prev.map(t =>
+        t.id === task.id
+          ? { ...t, isDisabled, updatedAt: now }
+          : t
+      );
+      saveTasks(updated);
+      return updated;
+    });
+  };
+
   // Timer countdown effect
   useEffect(() => {
     if (intervalRef.current) {
@@ -1683,6 +1697,7 @@ export default function App() {
               onDeleteComment={handleDeleteComment}
               onUpdateStages={handleUpdateStages}
               onPinTask={handlePinTask}
+              onDisableTask={handleDisableTask}
               categories={categories}
               selectedDate={selectedDate}
               onDateChange={setSelectedDate}

@@ -30,6 +30,7 @@ import { buildTimeOfDayBackgroundSegments, DEFAULT_TIME_OF_DAY_SLOTS, TimeOfDayS
 import { getLogicalDate, getStartOfLogicalDay, getStartOfLogicalDayFromString, isSameLogicalDay, toDisplayMinutes, DEFAULT_DAILY_START_MINUTES } from '../../../utils/dailyStartTime';
 
 type SyncMode = 'none' | 'all' | 'future';
+type TaskStageEntry = { task: Task; stage: TaskStage };
 
 interface LiveFocusViewProps {
     tasks: Task[];
@@ -63,6 +64,10 @@ interface LiveFocusViewProps {
     sliderButtonColor?: string;
     /** List of dates (YYYY-MM-DD) marked as leave. */
     leaveDays?: string[];
+    /** Whether to show disabled tasks in the timeline (passed from parent filter state). */
+    showDisabledTasks?: boolean;
+    /** Toggle disabled tasks visibility in parent. */
+    onToggleDisabledTasks?: () => void;
 }
 
 type TaskLiveStatus = 'ACTIVE' | 'DONE' | 'PLANNED';
@@ -117,6 +122,8 @@ export default function LiveFocusView({
     onViewModeChange,
     timerTextColor = '#FFFFFF',
     sliderButtonColor = '#FFFFFF',
+    showDisabledTasks = false,
+    onToggleDisabledTasks,
 }: LiveFocusViewProps) {
     const { width: screenWidth, height: screenHeight } = useWindowDimensions();
     const isLandscape = screenWidth > screenHeight;
@@ -1395,11 +1402,12 @@ export default function LiveFocusView({
         return { ...totals, pct, undonePct, remainingHours, remainingMins };
     }, [tasks]);
 
-    // Merged view: all timed/untimed entries with task reference; stageId -> task for callbacks
-    type TaskStageEntry = { task: Task; stage: TaskStage };
+    const displayTasks = showDisabledTasks ? tasks : tasks.filter(t => !t.isDisabled);
+
+    // Filtered view: all timed/untimed entries with task reference; stageId -> task for callbacks
     const mergedTimedEntries = useMemo((): TaskStageEntry[] => {
         const entries: TaskStageEntry[] = [];
-        tasks.forEach(task => {
+        displayTasks.forEach(task => {
             (task.stages || []).forEach(stage => {
                 const hasTime = (stage.startTimeMinutes != null) || (stage.durationMinutes != null);
                 if (hasTime) entries.push({ task, stage });
@@ -1417,24 +1425,24 @@ export default function LiveFocusView({
             return a.stage.id - b.stage.id;
         });
         return entries;
-    }, [tasks, dailyStartMinutes]);
+    }, [displayTasks, dailyStartMinutes]);
     const mergedUntimedEntries = useMemo((): TaskStageEntry[] => {
         const entries: TaskStageEntry[] = [];
-        tasks.forEach(task => {
+        displayTasks.forEach(task => {
             (task.stages || []).forEach(stage => {
                 const hasTime = (stage.startTimeMinutes != null) || (stage.durationMinutes != null);
                 if (!hasTime) entries.push({ task, stage });
             });
         });
         return entries;
-    }, [tasks]);
+    }, [displayTasks]);
     const stageIdToTask = useMemo(() => {
         const map = new Map<number, Task>();
-        tasks.forEach(task => {
+        displayTasks.forEach(task => {
             (task.stages || []).forEach(s => map.set(s.id, task));
         });
         return map;
-    }, [tasks]);
+    }, [displayTasks]);
     const mergedTimedStages = useMemo(() => mergedTimedEntries.map(e => e.stage), [mergedTimedEntries]);
 
     // Live stages for full-screen timer (top right): only subtasks whose time range overlaps "now", with remaining countdown (descending) in seconds
@@ -1443,7 +1451,7 @@ export default function LiveFocusView({
         const currentMinutes = now.getHours() * 60 + now.getMinutes() + now.getSeconds() / 60;
         const nowD = toDisplayMinutes(currentMinutes, dailyStartMinutes); // 0–1440 display space
         const list: { text: string; startTimeMinutes: number; durationMinutes: number; remainingSeconds: number; taskId: number; id: number; status: StageStatus }[] = [];
-        tasks.forEach(task => {
+        displayTasks.forEach(task => {
             (task.stages || []).forEach(stage => {
                 const hasTime = (stage.startTimeMinutes != null) || (stage.durationMinutes != null);
                 if (!hasTime || (stage.status !== 'Upcoming' && stage.status !== 'Process')) return;
@@ -1478,7 +1486,7 @@ export default function LiveFocusView({
             return effectiveA - effectiveB;
         });
         return list;
-    }, [tasks, pendingLayoutsVersion, dailyStartMinutes, currentTimeForRender]);
+    }, [displayTasks, pendingLayoutsVersion, dailyStartMinutes, currentTimeForRender]);
 
     // Completed stages for full-screen timer (top left): timed stages with status === 'Done',
     // and only those that start at or after daily start (e.g. 8 AM) so we count "completed since day started"
@@ -1488,7 +1496,7 @@ export default function LiveFocusView({
         const currentMinutes = now.getHours() * 60 + now.getMinutes() + now.getSeconds() / 60;
         const nowD = toDisplayMinutes(currentMinutes, dailyStartMinutes);
 
-        tasks.forEach(task => {
+        displayTasks.forEach(task => {
             (task.stages || []).forEach(stage => {
                 const hasTime = (stage.startTimeMinutes != null) || (stage.durationMinutes != null);
                 if (!hasTime) return;
@@ -1549,13 +1557,13 @@ export default function LiveFocusView({
             return effectiveA - effectiveB;
         });
         return list;
-    }, [tasks, pendingLayoutsVersion, dailyStartMinutes, currentTimeForRender]);
+    }, [displayTasks, pendingLayoutsVersion, dailyStartMinutes, currentTimeForRender]);
 
     // Upcoming stages for full-screen timer (top left): timed stages with status === 'Upcoming',
     // only those that start at or after daily start (e.g. 8 AM) for the current logical day
     const upcomingStagesForFullScreen = useMemo((): { text: string; startTimeMinutes: number; durationMinutes: number; taskId: number; id: number; isLate: boolean }[] => {
         const list: { text: string; startTimeMinutes: number; durationMinutes: number; taskId: number; id: number; isLate: boolean }[] = [];
-        tasks.forEach(task => {
+        displayTasks.forEach(task => {
             (task.stages || []).forEach(stage => {
                 const hasTime = (stage.startTimeMinutes != null) || (stage.durationMinutes != null);
                 if (!hasTime || stage.status !== 'Upcoming') return;
@@ -1585,12 +1593,12 @@ export default function LiveFocusView({
             return effectiveA - effectiveB;
         });
         return list;
-    }, [tasks, pendingLayoutsVersion, dailyStartMinutes]);
+    }, [displayTasks, pendingLayoutsVersion, dailyStartMinutes]);
 
     // Undone stages for full-screen timer (top left): timed stages with status === 'Undone', start >= daily start
     const undoneStagesForFullScreen = useMemo((): { text: string; startTimeMinutes: number; durationMinutes: number; taskId: number; id: number }[] => {
         const list: { text: string; startTimeMinutes: number; durationMinutes: number; taskId: number; id: number }[] = [];
-        tasks.forEach(task => {
+        displayTasks.forEach(task => {
             (task.stages || []).forEach(stage => {
                 const hasTime = (stage.startTimeMinutes != null) || (stage.durationMinutes != null);
                 if (!hasTime || stage.status !== 'Undone') return;
@@ -1610,7 +1618,7 @@ export default function LiveFocusView({
             return effectiveA - effectiveB;
         });
         return list;
-    }, [tasks, pendingLayoutsVersion, dailyStartMinutes]);
+    }, [displayTasks, pendingLayoutsVersion, dailyStartMinutes]);
 
     // Category view: one section per category that has tasks; each section has timed (sorted ascending) + untimed entries
     type CategorySection = {
@@ -1623,7 +1631,7 @@ export default function LiveFocusView({
     };
     const categorySections = useMemo((): CategorySection[] => {
         const byCategory = new Map<string, Task[]>();
-        tasks.forEach(task => {
+        displayTasks.forEach(task => {
             const cid = task.categoryId ?? '';
             if (!byCategory.has(cid)) byCategory.set(cid, []);
             byCategory.get(cid)!.push(task);
@@ -1699,7 +1707,7 @@ export default function LiveFocusView({
             buildSection(cid, cat, catTasks);
         });
         return sections;
-    }, [tasks, categories, dailyStartMinutes]);
+    }, [displayTasks, categories, dailyStartMinutes]);
 
     const zoomLabel = useMemo(() => {
         const m = Math.round(minutesPerCell);
@@ -2295,7 +2303,7 @@ export default function LiveFocusView({
                                         </View>
                                     </View>
                                 );
-                            }) : tasks.map((task, taskIndex) => {
+                            }) : displayTasks.map((task, taskIndex) => {
                                 const stages = task.stages || [];
                                 const liveStatus = getTaskLiveStatus(task);
                                 const isActive = liveStatus === 'ACTIVE';
@@ -2347,7 +2355,11 @@ export default function LiveFocusView({
                                     <View key={task.id}>
                                         <View style={styles.trackSeparator} />
                                         <View
-                                            style={[styles.trackLabelContainer, { height: trackHeight, marginBottom: TRACK_BOTTOM_PADDING }]}
+                                            style={[
+                                                styles.trackLabelContainer,
+                                                { height: trackHeight, marginBottom: TRACK_BOTTOM_PADDING },
+                                                task.isDisabled && { opacity: 0.4 },
+                                            ]}
                                             onLayout={handleLabelLayout}
                                         >
                                             <TouchableOpacity
@@ -2378,6 +2390,22 @@ export default function LiveFocusView({
                                                         <Text style={[styles.trackTitle, isActive && styles.trackTitleActive]} numberOfLines={1}>
                                                             {task.title}
                                                         </Text>
+                                                        {task.isDisabled && (
+                                                            <View style={{
+                                                                flexDirection: 'row',
+                                                                alignItems: 'center',
+                                                                backgroundColor: 'rgba(255,145,0,0.12)',
+                                                                borderColor: 'rgba(255,145,0,0.4)',
+                                                                borderWidth: 1,
+                                                                borderRadius: 4,
+                                                                paddingHorizontal: 3,
+                                                                paddingVertical: 1,
+                                                                marginLeft: 4,
+                                                                flexShrink: 0,
+                                                            }}>
+                                                                <MaterialIcons name="block" size={7} color="#FF9100" />
+                                                            </View>
+                                                        )}
                                                         <View style={styles.titleRowRight}>
                                                             {isActive && <View style={styles.activeDot} />}
                                                             <TouchableOpacity
@@ -2596,10 +2624,9 @@ export default function LiveFocusView({
                                                             if (height > 0) requestAnimationFrame(() => handleCategorySectionHeightMeasured(section.categoryId, height));
                                                         }}
                                                     >
-                                                        {sortedMergedUntimed.length > 0 && (
+                                                        {section.untimedEntries.length > 0 && (
                                                             <UntimedStagesDraggableList
-                                                                task={section.untimedEntries[0].task}
-                                                                stages={sortedMergedUntimed}
+                                                                entries={section.untimedEntries}
                                                                 cellWidth={CELL_WIDTH}
                                                                 minutesPerCell={minutesPerCell}
                                                                 trackLabelWidth={TRACK_LABEL_WIDTH}
@@ -2655,6 +2682,7 @@ export default function LiveFocusView({
                                                                             isBeingEdited && styles.stageCardDragging,
                                                                             isInResizeMode && styles.stageCardResizeMode,
                                                                             { left, width, top },
+                                                                            task.isDisabled && { opacity: 0.35, borderTopWidth: 1, borderTopColor: 'rgba(255,145,0,0.6)' },
                                                                         ]}
                                                                         {...stagePanResponder.panHandlers}
                                                                     >
@@ -2840,8 +2868,7 @@ export default function LiveFocusView({
                                                     >
                                                         {sortedMergedUntimed.length > 0 && (
                                                             <UntimedStagesDraggableList
-                                                                task={mergedUntimedEntries[0].task}
-                                                                stages={sortedMergedUntimed}
+                                                                entries={mergedUntimedEntries}
                                                                 cellWidth={CELL_WIDTH}
                                                                 minutesPerCell={minutesPerCell}
                                                                 trackLabelWidth={TRACK_LABEL_WIDTH}
@@ -2898,6 +2925,7 @@ export default function LiveFocusView({
                                                                             isBeingEdited && styles.stageCardDragging,
                                                                             isInResizeMode && styles.stageCardResizeMode,
                                                                             { left, width, top },
+                                                                            task.isDisabled && { opacity: 0.35, borderTopWidth: 1, borderTopColor: 'rgba(255,145,0,0.6)' },
                                                                         ]}
                                                                         {...stagePanResponder.panHandlers}
                                                                     >
@@ -3039,7 +3067,7 @@ export default function LiveFocusView({
                                                     </TouchableOpacity>
                                                 </View>
                                             );
-                                        })() : tasks.map((task, taskIndex) => {
+                                        })() : displayTasks.map((task, taskIndex) => {
                                             const stages = task.stages || [];
                                             const liveStatus = getTaskLiveStatus(task);
                                             const isActive = liveStatus === 'ACTIVE';
@@ -3117,8 +3145,11 @@ export default function LiveFocusView({
                                             const isTrackActive = activeStage?.taskId === task.id; // dragging or resizing a card in this task
 
                                             return (
-                                                <View key={task.id} style={isTrackActive ? { zIndex: 10000, elevation: 10000 } : undefined}>
-                                                    <View style={styles.trackSeparator} />
+                                                <View key={task.id} style={[
+                                                    isTrackActive ? { zIndex: 10000, elevation: 10000 } : undefined,
+                                                    task.isDisabled && { opacity: 0.35 },
+                                                ]}>
+                                                    <View style={[styles.trackSeparator, task.isDisabled && { borderColor: 'rgba(255,145,0,0.3)' }]} />
                                                     <TouchableOpacity
                                                         activeOpacity={1}
                                                         onPress={() => {
@@ -3131,14 +3162,14 @@ export default function LiveFocusView({
                                                             styles.track,
                                                             { height: trackHeight, marginBottom: TRACK_BOTTOM_PADDING },
                                                             isTrackActive && { overflow: 'visible' as const },
+                                                            task.isDisabled && { borderLeftWidth: 2, borderLeftColor: 'rgba(255,145,0,0.6)' },
                                                         ]}
                                                         onLayout={handleTrackLayout}
                                                     >
                                                         {/* Untimed Subtasks List (on the left) - Draggable */}
                                                         {sortedUntimedStages.length > 0 && (
                                                             <UntimedStagesDraggableList
-                                                                task={task}
-                                                                stages={sortedUntimedStages}
+                                                                entries={sortedUntimedStages.map(s => ({ task, stage: s }))}
                                                                 cellWidth={CELL_WIDTH}
                                                                 minutesPerCell={minutesPerCell}
                                                                 trackLabelWidth={TRACK_LABEL_WIDTH}
@@ -3751,6 +3782,24 @@ export default function LiveFocusView({
 
                             <View style={styles.bottomDockDivider} />
 
+                            {/* DISABLED toggle */}
+                            <TouchableOpacity
+                                style={[styles.dockViewModeBtn, showDisabledTasks && { backgroundColor: 'rgba(255,145,0,0.12)' }]}
+                                onPress={() => {
+                                    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                                    onToggleDisabledTasks?.();
+                                }}
+                                activeOpacity={0.7}
+                            >
+                                <MaterialIcons
+                                    name={showDisabledTasks ? 'visibility' : 'visibility-off'}
+                                    size={16}
+                                    color={showDisabledTasks ? '#FF9100' : 'rgba(255,255,255,0.35)'}
+                                />
+                            </TouchableOpacity>
+
+                            <View style={styles.bottomDockDivider} />
+
                             {/* Notifications: one list (To START + To FINISH), one count, one popup */}
                             <View style={styles.dockApprovalsBtnContainer}>
                                 <TouchableOpacity
@@ -4203,7 +4252,7 @@ export default function LiveFocusView({
                     setIsTimerRunning(false);
                     setTimerSeconds(0);
                 }}
-                tasks={tasks.map(t => ({
+                tasks={displayTasks.map(t => ({
                     id: t.id,
                     title: t.title,
                     color: categories.find(c => c.id === t.categoryId)?.color
@@ -4524,8 +4573,7 @@ export default function LiveFocusView({
 
 // Untimed Stages Draggable List Component
 interface UntimedStagesDraggableListProps {
-    task: Task;
-    stages: TaskStage[];
+    entries: TaskStageEntry[];
     cellWidth: number;
     minutesPerCell: number;
     trackLabelWidth: number;
@@ -4540,8 +4588,7 @@ interface UntimedStagesDraggableListProps {
 }
 
 function UntimedStagesDraggableList({
-    task,
-    stages,
+    entries,
     cellWidth,
     minutesPerCell,
     trackLabelWidth,
@@ -4554,6 +4601,7 @@ function UntimedStagesDraggableList({
     checkAndUpdateAutoScroll,
     stopAutoScroll
 }: UntimedStagesDraggableListProps) {
+    const stages = useMemo(() => entries.map(e => e.stage), [entries]);
     const [currentTime, setCurrentTime] = useState(new Date());
     const [measuredWidths, setMeasuredWidths] = useState<Map<number, number>>(new Map());
     const maxCardWidthRef = useRef(200);
@@ -4663,7 +4711,8 @@ function UntimedStagesDraggableList({
         })
     ).current;
 
-    const renderItem = useCallback((item: TaskStage) => {
+    const renderItem = useCallback((entry: TaskStageEntry) => {
+        const { task, stage: item } = entry;
         const status = item.status || 'Upcoming';
         const timePosition = getTimePosition(item);
         const isDragging2D = drag2DStageIdRef.current === item.id;
@@ -4680,6 +4729,7 @@ function UntimedStagesDraggableList({
                     styles.untimedStageItem,
                     { backgroundColor: STAGE_STATUS_CONFIG[status].color },
                     isDragging2D && styles.stageItemDragging2D,
+                    task.isDisabled && { opacity: 0.35 },
                 ]}
                 onLayout={onCardLayout}
             >
@@ -4776,7 +4826,7 @@ function UntimedStagesDraggableList({
                     width: listWidth,
                     maxWidth: listWidth
                 }}>
-                    {stages.map((stage) => renderItem(stage))}
+                    {entries.map((entry) => renderItem(entry))}
                 </View>
             </View>
 

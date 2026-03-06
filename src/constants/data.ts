@@ -152,6 +152,7 @@ export interface Task {
   stages?: TaskStage[];        // List of task stages (for non-recurring tasks only)
   isPinned?: boolean;          // Whether the task is pinned
   pinTimestamp?: number | null; // Unix timestamp when pinned
+  isDisabled?: boolean;         // Whether the task is disabled (hidden from timeline)
   recurrence?: Recurrence;      // Optional recurrence configuration
   /**
    * Date-specific instances for recurring tasks
