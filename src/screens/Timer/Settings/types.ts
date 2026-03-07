@@ -94,8 +94,8 @@ export interface InfoSectionProps {
     isLandscape: boolean;
 }
 
-// Restore section props
-export interface RestoreSectionProps {
+// Data Management section props
+export interface DataManagementSectionProps {
     isLandscape: boolean;
     onClearTime: () => void;
     onClearTask: () => void;

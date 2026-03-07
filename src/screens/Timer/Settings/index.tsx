@@ -13,9 +13,8 @@ import {
 } from 'react-native';
 import { ScrollView, GestureHandlerRootView } from 'react-native-gesture-handler';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { SafeAreaView } from 'react-native-safe-area-context';
-
 import { MaterialIcons } from '@expo/vector-icons';
+import { SafeAreaView } from 'react-native-safe-area-context';
 
 import ThemeSection, { LandscapePreviewComponent } from './ThemeSection';
 import LeaveSection from './LeaveSection';
@@ -24,8 +23,7 @@ import CategorySection from './CategorySection';
 import GeneralSection from './GeneralSection';
 import InfoSection from './InfoSection';
 import QuickMessageSection from './QuickMessageSection';
-import RestoreSection from './RestoreSection';
-import BackupScreen from './BackupScreen';
+import DataManagementSection from './DataManagementSection';
 import TimeOfDayBackgroundScreen from './TimeOfDayBackgroundScreen';
 import { styles } from './styles';
 import {
@@ -70,67 +68,71 @@ function ConfirmClearModalContent({
             >
                 <View style={[styles.restoreDimLayer, { width, height }]} pointerEvents="none" />
                 <TouchableWithoutFeedback onPress={(e) => e.stopPropagation()}>
-                    <View style={styles.settingsCardBezel}>
-                        <View style={[
-                            styles.settingsCardTrackUnifiedLarge,
-                            styles.restoreModal,
-                            isLandscape && styles.restoreModalLandscape
-                        ]}>
-                            <Text style={styles.sectionTitle}>
-                                {clearConfirmType === 'alldata' ? 'Clear all app data?' : clearConfirmType === 'time' ? 'Clear all timers?' : 'Clear all tasks?'}
-                            </Text>
-                            <Text style={styles.restoreSubtitle}>
-                                {clearConfirmType === 'alldata'
-                                    ? 'This will remove ALL app data including timers, tasks, settings, themes, and preferences. Type "clear all" to confirm.'
-                                    : 'Type "clear all" below to confirm. This cannot be undone.'}
-                            </Text>
-                            <Text style={styles.restoreLabel}>CONFIRM</Text>
-                            <TextInput
-                                style={[
-                                    styles.restoreInput,
-                                    confirmError && styles.restoreInputError
-                                ]}
-                                placeholder="clear all"
-                                placeholderTextColor="rgba(255,255,255,0.3)"
-                                value={confirmInput}
-                                onChangeText={onInputChange}
-                                autoCapitalize="none"
-                                autoCorrect={false}
-                            />
-                            {confirmError && (
-                                <Text style={[styles.restoreSubtitle, { color: '#FF5050', marginBottom: 12, fontSize: 12 }]}>
-                                    Type exactly &quot;clear all&quot; to confirm
-                                </Text>
-                            )}
-                            <View style={[
-                                styles.restoreButtonRow,
-                                isLandscape && styles.restoreButtonRowLandscape
-                            ]}>
-                                <TouchableOpacity
-                                    style={[
-                                        styles.restorePrimaryBtn,
-                                        isLandscape && styles.restorePrimaryBtnLandscape
-                                    ]}
-                                    onPress={onConfirmClear}
-                                    activeOpacity={0.7}
-                                >
-                                    <Text style={styles.restorePrimaryBtnText}>Confirm</Text>
-                                </TouchableOpacity>
-                                <TouchableOpacity
-                                    style={[
-                                        styles.restoreSecondaryBtn,
-                                        isLandscape && styles.restoreSecondaryBtnLandscape
-                                    ]}
-                                    onPress={onClose}
-                                    activeOpacity={0.7}
-                                >
-                                    <Text style={styles.restoreSecondaryBtnText}>Cancel</Text>
-                                </TouchableOpacity>
-                            </View>
-                            <View style={styles.settingsCardInteriorShadow} pointerEvents="none" />
-                            <View style={styles.settingsCardTopRim} pointerEvents="none" />
+                    <View style={[
+                        styles.restoreModal,
+                        isLandscape && styles.restoreModalLandscape
+                    ]}>
+                        <View style={{
+                            width: 42,
+                            height: 42,
+                            borderRadius: 21,
+                            backgroundColor: 'rgba(255, 60, 60, 0.15)',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            marginBottom: 16
+                        }}>
+                            <MaterialIcons name="report-problem" size={24} color="#FF5050" />
                         </View>
-                        <View style={styles.settingsCardOuterGlow} pointerEvents="none" />
+
+                        <Text style={styles.restoreTitle}>
+                            {clearConfirmType === 'alldata' ? 'Wipe All Data?' : clearConfirmType === 'time' ? 'Clear Timers?' : 'Clear Tasks?'}
+                        </Text>
+
+                        <Text style={styles.restoreSubtitle}>
+                            {clearConfirmType === 'alldata'
+                                ? 'This will permanently remove everything. Type "clear all" to confirm.'
+                                : 'This action cannot be undone. Type "clear all" to confirm.'}
+                        </Text>
+
+                        <TextInput
+                            style={[
+                                styles.restoreInput,
+                                confirmError && styles.restoreInputError
+                            ]}
+                            placeholder="clear all"
+                            placeholderTextColor="rgba(255,255,255,0.15)"
+                            value={confirmInput}
+                            onChangeText={onInputChange}
+                            autoCapitalize="none"
+                            autoCorrect={false}
+                        />
+
+                        {confirmError && (
+                            <Text style={{ color: '#FF5050', marginBottom: 16, fontSize: 11, fontWeight: '700' }}>
+                                ERR: TYPE "CLEAR ALL"
+                            </Text>
+                        )}
+
+                        <View style={[
+                            styles.restoreButtonRow,
+                            isLandscape && styles.restoreButtonRowLandscape
+                        ]}>
+                            <TouchableOpacity
+                                style={styles.restoreSecondaryBtn}
+                                onPress={onClose}
+                                activeOpacity={0.7}
+                            >
+                                <Text style={styles.restoreSecondaryBtnText}>Cancel</Text>
+                            </TouchableOpacity>
+
+                            <TouchableOpacity
+                                style={styles.restorePrimaryBtn}
+                                onPress={onConfirmClear}
+                                activeOpacity={0.7}
+                            >
+                                <Text style={styles.restorePrimaryBtnText}>Confirm</Text>
+                            </TouchableOpacity>
+                        </View>
                     </View>
                 </TouchableWithoutFeedback>
             </KeyboardAvoidingView>
@@ -170,10 +172,10 @@ export default function SettingsScreen({
     const { width, height } = useWindowDimensions();
     const isLandscape = width > height;
 
-    const [activeTab, setActiveTab] = useState<'customization' | 'sound' | 'categories' | 'quickmsg' | 'general' | 'restore' | 'about' | 'leave' | 'backup'>('customization');
+    const [activeTab, setActiveTab] = useState<'customization' | 'sound' | 'categories' | 'quickmsg' | 'general' | 'datamgmt' | 'about' | 'leave'>('customization');
     const [resetKey, setResetKey] = useState(0);
     const [isHidePreview, setIsHidePreview] = useState(false);
-    const [activeSubPage, setActiveSubPage] = useState<null | 'timeOfDayBackground' | 'backup'>(null);
+    const [activeSubPage, setActiveSubPage] = useState<null | 'timeOfDayBackground'>(null);
 
     // Clear confirm popup (type "Clear all" to confirm)
     const [clearConfirmType, setClearConfirmType] = useState<'time' | 'task' | 'alldata' | null>(null);
@@ -248,18 +250,6 @@ export default function SettingsScreen({
         );
     }
 
-    if (activeSubPage === 'backup' && !isLandscape) {
-        return (
-            <BackupScreen
-                onBack={() => {
-                    setActiveSubPage(null);
-                    // Refresh data after restore
-                    onAfterClearTimers?.();
-                    onAfterClearTasks?.();
-                }}
-            />
-        );
-    }
 
     const renderPortraitLayout = () => (
         <ScrollView
@@ -380,26 +370,10 @@ export default function SettingsScreen({
                 <View style={styles.settingsCardOuterGlow} pointerEvents="none" />
             </View>
 
-            {/* Backup & Restore Section */}
+            {/* Data Management Section */}
             <View style={styles.settingsCardBezel}>
                 <View style={styles.settingsCardTrackUnifiedLarge}>
-                    <Text style={styles.sectionTitle}>SYNC & CLOUD</Text>
-                    <TouchableOpacity
-                        style={styles.resetButton}
-                        onPress={() => setActiveSubPage('backup')}
-                        activeOpacity={0.7}
-                    >
-                        <MaterialIcons name="cloud-upload" size={20} color="#FFFFFF" />
-                        <Text style={styles.resetButtonText}>Backup & Restore</Text>
-                    </TouchableOpacity>
-                </View>
-                <View style={styles.settingsCardOuterGlow} pointerEvents="none" />
-            </View>
-
-            {/* Restore Section */}
-            <View style={styles.settingsCardBezel}>
-                <View style={styles.settingsCardTrackUnifiedLarge}>
-                    <RestoreSection
+                    <DataManagementSection
                         isLandscape={false}
                         onClearTime={() => openClearConfirm('time')}
                         onClearTask={() => openClearConfirm('task')}
@@ -422,7 +396,7 @@ export default function SettingsScreen({
 
     // Landscape Layout - Side by side with Sidebar
     const renderLandscapeLayout = () => {
-        const renderSidebarButton = (id: 'customization' | 'sound' | 'categories' | 'quickmsg' | 'general' | 'timeline' | 'backup' | 'restore' | 'about' | 'leave', icon: keyof typeof MaterialIcons.glyphMap, label: string) => {
+        const renderSidebarButton = (id: 'customization' | 'sound' | 'categories' | 'quickmsg' | 'general' | 'timeline' | 'datamgmt' | 'about' | 'leave', icon: keyof typeof MaterialIcons.glyphMap, label: string) => {
             const isActive = activeTab === id;
             return (
                 <TouchableOpacity
@@ -436,15 +410,11 @@ export default function SettingsScreen({
                             setActiveSubPage('timeOfDayBackground');
                             return;
                         }
-                        if (id === 'backup') {
-                            if (isLandscape) {
-                                setActiveTab('backup');
-                            } else {
-                                setActiveSubPage('backup');
-                            }
+                        if (id === 'datamgmt') {
+                            setActiveTab('datamgmt');
                             return;
                         }
-                        // The 'restore' and 'leave' tabs are handled directly by setActiveTab
+                        // The 'leave' tab is handled directly by setActiveTab
                         setActiveTab(id as any);
                     }}
                     activeOpacity={0.7}
@@ -526,9 +496,8 @@ export default function SettingsScreen({
                                 {renderSidebarButton('quickmsg', 'chat', 'Quick Msg')}
                                 {renderSidebarButton('general', 'settings', 'General')}
                                 {renderSidebarButton('timeline', 'timeline', 'Timeline BG')}
-                                {renderSidebarButton('backup', 'cloud-upload', 'Backup')}
-                                {renderSidebarButton('restore', 'restore', 'Restore')}
-                                {renderSidebarButton('about', 'info', 'Info')}
+                                {renderSidebarButton('datamgmt', 'storage', 'Data Mgmt')}
+                                {renderSidebarButton('about', 'info', 'About')}
                             </View>
                         </ScrollView>
                     </View>
@@ -615,8 +584,8 @@ export default function SettingsScreen({
                             />
                         )}
 
-                        {activeTab === 'restore' && (
-                            <RestoreSection
+                        {activeTab === 'datamgmt' && (
+                            <DataManagementSection
                                 isLandscape={true}
                                 onClearTime={() => openClearConfirm('time')}
                                 onClearTask={() => openClearConfirm('task')}
@@ -626,17 +595,6 @@ export default function SettingsScreen({
 
                         {activeTab === 'about' && (
                             <InfoSection isLandscape={true} />
-                        )}
-                        {activeTab === 'backup' && (
-                            <BackupScreen
-                                isEmbedded
-                                onBack={() => {
-                                    setActiveTab('customization');
-                                    // Refresh data after restore
-                                    onAfterClearTimers?.();
-                                    onAfterClearTasks?.();
-                                }}
-                            />
                         )}
                     </ScrollView>
 
