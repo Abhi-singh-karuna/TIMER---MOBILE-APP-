@@ -25,6 +25,7 @@ import GeneralSection from './GeneralSection';
 import InfoSection from './InfoSection';
 import QuickMessageSection from './QuickMessageSection';
 import RestoreSection from './RestoreSection';
+import BackupScreen from './BackupScreen';
 import TimeOfDayBackgroundScreen from './TimeOfDayBackgroundScreen';
 import { styles } from './styles';
 import {
@@ -169,9 +170,9 @@ export default function SettingsScreen({
     const { width, height } = useWindowDimensions();
     const isLandscape = width > height;
 
-    const [activeTab, setActiveTab] = useState<'customization' | 'sound' | 'categories' | 'quickmsg' | 'general' | 'restore' | 'about' | 'leave'>('customization');
+    const [activeTab, setActiveTab] = useState<'customization' | 'sound' | 'categories' | 'quickmsg' | 'general' | 'restore' | 'about' | 'leave' | 'backup'>('customization');
     const [resetKey, setResetKey] = useState(0);
-    const [activeSubPage, setActiveSubPage] = useState<null | 'timeOfDayBackground'>(null);
+    const [activeSubPage, setActiveSubPage] = useState<null | 'timeOfDayBackground' | 'backup'>(null);
 
     // Clear confirm popup (type "Clear all" to confirm)
     const [clearConfirmType, setClearConfirmType] = useState<'time' | 'task' | 'alldata' | null>(null);
@@ -243,6 +244,19 @@ export default function SettingsScreen({
                 dailyStartMinutes={dailyStartMinutes}
                 onSave={onTimeOfDayBackgroundConfigChange}
                 onBack={() => setActiveSubPage(null)}
+            />
+        );
+    }
+
+    if (activeSubPage === 'backup' && !isLandscape) {
+        return (
+            <BackupScreen
+                onBack={() => {
+                    setActiveSubPage(null);
+                    // Refresh data after restore
+                    onAfterClearTimers?.();
+                    onAfterClearTasks?.();
+                }}
             />
         );
     }
@@ -366,6 +380,22 @@ export default function SettingsScreen({
                 <View style={styles.settingsCardOuterGlow} pointerEvents="none" />
             </View>
 
+            {/* Backup & Restore Section */}
+            <View style={styles.settingsCardBezel}>
+                <View style={styles.settingsCardTrackUnifiedLarge}>
+                    <Text style={styles.sectionTitle}>SYNC & CLOUD</Text>
+                    <TouchableOpacity
+                        style={styles.resetButton}
+                        onPress={() => setActiveSubPage('backup')}
+                        activeOpacity={0.7}
+                    >
+                        <MaterialIcons name="cloud-upload" size={20} color="#FFFFFF" />
+                        <Text style={styles.resetButtonText}>Backup & Restore</Text>
+                    </TouchableOpacity>
+                </View>
+                <View style={styles.settingsCardOuterGlow} pointerEvents="none" />
+            </View>
+
             {/* Restore Section */}
             <View style={styles.settingsCardBezel}>
                 <View style={styles.settingsCardTrackUnifiedLarge}>
@@ -392,7 +422,7 @@ export default function SettingsScreen({
 
     // Landscape Layout - Side by side with Sidebar
     const renderLandscapeLayout = () => {
-        const renderSidebarButton = (id: 'customization' | 'sound' | 'categories' | 'quickmsg' | 'general' | 'timeline' | 'restore' | 'about' | 'leave', icon: keyof typeof MaterialIcons.glyphMap, label: string) => {
+        const renderSidebarButton = (id: 'customization' | 'sound' | 'categories' | 'quickmsg' | 'general' | 'timeline' | 'backup' | 'restore' | 'about' | 'leave', icon: keyof typeof MaterialIcons.glyphMap, label: string) => {
             const isActive = activeTab === id;
             return (
                 <TouchableOpacity
@@ -404,6 +434,14 @@ export default function SettingsScreen({
                     onPress={() => {
                         if (id === 'timeline') {
                             setActiveSubPage('timeOfDayBackground');
+                            return;
+                        }
+                        if (id === 'backup') {
+                            if (isLandscape) {
+                                setActiveTab('backup');
+                            } else {
+                                setActiveSubPage('backup');
+                            }
                             return;
                         }
                         // The 'restore' and 'leave' tabs are handled directly by setActiveTab
@@ -470,6 +508,7 @@ export default function SettingsScreen({
                                 {renderSidebarButton('quickmsg', 'chat', 'Quick Msg')}
                                 {renderSidebarButton('general', 'settings', 'General')}
                                 {renderSidebarButton('timeline', 'timeline', 'Timeline BG')}
+                                {renderSidebarButton('backup', 'cloud-upload', 'Backup')}
                                 {renderSidebarButton('restore', 'restore', 'Restore')}
                                 {renderSidebarButton('about', 'info', 'Info')}
                             </View>
@@ -569,6 +608,17 @@ export default function SettingsScreen({
 
                         {activeTab === 'about' && (
                             <InfoSection isLandscape={true} />
+                        )}
+                        {activeTab === 'backup' && (
+                            <BackupScreen
+                                isEmbedded
+                                onBack={() => {
+                                    setActiveTab('customization');
+                                    // Refresh data after restore
+                                    onAfterClearTimers?.();
+                                    onAfterClearTasks?.();
+                                }}
+                            />
                         )}
                     </ScrollView>
 

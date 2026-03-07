@@ -19,7 +19,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
 import { BlurView } from 'expo-blur';
 import { MaterialIcons } from '@expo/vector-icons';
-import { Audio } from 'expo-av';
+import { AudioModule } from 'expo-audio';
 import { activateKeepAwakeAsync, deactivateKeepAwake } from 'expo-keep-awake';
 import { Timer, Category, SOUND_OPTIONS } from '../../../constants/data';
 import { getLogicalDate, getStartOfLogicalDay, DEFAULT_DAILY_START_MINUTES, formatDailyStartRangeCompact } from '../../../utils/dailyStartTime';
@@ -161,7 +161,6 @@ export default function TimerList({
     const toggleSlideAnim = useRef(new Animated.Value(activeView === 'task' ? 1 : 0)).current;
     const [completedPopupTimer, setCompletedPopupTimer] = useState<Timer | null>(null);
     const prevTimersRef = React.useRef<Timer[]>([]);
-    const soundRef = useRef<Audio.Sound | null>(null);
     const playCountRef = useRef(0);
 
     // Keep screen awake while any timer is running
@@ -189,11 +188,9 @@ export default function TimerList({
                 // Small delay to ensure popup is rendered
                 await new Promise(resolve => setTimeout(resolve, 100));
 
-                await Audio.setAudioModeAsync({
-                    playsInSilentModeIOS: true,
-                    staysActiveInBackground: false,
-                    shouldDuckAndroid: true,
-                    playThroughEarpieceAndroid: false,
+                await AudioModule.setAudioModeAsync({
+                    playsInSilentMode: true,
+                    interruptionMode: 'doNotMix',
                 });
 
                 const playSoundOnce = async () => {
@@ -207,16 +204,13 @@ export default function TimerList({
 
                     console.log('Playing sound:', soundOption.name);
 
-                    const { sound } = await Audio.Sound.createAsync(
-                        soundSource,
-                        { shouldPlay: true, volume: 1.0 }
-                    );
-                    soundRef.current = sound;
+                    const player = AudioModule.createAudioPlayer(soundSource);
+                    player.play();
 
-                    sound.setOnPlaybackStatusUpdate((status) => {
-                        if (status.isLoaded && status.didJustFinish) {
+                    const subscription = player.addListener('playbackStatusUpdate', (status: { didJustFinish: boolean }) => {
+                        if (status.didJustFinish) {
+                            subscription.remove();
                             playCountRef.current += 1;
-                            sound.unloadAsync();
 
                             if (playCountRef.current < soundRepetition) {
                                 setTimeout(() => playSoundOnce(), 300);
@@ -235,9 +229,7 @@ export default function TimerList({
         playSound();
 
         return () => {
-            if (soundRef.current) {
-                soundRef.current.unloadAsync();
-            }
+            // Player cleanup handled by listeners or garbage collection for one-off plays
         };
     }, [completedPopupTimer, selectedSound, soundRepetition]);
 

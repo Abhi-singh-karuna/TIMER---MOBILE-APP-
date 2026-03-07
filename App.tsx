@@ -51,6 +51,7 @@ import {
   DEFAULT_DAILY_START_MINUTES,
 } from './src/utils/dailyStartTime';
 import { findOriginalRecurringTask, calculateStreak, getAllRecurringDates } from './src/utils/recurrenceUtils';
+import { checkAndPerformAutoSync, configureGoogleSignIn } from './src/services/GoogleDriveService';
 
 // Helper to normalize date string (imported from recurrenceUtils logic)
 function normalizeDateString(dateStr: string): string {
@@ -155,7 +156,9 @@ const normalizeTasks = (tasks: Task[], dailyStartMinutes: number = DEFAULT_DAILY
 LogBox.ignoreLogs([
   'SafeAreaView has been deprecated',
   'expo-notifications',
+  'Android Push notifications (remote notifications)',
   '[expo-av]',
+  'Constants.manifest',
 ]);
 
 type Screen = 'list' | 'active' | 'complete' | 'settings';
@@ -250,6 +253,11 @@ export default function App() {
     initializeTimers();
     loadAllColors();
     requestNotificationPermissions();
+
+    // Configure and check auto-sync
+    configureGoogleSignIn();
+    checkAndPerformAutoSync().catch(err => console.error('Auto-sync error:', err));
+
     return () => {
       if (intervalRef.current) clearInterval(intervalRef.current);
     };
@@ -324,6 +332,9 @@ export default function App() {
           saveTimers(updated);
           return updated;
         });
+
+        // Also check if auto-sync is due when resuming
+        checkAndPerformAutoSync().catch(err => console.error('Auto-sync error:', err));
       }
 
       appState.current = nextAppState;

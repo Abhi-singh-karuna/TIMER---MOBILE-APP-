@@ -2,6 +2,11 @@ import { MaterialIcons } from '@expo/vector-icons';
 
 export const CATEGORIES_KEY = '@timer_categories';
 export const LEAVE_DAYS_KEY = '@timer_leave_days';
+export const AUTO_SYNC_FREQUENCY_KEY = '@timer_auto_sync_frequency';
+export const AUTO_SYNC_TIME_KEY = '@timer_auto_sync_time';
+export const LAST_SYNC_TIMESTAMP_KEY = '@timer_last_sync_timestamp';
+
+export type AutoSyncFrequency = 'Off' | 'Daily' | 'Weekly' | 'Monthly';
 
 export interface LeaveDay {
   date: string; // YYYY-MM-DD

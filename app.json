@@ -30,12 +30,25 @@
       "edgeToEdgeEnabled": true,
       "permissions": [
         "SCHEDULE_EXACT_ALARM",
-        "POST_NOTIFICATIONS"
-      ]
+        "POST_NOTIFICATIONS",
+        "android.permission.RECORD_AUDIO",
+        "android.permission.MODIFY_AUDIO_SETTINGS"
+      ],
+      "package": "com.abhisheksingh.timerapp"
     },
     "plugins": [
       "expo-notifications",
-      "expo-asset"
+      "expo-asset",
+      "@react-native-community/datetimepicker",
+      "expo-audio",
+      "expo-video",
+      [
+        "@react-native-google-signin/google-signin",
+        {
+          "iosClientId": "833418074077-o7r6osq6t8h56dcqkeuoau36rf4i8h4k.apps.googleusercontent.com",
+          "iosUrlScheme": "com.googleusercontent.apps.833418074077-o7r6osq6t8h56dcqkeuoau36rf4i8h4k"
+        }
+      ]
     ],
     "web": {
       "favicon": "./assets/icon.png"

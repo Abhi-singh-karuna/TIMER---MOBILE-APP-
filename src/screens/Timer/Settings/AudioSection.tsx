@@ -7,7 +7,7 @@ import {
     Animated,
 } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { Audio } from 'expo-av';
+import { useAudioPlayer, AudioModule } from 'expo-audio';
 import { MaterialIcons } from '@expo/vector-icons';
 import Slider from '@react-native-community/slider';
 import { SOUND_OPTIONS } from '../../../constants/data';
@@ -26,7 +26,8 @@ export default function AudioSection({
     onRepetitionChange,
 }: AudioSectionProps) {
     const [playingSound, setPlayingSound] = useState<number | null>(null);
-    const soundRef = useRef<Audio.Sound | null>(null);
+    // Since we need to play multiple different sounds dynamically, 
+    // we'll use a local player instance rather than a hook for previews.
 
     // Individual animation values for each sound card
     const pulseAnims = useRef<Record<number, Animated.Value>>(
@@ -83,22 +84,23 @@ export default function AudioSection({
 
     const handlePreviewSound = async (soundIndex: number) => {
         const soundOption = SOUND_OPTIONS[soundIndex];
-        if (!soundOption || soundOption.source === null) return;
+        if (!soundOption || soundOption.source === null || soundOption.source === undefined) return;
         try {
-            if (soundRef.current) {
-                await soundRef.current.stopAsync();
-                await soundRef.current.unloadAsync();
-                soundRef.current = null;
-            }
             setPlayingSound(soundIndex);
-            await Audio.setAudioModeAsync({ playsInSilentModeIOS: true, staysActiveInBackground: false });
-            const { sound } = await Audio.Sound.createAsync(soundOption.source, { shouldPlay: true });
-            soundRef.current = sound;
-            sound.setOnPlaybackStatusUpdate((status: any) => {
-                if (status.isLoaded && status.didJustFinish) {
+
+            // Configure audio mode (new expo-audio syntax)
+            await AudioModule.setAudioModeAsync({
+                playsInSilentMode: true,
+                interruptionMode: 'doNotMix',
+            });
+
+            const player = AudioModule.createAudioPlayer(soundOption.source);
+            player.play();
+
+            const subscription = player.addListener('playbackStatusUpdate', (status: { didJustFinish: boolean }) => {
+                if (status.didJustFinish) {
                     setPlayingSound(null);
-                    sound.unloadAsync();
-                    if (soundRef.current === sound) soundRef.current = null;
+                    subscription.remove();
                 }
             });
         } catch (error) {
