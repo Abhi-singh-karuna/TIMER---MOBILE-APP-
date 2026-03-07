@@ -20,12 +20,19 @@ if (!isExpoGo) {
     GoogleSignin = GoogleSigninModule.GoogleSignin;
     statusCodes = GoogleSigninModule.statusCodes;
 } else {
-    // Mock for Expo Go to prevent "undefined" errors
-    GoogleSignin = new Proxy({}, {
-        get: () => () => {
+    // Mock for Expo Go to prevent startup crashes.
+    // Allow non-interactive calls but throw on explicit sign-in attempts.
+    GoogleSignin = {
+        configure: () => { console.warn('Google Sign-In: .configure() ignored in Expo Go'); },
+        hasPlayServices: async () => true,
+        signInSilently: async () => ({ type: 'cancelled' }),
+        isSignedIn: async () => false,
+        getTokens: async () => ({ accessToken: null }),
+        signOut: async () => { },
+        signIn: async () => {
             throw new Error('Google Sign-In is not supported in Expo Go. Please use a development build.');
         }
-    });
+    };
 }
 
 interface BackupData {

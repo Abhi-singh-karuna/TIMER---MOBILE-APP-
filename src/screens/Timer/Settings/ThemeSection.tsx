@@ -50,6 +50,28 @@ const hsvToHex = (h: number) => {
     return `#${toHex(r)}${toHex(g)}${toHex(b)}`.toUpperCase();
 };
 
+// Helper to convert Hex color back to hue (0-360)
+const hexToHue = (hex: string) => {
+    if (!hex || hex[0] !== '#') return 0;
+    const r = parseInt(hex.slice(1, 3), 16) / 255;
+    const g = parseInt(hex.slice(3, 5), 16) / 255;
+    const b = parseInt(hex.slice(5, 7), 16) / 255;
+
+    const max = Math.max(r, g, b);
+    const min = Math.min(r, g, b);
+    const delta = max - min;
+    let h = 0;
+
+    if (delta === 0) h = 0;
+    else if (max === r) h = ((g - b) / delta) % 6;
+    else if (max === g) h = (b - r) / delta + 2;
+    else h = (r - g) / delta + 4;
+
+    h = Math.round(h * 60);
+    if (h < 0) h += 360;
+    return h;
+};
+
 interface ThemeSectionFullProps extends ThemeSectionProps {
     scrollRef?: React.RefObject<ScrollView>;
     pulseAnim?: Animated.Value;
@@ -89,8 +111,15 @@ export default function ThemeSection({
 
     // Scroll to active preset when it changes (e.g. on reset or mount)
     useEffect(() => {
+        // Sync hues when preset changes (works in both portrait and landscape)
+        const activePreset = LANDSCAPE_PRESETS[activePresetIndex];
+        if (activePreset) {
+            setFillerHue(hexToHue(activePreset.filler));
+            setButtonHue(hexToHue(activePreset.slider));
+            setTextHue(hexToHue(activePreset.text));
+        }
+
         if (scrollRef.current) {
-            // Use a small delay to ensure layout is ready and avoid race conditions
             const timer = setTimeout(() => {
                 isProgrammaticScroll.current = true;
                 scrollRef.current?.scrollTo({
@@ -99,7 +128,6 @@ export default function ThemeSection({
                 });
                 lastScrolledIndex.current = activePresetIndex;
 
-                // Reset flag after animation duration
                 setTimeout(() => {
                     isProgrammaticScroll.current = false;
                 }, 500);
@@ -150,7 +178,7 @@ export default function ThemeSection({
     const renderLandscapePreview = () => (
         <Animated.View style={[styles.phoneFrameContainer, isLandscape && styles.phoneFrameContainerLandscape, { transform: [{ scale: pulseAnim }] }]}>
             <View style={[styles.phoneFrame, { width: previewWidth + 12 }]}>
-                <View style={styles.phoneInternalFrame}>
+                <View style={[styles.phoneInternalFrame, { width: previewWidth }]}>
                     <ScrollView
                         ref={scrollRef}
                         horizontal
@@ -216,67 +244,70 @@ export default function ThemeSection({
         icon: keyof typeof MaterialIcons.glyphMap,
         currentColor: string,
         onSelect: (color: string) => void
-    ) => (
-        <View style={styles.settingsCardBezelSmall}>
-            <View style={styles.settingsCardTrackUnified}>
-                <View style={[styles.colorPickerCard, isLandscape && styles.colorPickerCardLandscape, { marginBottom: 0, padding: 12 }]}>
-                    <View style={styles.colorPickerHeader}>
-                        <View style={styles.colorPickerTitleRow}>
-                            <View style={styles.iconWell}>
-                                <MaterialIcons name={icon} size={16} color={currentColor} />
+    ) => {
+        const isLandscapeMode = isLandscape;
+        return (
+            <View style={isLandscapeMode ? { marginBottom: 10 } : styles.settingsCardBezelSmall}>
+                <View style={isLandscapeMode ? { backgroundColor: 'rgba(255,255,255,0.03)', borderRadius: 12, padding: 12, borderWidth: 1, borderColor: 'rgba(255,255,255,0.06)' } : styles.settingsCardTrackUnified}>
+                    <View style={[styles.colorPickerCard, isLandscapeMode && styles.colorPickerCardLandscape, { marginBottom: 0, padding: 0 }]}>
+                        <View style={[styles.colorPickerHeader, { marginBottom: isLandscapeMode ? 12 : 16 }]}>
+                            <View style={styles.colorPickerTitleRow}>
+                                <View style={[styles.iconWell, isLandscapeMode && { width: 24, height: 24 }]}>
+                                    <MaterialIcons name={icon} size={isLandscapeMode ? 14 : 16} color={currentColor} />
+                                </View>
+                                <Text style={[styles.colorPickerTitle, isLandscapeMode && styles.colorPickerTitleLandscape, isLandscapeMode && { fontSize: 11 }]}>{title}</Text>
                             </View>
-                            <Text style={[styles.colorPickerTitle, isLandscape && styles.colorPickerTitleLandscape]}>{title}</Text>
+                            <View style={[styles.currentColorBadge, isLandscapeMode && { width: 14, height: 14 }, { backgroundColor: currentColor }]}>
+                                {!isLandscapeMode && <View style={styles.colorGemInnerGlow} />}
+                            </View>
                         </View>
-                        <View style={[styles.currentColorBadge, { backgroundColor: currentColor }]}>
-                            <View style={styles.colorGemInnerGlow} />
-                        </View>
-                    </View>
 
-                    <View style={styles.sliderContainer}>
-                        <View style={styles.sliderTrackBg}>
-                            <LinearGradient
-                                colors={['#FF0000', '#FFFF00', '#00FF00', '#00FFFF', '#0000FF', '#FF00FF', '#FF0000']}
-                                start={{ x: 0, y: 0.5 }}
-                                end={{ x: 1, y: 0.5 }}
-                                style={styles.hueGradient}
+                        <View style={[styles.sliderContainer, isLandscapeMode && { marginTop: 0 }]}>
+                            <View style={styles.sliderTrackBg}>
+                                <LinearGradient
+                                    colors={['#FF0000', '#FFFF00', '#00FF00', '#00FFFF', '#0000FF', '#FF00FF', '#FF0000']}
+                                    start={{ x: 0, y: 0.5 }}
+                                    end={{ x: 1, y: 0.5 }}
+                                    style={styles.hueGradient}
+                                />
+                                {!isLandscapeMode && <View style={styles.sliderTrenchShadow} />}
+                            </View>
+                            <Slider
+                                style={styles.hueSlider}
+                                minimumValue={0}
+                                maximumValue={360}
+                                step={1}
+                                value={title.includes('Filler') ? fillerHue : title.includes('Button') ? buttonHue : textHue}
+                                onValueChange={(val) => {
+                                    const hex = hsvToHex(val);
+                                    if (title.includes('Filler')) {
+                                        setFillerHue(val);
+                                        onFillerColorChange(hex);
+                                    } else if (title.includes('Button')) {
+                                        setButtonHue(val);
+                                        onSliderButtonColorChange(hex);
+                                    } else {
+                                        setTextHue(val);
+                                        onTimerTextColorChange(hex);
+                                    }
+                                }}
+                                onSlidingComplete={(val) => {
+                                    const hex = hsvToHex(val);
+                                    const key = title.includes('Filler') ? FILLER_COLOR_KEY : title.includes('Button') ? SLIDER_BUTTON_COLOR_KEY : TEXT_COLOR_KEY;
+                                    AsyncStorage.setItem(key, hex).catch(err => console.error(err));
+                                    triggerPulse();
+                                }}
+                                minimumTrackTintColor="transparent"
+                                maximumTrackTintColor="transparent"
+                                thumbTintColor="#fff"
                             />
-                            <View style={styles.sliderTrenchShadow} />
                         </View>
-                        <Slider
-                            style={styles.hueSlider}
-                            minimumValue={0}
-                            maximumValue={360}
-                            step={1}
-                            value={title.includes('Filler') ? fillerHue : title.includes('Button') ? buttonHue : textHue}
-                            onValueChange={(val) => {
-                                const hex = hsvToHex(val);
-                                if (title.includes('Filler')) {
-                                    setFillerHue(val);
-                                    onFillerColorChange(hex);
-                                } else if (title.includes('Button')) {
-                                    setButtonHue(val);
-                                    onSliderButtonColorChange(hex);
-                                } else {
-                                    setTextHue(val);
-                                    onTimerTextColorChange(hex);
-                                }
-                            }}
-                            onSlidingComplete={(val) => {
-                                const hex = hsvToHex(val);
-                                const key = title.includes('Filler') ? FILLER_COLOR_KEY : title.includes('Button') ? SLIDER_BUTTON_COLOR_KEY : TEXT_COLOR_KEY;
-                                AsyncStorage.setItem(key, hex).catch(err => console.error(err));
-                                triggerPulse();
-                            }}
-                            minimumTrackTintColor="transparent"
-                            maximumTrackTintColor="transparent"
-                            thumbTintColor="#fff"
-                        />
                     </View>
                 </View>
+                {!isLandscapeMode && <View style={styles.settingsCardOuterGlowSmall} pointerEvents="none" />}
             </View>
-            <View style={styles.settingsCardOuterGlowSmall} pointerEvents="none" />
-        </View>
-    );
+        );
+    };
 
     const renderResetButton = () => (
         <TouchableOpacity
@@ -294,15 +325,15 @@ export default function ThemeSection({
     if (isLandscape) {
         return (
             <View>
-                <View style={[styles.headerWithReset, { marginBottom: 15 }]}>
-                    <Text style={[styles.sectionTitleLandscape, { marginBottom: 0 }]}>CUSTOMIZE COLORS</Text>
+                <View style={[styles.headerWithReset, { marginBottom: 12 }]}>
+                    <Text style={[styles.sectionTitleLandscape, { marginBottom: 0, fontSize: 13 }]}>CUSTOMIZE COLORS</Text>
                     {renderResetButton()}
                 </View>
 
                 {renderColorPickerRow('Filler Color', 'gradient', fillerColor, handleFillerColorSelect)}
-                <View style={{ height: 10 }} />
+                <View style={{ height: 4 }} />
                 {renderColorPickerRow('Button Color', 'touch-app', sliderButtonColor, handleSliderButtonColorSelect)}
-                <View style={{ height: 10 }} />
+                <View style={{ height: 4 }} />
                 {renderColorPickerRow('Timer Text Color', 'text-fields', timerTextColor, handleTextColorSelect)}
             </View>
         );
@@ -338,6 +369,8 @@ export function LandscapePreviewComponent({
     previewWidth,
     onPresetChange,
     resetKey,
+    isMinimized,
+    onToggleMinimize,
 }: {
     isLandscape: boolean;
     fillerColor: string;
@@ -347,6 +380,8 @@ export function LandscapePreviewComponent({
     previewWidth: number;
     onPresetChange: (index: number) => void;
     resetKey?: number;
+    isMinimized?: boolean;
+    onToggleMinimize?: () => void;
 }) {
     const scrollRef = useRef<ScrollView>(null);
     const pulseAnim = useRef(new Animated.Value(1)).current;
@@ -362,6 +397,15 @@ export function LandscapePreviewComponent({
                     animated: true
                 });
                 lastScrolledIndex.current = activePresetIndex;
+
+                // Sync hues when preset changes
+                const activePreset = LANDSCAPE_PRESETS[activePresetIndex];
+                if (activePreset) {
+                    // Note: LandscapePreviewComponent doesn't have local hue state, 
+                    // but the parent ThemeSection might. Wait, LandscapePreviewComponent 
+                    // is just for preview. The hues are managed in the main ThemeSection 
+                    // which is rendered in the right panel.
+                }
 
                 setTimeout(() => {
                     isProgrammaticScroll.current = false;
@@ -393,66 +437,94 @@ export function LandscapePreviewComponent({
     };
 
     return (
-        <Animated.View style={[styles.phoneFrameContainer, isLandscape && styles.phoneFrameContainerLandscape, { transform: [{ scale: pulseAnim }] }]}>
-            <View style={[styles.phoneFrame, { width: previewWidth + 12 }]}>
-                <View style={styles.phoneInternalFrame}>
-                    <ScrollView
-                        ref={scrollRef}
-                        horizontal
-                        pagingEnabled
-                        snapToInterval={previewWidth}
-                        decelerationRate="fast"
-                        showsHorizontalScrollIndicator={false}
-                        onScroll={handleScroll}
-                        style={styles.previewScroll}
-                        scrollEventThrottle={16}
-                        nestedScrollEnabled={true}
-                        canCancelContentTouches={false}
-                        disallowInterruption={true}
+        <Animated.View style={[
+            styles.phoneFrameContainer,
+            isLandscape && styles.phoneFrameContainerLandscape,
+            { transform: [{ scale: pulseAnim }] }
+        ]}>
+            <View style={[
+                styles.phoneFrame,
+                { width: previewWidth + 12 }
+            ]}>
+                {isLandscape && onToggleMinimize && (
+                    <TouchableOpacity
+                        style={styles.minimizeToggleButton}
+                        onPress={onToggleMinimize}
+                        activeOpacity={0.7}
                     >
-                        {LANDSCAPE_PRESETS.map((preset, index) => (
-                            <View key={index} style={[styles.previewCard, { width: previewWidth }]}>
-                                <View style={styles.landscapePreview}>
-                                    <Animated.View style={[styles.previewGlow, { backgroundColor: activePresetIndex === index ? fillerColor : preset.filler, shadowColor: activePresetIndex === index ? fillerColor : preset.filler, opacity: activePresetIndex === index ? 0.3 : 0.15 }]} />
-                                    <View style={[styles.previewFiller, { backgroundColor: activePresetIndex === index ? fillerColor : preset.filler }]} />
-                                    <LinearGradient colors={['rgba(255,255,255,0.08)', 'transparent', 'transparent']} style={StyleSheet.absoluteFill} pointerEvents="none" />
-                                    <View style={styles.previewLeftSection}>
-                                        <View style={styles.previewSliderTrack}>
-                                            <View style={[styles.previewSliderHandle, { backgroundColor: activePresetIndex === index ? sliderButtonColor : preset.slider }]}>
-                                                <MaterialIcons name="keyboard-double-arrow-down" size={14} color="#000" />
+                        <MaterialIcons
+                            name="close"
+                            size={14}
+                            color="#fff"
+                        />
+                    </TouchableOpacity>
+                )}
+                <View style={[
+                    styles.phoneInternalFrame,
+                    { width: previewWidth }
+                ]}>
+                    {isLandscape && <Text style={styles.previewTitleInside}>Live Preview</Text>}
+                    <View>
+                        <ScrollView
+                            ref={scrollRef}
+                            horizontal
+                            pagingEnabled
+                            snapToInterval={previewWidth}
+                            decelerationRate="fast"
+                            showsHorizontalScrollIndicator={false}
+                            onScroll={handleScroll}
+                            style={styles.previewScroll}
+                            scrollEventThrottle={16}
+                            nestedScrollEnabled={true}
+                            canCancelContentTouches={false}
+                            disallowInterruption={true}
+                        >
+                            {LANDSCAPE_PRESETS.map((preset, index) => (
+                                <View key={index} style={[styles.previewCard, { width: previewWidth }]}>
+                                    <View style={styles.landscapePreview}>
+                                        <Animated.View style={[styles.previewGlow, { backgroundColor: activePresetIndex === index ? fillerColor : preset.filler, shadowColor: activePresetIndex === index ? fillerColor : preset.filler, opacity: activePresetIndex === index ? 0.3 : 0.15 }]} />
+                                        <View style={[styles.previewFiller, { backgroundColor: activePresetIndex === index ? fillerColor : preset.filler }]} />
+                                        <LinearGradient colors={['rgba(255,255,255,0.08)', 'transparent', 'transparent']} style={StyleSheet.absoluteFill} pointerEvents="none" />
+                                        <View style={styles.previewLeftSection}>
+                                            <View style={styles.previewSliderTrack}>
+                                                <View style={[styles.previewSliderHandle, { backgroundColor: activePresetIndex === index ? sliderButtonColor : preset.slider }]}>
+                                                    <MaterialIcons name="keyboard-double-arrow-down" size={14} color="#000" />
+                                                </View>
+                                                <Text style={[styles.previewSliderText, { color: activePresetIndex === index ? sliderButtonColor : preset.slider }]}>SLIDE</Text>
                                             </View>
-                                            <Text style={[styles.previewSliderText, { color: activePresetIndex === index ? sliderButtonColor : preset.slider }]}>SLIDE</Text>
-                                        </View>
-                                        <View style={{ marginRight: 10 }}>
-                                            <View style={[styles.previewPlayButton, { backgroundColor: activePresetIndex === index ? sliderButtonColor : preset.slider }]}>
-                                                <MaterialIcons name="pause" size={22} color="#000" />
+                                            <View style={{ marginRight: 10 }}>
+                                                <View style={[styles.previewPlayButton, { backgroundColor: activePresetIndex === index ? sliderButtonColor : preset.slider }]}>
+                                                    <MaterialIcons name="pause" size={22} color="#000" />
+                                                </View>
+                                            </View>
+                                            <View style={styles.previewCancelButton}>
+                                                <MaterialIcons name="close" size={16} color="#fff" />
                                             </View>
                                         </View>
-                                        <View style={styles.previewCancelButton}>
-                                            <MaterialIcons name="close" size={16} color="#fff" />
-                                        </View>
-                                    </View>
-                                    <View style={styles.previewTimerSection}>
-                                        <View style={styles.previewLabelContainer}>
-                                            <View style={[styles.labelPill, { backgroundColor: activePresetIndex === index ? fillerColor : preset.filler }]}>
-                                                <Text style={styles.previewTimerLabelAlt}>{preset.name.toUpperCase()}</Text>
+                                        <View style={styles.previewTimerSection}>
+                                            <View style={styles.previewLabelContainer}>
+                                                <View style={[styles.labelPill, { backgroundColor: activePresetIndex === index ? fillerColor : preset.filler }]}>
+                                                    <Text style={styles.previewTimerLabelAlt}>{preset.name.toUpperCase()}</Text>
+                                                </View>
                                             </View>
-                                        </View>
-                                        <View style={styles.previewTimerRow}>
-                                            <Text style={[styles.previewTimerText, { color: activePresetIndex === index ? timerTextColor : preset.text }, isLandscape && styles.previewTimerTextLandscape]}>00:05:30</Text>
+                                            <View style={styles.previewTimerRow}>
+                                                <Text style={[styles.previewTimerText, { color: activePresetIndex === index ? timerTextColor : preset.text }, isLandscape && styles.previewTimerTextLandscape]}>00:05:30</Text>
+                                            </View>
                                         </View>
                                     </View>
                                 </View>
-                            </View>
-                        ))}
-                    </ScrollView>
+                            ))}
+                        </ScrollView>
+                    </View>
                 </View>
             </View>
-            <View style={styles.pagination}>
-                {LANDSCAPE_PRESETS.map((_, i) => (
-                    <View key={i} style={[styles.dot, activePresetIndex === i && { backgroundColor: LANDSCAPE_PRESETS[i].filler, width: 10, height: 10, opacity: 1 }]} />
-                ))}
-            </View>
+            {!isMinimized && (
+                <View style={styles.pagination}>
+                    {LANDSCAPE_PRESETS.map((_, i) => (
+                        <View key={i} style={[styles.dot, activePresetIndex === i && { backgroundColor: LANDSCAPE_PRESETS[i].filler, width: 10, height: 10, opacity: 1 }]} />
+                    ))}
+                </View>
+            )}
         </Animated.View>
     );
 }

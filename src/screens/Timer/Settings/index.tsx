@@ -172,6 +172,7 @@ export default function SettingsScreen({
 
     const [activeTab, setActiveTab] = useState<'customization' | 'sound' | 'categories' | 'quickmsg' | 'general' | 'restore' | 'about' | 'leave' | 'backup'>('customization');
     const [resetKey, setResetKey] = useState(0);
+    const [isHidePreview, setIsHidePreview] = useState(false);
     const [activeSubPage, setActiveSubPage] = useState<null | 'timeOfDayBackground' | 'backup'>(null);
 
     // Clear confirm popup (type "Clear all" to confirm)
@@ -179,9 +180,8 @@ export default function SettingsScreen({
     const [confirmInput, setConfirmInput] = useState('');
     const [confirmError, setConfirmError] = useState(false);
 
-    // Restored original sidebar width
-    const sidebarWidth = width * 0.38;
-    // Overflowing preview: 90% of sidebar in landscape (decreased by ~20% from 1.12), 94% of screen in portrait
+    // Adjusted sidebar width to 40% for better symmetry
+    const sidebarWidth = width * 0.40;
     const previewWidth = isLandscape ? sidebarWidth * 0.9 : width * 0.94;
 
     const handleResetToDefaults = async () => {
@@ -477,21 +477,39 @@ export default function SettingsScreen({
                 style={styles.landscapeContainer}
             >
                 {/* Left Panel - Permanent Preview + Sidebar Buttons */}
-                <View style={[styles.leftSidebarCard, { width: '38%' }]}>
-                    <Text style={styles.sidebarSectionTitle}>LIVE PREVIEW</Text>
-
-                    <View style={styles.sidebarPreviewWrapper}>
-                        <LandscapePreviewComponent
-                            isLandscape={true}
-                            fillerColor={fillerColor}
-                            sliderButtonColor={sliderButtonColor}
-                            timerTextColor={timerTextColor}
-                            activePresetIndex={activePresetIndex}
-                            previewWidth={previewWidth}
-                            onPresetChange={onPresetChange}
-                            resetKey={resetKey}
-                        />
-                    </View>
+                <View style={[styles.leftSidebarCard, { width: '40%' }]}>
+                    {isHidePreview ? (
+                        <TouchableOpacity
+                            style={styles.showPreviewButton}
+                            onPress={() => setIsHidePreview(false)}
+                            activeOpacity={0.7}
+                        >
+                            <MaterialIcons
+                                name="visibility"
+                                size={12}
+                                color="rgba(255,255,255,0.6)"
+                                style={{ marginRight: 6 }}
+                            />
+                            <Text style={styles.showPreviewText}>
+                                SHOW PREVIEW
+                            </Text>
+                        </TouchableOpacity>
+                    ) : (
+                        <View style={styles.sidebarPreviewWrapper}>
+                            <LandscapePreviewComponent
+                                isLandscape={true}
+                                fillerColor={fillerColor}
+                                sliderButtonColor={sliderButtonColor}
+                                timerTextColor={timerTextColor}
+                                activePresetIndex={activePresetIndex}
+                                previewWidth={previewWidth}
+                                onPresetChange={onPresetChange}
+                                resetKey={resetKey}
+                                isMinimized={false}
+                                onToggleMinimize={() => setIsHidePreview(true)}
+                            />
+                        </View>
+                    )}
 
                     {/* Sidebar Navigation */}
                     <View style={styles.sidebarNavSection}>
