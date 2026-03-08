@@ -13,11 +13,9 @@ export const styles = StyleSheet.create({
         flexDirection: 'row',
         alignItems: 'center',
         justifyContent: 'space-between',
-        paddingTop: 16,
+        paddingTop: 20,
         paddingHorizontal: 24,
-        paddingBottom: 16,
-        borderBottomWidth: 1,
-        borderBottomColor: 'rgba(255,255,255,0.08)',
+        paddingBottom: 24,
     },
 
     headerLandscape: {
@@ -29,16 +27,23 @@ export const styles = StyleSheet.create({
         width: 44,
         height: 44,
         borderRadius: 22,
-        backgroundColor: 'rgba(255,255,255,0.08)',
+        backgroundColor: 'rgba(255,255,255,0.06)',
+        borderWidth: 1,
+        borderColor: 'rgba(255,255,255,0.1)',
         alignItems: 'center',
         justifyContent: 'center',
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 2 },
+        shadowOpacity: 0.2,
+        shadowRadius: 4,
     },
 
     headerTitle: {
-        fontSize: 16,
-        fontWeight: '700',
-        letterSpacing: 2,
-        color: '#fff',
+        fontSize: 18,
+        fontWeight: '900',
+        letterSpacing: 2.5,
+        color: '#FFFFFF',
+        textTransform: 'uppercase',
     },
 
     headerSpacer: {
@@ -563,8 +568,8 @@ export const styles = StyleSheet.create({
         flexDirection: 'row',
         justifyContent: 'space-between',
         alignItems: 'center',
-        marginBottom: 4,
-        paddingHorizontal: 2,
+        marginBottom: 16,
+        paddingHorizontal: 0,
     },
 
     colorPickerTitleRow: {
@@ -595,11 +600,15 @@ export const styles = StyleSheet.create({
     },
 
     currentColorBadge: {
-        width: 24,
-        height: 24,
-        borderRadius: 12,
-        borderWidth: 1,
-        borderColor: 'rgba(255,255,255,0.15)',
+        width: 26,
+        height: 26,
+        borderRadius: 13,
+        borderWidth: 1.5,
+        borderColor: 'rgba(255,255,255,0.2)',
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 2 },
+        shadowOpacity: 0.3,
+        shadowRadius: 3,
     },
 
     colorGemInnerGlow: {},
@@ -644,7 +653,8 @@ export const styles = StyleSheet.create({
         position: 'absolute',
         left: 12,
         right: 12,
-        top: 16,
+        top: '50%',
+        marginTop: -4,
         backgroundColor: '#050505',
         borderWidth: 1,
         borderColor: 'rgba(255,255,255,0.02)',
@@ -1377,17 +1387,19 @@ export const styles = StyleSheet.create({
     },
 
     customSwitch: {
-        width: 44,
-        height: 24,
-        borderRadius: 12,
+        width: 46,
+        height: 26,
+        borderRadius: 13,
         backgroundColor: 'rgba(255,255,255,0.08)',
-        padding: 2,
         borderWidth: 1,
-        borderColor: 'rgba(255,255,255,0.08)',
+        borderColor: 'rgba(255,255,255,0.1)',
+        justifyContent: 'center',
+        paddingHorizontal: 2,
     },
 
     customSwitchActive: {
-        backgroundColor: 'rgba(255, 255, 255, 0.2)',
+        backgroundColor: '#FFFFFF',
+        borderColor: '#FFFFFF',
     },
 
     switchKnob: {
@@ -1395,13 +1407,86 @@ export const styles = StyleSheet.create({
         height: 20,
         borderRadius: 10,
         backgroundColor: '#FFFFFF',
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 1 },
+        shadowOpacity: 0.3,
+        shadowRadius: 2,
     },
 
     switchKnobActive: {
-        backgroundColor: '#FFFFFF',
+        backgroundColor: '#000000',
         transform: [{ translateX: 20 }],
     },
 
+    // ========== Professional Premium Settings Redesign ==========
+    portraitMenuSection: {
+        marginBottom: 32,
+        paddingHorizontal: 12,
+    },
+    portraitSectionLabel: {
+        fontSize: 10,
+        fontWeight: '900',
+        color: 'rgba(255,255,255,0.2)',
+        letterSpacing: 2.8,
+        marginLeft: 4,
+        marginBottom: 14,
+        textTransform: 'uppercase',
+    },
+    // Tactile Toggle-Style Card
+    portraitMenuCardBezel: {
+        backgroundColor: '#070707',
+        borderRadius: 24,
+        padding: 1,
+        marginBottom: 14,
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 8 },
+        shadowOpacity: 0.5,
+        shadowRadius: 12,
+        elevation: 10,
+    },
+    portraitMenuCardTrack: {
+        borderRadius: 23,
+        overflow: 'hidden',
+    },
+    portraitMenuCardGradient: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        paddingVertical: 20,
+        paddingHorizontal: 20,
+        borderWidth: 1,
+        borderColor: 'rgba(255,255,255,0.05)',
+    },
+    portraitMenuIconWrap: {
+        width: 52,
+        height: 52,
+        borderRadius: 18,
+        backgroundColor: 'rgba(255,255,255,0.05)',
+        alignItems: 'center',
+        justifyContent: 'center',
+        marginRight: 20,
+        borderWidth: 1,
+        borderColor: 'rgba(255,255,255,0.07)',
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 2 },
+        shadowOpacity: 0.3,
+        shadowRadius: 3,
+    },
+    portraitMenuTextWrap: {
+        flex: 1,
+    },
+    portraitMenuTitle: {
+        fontSize: 17,
+        fontWeight: '900',
+        color: '#FFFFFF',
+        marginBottom: 3,
+        letterSpacing: 0.4,
+    },
+    portraitMenuDesc: {
+        fontSize: 12,
+        color: 'rgba(255,255,255,0.3)',
+        fontWeight: '600',
+        letterSpacing: 0.2,
+    },
     // Restore / Clear confirm modals (same theme as AddTaskModal)
     restoreOverlay: {
         flex: 1,

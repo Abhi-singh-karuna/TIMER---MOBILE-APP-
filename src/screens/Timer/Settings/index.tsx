@@ -15,6 +15,7 @@ import { ScrollView, GestureHandlerRootView } from 'react-native-gesture-handler
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { MaterialIcons } from '@expo/vector-icons';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { LinearGradient } from 'expo-linear-gradient';
 
 import ThemeSection, { LandscapePreviewComponent } from './ThemeSection';
 import LeaveSection from './LeaveSection';
@@ -172,7 +173,7 @@ export default function SettingsScreen({
     const { width, height } = useWindowDimensions();
     const isLandscape = width > height;
 
-    const [activeTab, setActiveTab] = useState<'customization' | 'sound' | 'categories' | 'quickmsg' | 'general' | 'datamgmt' | 'about' | 'leave'>('customization');
+    const [activeTab, setActiveTab] = useState<'customization' | 'sound' | 'categories' | 'quickmsg' | 'general' | 'datamgmt' | 'about' | 'leave' | null>(isLandscape ? 'customization' : null);
     const [resetKey, setResetKey] = useState(0);
     const [isHidePreview, setIsHidePreview] = useState(false);
     const [activeSubPage, setActiveSubPage] = useState<null | 'timeOfDayBackground'>(null);
@@ -251,150 +252,157 @@ export default function SettingsScreen({
     }
 
 
-    const renderPortraitLayout = () => (
-        <ScrollView
-            style={styles.content}
-            contentContainerStyle={styles.scrollContent}
-            alwaysBounceVertical={true}
-            showsVerticalScrollIndicator={false}
-        >
-            {/* Theme Section */}
-            <View style={styles.settingsCardBezel}>
-                <View style={styles.settingsCardTrackUnifiedLarge}>
-                    <ThemeSection
-                        isLandscape={false}
-                        fillerColor={fillerColor}
-                        sliderButtonColor={sliderButtonColor}
-                        timerTextColor={timerTextColor}
-                        activePresetIndex={activePresetIndex}
-                        previewWidth={previewWidth}
-                        onFillerColorChange={onFillerColorChange}
-                        onSliderButtonColorChange={onSliderButtonColorChange}
-                        onTimerTextColorChange={onTimerTextColorChange}
-                        onPresetChange={onPresetChange}
-                        onResetToDefaults={handleResetToDefaults}
-                        resetKey={resetKey}
-                    />
-                </View>
-                <View style={styles.settingsCardOuterGlow} pointerEvents="none" />
-            </View>
-
-            {/* Audio Section */}
-            <View style={styles.settingsCardBezel}>
-                <View style={styles.settingsCardTrackUnifiedLarge}>
-                    <AudioSection
-                        isLandscape={false}
-                        selectedSound={selectedSound}
-                        soundRepetition={soundRepetition}
-                        onSoundChange={onSoundChange}
-                        onRepetitionChange={onRepetitionChange}
-                    />
-                </View>
-                <View style={styles.settingsCardOuterGlow} pointerEvents="none" />
-            </View>
-
-            {/* Categories Section */}
-            <View style={styles.settingsCardBezel}>
-                <View style={styles.settingsCardTrackUnifiedLarge}>
-                    <CategorySection
-                        isLandscape={false}
-                        categories={categories}
-                        onCategoriesChange={onCategoriesChange}
-                    />
-                </View>
-                <View style={styles.settingsCardOuterGlow} pointerEvents="none" />
-            </View>
-
-            {/* Leave Management Section */}
-            <View style={styles.settingsCardBezel}>
-                <View style={styles.settingsCardTrackUnifiedLarge}>
-                    <Text style={styles.sectionTitle}>LEAVE MANAGEMENT</Text>
-                    <LeaveSection isLandscape={false} />
-                </View>
-                <View style={styles.settingsCardOuterGlow} pointerEvents="none" />
-            </View>
-
-            {/* Quick Messages Section */}
-            <View style={styles.settingsCardBezel}>
-                <View style={styles.settingsCardTrackUnifiedLarge}>
-                    <QuickMessageSection
-                        isLandscape={false}
-                        quickMessages={quickMessages}
-                        onQuickMessagesChange={onQuickMessagesChange}
-                    />
-                </View>
-                <View style={styles.settingsCardOuterGlow} pointerEvents="none" />
-            </View>
-
-            {/* General Settings Section */}
-            <View style={styles.settingsCardBezel}>
-                <View style={styles.settingsCardTrackUnifiedLarge}>
-                    <Text style={styles.sectionTitle}>GENERAL SETTINGS</Text>
-                    <GeneralSection
-                        isLandscape={false}
-                        isPastTimersDisabled={isPastTimersDisabled}
-                        onPastTimersDisabledChange={onPastTimersDisabledChange}
-                        isPastTasksDisabled={isPastTasksDisabled}
-                        onPastTasksDisabledChange={onPastTasksDisabledChange}
-                        dailyStartMinutes={dailyStartMinutes}
-                        onDailyStartMinutesChange={onDailyStartMinutesChange}
-                    />
-                </View>
-                <View style={styles.settingsCardOuterGlow} pointerEvents="none" />
-            </View>
-
-            {/* Timeline Section */}
-            <View style={styles.settingsCardBezel}>
-                <View style={styles.settingsCardTrackUnifiedLarge}>
-                    <Text style={styles.sectionTitle}>TIMELINE</Text>
-                    <TouchableOpacity
-                        style={styles.resetButton}
-                        onPress={() => setActiveSubPage('timeOfDayBackground')}
-                        activeOpacity={0.7}
-                    >
-                        <MaterialIcons name="timeline" size={20} color="#FFFFFF" />
-                        <Text style={styles.resetButtonText}>Time-of-Day Background</Text>
-                    </TouchableOpacity>
-                </View>
-                <View style={styles.settingsCardOuterGlow} pointerEvents="none" />
-            </View>
-
-            {/* Defaults Section */}
-            <View style={styles.settingsCardBezel}>
-                <View style={styles.settingsCardTrackUnifiedLarge}>
-                    <Text style={styles.sectionTitle}>DEFAULTS</Text>
-                    <TouchableOpacity style={styles.resetButton} onPress={handleResetToDefaults} activeOpacity={0.7}>
-                        <MaterialIcons name="refresh" size={20} color="#FFFFFF" /><Text style={styles.resetButtonText}>Reset Theme to Defaults</Text>
-                    </TouchableOpacity>
-                </View>
-                <View style={styles.settingsCardOuterGlow} pointerEvents="none" />
-            </View>
-
-            {/* Data Management Section */}
-            <View style={styles.settingsCardBezel}>
-                <View style={styles.settingsCardTrackUnifiedLarge}>
-                    <DataManagementSection
-                        isLandscape={false}
-                        onClearTime={() => openClearConfirm('time')}
-                        onClearTask={() => openClearConfirm('task')}
-                        onClearAllData={() => openClearConfirm('alldata')}
-                    />
-                </View>
-                <View style={styles.settingsCardOuterGlow} pointerEvents="none" />
-            </View>
-
-            {/* About Section */}
-            <View style={styles.settingsCardBezel}>
-                <View style={styles.settingsCardTrackUnifiedLarge}>
-                    <Text style={styles.sectionTitle}>ABOUT</Text>
-                    <InfoSection isLandscape={false} />
-                </View>
-                <View style={styles.settingsCardOuterGlow} pointerEvents="none" />
-            </View>
-        </ScrollView>
+    const renderPortraitMenuCard = (id: 'customization' | 'sound' | 'categories' | 'quickmsg' | 'general' | 'datamgmt' | 'about' | 'leave' | 'timeline', icon: keyof typeof MaterialIcons.glyphMap, title: string, desc: string) => (
+        <View style={styles.portraitMenuCardBezel}>
+            <TouchableOpacity
+                style={styles.portraitMenuCardTrack}
+                onPress={() => {
+                    if (id === 'timeline') {
+                        setActiveSubPage('timeOfDayBackground');
+                    } else {
+                        setActiveTab(id);
+                    }
+                }}
+                activeOpacity={0.8}
+            >
+                <LinearGradient
+                    colors={['rgba(255,255,255,0.06)', 'rgba(255,255,255,0.02)', 'rgba(255,255,255,0.005)']}
+                    start={{ x: 0, y: 0 }}
+                    end={{ x: 0.5, y: 1 }}
+                    style={styles.portraitMenuCardGradient}
+                >
+                    <View style={styles.portraitMenuIconWrap}>
+                        <MaterialIcons name={icon} size={24} color="#FFFFFF" />
+                    </View>
+                    <View style={styles.portraitMenuTextWrap}>
+                        <Text style={styles.portraitMenuTitle}>{title}</Text>
+                        <Text style={styles.portraitMenuDesc} numberOfLines={1}>{desc}</Text>
+                    </View>
+                    <MaterialIcons name="chevron-right" size={20} color="rgba(255,255,255,0.2)" />
+                    <View style={styles.settingsCardInteriorShadowSmall} pointerEvents="none" />
+                    <View style={styles.settingsCardTopRimSmall} pointerEvents="none" />
+                </LinearGradient>
+            </TouchableOpacity>
+        </View>
     );
 
-    // Landscape Layout - Side by side with Sidebar
+    const renderPortraitLayout = () => {
+        if (!activeTab) {
+            return (
+                <ScrollView
+                    style={styles.content}
+                    contentContainerStyle={styles.scrollContent}
+                    showsVerticalScrollIndicator={false}
+                >
+                    <View style={styles.portraitMenuSection}>
+                        <Text style={styles.portraitSectionLabel}>APPEARANCE</Text>
+                        {renderPortraitMenuCard('customization', 'palette', 'Theme', 'Colors, presets and visual style')}
+                        {renderPortraitMenuCard('timeline', 'timeline', 'Timeline BG', 'Customize time-of-day slots')}
+                    </View>
+
+                    <View style={styles.portraitMenuSection}>
+                        <Text style={styles.portraitSectionLabel}>PREFERENCES</Text>
+                        {renderPortraitMenuCard('sound', 'volume-up', 'Audio', 'Completion sounds and repetitions')}
+                        {renderPortraitMenuCard('categories', 'category', 'Category', 'Manage task and timer categories')}
+                        {renderPortraitMenuCard('quickmsg', 'chat', 'Quick Messages', 'Manage reusable task messages')}
+                    </View>
+
+                    <View style={styles.portraitMenuSection}>
+                        <Text style={styles.portraitSectionLabel}>SYSTEM</Text>
+                        {renderPortraitMenuCard('general', 'settings', 'General', 'App behavior and restrictions')}
+                        {renderPortraitMenuCard('datamgmt', 'storage', 'Data Mgmt', 'Cloud sync, cleanup and export')}
+                        {renderPortraitMenuCard('about', 'info', 'About', 'App version and information')}
+                    </View>
+
+                    <View style={{ height: 40 }} />
+                </ScrollView>
+            );
+        }
+
+        return (
+            <ScrollView
+                style={styles.content}
+                contentContainerStyle={styles.scrollContent}
+                alwaysBounceVertical={true}
+                showsVerticalScrollIndicator={false}
+            >
+                <View style={styles.settingsCardBezel}>
+                    <View style={styles.settingsCardTrackUnifiedLarge}>
+                        {activeTab === 'customization' && (
+                            <ThemeSection
+                                isLandscape={false}
+                                fillerColor={fillerColor}
+                                sliderButtonColor={sliderButtonColor}
+                                timerTextColor={timerTextColor}
+                                activePresetIndex={activePresetIndex}
+                                previewWidth={previewWidth}
+                                onFillerColorChange={onFillerColorChange}
+                                onSliderButtonColorChange={onSliderButtonColorChange}
+                                onTimerTextColorChange={onTimerTextColorChange}
+                                onPresetChange={onPresetChange}
+                                onResetToDefaults={handleResetToDefaults}
+                                resetKey={resetKey}
+                            />
+                        )}
+
+                        {activeTab === 'sound' && (
+                            <AudioSection
+                                isLandscape={false}
+                                selectedSound={selectedSound}
+                                soundRepetition={soundRepetition}
+                                onSoundChange={onSoundChange}
+                                onRepetitionChange={onRepetitionChange}
+                            />
+                        )}
+
+                        {activeTab === 'categories' && (
+                            <CategorySection
+                                isLandscape={false}
+                                categories={categories}
+                                onCategoriesChange={onCategoriesChange}
+                            />
+                        )}
+
+                        {activeTab === 'leave' && <LeaveSection isLandscape={false} />}
+
+                        {activeTab === 'quickmsg' && (
+                            <QuickMessageSection
+                                isLandscape={false}
+                                quickMessages={quickMessages}
+                                onQuickMessagesChange={onQuickMessagesChange}
+                            />
+                        )}
+
+                        {activeTab === 'general' && (
+                            <GeneralSection
+                                isLandscape={false}
+                                isPastTimersDisabled={isPastTimersDisabled}
+                                onPastTimersDisabledChange={onPastTimersDisabledChange}
+                                isPastTasksDisabled={isPastTasksDisabled}
+                                onPastTasksDisabledChange={onPastTasksDisabledChange}
+                                dailyStartMinutes={dailyStartMinutes}
+                                onDailyStartMinutesChange={onDailyStartMinutesChange}
+                            />
+                        )}
+
+                        {activeTab === 'datamgmt' && (
+                            <DataManagementSection
+                                isLandscape={false}
+                                onClearTime={() => openClearConfirm('time')}
+                                onClearTask={() => openClearConfirm('task')}
+                                onClearAllData={() => openClearConfirm('alldata')}
+                            />
+                        )}
+
+                        {activeTab === 'about' && <InfoSection isLandscape={false} />}
+                    </View>
+                    <View style={styles.settingsCardOuterGlow} pointerEvents="none" />
+                </View>
+                <View style={{ height: 40 }} />
+            </ScrollView>
+        );
+    };
+
     const renderLandscapeLayout = () => {
         const renderSidebarButton = (id: 'customization' | 'sound' | 'categories' | 'quickmsg' | 'general' | 'timeline' | 'datamgmt' | 'about' | 'leave', icon: keyof typeof MaterialIcons.glyphMap, label: string) => {
             const isActive = activeTab === id;
@@ -609,7 +617,11 @@ export default function SettingsScreen({
 
     return (
         <GestureHandlerRootView style={{ flex: 1 }}>
-            <View style={[styles.container, { backgroundColor: '#000000' }]}>
+            <LinearGradient
+                colors={['#0A0A0A', '#121212', '#000000']}
+                locations={[0, 0.3, 1]}
+                style={[styles.container, { backgroundColor: '#000000' }]}
+            >
                 <SafeAreaView
                     style={styles.safeArea}
                     edges={isLandscape ? ['left', 'right'] : ['top', 'left', 'right', 'bottom']}
@@ -617,10 +629,21 @@ export default function SettingsScreen({
                     {/* Header - Only visible in portrait */}
                     {!isLandscape && (
                         <View style={styles.header}>
-                            <TouchableOpacity style={styles.backButton} onPress={onBack} activeOpacity={0.7}>
-                                <MaterialIcons name="arrow-back-ios" size={20} color="rgba(255,255,255,0.7)" style={{ marginLeft: 6 }} />
+                            <TouchableOpacity
+                                style={styles.backButton}
+                                onPress={() => activeTab ? setActiveTab(null) : onBack()}
+                                activeOpacity={0.7}
+                            >
+                                <MaterialIcons
+                                    name={activeTab ? "chevron-left" : "arrow-back-ios"}
+                                    size={activeTab ? 28 : 20}
+                                    color="rgba(255,255,255,0.7)"
+                                    style={{ marginLeft: activeTab ? 0 : 6 }}
+                                />
                             </TouchableOpacity>
-                            <Text style={styles.headerTitle}>SETTINGS</Text>
+                            <Text style={styles.headerTitle}>
+                                {activeTab ? activeTab.toUpperCase().replace('DATAMGMT', 'DATA MGMT').replace('QUICKMSG', 'QUICK MSG') : 'SETTINGS'}
+                            </Text>
                             <View style={styles.headerSpacer} />
                         </View>
                     )}
@@ -652,7 +675,7 @@ export default function SettingsScreen({
                         )}
                     </Modal>
                 </SafeAreaView>
-            </View>
+            </LinearGradient>
         </GestureHandlerRootView>
     );
 }

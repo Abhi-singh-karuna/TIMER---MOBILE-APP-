@@ -247,10 +247,10 @@ export default function ThemeSection({
     ) => {
         const isLandscapeMode = isLandscape;
         return (
-            <View style={isLandscapeMode ? { marginBottom: 10 } : styles.settingsCardBezelSmall}>
-                <View style={isLandscapeMode ? { backgroundColor: 'rgba(255,255,255,0.03)', borderRadius: 12, padding: 12, borderWidth: 1, borderColor: 'rgba(255,255,255,0.06)' } : styles.settingsCardTrackUnified}>
+            <View style={isLandscapeMode ? { marginBottom: 10 } : [styles.settingsCardBezel, { marginBottom: 12 }]}>
+                <View style={isLandscapeMode ? { backgroundColor: 'rgba(255,255,255,0.03)', borderRadius: 12, padding: 12, borderWidth: 1, borderColor: 'rgba(255,255,255,0.06)' } : styles.settingsCardTrackUnifiedLarge}>
                     <View style={[styles.colorPickerCard, isLandscapeMode && styles.colorPickerCardLandscape, { marginBottom: 0, padding: 0 }]}>
-                        <View style={[styles.colorPickerHeader, { marginBottom: isLandscapeMode ? 12 : 16 }]}>
+                        <View style={styles.colorPickerHeader}>
                             <View style={styles.colorPickerTitleRow}>
                                 <View style={[styles.iconWell, isLandscapeMode && { width: 24, height: 24 }]}>
                                     <MaterialIcons name={icon} size={isLandscapeMode ? 14 : 16} color={currentColor} />

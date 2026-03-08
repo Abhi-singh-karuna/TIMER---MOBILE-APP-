@@ -429,7 +429,7 @@ export default function TimeOfDayBackgroundScreen({
   };
 
   const renderSlotRow = (s: SlotDraft, compact?: boolean) => (
-    <View style={compact ? { marginBottom: 0 } : [sharedStyles.settingsCardBezel, { marginBottom: 12 }]}>
+    <View key={s.key} style={compact ? { marginBottom: 0 } : [sharedStyles.settingsCardBezel, { marginBottom: 12 }]}>
       <View style={compact ? { backgroundColor: 'rgba(255,255,255,0.03)', borderRadius: 12, padding: 12, borderWidth: 1, borderColor: 'rgba(255,255,255,0.06)' } : sharedStyles.settingsCardTrackUnifiedLarge}>
         <View style={[styles.cardHeader, compact && styles.cardHeaderCompact, { marginBottom: compact ? 12 : 16 }]}>
           <Text style={[styles.cardTitle, compact && styles.cardTitleCompact]}>{s.label || s.key.toUpperCase()}</Text>
@@ -847,15 +847,23 @@ export default function TimeOfDayBackgroundScreen({
 
   // Portrait - same layout as main Settings screen
   return (
-    <LinearGradient colors={['#000000', '#000000']} locations={[0, 1]} style={sharedStyles.container}>
+    <LinearGradient
+      colors={['#0A0A0A', '#121212', '#000000']}
+      locations={[0, 0.3, 1]}
+      style={sharedStyles.container}
+    >
       <SafeAreaView style={sharedStyles.safeArea} edges={['top', 'left', 'right', 'bottom']}>
         <View style={sharedStyles.header}>
           <TouchableOpacity style={sharedStyles.backButton} onPress={onBack} activeOpacity={0.7}>
-            <MaterialIcons name="arrow-back-ios" size={20} color="rgba(255,255,255,0.7)" style={{ marginLeft: 6 }} />
+            <MaterialIcons name="chevron-left" size={28} color="rgba(255,255,255,0.7)" />
           </TouchableOpacity>
-          <Text style={sharedStyles.headerTitle}>TIME-OF-DAY BACKGROUND</Text>
-          <TouchableOpacity style={sharedStyles.backButton} onPress={handleSave} activeOpacity={0.7}>
-            <MaterialIcons name="check" size={20} color="rgba(255,255,255,0.9)" />
+          <Text style={sharedStyles.headerTitle}>TIME-OF-DAY BG</Text>
+          <TouchableOpacity
+            style={[sharedStyles.backButton, { backgroundColor: 'rgba(255,255,255,0.08)', borderRadius: 12, width: 40, height: 40, alignItems: 'center', justifyContent: 'center' }]}
+            onPress={handleSave}
+            activeOpacity={0.7}
+          >
+            <MaterialIcons name="check" size={22} color="#FFFFFF" />
           </TouchableOpacity>
         </View>
 
@@ -920,18 +928,31 @@ export default function TimeOfDayBackgroundScreen({
           </View>
 
           <View style={sharedStyles.section}>
-            <View style={sharedStyles.categoryFormActions}>
-              <TouchableOpacity style={sharedStyles.addCategoryBtn} onPress={showCopyFromDayPicker} activeOpacity={0.7}>
+            <View style={[sharedStyles.categoryFormActions, { gap: 12, marginTop: 12 }]}>
+              <TouchableOpacity
+                style={[sharedStyles.addCategoryBtn, { backgroundColor: 'rgba(255,255,255,0.06)', borderRadius: 18, height: 54, flex: 1 }]}
+                onPress={showCopyFromDayPicker}
+                activeOpacity={0.7}
+              >
                 <MaterialIcons name="content-copy" size={20} color="#FFFFFF" />
-                <Text style={sharedStyles.addCategoryBtnText}>Copy from day</Text>
+                <Text style={[sharedStyles.addCategoryBtnText, { fontSize: 13, fontWeight: '800' }]}>Copy</Text>
               </TouchableOpacity>
-              <TouchableOpacity style={sharedStyles.categoryCancelBtn} onPress={handleReset} activeOpacity={0.7}>
-                <Text style={sharedStyles.categoryCancelText}>Reset to defaults</Text>
-              </TouchableOpacity>
-              <TouchableOpacity style={sharedStyles.categorySaveBtn} onPress={handleSave} activeOpacity={0.7}>
-                <Text style={sharedStyles.categorySaveText}>Save</Text>
+
+              <TouchableOpacity
+                style={[sharedStyles.categorySaveBtn, { backgroundColor: '#FFFFFF', borderRadius: 18, height: 54, flex: 1.5 }]}
+                onPress={handleSave}
+                activeOpacity={0.7}
+              >
+                <Text style={[sharedStyles.categorySaveText, { color: '#000', fontSize: 14, fontWeight: '900' }]}>SAVE CHANGES</Text>
               </TouchableOpacity>
             </View>
+            <TouchableOpacity
+              style={[sharedStyles.categoryCancelBtn, { marginTop: 16, alignItems: 'center', paddingVertical: 12 }]}
+              onPress={handleReset}
+              activeOpacity={0.7}
+            >
+              <Text style={[sharedStyles.categoryCancelText, { color: 'rgba(255,255,255,0.3)', fontSize: 12, fontWeight: '700', letterSpacing: 1 }]}>RESET TO DEFAULTS</Text>
+            </TouchableOpacity>
           </View>
         </ScrollView>
         {timeWheelModal}
