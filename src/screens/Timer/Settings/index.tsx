@@ -255,7 +255,7 @@ export default function SettingsScreen({
     const renderPortraitMenuCard = (id: 'customization' | 'sound' | 'categories' | 'quickmsg' | 'general' | 'datamgmt' | 'about' | 'leave' | 'timeline', icon: keyof typeof MaterialIcons.glyphMap, title: string, desc: string) => (
         <View style={styles.portraitMenuCardBezel}>
             <TouchableOpacity
-                style={styles.portraitMenuCardTrack}
+                style={[styles.portraitMenuCardTrack, { flexDirection: 'row', alignItems: 'center', padding: 18 }]}
                 onPress={() => {
                     if (id === 'timeline') {
                         setActiveSubPage('timeOfDayBackground');
@@ -265,23 +265,14 @@ export default function SettingsScreen({
                 }}
                 activeOpacity={0.8}
             >
-                <LinearGradient
-                    colors={['rgba(255,255,255,0.06)', 'rgba(255,255,255,0.02)', 'rgba(255,255,255,0.005)']}
-                    start={{ x: 0, y: 0 }}
-                    end={{ x: 0.5, y: 1 }}
-                    style={styles.portraitMenuCardGradient}
-                >
-                    <View style={styles.portraitMenuIconWrap}>
-                        <MaterialIcons name={icon} size={24} color="#FFFFFF" />
-                    </View>
-                    <View style={styles.portraitMenuTextWrap}>
-                        <Text style={styles.portraitMenuTitle}>{title}</Text>
-                        <Text style={styles.portraitMenuDesc} numberOfLines={1}>{desc}</Text>
-                    </View>
-                    <MaterialIcons name="chevron-right" size={20} color="rgba(255,255,255,0.2)" />
-                    <View style={styles.settingsCardInteriorShadowSmall} pointerEvents="none" />
-                    <View style={styles.settingsCardTopRimSmall} pointerEvents="none" />
-                </LinearGradient>
+                <View style={styles.portraitMenuIconWrap}>
+                    <MaterialIcons name={icon} size={22} color="#FFFFFF" />
+                </View>
+                <View style={styles.portraitMenuTextWrap}>
+                    <Text style={styles.portraitMenuTitle}>{title}</Text>
+                    <Text style={styles.portraitMenuDesc} numberOfLines={1}>{desc}</Text>
+                </View>
+                <MaterialIcons name="chevron-right" size={18} color="rgba(255,255,255,0.15)" />
             </TouchableOpacity>
         </View>
     );
@@ -618,17 +609,17 @@ export default function SettingsScreen({
     return (
         <GestureHandlerRootView style={{ flex: 1 }}>
             <LinearGradient
-                colors={['#0A0A0A', '#121212', '#000000']}
-                locations={[0, 0.3, 1]}
+                colors={['#0A0A12', '#050508', '#000000']}
+                locations={[0, 0.4, 1]}
                 style={[styles.container, { backgroundColor: '#000000' }]}
             >
                 <SafeAreaView
                     style={styles.safeArea}
-                    edges={isLandscape ? ['left', 'right'] : ['top', 'left', 'right', 'bottom']}
+                    edges={['left', 'right']}
                 >
                     {/* Header - Only visible in portrait */}
                     {!isLandscape && (
-                        <View style={styles.header}>
+                        <View style={[styles.header, styles.headerGlass, { borderBottomWidth: 0.5, borderBottomColor: 'rgba(255,255,255,0.08)' }]}>
                             <TouchableOpacity
                                 style={styles.backButton}
                                 onPress={() => activeTab ? setActiveTab(null) : onBack()}
