@@ -336,7 +336,7 @@ export default function SettingsScreen({
 
         return (
             <View style={styles.premiumAccountContainer}>
-                <View style={[styles.avatarGlowWrapper, { marginBottom: 24 }]}>
+                <View style={[styles.avatarGlowWrapper, { marginBottom: 18 }]}>
                     <View style={[styles.premiumAvatarGlow, { backgroundColor: user ? 'rgba(90, 80, 255, 0.2)' : 'rgba(255, 255, 255, 0.05)' }]} />
                     {photo ? (
                         <Image source={{ uri: photo }} style={styles.premiumAvatar} />
@@ -350,11 +350,11 @@ export default function SettingsScreen({
                 </View>
 
                 <Text style={styles.premiumTitle}>{name}</Text>
-                <Text style={[styles.premiumSubtitle, { marginBottom: user ? 24 : 32 }]}>{email}</Text>
+                <Text style={[styles.premiumSubtitle, { marginBottom: user ? 14 : 28 }]}>{email}</Text>
 
                 {user ? (
                     <View style={styles.proMemberPill}>
-                        <MaterialIcons name="verified" size={14} color="#fff" style={{ marginRight: 6 }} />
+                        <MaterialIcons name="verified" size={14} color="#7A9AFF" />
                         <Text style={styles.proMemberText}>PRO MEMBER</Text>
                     </View>
                 ) : (
