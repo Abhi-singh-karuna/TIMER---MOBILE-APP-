@@ -2292,6 +2292,7 @@ export default function TaskList({
 }: TaskListProps) {
     const { width: screenWidth, height: screenHeight } = useWindowDimensions();
     const isLandscape = screenWidth > screenHeight;
+    const [orientationNonce, setOrientationNonce] = useState(0);
 
     useEffect(() => {
         if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
@@ -2313,6 +2314,19 @@ export default function TaskList({
     const [showDisabledTasks, setShowDisabledTasks] = useState(false);
     const [leaveDays, setLeaveDays] = useState<string[]>([]);
     const cameFromTimerView = useRef(false);
+
+    // When rotating, ensure portrait header/toggle doesn't keep a stale layout from landscape.
+    useEffect(() => {
+        // Trigger a re-mount of the header row for fresh layout measurement.
+        setOrientationNonce(n => n + 1);
+
+        // Reset portrait-only UI state when entering portrait.
+        if (!isLandscape) {
+            setIsPortraitHeaderExpanded(false);
+            setShowCalendar(false);
+            setShowFiltersPortrait(false);
+        }
+    }, [isLandscape]);
 
     // Load leave days on initial mount
     useEffect(() => {
@@ -3280,7 +3294,7 @@ export default function TaskList({
                                             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 10, paddingHorizontal: 4 }}>
                                                 <Image source={APP_LOGO} style={{ width: 26, height: 26 }} resizeMode="contain" />
                                                 <View style={{ width: 1, height: 16, backgroundColor: 'rgba(255,255,255,0.1)' }} />
-                                                <Text style={{ color: 'rgba(255,255,255,0.4)', fontSize: 10, letterSpacing: 2, fontWeight: '600' }}>WORKSPACE</Text>
+                                                <Text style={{ color: 'rgba(255,255,255,0.4)', fontSize: 10, letterSpacing: 2, fontWeight: '600' }}>CHRONOSCAPE</Text>
                                             </View>
                                             <View style={styles.toggleWithCountRow}>
                                                 <View style={[styles.viewToggleContainer, { flex: 1 }]}>
@@ -3706,7 +3720,7 @@ export default function TaskList({
                         <View style={[styles.headerCardPortrait, { flex: 0, minHeight: 0 }]}>
                             {/* 1. View Toggle & Completion Count Row */}
                             {onViewChange && (
-                                <View style={styles.toggleWithCountRowPortrait}>
+                                <View key={`task-toggle-row-${orientationNonce}`} style={styles.toggleWithCountRowPortrait}>
                                     {/* App Logo Branding */}
                                     <View style={styles.portraitLogoWrapper}>
                                         <Image

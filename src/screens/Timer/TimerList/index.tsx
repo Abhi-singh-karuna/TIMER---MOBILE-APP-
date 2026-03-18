@@ -679,7 +679,7 @@ export default function TimerList({
                                             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 10, paddingHorizontal: 4 }}>
                                                 <Image source={APP_LOGO} style={{ width: 26, height: 26 }} resizeMode="contain" />
                                                 <View style={{ width: 1, height: 16, backgroundColor: 'rgba(255,255,255,0.1)' }} />
-                                                <Text style={{ color: 'rgba(255,255,255,0.4)', fontSize: 10, letterSpacing: 2, fontWeight: '600' }}>WORKSPACE</Text>
+                                                <Text style={{ color: 'rgba(255,255,255,0.4)', fontSize: 10, letterSpacing: 2, fontWeight: '600' }}>CHRONOSCAPE</Text>
                                             </View>
                                             <View style={styles.toggleWithCountRow}>
                                             <View
