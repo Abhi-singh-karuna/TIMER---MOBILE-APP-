@@ -327,33 +327,6 @@ export default function SettingsScreen({
         </View>
     );
 
-    const renderLandscapeProfileSidebar = () => {
-        if (!user) return null;
-        
-        const photo = user?.user?.photo;
-        const displayName = user?.user?.name || 'Authenticated';
-        const initials = user?.user?.givenName?.[0] || user?.user?.email?.[0] || 'G';
-
-        return (
-            <TouchableOpacity 
-                style={styles.landscapeSidebarProfile}
-                onPress={() => setActiveTab('account')}
-                activeOpacity={0.7}
-            >
-                <View style={styles.landscapeSidebarAvatar}>
-                    {photo ? (
-                        <Image source={{ uri: photo }} style={styles.landscapeSidebarAvatarImage} />
-                    ) : (
-                        <Text style={styles.landscapeSidebarAvatarText}>{initials}</Text>
-                    )}
-                </View>
-                <Text style={styles.landscapeSidebarName} numberOfLines={1}>
-                    {displayName}
-                </Text>
-                <MaterialIcons name="chevron-right" size={18} color="rgba(255,255,255,0.3)" />
-            </TouchableOpacity>
-        );
-    };
 
     const renderProfileHeader = () => {
         const photo = user?.user?.photo;
@@ -583,7 +556,6 @@ export default function SettingsScreen({
             >
                 {/* Left Panel - Permanent Preview + Sidebar Buttons */}
                 <View style={[styles.leftSidebarCard, { width: '40%' }]}>
-                    {renderLandscapeProfileSidebar()}
                     {isHidePreview ? (
                         <TouchableOpacity
                             style={styles.showPreviewButton}
