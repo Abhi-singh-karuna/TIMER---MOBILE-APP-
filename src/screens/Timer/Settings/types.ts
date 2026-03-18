@@ -80,6 +80,11 @@ export interface GeneralSectionProps {
     onPastTasksDisabledChange: (val: boolean) => void;
     dailyStartMinutes: number;
     onDailyStartMinutesChange: (minutes: number) => void;
+    notesFolderLocksEnabled?: boolean;
+    onNotesFolderLocksEnabledChange?: (val: boolean) => void;
+    notesFolderLocksRequireEveryTime?: boolean;
+    onNotesFolderLocksRequireEveryTimeChange?: (val: boolean) => void;
+    onNotesFolderLocksResetAll?: () => void;
 }
 
 // Quick Message section props

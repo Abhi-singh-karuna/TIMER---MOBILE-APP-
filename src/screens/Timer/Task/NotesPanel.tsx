@@ -17,11 +17,31 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
 import { MaterialIcons } from '@expo/vector-icons';
+import { RichEditor, RichToolbar, actions } from 'react-native-pell-rich-editor';
+import DiaryTab from './DiaryTab';
 
 const NOTES_STORAGE_KEY = '@timer_app_day_notes_v2';
 const TEMPLATES_STORAGE_KEY = '@timer_app_diary_templates';
 const FOLDERS_STORAGE_KEY = '@timer_app_diary_folders';
 const GENERAL_NOTES_STORAGE_KEY = '@timer_app_general_notes';
+const NOTES_LOCKS_ENABLED_KEY = '@timer_app_notes_locks_enabled_v1';
+const NOTES_LOCKS_REQUIRE_EVERY_TIME_KEY = '@timer_app_notes_locks_require_every_time_v1';
+const NOTES_LOCKS_MAX_ATTEMPTS_KEY = '@timer_app_notes_locks_max_attempts_v1';
+
+const TRASH_FOLDER_ID = '__trash__';
+const NOTES_DEFAULT_TEXT_COLOR = 'rgba(255,255,255,0.86)';
+const NOTES_COLOR_OPTIONS = [
+    NOTES_DEFAULT_TEXT_COLOR,
+    'rgba(255,255,255,0.72)',
+    '#E91E63', // pink
+    '#9C27B0', // purple
+    '#2196F3', // blue
+    '#00BCD4', // cyan
+    '#4CAF50', // green
+    '#FF9800', // orange
+    '#FFEB3B', // yellow
+    '#FF3D00', // red
+] as const;
 
 type NotesMap = Record<string, { 
     text: string; 
@@ -43,12 +63,17 @@ type Folder = {
     name: string;
     emoji: string;
     color?: string;
+    isLocked?: boolean;
+    lockCode?: string; // 4 digits
     createdAt: number;
 };
 
 type GeneralNote = {
     id: string;
     folderId: string;
+    trashedFromFolderId?: string;
+    trashedAt?: number;
+    title?: string;
     text: string;
     updatedAt: number;
 };
@@ -130,6 +155,61 @@ const DIARY_TEMPLATES: DiaryTemplate[] = [
 const PRESET_FOLDER_COLORS = ['#4CAF50', '#2196F3', '#9C27B0', '#FF9800', '#E91E63', '#00BCD4', '#795548'];
 const PRESET_FOLDER_EMOJIS = ['📁', '📂', '📝', '💼', '🏠', '🌟', '🎯', '💡', '🎨', '🚀'];
 
+function getTrashFolder(): Folder {
+    return {
+        id: TRASH_FOLDER_ID,
+        name: 'Trash',
+        emoji: '🗑️',
+        color: '#FF3D00',
+        createdAt: 0,
+    };
+}
+
+function ensureTrashFolder(folders: Folder[]): { folders: Folder[]; changed: boolean } {
+    const hasTrash = folders.some(f => f.id === TRASH_FOLDER_ID);
+    if (hasTrash) return { folders, changed: false };
+    return { folders: [getTrashFolder(), ...folders], changed: true };
+}
+
+function sortFoldersWithTrashLast(list: Folder[]): Folder[] {
+    const trash = list.find(f => f.id === TRASH_FOLDER_ID);
+    const rest = list.filter(f => f.id !== TRASH_FOLDER_ID).sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
+    return trash ? [...rest, trash] : rest;
+}
+
+function stripHtmlToText(html: string): string {
+    const input = (html || '').toString();
+    return input
+        .replace(/<style[\s\S]*?<\/style>/gi, '')
+        .replace(/<script[\s\S]*?<\/script>/gi, '')
+        .replace(/<\/(p|div|br|li|h1|h2|h3|h4|h5|h6)>/gi, '\n')
+        .replace(/<br\s*\/?>/gi, '\n')
+        .replace(/<li[^>]*>/gi, '• ')
+        .replace(/<[^>]+>/g, '')
+        .replace(/&nbsp;/g, ' ')
+        .replace(/&amp;/g, '&')
+        .replace(/&lt;/g, '<')
+        .replace(/&gt;/g, '>')
+        .replace(/\n{3,}/g, '\n\n')
+        .trim();
+}
+
+function plainTextToHtml(text: string): string {
+    const t = (text || '').toString();
+    const escaped = t
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;');
+    return `<div>${escaped.replace(/\n/g, '<br/>')}</div>`;
+}
+
+function normalizeNoteContentToHtml(content: string): string {
+    const c = (content || '').toString().trim();
+    if (!c) return '';
+    const looksLikeHtml = /<\/?[a-z][\s\S]*>/i.test(c);
+    return looksLikeHtml ? c : plainTextToHtml(c);
+}
+
 async function readNotesMap(): Promise<NotesMap> {
     try {
         const raw = await AsyncStorage.getItem(NOTES_STORAGE_KEY);
@@ -178,6 +258,24 @@ async function readFolders(): Promise<Folder[]> {
 async function saveFolders(folders: Folder[]) {
     try {
         await AsyncStorage.setItem(FOLDERS_STORAGE_KEY, JSON.stringify(folders));
+    } catch {
+        // ignore
+    }
+}
+
+async function readBool(key: string, fallback: boolean): Promise<boolean> {
+    try {
+        const raw = await AsyncStorage.getItem(key);
+        if (raw === null) return fallback;
+        return raw === '1' || raw === 'true';
+    } catch {
+        return fallback;
+    }
+}
+
+async function writeBool(key: string, value: boolean) {
+    try {
+        await AsyncStorage.setItem(key, value ? '1' : '0');
     } catch {
         // ignore
     }
@@ -281,6 +379,8 @@ export default function NotesPanel({ visible, dateKey, onClose, onPresenceChange
     const [loading, setLoading] = React.useState(false);
     const [savedText, setSavedText] = React.useState('');
     const [draftText, setDraftText] = React.useState('');
+    const [savedTitle, setSavedTitle] = React.useState('');
+    const [draftTitle, setDraftTitle] = React.useState('');
     const [mood, setMood] = React.useState<string | undefined>();
     const [weather, setWeather] = React.useState<string | undefined>();
     
@@ -310,14 +410,49 @@ export default function NotesPanel({ visible, dateKey, onClose, onPresenceChange
     const [newFolderName, setNewFolderName] = React.useState('');
     const [newFolderEmoji, setNewFolderEmoji] = React.useState(PRESET_FOLDER_EMOJIS[0]);
     const [newFolderColor, setNewFolderColor] = React.useState(PRESET_FOLDER_COLORS[0]);
+    const [newFolderLocked, setNewFolderLocked] = React.useState(false);
+    const [newFolderLockCode, setNewFolderLockCode] = React.useState('');
+
+    const [confirmMoveToTrashNoteId, setConfirmMoveToTrashNoteId] = React.useState<string | null>(null);
+    const [confirmDeleteForeverNoteId, setConfirmDeleteForeverNoteId] = React.useState<string | null>(null);
     
     const [isKeyboardVisible, setIsKeyboardVisible] = React.useState(false);
+    const richEditorRef = React.useRef<RichEditor | null>(null);
+    const [isNotesEditorExpanded, setIsNotesEditorExpanded] = React.useState(false);
+    const [showNotesInlineConfig, setShowNotesInlineConfig] = React.useState(false);
+    const [notesEditorFontSizePx, setNotesEditorFontSizePx] = React.useState(17);
+    const [notesEditorTextColor, setNotesEditorTextColor] = React.useState(NOTES_DEFAULT_TEXT_COLOR);
+
+    const [pinModalVisible, setPinModalVisible] = React.useState(false);
+    const [pinDraft, setPinDraft] = React.useState('');
+    const [pinError, setPinError] = React.useState<string | null>(null);
+    const [pendingLockedFolderId, setPendingLockedFolderId] = React.useState<string | null>(null);
+    const [unlockedFolderIds, setUnlockedFolderIds] = React.useState<Record<string, boolean>>({});
+
+    const [notesLocksEnabled, setNotesLocksEnabled] = React.useState(true);
+    const [notesLocksRequireEveryTime, setNotesLocksRequireEveryTime] = React.useState(false);
+    const [notesLocksMaxAttempts, setNotesLocksMaxAttempts] = React.useState(5);
+    const [failedUnlockAttempts, setFailedUnlockAttempts] = React.useState<Record<string, number>>({});
+    const [lockedOutFolderIds, setLockedOutFolderIds] = React.useState<Record<string, boolean>>({});
 
     const isPortrait = height > width;
 
-    const isDirty = draftText !== savedText;
-    const charCount = draftText.length;
+    const isDirty = React.useMemo(() => {
+        if (currentTab === 'notes') return draftText !== savedText || draftTitle !== savedTitle;
+        return draftText !== savedText;
+    }, [currentTab, draftText, savedText, draftTitle, savedTitle]);
+    const plainDraftText = React.useMemo(() => stripHtmlToText(draftText), [draftText]);
+    const charCount = plainDraftText.length;
     const readTime = Math.max(1, Math.ceil(charCount / 500));
+    const trashCount = React.useMemo(
+        () => generalNotes.filter(n => n.folderId === TRASH_FOLDER_ID).length,
+        [generalNotes]
+    );
+
+    const noteTitleFor = React.useCallback((note?: GeneralNote | null) => {
+        const t = (note?.title || '').trim();
+        return t.length ? t : 'Untitled note';
+    }, []);
 
     const fullDateDisplay = React.useMemo(() => {
         const [y, m, d] = dateKey.split('-').map(Number);
@@ -331,12 +466,16 @@ export default function NotesPanel({ visible, dateKey, onClose, onPresenceChange
         setLoading(true);
         try {
             const data = await getDayNote(key);
-            setSavedText(data.text);
-            setDraftText(data.text);
+            const html = normalizeNoteContentToHtml(data.text);
+            setSavedText(html);
+            setDraftText(html);
+            setSavedTitle('');
+            setDraftTitle('');
             setMood(data.mood);
             setWeather(data.weather);
-            setMode(data.text.trim().length > 0 ? 'view' : 'edit');
-            onPresenceChange?.(data.text.trim().length > 0);
+            const has = stripHtmlToText(data.text).trim().length > 0;
+            setMode(has ? 'view' : 'edit');
+            onPresenceChange?.(has);
         } finally {
             setLoading(false);
         }
@@ -351,7 +490,7 @@ export default function NotesPanel({ visible, dateKey, onClose, onPresenceChange
             Object.keys(map || {}).forEach((k) => {
                 if (!k) return;
                 const entry = map[k];
-                if (!entry || !entry.text.trim()) return;
+                if (!entry || !stripHtmlToText(entry.text).trim()) return;
                 items.push({ dateKey: k, text: entry.text, updatedAt: entry.updatedAt || 0 });
             });
 
@@ -376,10 +515,15 @@ export default function NotesPanel({ visible, dateKey, onClose, onPresenceChange
     }, []);
 
     const loadFoldersData = React.useCallback(async () => {
-        const storedFolders = await readFolders();
+        const storedFoldersRaw = await readFolders();
         const storedNotes = await readGeneralNotes();
-        setFolders(storedFolders);
+        const ensured = ensureTrashFolder(storedFoldersRaw || []);
+        const nextFolders = sortFoldersWithTrashLast(ensured.folders);
+        setFolders(nextFolders);
         setGeneralNotes(storedNotes);
+        if (ensured.changed) {
+            await saveFolders(nextFolders);
+        }
     }, []);
 
     React.useEffect(() => {
@@ -395,6 +539,43 @@ export default function NotesPanel({ visible, dateKey, onClose, onPresenceChange
         loadTemplates();
         loadFoldersData();
     }, [loadTemplates, loadFoldersData]);
+
+    React.useEffect(() => {
+        (async () => {
+            const [enabled, requireEveryTime] = await Promise.all([
+                readBool(NOTES_LOCKS_ENABLED_KEY, true),
+                readBool(NOTES_LOCKS_REQUIRE_EVERY_TIME_KEY, false),
+            ]);
+            setNotesLocksEnabled(enabled);
+            setNotesLocksRequireEveryTime(requireEveryTime);
+            try {
+                const raw = await AsyncStorage.getItem(NOTES_LOCKS_MAX_ATTEMPTS_KEY);
+                const n = raw ? Number(raw) : 5;
+                setNotesLocksMaxAttempts(Number.isFinite(n) ? Math.max(1, Math.min(20, Math.floor(n))) : 5);
+            } catch {
+                setNotesLocksMaxAttempts(5);
+            }
+        })();
+    }, []);
+
+    React.useEffect(() => {
+        if (!visible) return;
+        (async () => {
+            const [enabled, requireEveryTime] = await Promise.all([
+                readBool(NOTES_LOCKS_ENABLED_KEY, true),
+                readBool(NOTES_LOCKS_REQUIRE_EVERY_TIME_KEY, false),
+            ]);
+            setNotesLocksEnabled(enabled);
+            setNotesLocksRequireEveryTime(requireEveryTime);
+            try {
+                const raw = await AsyncStorage.getItem(NOTES_LOCKS_MAX_ATTEMPTS_KEY);
+                const n = raw ? Number(raw) : 5;
+                setNotesLocksMaxAttempts(Number.isFinite(n) ? Math.max(1, Math.min(20, Math.floor(n))) : 5);
+            } catch {
+                setNotesLocksMaxAttempts(5);
+            }
+        })();
+    }, [visible]);
 
     const handleCreateTemplate = () => {
         setIsEditingTemplate({ id: Date.now().toString(), label: '', emoji: '📝', text: '', isCustom: true });
@@ -433,8 +614,88 @@ export default function NotesPanel({ visible, dateKey, onClose, onPresenceChange
     const currentNote = React.useMemo(() => 
         generalNotes.find(n => n.id === currentNoteId), [generalNotes, currentNoteId]);
 
+    const isExpandedNotesEditor = currentTab === 'notes' && !!currentNoteId && isNotesEditorExpanded;
+
+    React.useEffect(() => {
+        if (currentTab !== 'notes' || !currentNoteId) setIsNotesEditorExpanded(false);
+    }, [currentTab, currentNoteId]);
+
+    React.useEffect(() => {
+        if (mode !== 'edit') setShowNotesInlineConfig(false);
+    }, [mode]);
+
+    const applyNotesEditorAppearance = React.useCallback(() => {
+        const px = Math.max(12, Math.min(24, notesEditorFontSizePx));
+        richEditorRef.current?.commandDOM(
+            `document.body.style.fontSize='${px}px';document.body.style.color='${NOTES_DEFAULT_TEXT_COLOR}';`
+        );
+    }, [notesEditorFontSizePx]);
+
+    const applySelectionTextColor = React.useCallback((color: string) => {
+        setNotesEditorTextColor(color);
+        richEditorRef.current?.commandDOM(
+            `document.execCommand('styleWithCSS', false, true);document.execCommand('foreColor', false, '${color}');`
+        );
+    }, []);
+
+    const openFolderWithLockCheck = React.useCallback((folderId: string) => {
+        const folder = folders.find(f => f.id === folderId);
+        if (!folder) return;
+        if (lockedOutFolderIds[folderId]) return;
+        if (!notesLocksEnabled || !folder.isLocked || !folder.lockCode) {
+            setCurrentFolderId(folderId);
+            return;
+        }
+        if (!notesLocksRequireEveryTime && unlockedFolderIds[folderId]) {
+            setCurrentFolderId(folderId);
+            return;
+        }
+        setPendingLockedFolderId(folderId);
+        setPinDraft('');
+        setPinError(null);
+        setPinModalVisible(true);
+    }, [folders, unlockedFolderIds, notesLocksEnabled, notesLocksRequireEveryTime, lockedOutFolderIds]);
+
+    const onSubmitPin = React.useCallback(async () => {
+        const pin = pinDraft.trim();
+        if (!/^\d{4}$/.test(pin)) return;
+
+        const folder = pendingLockedFolderId ? folders.find(f => f.id === pendingLockedFolderId) : null;
+        if (folder?.lockCode && pin === folder.lockCode) {
+            setPinModalVisible(false);
+            setPinDraft('');
+            setPinError(null);
+            if (pendingLockedFolderId) {
+                setUnlockedFolderIds(prev => ({ ...prev, [pendingLockedFolderId]: true }));
+                setCurrentFolderId(pendingLockedFolderId);
+                setFailedUnlockAttempts(prev => ({ ...prev, [pendingLockedFolderId]: 0 }));
+                setLockedOutFolderIds(prev => ({ ...prev, [pendingLockedFolderId]: false }));
+                setPendingLockedFolderId(null);
+            }
+        } else {
+            if (pendingLockedFolderId) {
+                setFailedUnlockAttempts(prev => {
+                    const nextCount = (prev[pendingLockedFolderId] || 0) + 1;
+                    const remaining = Math.max(0, notesLocksMaxAttempts - nextCount);
+                    setPinError(remaining === 0 ? 'Too many attempts. Folder locked.' : `Wrong code. ${remaining} attempts left.`);
+                    if (nextCount >= notesLocksMaxAttempts) {
+                        setLockedOutFolderIds(p => ({ ...p, [pendingLockedFolderId]: true }));
+                        setPinModalVisible(false);
+                        setPendingLockedFolderId(null);
+                    }
+                    return { ...prev, [pendingLockedFolderId]: nextCount };
+                });
+            } else {
+                setPinError('Wrong code.');
+            }
+            setPinDraft('');
+        }
+    }, [pinDraft, pendingLockedFolderId, folders, notesLocksMaxAttempts]);
+
     const handleCreateFolder = async () => {
         if (!newFolderName.trim()) return;
+        if (folderToEdit?.id === TRASH_FOLDER_ID) return;
+        if (newFolderLocked && !/^\d{4}$/.test(newFolderLockCode.trim())) return;
         
         if (folderToEdit) {
             // UPDATE EXISTING
@@ -442,7 +703,9 @@ export default function NotesPanel({ visible, dateKey, onClose, onPresenceChange
                 ...f,
                 name: newFolderName,
                 emoji: newFolderEmoji,
-                color: newFolderColor
+                color: newFolderColor,
+                isLocked: newFolderLocked,
+                lockCode: newFolderLocked ? newFolderLockCode.trim() : undefined,
             } : f);
             setFolders(updated);
             await saveFolders(updated);
@@ -453,6 +716,8 @@ export default function NotesPanel({ visible, dateKey, onClose, onPresenceChange
                 name: newFolderName,
                 emoji: newFolderEmoji,
                 color: newFolderColor,
+                isLocked: newFolderLocked,
+                lockCode: newFolderLocked ? newFolderLockCode.trim() : undefined,
                 createdAt: Date.now(),
             };
             const updated = [...folders, newFolder];
@@ -463,6 +728,8 @@ export default function NotesPanel({ visible, dateKey, onClose, onPresenceChange
         setNewFolderName('');
         setNewFolderEmoji(PRESET_FOLDER_EMOJIS[0]);
         setNewFolderColor(PRESET_FOLDER_COLORS[0]);
+        setNewFolderLocked(false);
+        setNewFolderLockCode('');
         setFolderToEdit(null);
         setIsCreatingFolder(false);
     };
@@ -472,6 +739,7 @@ export default function NotesPanel({ visible, dateKey, onClose, onPresenceChange
         const newNote: GeneralNote = {
             id: Date.now().toString(),
             folderId: currentFolderId,
+            title: '',
             text: '',
             updatedAt: Date.now(),
         };
@@ -479,12 +747,34 @@ export default function NotesPanel({ visible, dateKey, onClose, onPresenceChange
         setGeneralNotes(updated);
         await saveGeneralNotes(updated);
         setCurrentNoteId(newNote.id);
+        setDraftTitle('');
+        setSavedTitle('');
         setDraftText('');
         setSavedText('');
         setMode('edit');
     };
 
-    const handleDeleteGeneralNote = async (id: string) => {
+    const moveNoteToTrash = React.useCallback(async (id: string) => {
+        const note = generalNotes.find(n => n.id === id);
+        if (!note) return;
+        if (note.folderId === TRASH_FOLDER_ID) return;
+        const updated = generalNotes.map(n => n.id === id ? ({
+            ...n,
+            folderId: TRASH_FOLDER_ID,
+            trashedFromFolderId: n.folderId,
+            trashedAt: Date.now(),
+            updatedAt: Date.now(),
+        }) : n);
+        setGeneralNotes(updated);
+        await saveGeneralNotes(updated);
+        if (currentNoteId === id) {
+            setCurrentNoteId(null);
+            setDraftText('');
+            setSavedText('');
+        }
+    }, [generalNotes, currentNoteId]);
+
+    const deleteNoteForever = React.useCallback(async (id: string) => {
         const remaining = generalNotes.filter(n => n.id !== id);
         setGeneralNotes(remaining);
         await saveGeneralNotes(remaining);
@@ -493,18 +783,68 @@ export default function NotesPanel({ visible, dateKey, onClose, onPresenceChange
             setDraftText('');
             setSavedText('');
         }
-    };
+    }, [generalNotes, currentNoteId]);
+
+    const restoreNoteFromTrash = React.useCallback(async (id: string) => {
+        const note = generalNotes.find(n => n.id === id);
+        if (!note) return;
+        if (note.folderId !== TRASH_FOLDER_ID) return;
+
+        const desiredFolderId = note.trashedFromFolderId;
+        const desiredFolderExists = !!desiredFolderId && folders.some(f => f.id === desiredFolderId && f.id !== TRASH_FOLDER_ID);
+        const fallbackFolder = folders.find(f => f.id !== TRASH_FOLDER_ID);
+
+        let targetFolderId = desiredFolderExists ? desiredFolderId! : (fallbackFolder?.id ?? null);
+        let nextFolders = folders;
+
+        if (!targetFolderId) {
+            const restoredFolder: Folder = {
+                id: `restored_${Date.now().toString()}`,
+                name: 'Restored',
+                emoji: '📥',
+                color: '#2196F3',
+                createdAt: Date.now(),
+            };
+            nextFolders = sortFoldersWithTrashLast([restoredFolder, ...folders.filter(f => f.id !== TRASH_FOLDER_ID), getTrashFolder()]);
+            targetFolderId = restoredFolder.id;
+            setFolders(nextFolders);
+            await saveFolders(nextFolders);
+        }
+
+        const updated = generalNotes.map(n => n.id === id ? ({
+            ...n,
+            folderId: targetFolderId!,
+            trashedAt: undefined,
+            trashedFromFolderId: undefined,
+            updatedAt: Date.now(),
+        }) : n);
+
+        setGeneralNotes(updated);
+        await saveGeneralNotes(updated);
+    }, [generalNotes, folders]);
 
     const handleDeleteFolder = async (id: string) => {
-        // Find notes to delete as well
-        const remainingNotes = generalNotes.filter(n => n.folderId !== id);
+        if (id === TRASH_FOLDER_ID) return;
+
+        // Move notes to trash instead of deleting
+        const movedNotes = generalNotes.map(n => {
+            if (n.folderId !== id) return n;
+            return {
+                ...n,
+                folderId: TRASH_FOLDER_ID,
+                trashedFromFolderId: n.folderId,
+                trashedAt: Date.now(),
+                updatedAt: Date.now(),
+            };
+        });
+
         const remainingFolders = folders.filter(f => f.id !== id);
         
         setFolders(remainingFolders);
-        setGeneralNotes(remainingNotes);
+        setGeneralNotes(movedNotes);
         
         await saveFolders(remainingFolders);
-        await saveGeneralNotes(remainingNotes);
+        await saveGeneralNotes(movedNotes);
         
         if (currentFolderId === id) {
             setCurrentFolderId(null);
@@ -512,14 +852,15 @@ export default function NotesPanel({ visible, dateKey, onClose, onPresenceChange
         }
     };
 
-    const handleSaveGeneralNote = async (text: string) => {
+    const handleSaveGeneralNote = async (text: string, title: string) => {
         if (!currentNoteId) return;
         const updated = generalNotes.map(n => 
-            n.id === currentNoteId ? { ...n, text, updatedAt: Date.now() } : n
+            n.id === currentNoteId ? { ...n, text, title, updatedAt: Date.now() } : n
         );
         setGeneralNotes(updated);
         await saveGeneralNotes(updated);
         setSavedText(text);
+        setSavedTitle(title);
     };
 
     // Auto-save logic updated for general notes
@@ -535,10 +876,10 @@ export default function NotesPanel({ visible, dateKey, onClose, onPresenceChange
                     await setDayNote(dateKey, draftText, mood, weather);
                     setSavedText(draftText);
                 } else {
-                    await handleSaveGeneralNote(draftText);
+                    await handleSaveGeneralNote(draftText, draftTitle);
                 }
                 setLastSavedTime(new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }));
-                onPresenceChange?.(draftText.trim().length > 0);
+                onPresenceChange?.(plainDraftText.trim().length > 0);
             } finally {
                 setIsAutoSaving(false);
             }
@@ -547,7 +888,7 @@ export default function NotesPanel({ visible, dateKey, onClose, onPresenceChange
         return () => {
             if (autoSaveTimerRef.current) clearTimeout(autoSaveTimerRef.current);
         };
-    }, [visible, isDirty, draftText, dateKey, mood, weather, currentTab, currentNoteId]);
+    }, [visible, isDirty, draftText, draftTitle, dateKey, mood, weather, currentTab, currentNoteId, plainDraftText, onPresenceChange]);
 
     React.useEffect(() => {
         if (visible) load(dateKey);
@@ -567,6 +908,7 @@ export default function NotesPanel({ visible, dateKey, onClose, onPresenceChange
                 <View style={[styles.safeArea, { paddingTop: insets.top + 10, paddingBottom: insets.bottom + 10 }]}>
                     
                     {/* Header Section */}
+                    {!isExpandedNotesEditor && (
                     <View style={styles.headerContainer}>
                         <View style={styles.headerTop}>
                             <View style={styles.tabToggle}>
@@ -575,6 +917,7 @@ export default function NotesPanel({ visible, dateKey, onClose, onPresenceChange
                                         setCurrentTab('diary');
                                         setCurrentFolderId(null);
                                         setCurrentNoteId(null);
+                                        setIsNotesEditorExpanded(false);
                                         load(dateKey);
                                     }}
                                     style={[styles.tabBtn, currentTab === 'diary' && styles.tabBtnActive]}
@@ -587,6 +930,9 @@ export default function NotesPanel({ visible, dateKey, onClose, onPresenceChange
                                         setCurrentTab('notes');
                                         setCurrentFolderId(null);
                                         setCurrentNoteId(null);
+                                        setIsNotesEditorExpanded(false);
+                                        setDraftTitle('');
+                                        setSavedTitle('');
                                         setDraftText('');
                                         setSavedText('');
                                     }}
@@ -596,9 +942,43 @@ export default function NotesPanel({ visible, dateKey, onClose, onPresenceChange
                                 </TouchableOpacity>
                             </View>
 
-                            <TouchableOpacity style={styles.closeCircle} onPress={onClose} activeOpacity={0.7}>
-                                <MaterialIcons name="close" size={20} color="#fff" />
-                            </TouchableOpacity>
+                            <View style={styles.headerTopRight}>
+                                {currentTab === 'notes' && (
+                                    <TouchableOpacity
+                                        style={[
+                                            styles.trashHeaderBtn,
+                                            currentFolderId === TRASH_FOLDER_ID && styles.trashHeaderBtnActive,
+                                        ]}
+                                        activeOpacity={0.8}
+                                        onPress={() => {
+                                            setCurrentTab('notes');
+                                            setCurrentFolderId(TRASH_FOLDER_ID);
+                                            setCurrentNoteId(null);
+                                            setIsNotesEditorExpanded(false);
+                                            setDraftTitle('');
+                                            setSavedTitle('');
+                                            setDraftText('');
+                                            setSavedText('');
+                                        }}
+                                    >
+                                        <MaterialIcons
+                                            name="delete-outline"
+                                            size={18}
+                                            color={currentFolderId === TRASH_FOLDER_ID ? 'rgba(255,255,255,0.92)' : 'rgba(255, 61, 0, 0.85)'}
+                                        />
+                                        <Text style={[
+                                            styles.trashHeaderText,
+                                            currentFolderId === TRASH_FOLDER_ID && styles.trashHeaderTextActive,
+                                        ]}>
+                                            {trashCount}
+                                        </Text>
+                                    </TouchableOpacity>
+                                )}
+
+                                <TouchableOpacity style={styles.closeCircle} onPress={onClose} activeOpacity={0.7}>
+                                    <MaterialIcons name="close" size={20} color="#fff" />
+                                </TouchableOpacity>
+                            </View>
                         </View>
                         
                         <Text style={styles.headerTitle}>
@@ -633,151 +1013,224 @@ export default function NotesPanel({ visible, dateKey, onClose, onPresenceChange
                                 </TouchableOpacity>
                             </View>
 
-                            <TouchableOpacity 
-                                style={[styles.allDaysBtn, showAllDays && styles.allDaysBtnActive]}
-                                onPress={() => setShowAllDays(!showAllDays)}
-                            >
-                                <MaterialIcons name="segment" size={18} color={showAllDays ? '#fff' : 'rgba(255,255,255,0.4)'} />
-                                <Text style={[styles.allDaysText, showAllDays && styles.allDaysTextActive]}>ALL DAYS</Text>
-                            </TouchableOpacity>
+                            {currentTab === 'diary' && (
+                                <TouchableOpacity 
+                                    style={[styles.allDaysBtn, showAllDays && styles.allDaysBtnActive]}
+                                    onPress={() => setShowAllDays(!showAllDays)}
+                                >
+                                    <MaterialIcons name="segment" size={18} color={showAllDays ? '#fff' : 'rgba(255,255,255,0.4)'} />
+                                    <Text style={[styles.allDaysText, showAllDays && styles.allDaysTextActive]}>ALL DAYS</Text>
+                                </TouchableOpacity>
+                            )}
                         </View>
                     </View>
+                    )}
 
-                    {/* Main Content Card ScrollArea */}
-                    <ScrollView 
-                        style={styles.scrollArea} 
-                        contentContainerStyle={styles.scrollContent}
-                        showsVerticalScrollIndicator={false}
-                    >
-                        {currentTab === 'diary' ? (
-                            showAllDays ? (
-                                <View style={styles.allDaysContainer}>
-                                    <Text style={styles.allDaysSectionTitle}>ENTRIES</Text>
-                                    {allDaysLoading ? (
-                                        <View style={styles.loadingWrapper}>
-                                            <Text style={styles.loadingText}>Loading history...</Text>
-                                        </View>
-                                    ) : allDaysNotes.length === 0 ? (
-                                        <View style={styles.loadingWrapper}>
-                                            <Text style={styles.emptyHistoryText}>No entries found.</Text>
-                                        </View>
-                                    ) : (
-                                        allDaysNotes.map((note) => (
-                                            <TouchableOpacity 
-                                                key={note.dateKey} 
-                                                style={[styles.historyCard, note.dateKey === dateKey && styles.historyCardActive]}
-                                                onPress={() => setExpandedAllDays(prev => ({ ...prev, [note.dateKey]: !prev[note.dateKey] }))}
-                                            >
-                                                <View style={styles.historyCardHeader}>
-                                                    <Text style={styles.historyDate}>{note.dateKey === dateKey ? 'TODAY' : note.dateKey}</Text>
-                                                    {note.dateKey === dateKey && <View style={styles.todayIndicator} />}
-                                                </View>
-                                                <Text 
-                                                    style={styles.historyText} 
-                                                    numberOfLines={expandedAllDays[note.dateKey] ? undefined : 3}
-                                                >
-                                                    {note.text}
-                                                </Text>
-                                            </TouchableOpacity>
-                                        ))
-                                    )}
-                                </View>
-                            ) : isEditingTemplate ? (
-                                <View style={styles.templateEditCard}>
-                                    <Text style={styles.templateHeader}>CUSTOM TEMPLATE</Text>
-                                    <TextInput
-                                        style={styles.templateInputLabel}
-                                        placeholder="Template Name (e.g., Workout Log)"
-                                        placeholderTextColor="rgba(255,255,255,0.2)"
-                                        value={templateLabel}
-                                        onChangeText={setTemplateLabel}
-                                    />
-                                    <TextInput
-                                        style={styles.templateInputContent}
-                                        placeholder="Template Content..."
-                                        placeholderTextColor="rgba(255,255,255,0.2)"
-                                        multiline
-                                        value={templateContent}
-                                        onChangeText={setTemplateContent}
-                                    />
-                                    <View style={styles.templateSaveActions}>
-                                        <TouchableOpacity style={styles.cancelBtn} onPress={() => setIsEditingTemplate(null)}>
-                                            <Text style={styles.cancelText}>CANCEL</Text>
-                                        </TouchableOpacity>
-                                        
-                                        <View style={{ flexDirection: 'row', gap: 12 }}>
-                                            {isEditingTemplate.isCustom !== false && (
-                                                <TouchableOpacity 
-                                                    style={[styles.cancelBtn, { borderColor: 'rgba(255, 61, 0, 0.2)', borderWidth: 1, borderRadius: 12 }]} 
-                                                    onPress={() => handleDeleteTemplate(isEditingTemplate.id)}
-                                                >
-                                                    <Text style={[styles.cancelText, { color: '#FF3D00' }]}>DELETE</Text>
-                                                </TouchableOpacity>
-                                            )}
-                                            <TouchableOpacity style={styles.saveTemplateBtn} onPress={handleSaveTemplate}>
-                                                <Text style={styles.saveTemplateText}>SAVE TEMPLATE</Text>
-                                            </TouchableOpacity>
-                                        </View>
-                                    </View>
-                                </View>
-                            ) : (
-                                <View style={[styles.fixedEditorContainer, isPortrait ? styles.editorPortrait : styles.editorLandscape]}>
-                                    {mode === 'edit' && draftText.trim() === '' && (
-                                        <View style={styles.templateSelection}>
-                                            <View style={styles.templateHeaderRow}>
-                                                <Text style={styles.templateLabel}>TEMPLATES</Text>
-                                                <TouchableOpacity onPress={handleCreateTemplate}>
-                                                    <MaterialIcons name="add" size={16} color="rgba(255,255,255,0.3)" />
-                                                </TouchableOpacity>
-                                            </View>
-                                            <ScrollView 
-                                                horizontal 
-                                                showsHorizontalScrollIndicator={false}
-                                                contentContainerStyle={styles.templateScroll}
-                                            >
-                                                {allTemplates.map(t => (
-                                                    <View key={t.id} style={styles.templateItemContainer}>
-                                                        <TouchableOpacity 
-                                                            style={styles.templateBtn}
-                                                            onPress={() => setDraftText(t.text)}
-                                                            onLongPress={() => handleEditTemplate(t)}
-                                                        >
-                                                            <Text style={styles.templateEmoji}>{t.emoji}</Text>
-                                                            <Text style={styles.templateBtnText}>{t.label}</Text>
-                                                        </TouchableOpacity>
-                                                    </View>
-                                                ))}
-                                            </ScrollView>
-                                        </View>
-                                    )}
+                    {isExpandedNotesEditor ? (
+                        <View style={styles.expandedEditorRoot}>
+                            <View style={styles.expandedTopBar}>
+                                <TouchableOpacity
+                                    style={styles.expandedTopBtn}
+                                    onPress={() => {
+                                        setIsNotesEditorExpanded(false);
+                                        setCurrentNoteId(null);
+                                    }}
+                                >
+                                    <MaterialIcons name="arrow-back" size={18} color="rgba(255,255,255,0.6)" />
+                                </TouchableOpacity>
 
-                                    <View style={styles.noteCardFixed}>
-                                        <ScrollView style={styles.editorScroll} showsVerticalScrollIndicator={false}>
-                                            <TextInput
-                                                style={styles.textInput}
-                                                value={draftText}
-                                                onChangeText={setDraftText}
-                                                placeholder="How was your day? Write your thoughts here..."
-                                                placeholderTextColor="rgba(255,255,255,0.2)"
-                                                multiline
-                                                editable={mode === 'edit'}
-                                                scrollEnabled={false}
+                                <View style={styles.expandedModeToggle}>
+                                    <TouchableOpacity
+                                        style={[styles.expandedModeBtn, mode === 'view' && styles.expandedModeBtnActive]}
+                                        onPress={() => setMode('view')}
+                                    >
+                                        <Text style={[styles.expandedModeText, mode === 'view' && styles.expandedModeTextActive]}>VIEW</Text>
+                                    </TouchableOpacity>
+                                    <View style={styles.expandedModeDivider} />
+                                    <TouchableOpacity
+                                        style={[styles.expandedModeBtn, mode === 'edit' && styles.expandedModeBtnActive]}
+                                        onPress={() => setMode('edit')}
+                                    >
+                                        <Text style={[styles.expandedModeText, mode === 'edit' && styles.expandedModeTextActive]}>EDIT</Text>
+                                    </TouchableOpacity>
+                                </View>
+
+                                <View style={styles.expandedTopRightIcons}>
+                                    {mode === 'edit' && (
+                                        <TouchableOpacity
+                                            style={[styles.expandedTopBtn, showNotesInlineConfig && styles.expandedTopBtnActive]}
+                                            onPress={() => setShowNotesInlineConfig(v => !v)}
+                                            activeOpacity={0.85}
+                                        >
+                                            <MaterialIcons
+                                                name="tune"
+                                                size={18}
+                                                color={showNotesInlineConfig ? '#4CAF50' : 'rgba(255,255,255,0.6)'}
                                             />
-                                        </ScrollView>
+                                        </TouchableOpacity>
+                                    )}
 
-                                        <View style={styles.cardFooter}>
-                                            <View style={styles.footerDivider} />
-                                            <View style={styles.footerStats}>
-                                                <Text style={styles.statsText}>{charCount} CHARACTERS</Text>
-                                                <Text style={styles.statsText}>&lt; {readTime} MIN READ</Text>
-                                            </View>
+                                    <TouchableOpacity
+                                        style={styles.expandedTopBtn}
+                                        onPress={() => setIsNotesEditorExpanded(false)}
+                                    >
+                                        <MaterialIcons name="close-fullscreen" size={18} color="rgba(255,255,255,0.6)" />
+                                    </TouchableOpacity>
+                                </View>
+                            </View>
+
+                            <View style={styles.expandedTitleRow}>
+                                <TextInput
+                                    style={styles.expandedTitleInput}
+                                    value={draftTitle}
+                                    onChangeText={setDraftTitle}
+                                    placeholder="Title"
+                                    placeholderTextColor="rgba(255,255,255,0.22)"
+                                    editable={mode === 'edit'}
+                                    maxLength={80}
+                                />
+                            </View>
+
+                            {mode === 'edit' && showNotesInlineConfig && (
+                                <View style={styles.richToolbarBlockCompact}>
+                                    <RichToolbar
+                                        editor={richEditorRef}
+                                        actions={[
+                                            actions.undo,
+                                            actions.redo,
+                                            actions.setBold,
+                                            actions.setItalic,
+                                            actions.setUnderline,
+                                            actions.heading1,
+                                            actions.heading2,
+                                            actions.insertBulletsList,
+                                            actions.insertOrderedList,
+                                            actions.insertLink,
+                                        ]}
+                                        iconTint="rgba(255,255,255,0.55)"
+                                        selectedIconTint="#4CAF50"
+                                        selectedButtonStyle={{ backgroundColor: 'rgba(76,175,80,0.14)' }}
+                                        iconSize={15}
+                                        style={styles.richToolbarTop}
+                                    />
+                                    <View style={styles.inlineConfigRow}>
+                                        <View style={styles.inlineConfigGroup}>
+                                            <Text style={styles.inlineConfigLabel}>SIZE</Text>
+                                            <TouchableOpacity
+                                                style={styles.inlineConfigBtn}
+                                                onPress={() => {
+                                                    setNotesEditorFontSizePx((v) => {
+                                                        const next = Math.max(12, v - 1);
+                                                        requestAnimationFrame(() => applyNotesEditorAppearance());
+                                                        return next;
+                                                    });
+                                                }}
+                                            >
+                                                <Text style={styles.inlineConfigBtnText}>A-</Text>
+                                            </TouchableOpacity>
+                                            <Text style={styles.inlineConfigValue}>{notesEditorFontSizePx}px</Text>
+                                            <TouchableOpacity
+                                                style={styles.inlineConfigBtn}
+                                                onPress={() => {
+                                                    setNotesEditorFontSizePx((v) => {
+                                                        const next = Math.min(24, v + 1);
+                                                        requestAnimationFrame(() => applyNotesEditorAppearance());
+                                                        return next;
+                                                    });
+                                                }}
+                                            >
+                                                <Text style={styles.inlineConfigBtnText}>A+</Text>
+                                            </TouchableOpacity>
+                                        </View>
+
+                                        <View style={styles.inlineConfigGroup}>
+                                            <Text style={styles.inlineConfigLabel}>COLOR</Text>
+                                        <ScrollView
+                                            horizontal
+                                            showsHorizontalScrollIndicator={false}
+                                            contentContainerStyle={styles.inlineColorsScroll}
+                                        >
+                                            {NOTES_COLOR_OPTIONS.map(c => {
+                                                const active = notesEditorTextColor === c;
+                                                return (
+                                                    <TouchableOpacity
+                                                        key={c}
+                                                        style={[styles.inlineColorDot, { backgroundColor: c }, active && styles.inlineColorDotActive]}
+                                                        onPress={() => {
+                                                            applySelectionTextColor(c);
+                                                        }}
+                                                    />
+                                                );
+                                            })}
+                                        </ScrollView>
                                         </View>
                                     </View>
                                 </View>
-                            )
-                        ) : (
-                            /* NOTES MODE */
-                            <View style={styles.notesModeContainer}>
+                            )}
+
+                            <View style={styles.expandedEditorBody}>
+                                <RichEditor
+                                    ref={(r) => { richEditorRef.current = r; }}
+                                    key={currentNoteId ?? 'note'}
+                                    initialContentHTML={draftText}
+                                    placeholder="Write your note here..."
+                                    disabled={mode !== 'edit'}
+                                    useContainer={false}
+                                    initialHeight={Math.max(420, height - 220)}
+                                    editorStyle={{
+                                        backgroundColor: 'transparent',
+                                        color: NOTES_DEFAULT_TEXT_COLOR,
+                                        placeholderColor: 'rgba(255,255,255,0.2)',
+                                        cssText: `
+                                            * { font-family: ${Platform.OS === 'ios' ? 'Georgia' : 'serif'}; }
+                                            body { font-size: ${notesEditorFontSizePx}px; line-height: 1.65; padding: 0; margin: 0; }
+                                        `,
+                                    }}
+                                    onChange={(html) => setDraftText(html)}
+                                    editorInitializedCallback={applyNotesEditorAppearance}
+                                    style={styles.richEditor}
+                                />
+                            </View>
+                        </View>
+                    ) : (
+                        /* Main Content Card ScrollArea */
+                        <ScrollView 
+                            style={styles.scrollArea} 
+                            contentContainerStyle={styles.scrollContent}
+                            showsVerticalScrollIndicator={false}
+                            scrollEnabled={!(currentTab === 'notes' && !!currentNoteId)}
+                        >
+                            {currentTab === 'diary' ? (
+                                <DiaryTab
+                                    styles={styles}
+                                    dateKey={dateKey}
+                                    isPortrait={isPortrait}
+                                    mode={mode}
+                                setMode={setMode}
+                                    draftText={draftText}
+                                    setDraftText={setDraftText}
+                                    charCount={charCount}
+                                    readTime={readTime}
+                                    showAllDays={showAllDays}
+                                    allDaysLoading={allDaysLoading}
+                                    allDaysNotes={allDaysNotes}
+                                    expandedAllDays={expandedAllDays}
+                                    setExpandedAllDays={setExpandedAllDays}
+                                    isEditingTemplate={isEditingTemplate}
+                                    templateLabel={templateLabel}
+                                    setTemplateLabel={setTemplateLabel}
+                                    templateContent={templateContent}
+                                    setTemplateContent={setTemplateContent}
+                                    allTemplates={allTemplates}
+                                    handleCreateTemplate={handleCreateTemplate}
+                                    handleEditTemplate={handleEditTemplate}
+                                    handleSaveTemplate={handleSaveTemplate}
+                                    handleDeleteTemplate={handleDeleteTemplate}
+                                    setIsEditingTemplate={setIsEditingTemplate}
+                                />
+                            ) : (
+                                /* NOTES MODE */
+                                <View style={styles.notesModeContainer}>
                                 {!currentFolderId ? (
                                     /* FOLDER LIST VIEW */
                                     <View style={styles.foldersView}>
@@ -788,6 +1241,8 @@ export default function NotesPanel({ visible, dateKey, onClose, onPresenceChange
                                                 setNewFolderName('');
                                                 setNewFolderEmoji(PRESET_FOLDER_EMOJIS[0]);
                                                 setNewFolderColor(PRESET_FOLDER_COLORS[0]);
+                                                setNewFolderLocked(false);
+                                                setNewFolderLockCode('');
                                                 setIsCreatingFolder(true);
                                             }}>
                                                 <MaterialIcons name="create-new-folder" size={20} color="#4CAF50" />
@@ -861,16 +1316,52 @@ export default function NotesPanel({ visible, dateKey, onClose, onPresenceChange
                                                                 ))}
                                                             </ScrollView>
 
-                                                            <TouchableOpacity 
-                                                                style={[styles.popupPrimaryBtn, !newFolderName.trim() && { opacity: 0.5 }]}
+                                                            <View style={styles.lockRow}>
+                                                                <Text style={styles.lockRowLabel}>LOCK</Text>
+                                                                <TouchableOpacity
+                                                                    style={[styles.lockToggle, newFolderLocked && styles.lockToggleActive]}
+                                                                    onPress={() => setNewFolderLocked(v => !v)}
+                                                                >
+                                                                    <MaterialIcons
+                                                                        name={newFolderLocked ? 'lock' : 'lock-open'}
+                                                                        size={16}
+                                                                        color={newFolderLocked ? '#fff' : 'rgba(255,255,255,0.6)'}
+                                                                    />
+                                                                    <Text style={[styles.lockToggleText, newFolderLocked && styles.lockToggleTextActive]}>
+                                                                        {newFolderLocked ? 'Locked' : 'Unlocked'}
+                                                                    </Text>
+                                                                </TouchableOpacity>
+                                                            </View>
+
+                                                            {newFolderLocked && (
+                                                                <>
+                                                                    <Text style={styles.popupLabel}>4-DIGIT CODE</Text>
+                                                                    <TextInput
+                                                                        style={styles.pinInput}
+                                                                        value={newFolderLockCode}
+                                                                        onChangeText={(t) => setNewFolderLockCode(t.replace(/[^\d]/g, '').slice(0, 4))}
+                                                                        placeholder="••••"
+                                                                        placeholderTextColor="rgba(255,255,255,0.2)"
+                                                                        keyboardType="number-pad"
+                                                                        secureTextEntry
+                                                                        maxLength={4}
+                                                                    />
+                                                                </>
+                                                            )}
+
+                                                            <TouchableOpacity
+                                                                style={[
+                                                                    styles.popupPrimaryBtn,
+                                                                    (!newFolderName.trim() || (newFolderLocked && !/^\d{4}$/.test(newFolderLockCode.trim()))) && { opacity: 0.5 }
+                                                                ]}
                                                                 onPress={handleCreateFolder}
-                                                                disabled={!newFolderName.trim()}
+                                                                disabled={!newFolderName.trim() || (newFolderLocked && !/^\d{4}$/.test(newFolderLockCode.trim()))}
                                                             >
                                                                 <Text style={styles.popupPrimaryBtnText}>{folderToEdit ? 'Update Folder' : 'Create Folder'}</Text>
                                                             </TouchableOpacity>
 
-                                                            {folderToEdit && (
-                                                                <TouchableOpacity 
+                                                            {folderToEdit && folderToEdit.id !== TRASH_FOLDER_ID && (
+                                                                <TouchableOpacity
                                                                     style={styles.popupDeleteBtn}
                                                                     onPress={() => {
                                                                         handleDeleteFolder(folderToEdit.id);
@@ -889,22 +1380,55 @@ export default function NotesPanel({ visible, dateKey, onClose, onPresenceChange
                                         </Modal>
 
                                         <View style={styles.folderGrid}>
-                                            {folders.map(f => (
+                                            {folders.filter(f => f.id !== TRASH_FOLDER_ID).map(f => (
                                                 <View key={f.id} style={styles.folderCardWrapper}>
-                                                        <TouchableOpacity 
-                                                            style={styles.folderCard}
-                                                            onPress={() => setCurrentFolderId(f.id)}
-                                                            onLongPress={() => {
-                                                                setFolderToEdit(f);
-                                                                setNewFolderName(f.name);
-                                                                setNewFolderEmoji(f.emoji);
-                                                                setNewFolderColor(f.color || PRESET_FOLDER_COLORS[0]);
-                                                                setIsCreatingFolder(true);
-                                                            }}
-                                                        >
-                                                        <View style={[styles.folderEmojiBox, { backgroundColor: f.color ? `${f.color}15` : 'rgba(255,255,255,0.05)' }]}>
-                                                            <Text style={styles.folderEmojiText}>{f.emoji}</Text>
+                                                    <TouchableOpacity
+                                                        style={[
+                                                            styles.folderCard,
+                                                            f.isLocked ? styles.folderCardLocked : styles.folderCardUnlocked,
+                                                            lockedOutFolderIds[f.id] && styles.folderCardLockedOut,
+                                                        ]}
+                                                        onPress={() => openFolderWithLockCheck(f.id)}
+                                                        disabled={!!lockedOutFolderIds[f.id]}
+                                                        onLongPress={() => {
+                                                            if (f.id === TRASH_FOLDER_ID) return;
+                                                            setFolderToEdit(f);
+                                                            setNewFolderName(f.name);
+                                                            setNewFolderEmoji(f.emoji);
+                                                            setNewFolderColor(f.color || PRESET_FOLDER_COLORS[0]);
+                                                            setNewFolderLocked(!!f.isLocked);
+                                                            setNewFolderLockCode((f.lockCode || '').toString());
+                                                            setIsCreatingFolder(true);
+                                                        }}
+                                                    >
+                                                        <View style={styles.folderCardTopRow}>
+                                                            <View style={[
+                                                                styles.folderEmojiBox,
+                                                                { backgroundColor: f.color ? `${f.color}18` : 'rgba(255,255,255,0.06)' }
+                                                            ]}>
+                                                                <Text style={styles.folderEmojiText}>{f.emoji}</Text>
+                                                            </View>
+
+                                                            {f.isLocked && (
+                                                                <View style={[
+                                                                    styles.folderStatusPill,
+                                                                    styles.folderStatusPillLocked,
+                                                                ]}>
+                                                                    <MaterialIcons
+                                                                        name="lock"
+                                                                        size={14}
+                                                                        color="#FF9800"
+                                                                    />
+                                                                    <Text style={[
+                                                                        styles.folderStatusText,
+                                                                        styles.folderStatusTextLocked,
+                                                                    ]}>
+                                                                        LOCKED
+                                                                    </Text>
+                                                                </View>
+                                                            )}
                                                         </View>
+
                                                         <Text style={styles.folderNameText} numberOfLines={1}>{f.name}</Text>
                                                         <Text style={styles.folderCountText}>
                                                             {generalNotes.filter(n => n.folderId === f.id).length} notes
@@ -914,7 +1438,7 @@ export default function NotesPanel({ visible, dateKey, onClose, onPresenceChange
                                             ))}
                                         </View>
 
-                                        {folders.length === 0 && !isCreatingFolder && (
+                                        {folders.filter(f => f.id !== TRASH_FOLDER_ID).length === 0 && !isCreatingFolder && (
                                             <View style={styles.emptyItemsWrapper}>
                                                 <Text style={styles.emptyItemsText}>No folders yet. Tap the icon to create one.</Text>
                                             </View>
@@ -923,7 +1447,7 @@ export default function NotesPanel({ visible, dateKey, onClose, onPresenceChange
                                 ) : !currentNoteId ? (
                                     /* NOTE LIST VIEW WITHIN FOLDER */
                                     <View style={styles.notesListView}>
-                                        <TouchableOpacity 
+                                        <TouchableOpacity
                                             style={styles.backToFoldersBtn}
                                             onPress={() => setCurrentFolderId(null)}
                                         >
@@ -932,112 +1456,324 @@ export default function NotesPanel({ visible, dateKey, onClose, onPresenceChange
                                         </TouchableOpacity>
 
                                         <View style={styles.sectionHeaderRow}>
-                                            <Text style={styles.sectionTitle}>NOTES IN {currentFolder?.name.toUpperCase()}</Text>
-                                            <TouchableOpacity onPress={handleCreateNote}>
-                                                <MaterialIcons name="add-circle" size={20} color="#4CAF50" />
-                                            </TouchableOpacity>
+                                            <Text style={styles.sectionTitle}>
+                                                {currentFolderId === TRASH_FOLDER_ID ? 'TRASH' : `NOTES IN ${currentFolder?.name.toUpperCase()}`}
+                                            </Text>
+                                            {currentFolderId !== TRASH_FOLDER_ID && (
+                                                <TouchableOpacity onPress={handleCreateNote}>
+                                                    <MaterialIcons name="add-circle" size={20} color="#4CAF50" />
+                                                </TouchableOpacity>
+                                            )}
                                         </View>
 
                                         <View style={styles.notesGrid}>
-                                            {generalNotes.filter(n => n.folderId === currentFolderId).map(n => (
-                                                <View key={n.id} style={styles.generalNoteCardWrapper}>
-                                                    <TouchableOpacity 
-                                                        style={styles.generalNoteCard}
-                                                        onPress={() => {
-                                                            setCurrentNoteId(n.id);
-                                                            setDraftText(n.text);
-                                                            setSavedText(n.text);
-                                                            setMode(n.text.trim().length > 0 ? 'view' : 'edit');
-                                                        }}
-                                                    >
-                                                        <Text style={styles.generalNotePreview} numberOfLines={3}>
-                                                            {n.text || 'Empty note...'}
-                                                        </Text>
-                                                        <Text style={styles.generalNoteDate}>
-                                                            {new Date(n.updatedAt).toLocaleDateString()}
-                                                        </Text>
-                                                    </TouchableOpacity>
-                                                    <TouchableOpacity 
-                                                        style={styles.generalNoteDeleteBtn}
-                                                        onPress={() => handleDeleteGeneralNote(n.id)}
-                                                    >
-                                                        <MaterialIcons name="delete-outline" size={14} color="rgba(255, 61, 0, 0.3)" />
-                                                    </TouchableOpacity>
-                                                </View>
-                                            ))}
+                                            {generalNotes
+                                                .filter(n => n.folderId === currentFolderId)
+                                                .sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0))
+                                                .map(n => (
+                                                    <View key={n.id} style={styles.generalNoteCardWrapper}>
+                                                        <TouchableOpacity
+                                                            style={styles.generalNoteCard}
+                                                            onPress={() => {
+                                                                setCurrentNoteId(n.id);
+                                                                setDraftTitle(n.title || '');
+                                                                setSavedTitle(n.title || '');
+                                                            const html = normalizeNoteContentToHtml(n.text);
+                                                            setDraftText(html);
+                                                            setSavedText(html);
+                                                            setMode(stripHtmlToText(n.text).trim().length > 0 ? 'view' : 'edit');
+                                                            }}
+                                                        >
+                                                            <View style={styles.noteCardHeadingRow}>
+                                                                <Text style={styles.noteCardHeading} numberOfLines={1}>
+                                                                    {noteTitleFor(n)}
+                                                                </Text>
+                                                                {currentFolderId === TRASH_FOLDER_ID && !!n.trashedAt && (
+                                                                    <Text style={styles.noteCardMeta} numberOfLines={1}>
+                                                                        Trashed {new Date(n.trashedAt).toLocaleDateString()}
+                                                                    </Text>
+                                                                )}
+                                                            </View>
+                                                            <Text style={styles.generalNotePreview} numberOfLines={3}>
+                                                                {stripHtmlToText(n.text) || 'Empty note...'}
+                                                            </Text>
+                                                            <Text style={styles.generalNoteDate}>
+                                                                {new Date(n.updatedAt).toLocaleDateString()}
+                                                            </Text>
+                                                        </TouchableOpacity>
+                                                        {currentFolderId === TRASH_FOLDER_ID ? (
+                                                            <View style={styles.trashNoteActions}>
+                                                                <TouchableOpacity
+                                                                    style={styles.trashActionBtn}
+                                                                    onPress={() => restoreNoteFromTrash(n.id)}
+                                                                >
+                                                                    <MaterialIcons name="restore" size={16} color="rgba(76, 175, 80, 0.85)" />
+                                                                </TouchableOpacity>
+                                                                <TouchableOpacity
+                                                                    style={[styles.trashActionBtn, styles.trashActionBtnDanger]}
+                                                                    onPress={() => setConfirmDeleteForeverNoteId(n.id)}
+                                                                >
+                                                                    <MaterialIcons name="delete-outline" size={16} color="rgba(255, 61, 0, 0.75)" />
+                                                                </TouchableOpacity>
+                                                            </View>
+                                                        ) : (
+                                                            <TouchableOpacity
+                                                                style={styles.generalNoteDeleteBtn}
+                                                                onPress={() => setConfirmMoveToTrashNoteId(n.id)}
+                                                            >
+                                                                <MaterialIcons name="delete-outline" size={14} color="rgba(255, 61, 0, 0.3)" />
+                                                            </TouchableOpacity>
+                                                        )}
+                                                    </View>
+                                                ))}
                                         </View>
 
                                         {generalNotes.filter(n => n.folderId === currentFolderId).length === 0 && (
                                             <View style={styles.emptyItemsWrapper}>
-                                                <Text style={styles.emptyItemsText}>No notes in this folder yet.</Text>
+                                                <Text style={styles.emptyItemsText}>
+                                                    {currentFolderId === TRASH_FOLDER_ID ? 'Trash is empty.' : 'No notes in this folder yet.'}
+                                                </Text>
                                             </View>
                                         )}
                                     </View>
                                 ) : (
                                     /* NOTE EDITOR VIEW */
                                     <View style={[
-                                        styles.fixedEditorContainer, 
-                                        isPortrait 
-                                            ? (isKeyboardVisible ? styles.editorPortrait : { flex: 1, minHeight: 500 }) 
+                                        styles.fixedEditorContainer,
+                                        isPortrait
+                                            ? (isKeyboardVisible ? styles.editorPortrait : { flex: 1, minHeight: 500 })
                                             : (isKeyboardVisible ? styles.editorLandscape : { flex: 1, minHeight: 300 })
                                     ]}>
-                                        <TouchableOpacity 
+                                        <TouchableOpacity
                                             style={styles.backToFoldersBtn}
-                                            onPress={() => setCurrentNoteId(null)}
+                                            onPress={() => {
+                                                setCurrentNoteId(null);
+                                                setIsNotesEditorExpanded(false);
+                                            }}
                                         >
                                             <MaterialIcons name="arrow-back" size={16} color="rgba(255,255,255,0.4)" />
                                             <Text style={styles.backBtnText}>BACK TO LIST</Text>
                                         </TouchableOpacity>
 
-                                        {mode === 'edit' && draftText.trim() === '' && (
-                                            <View style={styles.templateSelection}>
-                                                <View style={styles.templateHeaderRow}>
-                                                    <Text style={styles.templateLabel}>TEMPLATES</Text>
-                                                    <TouchableOpacity onPress={handleCreateTemplate}>
-                                                        <MaterialIcons name="add" size={16} color="rgba(255,255,255,0.3)" />
+                                        <View style={styles.noteCardFixed}>
+                                            <View style={styles.editorTitleRow}>
+                                                <TextInput
+                                                    style={styles.editorTitleInput}
+                                                    value={draftTitle}
+                                                    onChangeText={setDraftTitle}
+                                                    placeholder="Title"
+                                                    placeholderTextColor="rgba(255,255,255,0.22)"
+                                                    editable={mode === 'edit'}
+                                                    maxLength={80}
+                                                />
+                                                <View style={styles.editorTitleActions}>
+                                                    {!!currentNote?.updatedAt && (
+                                                        <Text style={styles.editorMeta} numberOfLines={1}>
+                                                            {new Date(currentNote.updatedAt).toLocaleString()}
+                                                        </Text>
+                                                    )}
+                                                    <TouchableOpacity
+                                                        style={styles.expandBtn}
+                                                        onPress={() => setIsNotesEditorExpanded(true)}
+                                                        activeOpacity={0.8}
+                                                    >
+                                                        <MaterialIcons name="open-in-full" size={16} color="rgba(255,255,255,0.6)" />
                                                     </TouchableOpacity>
                                                 </View>
-                                                <ScrollView 
-                                                    horizontal 
-                                                    showsHorizontalScrollIndicator={false}
-                                                    contentContainerStyle={styles.templateScroll}
-                                                >
-                                                    {allTemplates.map(t => (
-                                                        <View key={t.id} style={styles.templateItemContainer}>
-                                                            <TouchableOpacity 
-                                                                style={styles.templateBtn}
-                                                                onPress={() => setDraftText(t.text)}
-                                                                onLongPress={() => handleEditTemplate(t)}
-                                                            >
-                                                                <Text style={styles.templateEmoji}>{t.emoji}</Text>
-                                                                <Text style={styles.templateBtnText}>{t.label}</Text>
-                                                            </TouchableOpacity>
-                                                        </View>
-                                                    ))}
-                                                </ScrollView>
                                             </View>
-                                        )}
-
-                                        <View style={styles.noteCardFixed}>
-                                            <ScrollView style={styles.editorScroll} showsVerticalScrollIndicator={false}>
-                                                <TextInput
-                                                    style={styles.textInput}
-                                                    value={draftText}
-                                                    onChangeText={setDraftText}
+                                            <View style={styles.editorTitleDivider} />
+                                            <View style={styles.richEditorWrap}>
+                                                <RichEditor
+                                                    ref={(r) => { richEditorRef.current = r; }}
+                                                    key={currentNoteId ?? 'note'}
+                                                    initialContentHTML={draftText}
                                                     placeholder="Write your note here..."
-                                                    placeholderTextColor="rgba(255,255,255,0.2)"
-                                                    multiline
-                                                    editable={mode === 'edit'}
-                                                    scrollEnabled={false}
+                                                    disabled={mode !== 'edit'}
+                                                    editorStyle={{
+                                                        backgroundColor: 'transparent',
+                                                        color: NOTES_DEFAULT_TEXT_COLOR,
+                                                        placeholderColor: 'rgba(255,255,255,0.2)',
+                                                        cssText: `
+                                                            * { font-family: ${Platform.OS === 'ios' ? 'Georgia' : 'serif'}; }
+                                                            body { font-size: ${notesEditorFontSizePx}px; line-height: 1.55; padding: 0; margin: 0; }
+                                                        `,
+                                                    }}
+                                                    onChange={(html) => setDraftText(html)}
+                                                    editorInitializedCallback={applyNotesEditorAppearance}
+                                                    style={styles.richEditor}
                                                 />
-                                            </ScrollView>
+                                            </View>
+                                            {mode === 'edit' && (
+                                                <View style={styles.richToolbarBlock}>
+                                                    <RichToolbar
+                                                        editor={richEditorRef}
+                                                        actions={[
+                                                            actions.undo,
+                                                            actions.redo,
+                                                            actions.setBold,
+                                                            actions.setItalic,
+                                                            actions.setUnderline,
+                                                            actions.heading1,
+                                                            actions.heading2,
+                                                            actions.insertBulletsList,
+                                                            actions.insertOrderedList,
+                                                            actions.insertLink,
+                                                        ]}
+                                                        iconTint="rgba(255,255,255,0.55)"
+                                                        selectedIconTint="#4CAF50"
+                                                        selectedButtonStyle={{ backgroundColor: 'rgba(76,175,80,0.14)' }}
+                                                        iconSize={16}
+                                                        style={styles.richToolbar}
+                                                    />
+                                                </View>
+                                            )}
                                         </View>
                                     </View>
                                 )}
                             </View>
-                        )}
-                    </ScrollView>
+                            )}
+                        </ScrollView>
+                    )}
 
+                    {/* Confirm: Move to Trash */}
+                    <Modal
+                        visible={!!confirmMoveToTrashNoteId}
+                        transparent
+                        animationType="fade"
+                        onRequestClose={() => setConfirmMoveToTrashNoteId(null)}
+                    >
+                        <TouchableWithoutFeedback onPress={() => setConfirmMoveToTrashNoteId(null)}>
+                            <View style={styles.modalOverlay}>
+                                <TouchableWithoutFeedback onPress={e => e.stopPropagation()}>
+                                    <View style={styles.confirmPopup}>
+                                        <View style={styles.popupHeader}>
+                                            <Text style={styles.popupTitle}>MOVE TO TRASH?</Text>
+                                            <TouchableOpacity onPress={() => setConfirmMoveToTrashNoteId(null)}>
+                                                <MaterialIcons name="close" size={20} color="rgba(255,255,255,0.4)" />
+                                            </TouchableOpacity>
+                                        </View>
+                                        <Text style={styles.confirmText}>
+                                            This note will be moved to Trash. You can restore it later.
+                                        </Text>
+                                        <View style={styles.confirmActions}>
+                                            <TouchableOpacity style={styles.confirmBtn} onPress={() => setConfirmMoveToTrashNoteId(null)}>
+                                                <Text style={styles.confirmBtnText}>CANCEL</Text>
+                                            </TouchableOpacity>
+                                            <TouchableOpacity
+                                                style={[styles.confirmBtn, styles.confirmBtnDanger]}
+                                                onPress={async () => {
+                                                    const id = confirmMoveToTrashNoteId;
+                                                    setConfirmMoveToTrashNoteId(null);
+                                                    if (id) await moveNoteToTrash(id);
+                                                }}
+                                            >
+                                                <Text style={[styles.confirmBtnText, styles.confirmBtnTextDanger]}>MOVE</Text>
+                                            </TouchableOpacity>
+                                        </View>
+                                    </View>
+                                </TouchableWithoutFeedback>
+                            </View>
+                        </TouchableWithoutFeedback>
+                    </Modal>
+
+                    {/* Confirm: Delete Forever */}
+                    <Modal
+                        visible={!!confirmDeleteForeverNoteId}
+                        transparent
+                        animationType="fade"
+                        onRequestClose={() => setConfirmDeleteForeverNoteId(null)}
+                    >
+                        <TouchableWithoutFeedback onPress={() => setConfirmDeleteForeverNoteId(null)}>
+                            <View style={styles.modalOverlay}>
+                                <TouchableWithoutFeedback onPress={e => e.stopPropagation()}>
+                                    <View style={styles.confirmPopup}>
+                                        <View style={styles.popupHeader}>
+                                            <Text style={styles.popupTitle}>DELETE FOREVER?</Text>
+                                            <TouchableOpacity onPress={() => setConfirmDeleteForeverNoteId(null)}>
+                                                <MaterialIcons name="close" size={20} color="rgba(255,255,255,0.4)" />
+                                            </TouchableOpacity>
+                                        </View>
+                                        <Text style={styles.confirmText}>
+                                            This will permanently delete the note. This action can’t be undone.
+                                        </Text>
+                                        <View style={styles.confirmActions}>
+                                            <TouchableOpacity style={styles.confirmBtn} onPress={() => setConfirmDeleteForeverNoteId(null)}>
+                                                <Text style={styles.confirmBtnText}>CANCEL</Text>
+                                            </TouchableOpacity>
+                                            <TouchableOpacity
+                                                style={[styles.confirmBtn, styles.confirmBtnDanger]}
+                                                onPress={async () => {
+                                                    const id = confirmDeleteForeverNoteId;
+                                                    setConfirmDeleteForeverNoteId(null);
+                                                    if (id) await deleteNoteForever(id);
+                                                }}
+                                            >
+                                                <Text style={[styles.confirmBtnText, styles.confirmBtnTextDanger]}>DELETE</Text>
+                                            </TouchableOpacity>
+                                        </View>
+                                    </View>
+                                </TouchableWithoutFeedback>
+                            </View>
+                        </TouchableWithoutFeedback>
+                    </Modal>
+
+                    {/* PIN modal for locked folders */}
+                    <Modal
+                        visible={pinModalVisible}
+                        transparent
+                        animationType="fade"
+                        onRequestClose={() => setPinModalVisible(false)}
+                    >
+                        <TouchableWithoutFeedback onPress={() => setPinModalVisible(false)}>
+                            <View style={styles.modalOverlay}>
+                                <TouchableWithoutFeedback onPress={e => e.stopPropagation()}>
+                                    <View style={styles.confirmPopup}>
+                                        <View style={styles.popupHeader}>
+                                            <Text style={styles.popupTitle}>ENTER CODE</Text>
+                                            <TouchableOpacity onPress={() => setPinModalVisible(false)}>
+                                                <MaterialIcons name="close" size={20} color="rgba(255,255,255,0.4)" />
+                                            </TouchableOpacity>
+                                        </View>
+
+                                        <Text style={styles.confirmText}>
+                                            Enter the 4-digit code to unlock this folder.
+                                        </Text>
+
+                                        {!!pinError && (
+                                            <Text style={styles.pinErrorText}>{pinError}</Text>
+                                        )}
+
+                                        <TextInput
+                                            style={styles.pinInput}
+                                            value={pinDraft}
+                                            onChangeText={(t) => setPinDraft(t.replace(/[^\d]/g, '').slice(0, 4))}
+                                            placeholder="••••"
+                                            placeholderTextColor="rgba(255,255,255,0.2)"
+                                            keyboardType="number-pad"
+                                            secureTextEntry
+                                            maxLength={4}
+                                            autoFocus
+                                        />
+
+                                        <View style={styles.confirmActions}>
+                                            <TouchableOpacity style={styles.confirmBtn} onPress={() => setPinModalVisible(false)}>
+                                                <Text style={styles.confirmBtnText}>CANCEL</Text>
+                                            </TouchableOpacity>
+                                            <TouchableOpacity
+                                                style={[styles.confirmBtn, styles.confirmBtnDanger]}
+                                                onPress={onSubmitPin}
+                                                disabled={pinDraft.trim().length !== 4}
+                                            >
+                                                <Text style={[styles.confirmBtnText, styles.confirmBtnTextDanger]}>
+                                                    UNLOCK
+                                                </Text>
+                                            </TouchableOpacity>
+                                        </View>
+                                    </View>
+                                </TouchableWithoutFeedback>
+                            </View>
+                        </TouchableWithoutFeedback>
+                    </Modal>
 
                 </View>
             </KeyboardAvoidingView>
@@ -1062,6 +1798,11 @@ const styles = StyleSheet.create({
         justifyContent: 'space-between',
         alignItems: 'center',
         marginBottom: 8,
+    },
+    headerTopRight: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 10,
     },
     headerTitle: {
         fontSize: 24,
@@ -1101,6 +1842,30 @@ const styles = StyleSheet.create({
         justifyContent: 'center',
         borderWidth: 1,
         borderColor: 'rgba(255,255,255,0.08)',
+    },
+    trashHeaderBtn: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 8,
+        paddingHorizontal: 10,
+        height: 32,
+        borderRadius: 14,
+        backgroundColor: 'rgba(255, 61, 0, 0.08)',
+        borderWidth: 1,
+        borderColor: 'rgba(255, 61, 0, 0.18)',
+    },
+    trashHeaderBtnActive: {
+        backgroundColor: 'rgba(255,255,255,0.08)',
+        borderColor: 'rgba(255,255,255,0.10)',
+    },
+    trashHeaderText: {
+        fontSize: 12,
+        fontWeight: '900',
+        color: 'rgba(255, 61, 0, 0.9)',
+        letterSpacing: 0.2,
+    },
+    trashHeaderTextActive: {
+        color: 'rgba(255,255,255,0.9)',
     },
     segmentedControl: {
         flexDirection: 'row',
@@ -1402,6 +2167,87 @@ const styles = StyleSheet.create({
     notesModeContainer: {
         flex: 1,
     },
+    diaryTopActionsRow: {
+        flexDirection: 'row',
+        justifyContent: 'flex-end',
+        marginBottom: 10,
+    },
+    diaryTemplatesBtn: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 8,
+        height: 34,
+        paddingHorizontal: 12,
+        borderRadius: 14,
+        backgroundColor: 'rgba(255,255,255,0.04)',
+        borderWidth: 1,
+        borderColor: 'rgba(255,255,255,0.06)',
+    },
+    diaryTemplatesBtnText: {
+        fontSize: 10,
+        fontWeight: '900',
+        letterSpacing: 1.2,
+        color: 'rgba(255,255,255,0.55)',
+    },
+    diaryCardTopRow: {
+        flexDirection: 'row',
+        justifyContent: 'space-between',
+        alignItems: 'center',
+        marginBottom: 10,
+    },
+    diaryDatePill: {
+        fontSize: 10,
+        fontWeight: '900',
+        letterSpacing: 1.2,
+        color: 'rgba(255,255,255,0.4)',
+        textTransform: 'uppercase',
+    },
+    diaryTopIconBtn: {
+        width: 32,
+        height: 32,
+        borderRadius: 12,
+        backgroundColor: 'rgba(255,255,255,0.04)',
+        borderWidth: 1,
+        borderColor: 'rgba(255,255,255,0.06)',
+        alignItems: 'center',
+        justifyContent: 'center',
+    },
+    diaryTemplatesModal: {
+        backgroundColor: '#111',
+        borderRadius: 24,
+        padding: 20,
+        borderWidth: 1,
+        borderColor: 'rgba(255,255,255,0.1)',
+    },
+    diaryTemplatesGrid: {
+        flexDirection: 'row',
+        flexWrap: 'wrap',
+        gap: 12,
+        marginTop: 14,
+    },
+    diaryTemplateCard: {
+        width: '48%',
+        backgroundColor: 'rgba(255,255,255,0.03)',
+        borderRadius: 18,
+        padding: 14,
+        borderWidth: 1,
+        borderColor: 'rgba(255,255,255,0.06)',
+    },
+    diaryTemplateEmoji: {
+        fontSize: 18,
+        marginBottom: 8,
+    },
+    diaryTemplateLabel: {
+        color: '#fff',
+        fontSize: 12,
+        fontWeight: '900',
+        marginBottom: 6,
+    },
+    diaryTemplatePreview: {
+        color: 'rgba(255,255,255,0.45)',
+        fontSize: 11,
+        lineHeight: 16,
+    },
     foldersView: {
         flex: 1,
     },
@@ -1433,6 +2279,27 @@ const styles = StyleSheet.create({
         borderWidth: 1,
         borderColor: 'rgba(255,255,255,0.05)',
     },
+    folderCardLocked: {
+        borderColor: 'rgba(255, 152, 0, 0.22)',
+        backgroundColor: 'rgba(255, 152, 0, 0.045)',
+    },
+    folderCardUnlocked: {
+        borderColor: 'rgba(76, 175, 80, 0.16)',
+        backgroundColor: 'rgba(255,255,255,0.03)',
+    },
+    folderCardLockedOut: {
+        opacity: 0.45,
+    },
+    trashFolderCard: {
+        borderColor: 'rgba(255, 61, 0, 0.25)',
+        backgroundColor: 'rgba(255, 61, 0, 0.04)',
+    },
+    folderCardTopRow: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        marginBottom: 12,
+    },
     folderDeleteBtn: {
         position: 'absolute',
         top: 8,
@@ -1445,16 +2312,36 @@ const styles = StyleSheet.create({
         justifyContent: 'center',
     },
     folderEmojiBox: {
-        width: 40,
-        height: 40,
+        width: 44,
+        height: 44,
         borderRadius: 12,
-        backgroundColor: 'rgba(255,255,255,0.05)',
+        backgroundColor: 'rgba(255,255,255,0.06)',
         alignItems: 'center',
         justifyContent: 'center',
-        marginBottom: 12,
     },
     folderEmojiText: {
         fontSize: 18,
+    },
+    folderStatusPill: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 6,
+        paddingHorizontal: 10,
+        height: 28,
+        borderRadius: 999,
+        borderWidth: 1,
+    },
+    folderStatusPillLocked: {
+        backgroundColor: 'rgba(255, 152, 0, 0.10)',
+        borderColor: 'rgba(255, 152, 0, 0.18)',
+    },
+    folderStatusText: {
+        fontSize: 9,
+        fontWeight: '900',
+        letterSpacing: 1.1,
+    },
+    folderStatusTextLocked: {
+        color: '#FF9800',
     },
     folderNameText: {
         color: '#fff',
@@ -1539,12 +2426,318 @@ const styles = StyleSheet.create({
         alignItems: 'center',
         justifyContent: 'center',
     },
+    trashNoteActions: {
+        position: 'absolute',
+        top: 10,
+        right: 10,
+        flexDirection: 'row',
+        gap: 10,
+    },
+    trashActionBtn: {
+        width: 34,
+        height: 34,
+        borderRadius: 12,
+        backgroundColor: 'rgba(255,255,255,0.04)',
+        borderWidth: 1,
+        borderColor: 'rgba(255,255,255,0.06)',
+        alignItems: 'center',
+        justifyContent: 'center',
+    },
+    trashActionBtnDanger: {
+        backgroundColor: 'rgba(255, 61, 0, 0.06)',
+        borderColor: 'rgba(255, 61, 0, 0.12)',
+    },
     generalNotePreview: {
         color: 'rgba(255,255,255,0.8)',
         fontSize: 14,
         lineHeight: 20,
         marginBottom: 12,
     },
+    noteCardHeadingRow: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        gap: 10,
+        marginBottom: 8,
+    },
+    noteCardHeading: {
+        flex: 1,
+        color: '#fff',
+        fontSize: 12,
+        fontWeight: '900',
+        letterSpacing: 0.3,
+    },
+    noteCardMeta: {
+        color: 'rgba(255,255,255,0.25)',
+        fontSize: 9,
+        fontWeight: '700',
+        letterSpacing: 0.6,
+        textTransform: 'uppercase',
+    },
+    editorTitleRow: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        gap: 10,
+        marginBottom: 10,
+    },
+    editorTitleActions: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 10,
+    },
+    expandBtn: {
+        width: 30,
+        height: 30,
+        borderRadius: 10,
+        backgroundColor: 'rgba(255,255,255,0.04)',
+        borderWidth: 1,
+        borderColor: 'rgba(255,255,255,0.06)',
+        alignItems: 'center',
+        justifyContent: 'center',
+    },
+    editorTitle: {
+        flex: 1,
+        color: '#fff',
+        fontSize: 13,
+        fontWeight: '900',
+        letterSpacing: 0.2,
+    },
+    editorTitleInput: {
+        flex: 1,
+        color: '#fff',
+        fontSize: 14,
+        fontWeight: '900',
+        letterSpacing: 0.2,
+        paddingVertical: 0,
+        paddingHorizontal: 0,
+    },
+    editorMeta: {
+        color: 'rgba(255,255,255,0.25)',
+        fontSize: 9,
+        fontWeight: '800',
+        letterSpacing: 0.8,
+        textTransform: 'uppercase',
+    },
+    editorTitleDivider: {
+        height: 1,
+        width: '100%',
+        backgroundColor: 'rgba(255,255,255,0.06)',
+        marginBottom: 12,
+    },
+    richEditorWrap: {
+        flex: 1,
+        minHeight: 260,
+    },
+    richEditor: {
+        flex: 1,
+        minHeight: 260,
+    },
+    richToolbar: {
+        marginTop: 12,
+        backgroundColor: 'rgba(255,255,255,0.03)',
+        borderRadius: 16,
+        borderWidth: 1,
+        borderColor: 'rgba(255,255,255,0.06)',
+        paddingHorizontal: 6,
+        paddingVertical: 6,
+    },
+    expandedEditorRoot: {
+        flex: 1,
+        paddingHorizontal: 16,
+        paddingTop: 2,
+        paddingBottom: 6,
+    },
+    expandedTopBar: {
+        flexDirection: 'row',
+        justifyContent: 'space-between',
+        alignItems: 'center',
+        marginBottom: 6,
+    },
+    expandedTopRightIcons: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 10,
+    },
+    expandedTopBtnActive: {
+        backgroundColor: 'rgba(76,175,80,0.12)',
+        borderColor: 'rgba(76,175,80,0.18)',
+    },
+    expandedTopBtn: {
+        paddingHorizontal: 10,
+        height: 34,
+        borderRadius: 12,
+        backgroundColor: 'rgba(255,255,255,0.04)',
+        borderWidth: 1,
+        borderColor: 'rgba(255,255,255,0.06)',
+        alignItems: 'center',
+        justifyContent: 'center',
+    },
+    expandedModeToggle: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        backgroundColor: 'rgba(255,255,255,0.04)',
+        borderRadius: 12,
+        borderWidth: 1,
+        borderColor: 'rgba(255,255,255,0.06)',
+        padding: 2,
+        height: 34,
+    },
+    expandedModeBtn: {
+        paddingHorizontal: 12,
+        height: 30,
+        borderRadius: 10,
+        alignItems: 'center',
+        justifyContent: 'center',
+    },
+    expandedModeBtnActive: {
+        backgroundColor: 'rgba(255,255,255,0.10)',
+        borderWidth: 1,
+        borderColor: 'rgba(255,255,255,0.08)',
+    },
+    expandedModeText: {
+        fontSize: 10,
+        fontWeight: '900',
+        letterSpacing: 1.2,
+        color: 'rgba(255,255,255,0.35)',
+    },
+    expandedModeTextActive: {
+        color: '#fff',
+    },
+    expandedModeDivider: {
+        width: 1,
+        height: 12,
+        backgroundColor: 'rgba(255,255,255,0.06)',
+    },
+    expandedTopBtnText: {
+        fontSize: 10,
+        fontWeight: '900',
+        letterSpacing: 1.2,
+        color: 'rgba(255,255,255,0.55)',
+    },
+    expandedTitleRow: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        gap: 12,
+        marginBottom: 6,
+    },
+    expandedTitleInput: {
+        flex: 1,
+        color: '#fff',
+        fontSize: 16,
+        fontWeight: '900',
+        letterSpacing: 0.2,
+        paddingVertical: 4,
+        paddingHorizontal: 0,
+    },
+    richToolbarTop: {
+        backgroundColor: 'rgba(255,255,255,0.03)',
+        borderRadius: 14,
+        borderWidth: 1,
+        borderColor: 'rgba(255,255,255,0.06)',
+        paddingHorizontal: 4,
+        paddingVertical: 4,
+        marginBottom: 6,
+    },
+    richToolbarBlockCompact: {
+        marginBottom: 8,
+    },
+    expandedEditorBody: {
+        flex: 1,
+    },
+    richToolbarBlock: {
+        marginTop: 12,
+        backgroundColor: 'rgba(255,255,255,0.03)',
+        borderRadius: 16,
+        borderWidth: 1,
+        borderColor: 'rgba(255,255,255,0.06)',
+        paddingHorizontal: 6,
+        paddingTop: 6,
+        paddingBottom: 10,
+    },
+    inlineConfigRow: {
+        marginTop: 0,
+        paddingHorizontal: 6,
+        flexDirection: 'row',
+        justifyContent: 'space-between',
+        alignItems: 'center',
+        gap: 12,
+        marginBottom: 6,
+    },
+    inlineConfigGroup: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 8,
+    },
+    inlineColorsScroll: {
+        paddingLeft: 6,
+        paddingRight: 2,
+        gap: 10,
+        alignItems: 'center',
+    },
+    inlineConfigLabel: {
+        fontSize: 8,
+        fontWeight: '900',
+        letterSpacing: 1.2,
+        color: 'rgba(255,255,255,0.28)',
+    },
+    inlineConfigBtn: {
+        height: 24,
+        paddingHorizontal: 10,
+        borderRadius: 10,
+        backgroundColor: 'rgba(255,255,255,0.04)',
+        borderWidth: 1,
+        borderColor: 'rgba(255,255,255,0.06)',
+        alignItems: 'center',
+        justifyContent: 'center',
+    },
+    inlineConfigBtnText: {
+        fontSize: 10,
+        fontWeight: '900',
+        color: 'rgba(255,255,255,0.6)',
+        letterSpacing: 0.2,
+    },
+    inlineConfigValue: {
+        fontSize: 9,
+        fontWeight: '900',
+        color: 'rgba(255,255,255,0.55)',
+        letterSpacing: 0.3,
+        minWidth: 42,
+        textAlign: 'center',
+    },
+    inlineColorDot: {
+        width: 16,
+        height: 16,
+        borderRadius: 8,
+        borderWidth: 2,
+        borderColor: 'rgba(255,255,255,0.10)',
+    },
+    inlineColorDotActive: {
+        borderColor: '#fff',
+        transform: [{ scale: 1.08 }],
+    },
+    pinInput: {
+        marginTop: 16,
+        height: 52,
+        borderRadius: 16,
+        paddingHorizontal: 16,
+        backgroundColor: 'rgba(255,255,255,0.03)',
+        borderWidth: 1,
+        borderColor: 'rgba(255,255,255,0.06)',
+        color: '#fff',
+        fontSize: 18,
+        fontWeight: '800',
+        letterSpacing: 8,
+        textAlign: 'center',
+    },
+    pinErrorText: {
+        marginTop: 10,
+        color: 'rgba(255, 61, 0, 0.9)',
+        fontSize: 12,
+        fontWeight: '800',
+    },
+    // config toggle UI lives in expanded top bar (icon-only)
     generalNoteDate: {
         color: 'rgba(255,255,255,0.2)',
         fontSize: 9,
@@ -1603,6 +2796,51 @@ const styles = StyleSheet.create({
         shadowRadius: 40,
         elevation: 10,
     },
+    confirmPopup: {
+        backgroundColor: '#111',
+        borderRadius: 24,
+        padding: 24,
+        borderWidth: 1,
+        borderColor: 'rgba(255,255,255,0.1)',
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 20 },
+        shadowOpacity: 0.5,
+        shadowRadius: 40,
+        elevation: 10,
+    },
+    confirmText: {
+        color: 'rgba(255,255,255,0.55)',
+        fontSize: 13,
+        lineHeight: 18,
+        marginTop: 6,
+    },
+    confirmActions: {
+        flexDirection: 'row',
+        justifyContent: 'flex-end',
+        gap: 12,
+        marginTop: 20,
+    },
+    confirmBtn: {
+        paddingHorizontal: 16,
+        paddingVertical: 10,
+        borderRadius: 12,
+        backgroundColor: 'rgba(255,255,255,0.04)',
+        borderWidth: 1,
+        borderColor: 'rgba(255,255,255,0.06)',
+    },
+    confirmBtnDanger: {
+        backgroundColor: 'rgba(255, 61, 0, 0.12)',
+        borderColor: 'rgba(255, 61, 0, 0.16)',
+    },
+    confirmBtnText: {
+        fontSize: 11,
+        fontWeight: '900',
+        letterSpacing: 1,
+        color: 'rgba(255,255,255,0.5)',
+    },
+    confirmBtnTextDanger: {
+        color: 'rgba(255, 61, 0, 0.95)',
+    },
     popupHeader: {
         flexDirection: 'row',
         justifyContent: 'space-between',
@@ -1649,6 +2887,39 @@ const styles = StyleSheet.create({
     },
     emojiPickerScroll: {
         marginBottom: 32,
+    },
+    lockRow: {
+        marginBottom: 22,
+    },
+    lockRowLabel: {
+        fontSize: 9,
+        fontWeight: '800',
+        color: 'rgba(255,255,255,0.3)',
+        letterSpacing: 1,
+        marginBottom: 12,
+    },
+    lockToggle: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 10,
+        height: 40,
+        borderRadius: 14,
+        paddingHorizontal: 14,
+        backgroundColor: 'rgba(255,255,255,0.03)',
+        borderWidth: 1,
+        borderColor: 'rgba(255,255,255,0.06)',
+    },
+    lockToggleActive: {
+        backgroundColor: 'rgba(76,175,80,0.10)',
+        borderColor: 'rgba(76,175,80,0.18)',
+    },
+    lockToggleText: {
+        fontSize: 12,
+        fontWeight: '800',
+        color: 'rgba(255,255,255,0.55)',
+    },
+    lockToggleTextActive: {
+        color: '#fff',
     },
     emojiBtn: {
         width: 44,

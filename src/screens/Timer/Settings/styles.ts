@@ -1237,6 +1237,49 @@ export const styles = StyleSheet.create({
         marginTop: 8,
     },
 
+    attemptStepper: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        backgroundColor: 'rgba(255,255,255,0.03)',
+        borderRadius: 16,
+        borderWidth: 1,
+        borderColor: 'rgba(255,255,255,0.06)',
+        paddingHorizontal: 6,
+        height: 38,
+        gap: 6,
+    },
+    attemptStepBtn: {
+        width: 34,
+        height: 30,
+        borderRadius: 12,
+        backgroundColor: 'rgba(255,255,255,0.04)',
+        borderWidth: 1,
+        borderColor: 'rgba(255,255,255,0.06)',
+        alignItems: 'center',
+        justifyContent: 'center',
+    },
+    attemptStepBtnDisabled: {
+        backgroundColor: 'rgba(255,255,255,0.02)',
+        borderColor: 'rgba(255,255,255,0.04)',
+    },
+    attemptValuePill: {
+        minWidth: 40,
+        height: 30,
+        borderRadius: 12,
+        backgroundColor: 'rgba(0,255,255,0.08)',
+        borderWidth: 1,
+        borderColor: 'rgba(0,255,255,0.16)',
+        alignItems: 'center',
+        justifyContent: 'center',
+        paddingHorizontal: 10,
+    },
+    attemptValueText: {
+        color: '#00FFFF',
+        fontWeight: '900',
+        fontSize: 12,
+        letterSpacing: 0.4,
+    },
+
     // Restore page (portrait section + landscape right panel)
     restoreSectionDescription: {
         fontSize: 13,
