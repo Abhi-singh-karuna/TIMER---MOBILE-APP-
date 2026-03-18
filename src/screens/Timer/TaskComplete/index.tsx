@@ -14,7 +14,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
 import { MaterialIcons } from '@expo/vector-icons';
 import * as ScreenOrientation from 'expo-screen-orientation';
-import { Audio } from 'expo-av';
+import { useAudioPlayer, AudioModule } from 'expo-audio';
 import { Category, SOUND_OPTIONS } from '../../../constants/data';
 
 
@@ -48,8 +48,8 @@ export default function TaskComplete({
 }: TaskCompleteProps) {
     const { width, height } = useWindowDimensions();
     const [isLandscape, setIsLandscape] = React.useState(false);
-    const soundRef = useRef<Audio.Sound | null>(null);
     const playCountRef = useRef(0);
+    // For repetitive playback, we'll use a local player instance in the effect loop.
 
     // Animated values for interactivity
     const scaleAnim = useRef(new Animated.Value(0.9)).current;
@@ -83,25 +83,22 @@ export default function TaskComplete({
         const playSound = async () => {
             try {
                 // Configure audio mode
-                await Audio.setAudioModeAsync({
-                    playsInSilentModeIOS: true,
-                    staysActiveInBackground: false,
+                await AudioModule.setAudioModeAsync({
+                    playsInSilentMode: true,
+                    interruptionMode: 'doNotMix',
                 });
 
                 const playSoundOnce = async () => {
                     const soundSource = SOUND_OPTIONS[selectedSound]?.source;
                     if (soundSource === null || soundSource === undefined) return;
 
-                    const { sound } = await Audio.Sound.createAsync(
-                        soundSource,
-                        { shouldPlay: true }
-                    );
-                    soundRef.current = sound;
+                    const player = AudioModule.createAudioPlayer(soundSource);
+                    player.play();
 
-                    sound.setOnPlaybackStatusUpdate((status) => {
-                        if (status.isLoaded && status.didJustFinish) {
+                    const subscription = player.addListener('playbackStatusUpdate', (status: { didJustFinish: boolean }) => {
+                        if (status.didJustFinish) {
+                            subscription.remove();
                             playCountRef.current += 1;
-                            sound.unloadAsync();
 
                             // Play again if repetitions remaining
                             if (playCountRef.current < soundRepetition) {
@@ -131,9 +128,6 @@ export default function TaskComplete({
 
         return () => {
             subscription.remove();
-            if (soundRef.current) {
-                soundRef.current.unloadAsync();
-            }
         };
     }, [selectedSound, soundRepetition, shouldPlaySound]);
 

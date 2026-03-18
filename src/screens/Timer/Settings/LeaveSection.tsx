@@ -98,96 +98,90 @@ function LeaveActionModal({
                         style={[modalStyles.keyboardView, isLandscape && { justifyContent: 'center' }]}
                     >
                         <TouchableWithoutFeedback onPress={(e) => e.stopPropagation()}>
-                            <View style={styles.settingsCardBezel}>
-                                <View style={[
-                                    styles.settingsCardTrack,
-                                    modalStyles.card,
-                                    isLandscape && { width: '100%', maxWidth: 500, flexDirection: 'row', gap: 20, alignItems: 'center' }
-                                ]}>
-                                    <View style={{ flex: 1 }}>
-                                        {/* Compact Header */}
-                                        <View style={[modalStyles.headerRow, isLandscape && { marginBottom: 12 }]}>
-                                            <View>
-                                                <Text style={modalStyles.modalTitle}>
-                                                    {mode === 'add' ? 'ADD LEAVE' : (mode === 'edit' ? 'EDIT LEAVE' : 'LEAVE DETAILS')}
-                                                </Text>
-                                                <Text style={modalStyles.modalSubtitle}>
-                                                    {formattedDate}
-                                                </Text>
-                                            </View>
-
-                                            {/* Close Button Top-Right for View Mode */}
-                                            {mode === 'view' && (
-                                                <TouchableOpacity style={modalStyles.iconBtn} onPress={onClose}>
-                                                    <MaterialIcons name="close" size={22} color="rgba(255,255,255,0.6)" />
-                                                </TouchableOpacity>
-                                            )}
+                            <View style={[
+                                modalStyles.card,
+                                isLandscape && { width: '100%', maxWidth: 500, flexDirection: 'row', gap: 20, alignItems: 'center' }
+                            ]}>
+                                <View style={{ flex: 1 }}>
+                                    {/* Compact Header */}
+                                    <View style={[modalStyles.headerRow, isLandscape && { marginBottom: 12 }]}>
+                                        <View>
+                                            <Text style={modalStyles.modalTitle}>
+                                                {mode === 'add' ? 'ADD LEAVE' : (mode === 'edit' ? 'EDIT LEAVE' : 'LEAVE DETAILS')}
+                                            </Text>
+                                            <Text style={modalStyles.modalSubtitle}>
+                                                {formattedDate}
+                                            </Text>
                                         </View>
 
-                                        {mode === 'view' ? (
-                                            <View style={modalStyles.viewContent}>
-                                                <Text style={modalStyles.inputLabel}>REASON</Text>
-                                                <View style={modalStyles.reasonWell}>
-                                                    <Text style={[
-                                                        modalStyles.viewReasonText,
-                                                        !existingReason && { color: 'rgba(255,255,255,0.2)', fontStyle: 'italic' }
-                                                    ]}>
-                                                        {existingReason || "No reason provided"}
-                                                    </Text>
-                                                </View>
-
-                                                <View style={modalStyles.viewActions}>
-                                                    <TouchableOpacity
-                                                        style={modalStyles.destructiveBtn}
-                                                        onPress={handleDelete}
-                                                    >
-                                                        <MaterialIcons name="delete-outline" size={20} color="#FF3B30" />
-                                                        <Text style={modalStyles.destructiveBtnText}>DELETE</Text>
-                                                    </TouchableOpacity>
-
-                                                    <TouchableOpacity
-                                                        style={modalStyles.primaryActionBtn}
-                                                        onPress={() => setMode('edit')}
-                                                    >
-                                                        <MaterialIcons name="edit" size={18} color="#000" />
-                                                        <Text style={modalStyles.primaryActionBtnText}>EDIT</Text>
-                                                    </TouchableOpacity>
-                                                </View>
-                                            </View>
-                                        ) : (
-                                            <View>
-                                                <Text style={modalStyles.inputLabel}>DESCRIBE LEAVE</Text>
-                                                <TextInput
-                                                    style={modalStyles.input3D}
-                                                    value={reason}
-                                                    onChangeText={setReason}
-                                                    placeholder="Enter reason (optional)..."
-                                                    placeholderTextColor="rgba(255,255,255,0.15)"
-                                                    autoFocus={true}
-                                                    multiline
-                                                />
-
-                                                <View style={modalStyles.editActions}>
-                                                    <TouchableOpacity
-                                                        style={modalStyles.btnCancel3D}
-                                                        onPress={() => {
-                                                            if (mode === 'edit') setMode('view');
-                                                            else onClose();
-                                                        }}
-                                                    >
-                                                        <Text style={modalStyles.btnText3D}>CANCEL</Text>
-                                                    </TouchableOpacity>
-                                                    <TouchableOpacity style={modalStyles.btnConfirm3D} onPress={handleSave}>
-                                                        <Text style={modalStyles.btnTextPrimary3D}>SAVE</Text>
-                                                    </TouchableOpacity>
-                                                </View>
-                                            </View>
+                                        {/* Close Button Top-Right for View Mode */}
+                                        {mode === 'view' && (
+                                            <TouchableOpacity style={modalStyles.iconBtn} onPress={onClose}>
+                                                <MaterialIcons name="close" size={22} color="rgba(255,255,255,0.6)" />
+                                            </TouchableOpacity>
                                         )}
                                     </View>
-                                    <View style={styles.settingsCardInteriorShadow} pointerEvents="none" />
-                                    <View style={styles.settingsCardTopRim} pointerEvents="none" />
+
+                                    {mode === 'view' ? (
+                                        <View style={modalStyles.viewContent}>
+                                            <Text style={modalStyles.inputLabel}>REASON</Text>
+                                            <View style={modalStyles.reasonWell}>
+                                                <Text style={[
+                                                    modalStyles.viewReasonText,
+                                                    !existingReason && { color: 'rgba(255,255,255,0.2)', fontStyle: 'italic' }
+                                                ]}>
+                                                    {existingReason || "No reason provided"}
+                                                </Text>
+                                            </View>
+
+                                            <View style={modalStyles.viewActions}>
+                                                <TouchableOpacity
+                                                    style={modalStyles.destructiveBtn}
+                                                    onPress={handleDelete}
+                                                >
+                                                    <MaterialIcons name="delete-outline" size={20} color="#FF3B30" />
+                                                    <Text style={modalStyles.destructiveBtnText}>DELETE</Text>
+                                                </TouchableOpacity>
+
+                                                <TouchableOpacity
+                                                    style={modalStyles.primaryActionBtn}
+                                                    onPress={() => setMode('edit')}
+                                                >
+                                                    <MaterialIcons name="edit" size={18} color="#000" />
+                                                    <Text style={modalStyles.primaryActionBtnText}>EDIT</Text>
+                                                </TouchableOpacity>
+                                            </View>
+                                        </View>
+                                    ) : (
+                                        <View>
+                                            <Text style={modalStyles.inputLabel}>DESCRIBE LEAVE</Text>
+                                            <TextInput
+                                                style={modalStyles.input3D}
+                                                value={reason}
+                                                onChangeText={setReason}
+                                                placeholder="Enter reason (optional)..."
+                                                placeholderTextColor="rgba(255,255,255,0.15)"
+                                                autoFocus={true}
+                                                multiline
+                                            />
+
+                                            <View style={modalStyles.editActions}>
+                                                <TouchableOpacity
+                                                    style={modalStyles.btnCancel3D}
+                                                    onPress={() => {
+                                                        if (mode === 'edit') setMode('view');
+                                                        else onClose();
+                                                    }}
+                                                >
+                                                    <Text style={modalStyles.btnText3D}>CANCEL</Text>
+                                                </TouchableOpacity>
+                                                <TouchableOpacity style={modalStyles.btnConfirm3D} onPress={handleSave}>
+                                                    <Text style={modalStyles.btnTextPrimary3D}>SAVE</Text>
+                                                </TouchableOpacity>
+                                            </View>
+                                        </View>
+                                    )}
                                 </View>
-                                <View style={styles.settingsCardOuterGlow} pointerEvents="none" />
                             </View>
                         </TouchableWithoutFeedback>
                     </KeyboardAvoidingView>
@@ -229,8 +223,8 @@ function MultiDateCalendar({
     const weekDays = ['S', 'M', 'T', 'W', 'T', 'F', 'S'];
 
     return (
-        <View style={[styles.settingsCardBezel, isLandscape && { maxWidth: 420, alignSelf: 'center', width: '100%' }]}>
-            <View style={[styles.settingsCardTrackUnifiedLarge, modalStyles.calendarCard, isLandscape && { paddingBottom: 16 }]}>
+        <View style={[modalStyles.calendarContainer, isLandscape && { maxWidth: 420, alignSelf: 'center', width: '100%' }]}>
+            <View style={[modalStyles.calendarCard, isLandscape && { paddingBottom: 16 }]}>
                 <View style={modalStyles.calHeader}>
                     <View style={modalStyles.monthDisplayWell}>
                         <Text style={modalStyles.calTitle}>{MONTHS[viewDate.getMonth()]} {viewDate.getFullYear()}</Text>
@@ -305,10 +299,7 @@ function MultiDateCalendar({
                         );
                     })}
                 </View>
-                <View style={styles.settingsCardInteriorShadow} pointerEvents="none" />
-                <View style={styles.settingsCardTopRim} pointerEvents="none" />
             </View>
-            <View style={styles.settingsCardOuterGlow} pointerEvents="none" />
         </View>
     );
 }
@@ -406,10 +397,15 @@ export default function LeaveSection({ isLandscape }: LeaveSectionProps) {
 
 const modalStyles = StyleSheet.create({
     calendarCard: {
-        backgroundColor: '#0a0a0a',
+        backgroundColor: 'rgba(255,255,255,0.03)',
         borderRadius: 24,
         padding: 16,
         paddingBottom: 24,
+        borderWidth: 1,
+        borderColor: 'rgba(255,255,255,0.06)',
+    },
+    calendarContainer: {
+        width: '100%',
     },
     monthDisplayWell: {
         backgroundColor: 'rgba(255,255,255,0.03)',
@@ -417,14 +413,7 @@ const modalStyles = StyleSheet.create({
         paddingHorizontal: 20,
         borderRadius: 16,
         borderWidth: 1,
-        borderTopColor: 'rgba(0,0,0,0.3)',
-        borderLeftColor: 'rgba(0,0,0,0.2)',
-        borderRightColor: 'rgba(255,255,255,0.05)',
-        borderBottomColor: 'rgba(255,255,255,0.08)',
-        shadowColor: '#000',
-        shadowOffset: { width: 0, height: 2 },
-        shadowOpacity: 0.5,
-        shadowRadius: 4,
+        borderColor: 'rgba(255,255,255,0.06)',
     },
     calNavWell: {
         flexDirection: 'row',
@@ -441,12 +430,9 @@ const modalStyles = StyleSheet.create({
         borderRadius: 10,
         alignItems: 'center',
         justifyContent: 'center',
-        backgroundColor: 'rgba(255,255,255,0.05)',
+        backgroundColor: 'rgba(255,255,255,0.04)',
         borderWidth: 1,
-        borderTopColor: 'rgba(255,255,255,0.1)',
-        borderLeftColor: 'rgba(255,255,255,0.05)',
-        borderRightColor: 'rgba(0,0,0,0.2)',
-        borderBottomColor: 'rgba(0,0,0,0.3)',
+        borderColor: 'rgba(255,255,255,0.06)',
     },
     calHeader: {
         flexDirection: 'row',
@@ -505,10 +491,7 @@ const modalStyles = StyleSheet.create({
         justifyContent: 'center',
         backgroundColor: 'rgba(255,255,255,0.04)',
         borderWidth: 1,
-        borderTopColor: 'rgba(255,255,255,0.08)',
-        borderLeftColor: 'rgba(255,255,255,0.04)',
-        borderRightColor: 'rgba(0,0,0,0.15)',
-        borderBottomColor: 'rgba(0,0,0,0.25)',
+        borderColor: 'rgba(255,255,255,0.06)',
         overflow: 'hidden',
     },
     daySlabLandscape: {
@@ -518,23 +501,12 @@ const modalStyles = StyleSheet.create({
     },
     todaySlab: {
         backgroundColor: '#fff',
-        borderTopColor: 'rgba(255,255,255,1)',
-        borderLeftColor: 'rgba(255,255,255,0.8)',
-        shadowColor: '#fff',
-        shadowOffset: { width: 0, height: 0 },
-        shadowOpacity: 0.4,
-        shadowRadius: 10,
-        elevation: 5,
+        borderColor: '#fff',
     },
     leaveSlab: {
         backgroundColor: '#1E3A20', // Darker forest green base
         borderColor: '#4CAF50',
-        borderWidth: 1.5,
-        shadowColor: '#4CAF50',
-        shadowOffset: { width: 0, height: 4 },
-        shadowOpacity: 0.5,
-        shadowRadius: 8,
-        elevation: 6,
+        borderWidth: 1,
     },
     leaveIndicatorDot: {
         position: 'absolute',
@@ -561,19 +533,11 @@ const modalStyles = StyleSheet.create({
     card: {
         backgroundColor: '#1C1C1E',
         borderRadius: 24,
-        padding: 20,
+        padding: 24,
         width: '85%',
         maxWidth: 340,
         borderWidth: 1,
-        borderTopColor: 'rgba(255,255,255,0.12)',
-        borderLeftColor: 'rgba(255,255,255,0.08)',
-        borderRightColor: 'rgba(255,255,255,0.03)',
-        borderBottomColor: 'rgba(0,0,0,0.3)',
-        shadowColor: '#000',
-        shadowOffset: { width: 0, height: 20 },
-        shadowOpacity: 0.8,
-        shadowRadius: 40,
-        elevation: 20,
+        borderColor: 'rgba(255,255,255,0.08)',
     },
     headerRow: {
         flexDirection: 'row',
@@ -627,10 +591,7 @@ const modalStyles = StyleSheet.create({
         borderRadius: 16,
         backgroundColor: 'rgba(255,59,48,0.1)',
         borderWidth: 1,
-        borderTopColor: 'rgba(255,59,48,0.15)',
-        borderLeftColor: 'rgba(255,59,48,0.1)',
-        borderRightColor: 'rgba(0,0,0,0.15)',
-        borderBottomColor: 'rgba(0,0,0,0.2)',
+        borderColor: 'rgba(255,59,48,0.2)',
     },
     destructiveBtnText: {
         color: '#FF3B30',
@@ -646,13 +607,6 @@ const modalStyles = StyleSheet.create({
         paddingVertical: 10,
         paddingHorizontal: 20,
         borderRadius: 16,
-        borderWidth: 0.5,
-        borderTopColor: 'rgba(255,255,255,1)',
-        borderLeftColor: 'rgba(255,255,255,0.8)',
-        shadowColor: '#fff',
-        shadowOpacity: 0.2,
-        shadowRadius: 10,
-        elevation: 4,
     },
     primaryActionBtnText: {
         color: '#000',
@@ -678,10 +632,7 @@ const modalStyles = StyleSheet.create({
         padding: 16,
         minHeight: 80,
         borderWidth: 1,
-        borderTopColor: 'rgba(0,0,0,0.3)',
-        borderLeftColor: 'rgba(0,0,0,0.2)',
-        borderRightColor: 'rgba(255,255,255,0.05)',
-        borderBottomColor: 'rgba(255,255,255,0.08)',
+        borderColor: 'rgba(255,255,255,0.06)',
     },
     viewReasonText: {
         color: '#fff',
@@ -698,10 +649,7 @@ const modalStyles = StyleSheet.create({
         minHeight: 100,
         textAlignVertical: 'top',
         borderWidth: 1,
-        borderTopColor: 'rgba(0,0,0,0.4)',
-        borderLeftColor: 'rgba(0,0,0,0.3)',
-        borderRightColor: 'rgba(255,255,255,0.05)',
-        borderBottomColor: 'rgba(255,255,255,0.08)',
+        borderColor: 'rgba(255,255,255,0.06)',
     },
     btnCancel3D: {
         flex: 1,
@@ -710,10 +658,7 @@ const modalStyles = StyleSheet.create({
         borderRadius: 16,
         backgroundColor: 'rgba(255,255,255,0.05)',
         borderWidth: 1,
-        borderTopColor: 'rgba(255,255,255,0.1)',
-        borderLeftColor: 'rgba(255,255,255,0.05)',
-        borderRightColor: 'rgba(0,0,0,0.2)',
-        borderBottomColor: 'rgba(0,0,0,0.3)',
+        borderColor: 'rgba(255,255,255,0.08)',
     },
     btnConfirm3D: {
         flex: 1,
@@ -721,13 +666,6 @@ const modalStyles = StyleSheet.create({
         alignItems: 'center',
         borderRadius: 16,
         backgroundColor: '#fff',
-        borderWidth: 0.5,
-        borderTopColor: 'rgba(255,255,255,1)',
-        borderLeftColor: 'rgba(255,255,255,0.8)',
-        shadowColor: '#fff',
-        shadowOpacity: 0.3,
-        shadowRadius: 12,
-        elevation: 6,
     },
     btnText3D: {
         color: 'rgba(255,255,255,0.5)',

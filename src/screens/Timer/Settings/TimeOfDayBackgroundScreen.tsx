@@ -276,6 +276,9 @@ export default function TimeOfDayBackgroundScreen({
   const [activeDay, setActiveDay] = useState<WeekdayKey>(() => getCurrentLogicalWeekday(dailyStartMinutes));
   const [draftByDay, setDraftByDay] = useState<Record<WeekdayKey, SlotDraft[]>>(initialDraftByDay);
   const [activeKey, setActiveKey] = useState<SlotDraft['key']>('morning');
+  const [isHidePreview, setIsHidePreview] = useState(false);
+
+  const activeSlot = draftByDay[activeDay].find((s) => s.key === activeKey);
   const [timePicker, setTimePicker] = useState<{
     visible: boolean;
     slotKey: SlotDraft['key'] | null;
@@ -426,16 +429,16 @@ export default function TimeOfDayBackgroundScreen({
   };
 
   const renderSlotRow = (s: SlotDraft, compact?: boolean) => (
-    <View style={[sharedStyles.settingsCardBezel, { marginBottom: 12 }]}>
-      <View style={sharedStyles.settingsCardTrackUnifiedLarge}>
-        <View style={[styles.cardHeader, compact && styles.cardHeaderCompact]}>
+    <View key={s.key} style={compact ? { marginBottom: 0 } : [sharedStyles.settingsCardBezel, { marginBottom: 12 }]}>
+      <View style={compact ? { backgroundColor: 'rgba(255,255,255,0.03)', borderRadius: 12, padding: 12, borderWidth: 1, borderColor: 'rgba(255,255,255,0.06)' } : sharedStyles.settingsCardTrackUnifiedLarge}>
+        <View style={[styles.cardHeader, compact && styles.cardHeaderCompact, { marginBottom: compact ? 12 : 16 }]}>
           <Text style={[styles.cardTitle, compact && styles.cardTitleCompact]}>{s.label || s.key.toUpperCase()}</Text>
           <View style={[styles.colorSwatch, compact && styles.colorSwatchCompact, { backgroundColor: isHex(s.colorHex) ? s.colorHex : '#000' }]} />
         </View>
 
         <View style={[styles.fieldRow, compact && styles.fieldRowCompact]}>
           <Text style={[styles.fieldLabel, compact && styles.fieldLabelCompact]}>Label</Text>
-          <View style={styles.inputWell}>
+          <View style={[styles.inputWell, compact && { backgroundColor: 'rgba(255,255,255,0.04)', borderWidth: 1, borderColor: 'rgba(255,255,255,0.06)' }]}>
             <TextInput
               value={s.label}
               onChangeText={(v) => update(s.key, { label: v })}
@@ -443,14 +446,14 @@ export default function TimeOfDayBackgroundScreen({
               placeholderTextColor="rgba(255,255,255,0.35)"
               style={[styles.input, compact && styles.inputCompact]}
             />
-            <View style={sharedStyles.settingsCardInteriorShadowExtraSmall} pointerEvents="none" />
-            <View style={sharedStyles.settingsCardTopRimExtraSmall} pointerEvents="none" />
+            {!compact && <View style={sharedStyles.settingsCardInteriorShadowExtraSmall} pointerEvents="none" />}
+            {!compact && <View style={sharedStyles.settingsCardTopRimExtraSmall} pointerEvents="none" />}
           </View>
         </View>
 
         <View style={[styles.fieldRow, compact && styles.fieldRowCompact]}>
           <Text style={[styles.fieldLabel, compact && styles.fieldLabelCompact]}>Color</Text>
-          <View style={styles.inputWell}>
+          <View style={[styles.inputWell, compact && { backgroundColor: 'rgba(255,255,255,0.04)', borderWidth: 1, borderColor: 'rgba(255,255,255,0.06)' }]}>
             <TextInput
               value={s.colorHex}
               onChangeText={(v) => update(s.key, { colorHex: v })}
@@ -459,8 +462,8 @@ export default function TimeOfDayBackgroundScreen({
               autoCapitalize="none"
               style={[styles.input, compact && styles.inputCompact]}
             />
-            <View style={sharedStyles.settingsCardInteriorShadowExtraSmall} pointerEvents="none" />
-            <View style={sharedStyles.settingsCardTopRimExtraSmall} pointerEvents="none" />
+            {!compact && <View style={sharedStyles.settingsCardInteriorShadowExtraSmall} pointerEvents="none" />}
+            {!compact && <View style={sharedStyles.settingsCardTopRimExtraSmall} pointerEvents="none" />}
           </View>
           {renderColorSlider(s, compact)}
         </View>
@@ -469,7 +472,7 @@ export default function TimeOfDayBackgroundScreen({
           <View style={{ flex: 1 }}>
             <Text style={[styles.fieldLabel, compact && styles.fieldLabelCompact]}>Start</Text>
             <TouchableOpacity
-              style={[styles.timePickerButton, compact && styles.timePickerButtonCompact]}
+              style={[styles.timePickerButton, compact && styles.timePickerButtonCompact, compact && { backgroundColor: 'rgba(255,255,255,0.04)', borderWidth: 1, borderColor: 'rgba(255,255,255,0.06)' }]}
               onPress={() => {
                 const startMin = parseTimeToMinutes(s.start, false) ?? 0;
                 setTimePicker({
@@ -491,7 +494,7 @@ export default function TimeOfDayBackgroundScreen({
           <View style={{ flex: 1 }}>
             <Text style={[styles.fieldLabel, compact && styles.fieldLabelCompact]}>End</Text>
             <TouchableOpacity
-              style={[styles.timePickerButton, compact && styles.timePickerButtonCompact]}
+              style={[styles.timePickerButton, compact && styles.timePickerButtonCompact, compact && { backgroundColor: 'rgba(255,255,255,0.04)', borderWidth: 1, borderColor: 'rgba(255,255,255,0.06)' }]}
               onPress={() => {
                 const endMin = parseTimeToMinutes(s.end, true) ?? 0;
                 setTimePicker({
@@ -516,15 +519,14 @@ export default function TimeOfDayBackgroundScreen({
             Tip: set end earlier than start to cross midnight (e.g. Night 20:00 → 06:00).
           </Text>
         )}
-        <View style={sharedStyles.settingsCardInteriorShadow} pointerEvents="none" />
-        <View style={sharedStyles.settingsCardTopRim} pointerEvents="none" />
+        {!compact && <View style={sharedStyles.settingsCardInteriorShadow} pointerEvents="none" />}
+        {!compact && <View style={sharedStyles.settingsCardTopRim} pointerEvents="none" />}
       </View>
-      <View style={sharedStyles.settingsCardOuterGlow} pointerEvents="none" />
+      {!compact && <View style={sharedStyles.settingsCardOuterGlow} pointerEvents="none" />}
     </View>
   );
 
   const draft = draftByDay[activeDay];
-  const activeSlot = draft.find(d => d.key === activeKey) || draft[0];
 
   const timeWheelModal = (
     <Modal
@@ -621,34 +623,66 @@ export default function TimeOfDayBackgroundScreen({
             style={sharedStyles.landscapeContainer}
           >
             {/* Left Panel - Phone preview (same as Theme) + day + slots + back */}
-            <View style={[sharedStyles.leftSidebarCard, { width: '38%' }]}>
-              <Text style={sharedStyles.sidebarSectionTitle}>LIVE PREVIEW</Text>
-              <View style={sharedStyles.sidebarPreviewWrapper}>
-                <View style={[sharedStyles.phoneFrameContainer, sharedStyles.phoneFrameContainerLandscape]}>
-                  <View style={[sharedStyles.phoneFrame, { width: previewWidth + 12 }]}>
-                    <View style={sharedStyles.phoneInternalFrame}>
-                      <View style={[styles.phonePreviewInner, { width: previewWidth }]}>
-                        {previewSegments.map((seg, idx) => (
-                          <View
-                            key={`${seg.key}-${idx}`}
-                            style={[
-                              styles.phonePreviewSlotSeg,
-                              { left: `${seg.leftPct}%`, width: `${seg.widthPct}%`, backgroundColor: seg.colorHex },
-                            ]}
-                          />
-                        ))}
-                        <View style={styles.phonePreviewTicks}>
-                          <Text style={styles.phonePreviewTick}>00</Text>
-                          <Text style={styles.phonePreviewTick}>06</Text>
-                          <Text style={styles.phonePreviewTick}>12</Text>
-                          <Text style={styles.phonePreviewTick}>18</Text>
-                          <Text style={styles.phonePreviewTick}>24</Text>
+            <View style={[sharedStyles.leftSidebarCard, { width: '40%' }]}>
+              {isHidePreview ? (
+                <TouchableOpacity
+                  style={sharedStyles.showPreviewButton}
+                  onPress={() => setIsHidePreview(false)}
+                  activeOpacity={0.7}
+                >
+                  <MaterialIcons
+                    name="visibility"
+                    size={12}
+                    color="rgba(255,255,255,0.6)"
+                    style={{ marginRight: 6 }}
+                  />
+                  <Text style={sharedStyles.showPreviewText}>
+                    SHOW PREVIEW
+                  </Text>
+                </TouchableOpacity>
+              ) : (
+                <View style={sharedStyles.sidebarPreviewWrapper}>
+                  <View style={[sharedStyles.phoneFrameContainer, sharedStyles.phoneFrameContainerLandscape]}>
+                    <View style={[sharedStyles.phoneFrame, { width: previewWidth + 12 }]}>
+                      <TouchableOpacity
+                        style={sharedStyles.minimizeToggleButton}
+                        onPress={() => setIsHidePreview(true)}
+                        activeOpacity={0.7}
+                      >
+                        <MaterialIcons name="close" size={14} color="#fff" />
+                      </TouchableOpacity>
+
+                      <View style={[sharedStyles.phoneInternalFrame, { width: previewWidth, height: 160 }]}>
+                        <View style={[styles.phonePreviewInner, { width: previewWidth, height: 160 }]}>
+                          <Text style={sharedStyles.previewTitleInside}>Live Preview</Text>
+                          {previewSegments.map((seg, idx) => (
+                            <View
+                              key={`${seg.key}-${idx}`}
+                              style={[
+                                styles.phonePreviewSlotSeg,
+                                {
+                                  left: `${seg.leftPct}%`,
+                                  width: `${seg.widthPct}%`,
+                                  backgroundColor: seg.colorHex,
+                                  height: '100%',
+                                  top: 0
+                                },
+                              ]}
+                            />
+                          ))}
+                          <View style={styles.phonePreviewTicks}>
+                            <Text style={styles.phonePreviewTick}>00</Text>
+                            <Text style={styles.phonePreviewTick}>06</Text>
+                            <Text style={styles.phonePreviewTick}>12</Text>
+                            <Text style={styles.phonePreviewTick}>18</Text>
+                            <Text style={styles.phonePreviewTick}>24</Text>
+                          </View>
                         </View>
                       </View>
                     </View>
                   </View>
                 </View>
-              </View>
+              )}
 
               <Text style={sharedStyles.sidebarSectionTitle}>SLOTS</Text>
               <View style={sharedStyles.sidebarNavSection}>
@@ -657,37 +691,42 @@ export default function TimeOfDayBackgroundScreen({
                   contentContainerStyle={[sharedStyles.sidebarButtonsScroll, { flexGrow: 1 }]}
                   alwaysBounceVertical={true}
                 >
-                  {draft.map((s) => {
+                  {draftByDay[activeDay].map((s) => {
                     const isActive = s.key === activeKey;
                     return (
-                      <View key={s.key} style={sharedStyles.settingsCardBezelExtraSmall}>
-                        <View style={[sharedStyles.settingsCardTrackExtraSmall, isActive && { backgroundColor: 'rgba(255,255,255,0.08)' }]}>
-                          <TouchableOpacity
-                            style={[styles.landscapeSlotRow, isActive && styles.landscapeSlotRowActive]}
-                            onPress={() => {
-                              setActiveKey(s.key);
-                              Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                            }}
-                            activeOpacity={0.75}
-                          >
-                            <View style={[styles.landscapeSlotSwatch, { backgroundColor: isHex(s.colorHex) ? s.colorHex : '#000' }]} />
-                            <View style={styles.landscapeSlotInfo}>
-                              <Text style={[styles.landscapeSlotTitle, isActive && styles.landscapeSlotTitleActive]} numberOfLines={1}>
-                                {s.label || s.key.toUpperCase()}
-                              </Text>
-                              <Text style={styles.landscapeSlotTime} numberOfLines={1}>{s.start} → {s.end}</Text>
-                            </View>
-                            {isActive ? (
-                              <View style={sharedStyles.activeIndicatorSmall} />
-                            ) : (
-                              <MaterialIcons name="chevron-right" size={14} color="rgba(255,255,255,0.15)" />
-                            )}
-                          </TouchableOpacity>
-                          <View style={sharedStyles.settingsCardInteriorShadowExtraSmall} pointerEvents="none" />
-                          <View style={sharedStyles.settingsCardTopRimExtraSmall} pointerEvents="none" />
+                      <TouchableOpacity
+                        key={s.key}
+                        style={[
+                          {
+                            flexDirection: 'row',
+                            alignItems: 'center',
+                            padding: 10,
+                            borderRadius: 12,
+                            marginBottom: 6,
+                            backgroundColor: isActive ? 'rgba(255,255,255,0.08)' : 'rgba(255,255,255,0.03)',
+                            borderWidth: 1,
+                            borderColor: isActive ? 'rgba(255,255,255,0.12)' : 'transparent',
+                          }
+                        ]}
+                        onPress={() => {
+                          setActiveKey(s.key);
+                          Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                        }}
+                        activeOpacity={0.75}
+                      >
+                        <View style={[styles.landscapeSlotSwatch, { backgroundColor: isHex(s.colorHex) ? s.colorHex : '#000', width: 10, height: 10, borderRadius: 3 }]} />
+                        <View style={[styles.landscapeSlotInfo, { marginLeft: 8, flex: 1 }]}>
+                          <Text style={[styles.landscapeSlotTitle, isActive && styles.landscapeSlotTitleActive, { fontSize: 11 }]} numberOfLines={1}>
+                            {s.label || s.key.toUpperCase()}
+                          </Text>
+                          <Text style={[styles.landscapeSlotTime, { fontSize: 9, opacity: 0.5 }]} numberOfLines={1}>{s.start} → {s.end}</Text>
                         </View>
-                        {isActive && <View style={sharedStyles.settingsCardOuterGlowExtraSmall} pointerEvents="none" />}
-                      </View>
+                        {isActive ? (
+                          <View style={sharedStyles.activeIndicatorSmall} />
+                        ) : (
+                          <MaterialIcons name="chevron-right" size={14} color="rgba(255,255,255,0.15)" />
+                        )}
+                      </TouchableOpacity>
                     );
                   })}
                 </ScrollView>
@@ -700,76 +739,100 @@ export default function TimeOfDayBackgroundScreen({
 
             {/* Right Panel - header + slot editor + day at bottom */}
             <View style={sharedStyles.rightContentCard}>
-              <View style={[styles.landscapeRightHeader, { marginBottom: 16 }]}>
+              <View style={[styles.landscapeRightHeader, { marginBottom: 12, paddingHorizontal: 4 }]}>
                 <View style={{ flex: 1 }} />
-                <View style={[styles.landscapeRightActions, { gap: 10 }]}>
+                <View style={[styles.landscapeRightActions, { gap: 8 }]}>
                   <TouchableOpacity
-                    style={[sharedStyles.actionBtn, { width: 'auto', height: 'auto', paddingHorizontal: 16, paddingVertical: 10 }]}
+                    style={[
+                      {
+                        flexDirection: 'row',
+                        alignItems: 'center',
+                        backgroundColor: 'rgba(255,255,255,0.06)',
+                        paddingHorizontal: 12,
+                        paddingVertical: 8,
+                        borderRadius: 10,
+                        borderWidth: 1,
+                        borderColor: 'rgba(255,255,255,0.08)',
+                      }
+                    ]}
                     onPress={showCopyFromDayPicker}
                     activeOpacity={0.7}
                   >
-                    <MaterialIcons name="content-copy" size={16} color="rgba(255,255,255,0.8)" />
-                    <Text style={[sharedStyles.addCategoryBtnText, { marginLeft: 8 }]}>Copy from day</Text>
+                    <MaterialIcons name="content-copy" size={14} color="rgba(255,255,255,0.7)" />
+                    <Text style={{ color: '#fff', fontSize: 11, fontWeight: '700', marginLeft: 6 }}>Copy</Text>
                   </TouchableOpacity>
                   <TouchableOpacity
-                    style={[sharedStyles.actionBtn, { width: 'auto', height: 'auto', paddingHorizontal: 16, paddingVertical: 10 }]}
+                    style={[
+                      {
+                        backgroundColor: 'rgba(255,255,255,0.06)',
+                        paddingHorizontal: 12,
+                        paddingVertical: 8,
+                        borderRadius: 10,
+                        borderWidth: 1,
+                        borderColor: 'rgba(255,255,255,0.08)',
+                      }
+                    ]}
                     onPress={handleReset}
                     activeOpacity={0.7}
                   >
-                    <Text style={sharedStyles.categoryCancelText}>Reset</Text>
+                    <Text style={{ color: 'rgba(255,255,255,0.6)', fontSize: 11, fontWeight: '700' }}>Reset</Text>
                   </TouchableOpacity>
                   <TouchableOpacity
-                    style={[sharedStyles.categorySaveBtn, { width: 'auto', height: 'auto', paddingHorizontal: 22, paddingVertical: 10 }]}
+                    style={[
+                      {
+                        backgroundColor: '#fff',
+                        paddingHorizontal: 18,
+                        paddingVertical: 8,
+                        borderRadius: 10,
+                      }
+                    ]}
                     onPress={handleSave}
                     activeOpacity={0.7}
                   >
-                    <Text style={sharedStyles.categorySaveText}>Save</Text>
+                    <Text style={{ color: '#000', fontSize: 11, fontWeight: '900' }}>Save</Text>
                   </TouchableOpacity>
                 </View>
               </View>
               <ScrollView
                 style={sharedStyles.rightContentScroll}
-                contentContainerStyle={[sharedStyles.rightContentScrollPadding, { flexGrow: 1 }]}
+                contentContainerStyle={[sharedStyles.rightContentScrollPadding, { flexGrow: 1, paddingTop: 0 }]}
                 showsVerticalScrollIndicator={false}
                 alwaysBounceVertical={true}
               >
                 {activeSlot ? renderSlotRow(activeSlot, true) : null}
-                <Text style={styles.landscapeHint}>End earlier than start = slot spans midnight.</Text>
+                <Text style={[styles.landscapeHint, { marginTop: 4, opacity: 0.4 }]}>End earlier than start = slot spans midnight.</Text>
               </ScrollView>
-              <View style={styles.landscapeRightDaySection}>
-                <Text style={sharedStyles.sidebarSectionTitle}>DAY</Text>
-                <View style={styles.landscapeDayRow}>
+              <View style={[styles.landscapeRightDaySection, { paddingBottom: 8, paddingTop: 12, borderTopWidth: 1, borderTopColor: 'rgba(255,255,255,0.03)' }]}>
+                <Text style={[sharedStyles.sidebarSectionTitle, { marginBottom: 8 }]}>DAY</Text>
+                <View style={[styles.landscapeDayRow, { gap: 6 }]}>
                   {WEEKDAY_ORDER.map((day) => {
                     const active = day === activeDay;
                     return (
-                      <View key={day} style={sharedStyles.settingsCardBezelExtraSmall}>
-                        <View style={[
-                          sharedStyles.settingsCardTrackExtraSmall,
-                          active && { backgroundColor: '#fff', borderColor: 'rgba(255,255,255,0.2)' }
+                      <TouchableOpacity
+                        key={day}
+                        style={[
+                          {
+                            paddingHorizontal: 10,
+                            paddingVertical: 6,
+                            borderRadius: 8,
+                            backgroundColor: active ? '#fff' : 'rgba(255,255,255,0.04)',
+                            borderWidth: 1,
+                            borderColor: active ? '#fff' : 'rgba(255,255,255,0.06)',
+                          }
+                        ]}
+                        onPress={() => {
+                          setActiveDay(day);
+                          Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                        }}
+                        activeOpacity={0.8}
+                      >
+                        <Text style={[
+                          styles.landscapeDayChipText,
+                          { fontSize: 10, fontWeight: active ? '900' : '700', color: active ? '#000' : 'rgba(255,255,255,0.4)' }
                         ]}>
-                          <TouchableOpacity
-                            style={[
-                              styles.landscapeDayChip,
-                              { backgroundColor: 'transparent', borderWidth: 0 }
-                            ]}
-                            onPress={() => {
-                              setActiveDay(day);
-                              Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                            }}
-                            activeOpacity={0.8}
-                          >
-                            <Text style={[
-                              styles.landscapeDayChipText,
-                              active && { color: '#000', fontWeight: '900' }
-                            ]}>
-                              {WEEKDAY_LABEL[day]}
-                            </Text>
-                          </TouchableOpacity>
-                          <View style={sharedStyles.settingsCardInteriorShadowExtraSmall} pointerEvents="none" />
-                          <View style={sharedStyles.settingsCardTopRimExtraSmall} pointerEvents="none" />
-                        </View>
-                        {active && <View style={sharedStyles.settingsCardOuterGlowExtraSmall} pointerEvents="none" />}
-                      </View>
+                          {WEEKDAY_LABEL[day]}
+                        </Text>
+                      </TouchableOpacity>
                     );
                   })}
                 </View>
@@ -784,15 +847,23 @@ export default function TimeOfDayBackgroundScreen({
 
   // Portrait - same layout as main Settings screen
   return (
-    <LinearGradient colors={['#000000', '#000000']} locations={[0, 1]} style={sharedStyles.container}>
+    <LinearGradient
+      colors={['#0A0A0A', '#121212', '#000000']}
+      locations={[0, 0.3, 1]}
+      style={sharedStyles.container}
+    >
       <SafeAreaView style={sharedStyles.safeArea} edges={['top', 'left', 'right', 'bottom']}>
         <View style={sharedStyles.header}>
           <TouchableOpacity style={sharedStyles.backButton} onPress={onBack} activeOpacity={0.7}>
-            <MaterialIcons name="arrow-back-ios" size={20} color="rgba(255,255,255,0.7)" style={{ marginLeft: 6 }} />
+            <MaterialIcons name="chevron-left" size={28} color="rgba(255,255,255,0.7)" />
           </TouchableOpacity>
-          <Text style={sharedStyles.headerTitle}>TIME-OF-DAY BACKGROUND</Text>
-          <TouchableOpacity style={sharedStyles.backButton} onPress={handleSave} activeOpacity={0.7}>
-            <MaterialIcons name="check" size={20} color="rgba(255,255,255,0.9)" />
+          <Text style={sharedStyles.headerTitle}>TIME-OF-DAY BG</Text>
+          <TouchableOpacity
+            style={[sharedStyles.backButton, { backgroundColor: 'rgba(255,255,255,0.08)', borderRadius: 12, width: 40, height: 40, alignItems: 'center', justifyContent: 'center' }]}
+            onPress={handleSave}
+            activeOpacity={0.7}
+          >
+            <MaterialIcons name="check" size={22} color="#FFFFFF" />
           </TouchableOpacity>
         </View>
 
@@ -857,18 +928,31 @@ export default function TimeOfDayBackgroundScreen({
           </View>
 
           <View style={sharedStyles.section}>
-            <View style={sharedStyles.categoryFormActions}>
-              <TouchableOpacity style={sharedStyles.addCategoryBtn} onPress={showCopyFromDayPicker} activeOpacity={0.7}>
+            <View style={[sharedStyles.categoryFormActions, { gap: 12, marginTop: 12 }]}>
+              <TouchableOpacity
+                style={[sharedStyles.addCategoryBtn, { backgroundColor: 'rgba(255,255,255,0.06)', borderRadius: 18, height: 54, flex: 1 }]}
+                onPress={showCopyFromDayPicker}
+                activeOpacity={0.7}
+              >
                 <MaterialIcons name="content-copy" size={20} color="#FFFFFF" />
-                <Text style={sharedStyles.addCategoryBtnText}>Copy from day</Text>
+                <Text style={[sharedStyles.addCategoryBtnText, { fontSize: 13, fontWeight: '800' }]}>Copy</Text>
               </TouchableOpacity>
-              <TouchableOpacity style={sharedStyles.categoryCancelBtn} onPress={handleReset} activeOpacity={0.7}>
-                <Text style={sharedStyles.categoryCancelText}>Reset to defaults</Text>
-              </TouchableOpacity>
-              <TouchableOpacity style={sharedStyles.categorySaveBtn} onPress={handleSave} activeOpacity={0.7}>
-                <Text style={sharedStyles.categorySaveText}>Save</Text>
+
+              <TouchableOpacity
+                style={[sharedStyles.categorySaveBtn, { backgroundColor: '#FFFFFF', borderRadius: 18, height: 54, flex: 1.5 }]}
+                onPress={handleSave}
+                activeOpacity={0.7}
+              >
+                <Text style={[sharedStyles.categorySaveText, { color: '#000', fontSize: 14, fontWeight: '900' }]}>SAVE CHANGES</Text>
               </TouchableOpacity>
             </View>
+            <TouchableOpacity
+              style={[sharedStyles.categoryCancelBtn, { marginTop: 16, alignItems: 'center', paddingVertical: 12 }]}
+              onPress={handleReset}
+              activeOpacity={0.7}
+            >
+              <Text style={[sharedStyles.categoryCancelText, { color: 'rgba(255,255,255,0.3)', fontSize: 12, fontWeight: '700', letterSpacing: 1 }]}>RESET TO DEFAULTS</Text>
+            </TouchableOpacity>
           </View>
         </ScrollView>
         {timeWheelModal}
@@ -913,10 +997,11 @@ const pickerStyles = StyleSheet.create({
 const styles = StyleSheet.create({
   phonePreviewInner: {
     height: 160,
+    width: '100%',
     position: 'relative',
     overflow: 'hidden',
     backgroundColor: '#000',
-    borderRadius: 24,
+    borderRadius: 18,
   },
   inputWell: {
     backgroundColor: '#050505',

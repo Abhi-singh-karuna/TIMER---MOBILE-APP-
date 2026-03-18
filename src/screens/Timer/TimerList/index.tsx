@@ -2,6 +2,7 @@ import React, { useState, useRef, useEffect } from 'react';
 import {
     View,
     Text,
+    Image,
     StyleSheet,
     TouchableOpacity,
     ScrollView,
@@ -19,11 +20,14 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
 import { BlurView } from 'expo-blur';
 import { MaterialIcons } from '@expo/vector-icons';
-import { Audio } from 'expo-av';
+import { AudioModule } from 'expo-audio';
 import { activateKeepAwakeAsync, deactivateKeepAwake } from 'expo-keep-awake';
 import { Timer, Category, SOUND_OPTIONS } from '../../../constants/data';
 import { getLogicalDate, getStartOfLogicalDay, DEFAULT_DAILY_START_MINUTES, formatDailyStartRangeCompact } from '../../../utils/dailyStartTime';
 import NotesPanel, { NotesIconButton, hasDayNote } from '../Task/NotesPanel';
+
+// App logo - module level to prevent blinking on re-renders
+const APP_LOGO = require('../../../../assets/logo-transparent.png');
 
 // SOUND_OPTIONS moved to constants/data.ts
 
@@ -153,15 +157,15 @@ export default function TimerList({
     const [selectedDateHasNote, setSelectedDateHasNote] = useState(false);
     const [showCalendar, setShowCalendar] = useState(false);
     const [showFiltersPortrait, setShowFiltersPortrait] = useState(false);
-    const [isPortraitHeaderExpanded, setIsPortraitHeaderExpanded] = useState(true);
+    const [isPortraitHeaderExpanded, setIsPortraitHeaderExpanded] = useState(false);
     const [viewDate, setViewDate] = useState(new Date());
     const [internalSelectedDate, setInternalSelectedDate] = useState(propSelectedDate);
     const slideAnim = useRef(new Animated.Value(0)).current;
     const fadeAnim = useRef(new Animated.Value(1)).current;
     const toggleSlideAnim = useRef(new Animated.Value(activeView === 'task' ? 1 : 0)).current;
+    const [toggleContainerWidth, setToggleContainerWidth] = useState(0);
     const [completedPopupTimer, setCompletedPopupTimer] = useState<Timer | null>(null);
     const prevTimersRef = React.useRef<Timer[]>([]);
-    const soundRef = useRef<Audio.Sound | null>(null);
     const playCountRef = useRef(0);
 
     // Keep screen awake while any timer is running
@@ -178,6 +182,17 @@ export default function TimerList({
         };
     }, [timers]);
 
+    // Reset toggle slider position when orientation changes
+    // Without this, the slider carries over its landscape offset into portrait, making it misaligned
+    useEffect(() => {
+        toggleSlideAnim.setValue(activeView === 'task' ? 1 : 0);
+    }, [isLandscape, activeView]);
+
+    // Reset measured width when orientation changes so onLayout recalculates
+    useEffect(() => {
+        setToggleContainerWidth(0);
+    }, [isLandscape]);
+
     // Play completion sound when popup shows
     useEffect(() => {
         if (!completedPopupTimer) return;
@@ -189,11 +204,9 @@ export default function TimerList({
                 // Small delay to ensure popup is rendered
                 await new Promise(resolve => setTimeout(resolve, 100));
 
-                await Audio.setAudioModeAsync({
-                    playsInSilentModeIOS: true,
-                    staysActiveInBackground: false,
-                    shouldDuckAndroid: true,
-                    playThroughEarpieceAndroid: false,
+                await AudioModule.setAudioModeAsync({
+                    playsInSilentMode: true,
+                    interruptionMode: 'doNotMix',
                 });
 
                 const playSoundOnce = async () => {
@@ -207,16 +220,13 @@ export default function TimerList({
 
                     console.log('Playing sound:', soundOption.name);
 
-                    const { sound } = await Audio.Sound.createAsync(
-                        soundSource,
-                        { shouldPlay: true, volume: 1.0 }
-                    );
-                    soundRef.current = sound;
+                    const player = AudioModule.createAudioPlayer(soundSource);
+                    player.play();
 
-                    sound.setOnPlaybackStatusUpdate((status) => {
-                        if (status.isLoaded && status.didJustFinish) {
+                    const subscription = player.addListener('playbackStatusUpdate', (status: { didJustFinish: boolean }) => {
+                        if (status.didJustFinish) {
+                            subscription.remove();
                             playCountRef.current += 1;
-                            sound.unloadAsync();
 
                             if (playCountRef.current < soundRepetition) {
                                 setTimeout(() => playSoundOnce(), 300);
@@ -235,9 +245,7 @@ export default function TimerList({
         playSound();
 
         return () => {
-            if (soundRef.current) {
-                soundRef.current.unloadAsync();
-            }
+            // Player cleanup handled by listeners or garbage collection for one-off plays
         };
     }, [completedPopupTimer, selectedSound, soundRepetition]);
 
@@ -666,8 +674,18 @@ export default function TimerList({
                                 <ScrollView showsVerticalScrollIndicator={false} style={styles.leftPanelScroll}>
                                     {/* Toggle + Completion Count Row */}
                                     {onViewChange && (
-                                        <View style={styles.toggleWithCountRow}>
-                                            <View style={styles.viewToggleContainer}>
+                                        <>
+                                            {/* App Logo Row - Landscape */}
+                                            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 10, paddingHorizontal: 4 }}>
+                                                <Image source={APP_LOGO} style={{ width: 26, height: 26 }} resizeMode="contain" />
+                                                <View style={{ width: 1, height: 16, backgroundColor: 'rgba(255,255,255,0.1)' }} />
+                                                <Text style={{ color: 'rgba(255,255,255,0.4)', fontSize: 10, letterSpacing: 2, fontWeight: '600' }}>CHRONOSCAPE</Text>
+                                            </View>
+                                            <View style={styles.toggleWithCountRow}>
+                                            <View
+                                                style={styles.viewToggleContainer}
+                                                onLayout={(e) => setToggleContainerWidth(e.nativeEvent.layout.width)}
+                                            >
                                                 {/* Animated Sliding Indicator */}
                                                 <Animated.View
                                                     style={[
@@ -676,7 +694,7 @@ export default function TimerList({
                                                             transform: [{
                                                                 translateX: toggleSlideAnim.interpolate({
                                                                     inputRange: [0, 1],
-                                                                    outputRange: [0, 54] // Adjust based on button width
+                                                                    outputRange: [0, Math.max(54, toggleContainerWidth / 2)]
                                                                 })
                                                             }]
                                                         }
@@ -733,6 +751,7 @@ export default function TimerList({
                                                 <Text style={styles.completionCountText}>{completedCount}/{totalCount}</Text>
                                             </View>
                                         </View>
+                                        </>
                                     )}
 
                                     {/* Date display with context labeling */}
@@ -951,13 +970,24 @@ export default function TimerList({
                         </View>
                     </>
                 ) : (
-                    // PORTRAIT LAYOUT
-                    <>
+                    // PORTRAIT LAYOUT — key forces full remount on orientation change
+                    <View key={isLandscape ? 'land' : 'port'} style={{ flex: 1 }}>
                         <View style={[styles.headerCardPortrait, { flex: 0, minHeight: 0 }]}>
                             {/* 1. View Toggle & Completion Count Row */}
                             {onViewChange && (
                                 <View style={styles.toggleWithCountRowPortrait}>
-                                    <View style={styles.viewToggleContainer}>
+                                    {/* App Logo Branding */}
+                                    <View style={styles.portraitLogoWrapper}>
+                                        <Image
+                                            source={APP_LOGO}
+                                            style={styles.portraitLogo}
+                                            resizeMode="contain"
+                                        />
+                                    </View>
+                                    <View
+                                        style={[styles.viewToggleContainer, { flex: 0, width: 148 }]}
+                                        onLayout={(e) => setToggleContainerWidth(e.nativeEvent.layout.width)}
+                                    >
                                         <Animated.View
                                             style={[
                                                 styles.viewToggleSlider,
@@ -965,7 +995,7 @@ export default function TimerList({
                                                     transform: [{
                                                         translateX: toggleSlideAnim.interpolate({
                                                             inputRange: [0, 1],
-                                                            outputRange: [0, 54] // Adjust based on button width
+                                                            outputRange: [0, Math.max(68, toggleContainerWidth / 2)]
                                                         })
                                                     }]
                                                 }
@@ -1018,13 +1048,33 @@ export default function TimerList({
                                             ]}>TASK</Text>
                                         </TouchableOpacity>
                                     </View>
-                                    {/* Completion Count */}
-                                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                                     {/* Completion Count + Notes + Settings + Expand */}
+                                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
                                         <View style={styles.completionCountBadge}>
                                             <Text style={styles.completionCountText}>{completedCount}/{totalCount}</Text>
                                         </View>
 
-                                        {/* Collapse/Expand Toggle Button (Moved Here) */}
+                                        <NotesIconButton
+                                            active={showNotesPanel}
+                                            hasNote={selectedDateHasNote}
+                                            onPress={() => {
+                                                LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+                                                setShowReportPopup(false);
+                                                setShowNotesPanel(!showNotesPanel);
+                                            }}
+                                        />
+
+                                        {onSettings && (
+                                            <TouchableOpacity
+                                                style={styles.headerIconBtnPortrait}
+                                                onPress={onSettings}
+                                                activeOpacity={0.7}
+                                            >
+                                                <MaterialIcons name="settings" size={16} color="rgba(255,255,255,0.7)" />
+                                            </TouchableOpacity>
+                                        )}
+
+                                        {/* Expand/Collapse Toggle */}
                                         <TouchableOpacity
                                             style={styles.headerCollapseBtnTop}
                                             onPress={() => {
@@ -1045,7 +1095,7 @@ export default function TimerList({
                             )}
 
                             {/* 2. Date Controls Row */}
-                            <View style={styles.dateControlRowPortrait}>
+                            <View style={[styles.dateControlRowPortrait, { marginBottom: isPortraitHeaderExpanded ? 8 : 0 }]}>
                                 <TouchableOpacity
                                     style={styles.dateLandscapeRow}
                                     onPress={() => {
@@ -1226,38 +1276,14 @@ export default function TimerList({
                                                 </View>
                                             </View>
 
-                                            {/* Footer Row: Settings & Reports */}
-                                            <View style={styles.leftPanelFooterRow}>
-                                                <View style={styles.footerLeftIcons}>
-                                                    {onSettings && (
-                                                        <TouchableOpacity
-                                                            style={styles.settingsIconBtn}
-                                                            onPress={onSettings}
-                                                            activeOpacity={0.7}
-                                                        >
-                                                            <MaterialIcons name="settings" size={20} color="rgba(255,255,255,0.7)" />
-                                                        </TouchableOpacity>
-                                                    )}
-
-                                                    <NotesIconButton
-                                                        active={showNotesPanel}
-                                                        hasNote={selectedDateHasNote}
-                                                        onPress={() => {
-                                                            LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
-                                                            setShowReportPopup(false);
-                                                            setShowNotesPanel(!showNotesPanel);
-                                                        }}
-                                                    />
-                                                </View>
-
-                                                <TouchableOpacity
-                                                    style={styles.detailedReportsBtn}
-                                                    onPress={() => setShowReportPopup(true)}
-                                                >
-                                                    <Text style={styles.detailedReportsText}>DETAILED REPORTS</Text>
-                                                    <MaterialIcons name="chevron-right" size={20} color="rgba(255,255,255,0.5)" />
-                                                </TouchableOpacity>
-                                            </View>
+                                            {/* Detailed Reports Link */}
+                                            <TouchableOpacity
+                                                style={[styles.detailedReportsBtn, { marginTop: 4 }]}
+                                                onPress={() => setShowReportPopup(true)}
+                                            >
+                                                <Text style={styles.detailedReportsText}>DETAILED REPORTS</Text>
+                                                <MaterialIcons name="chevron-right" size={20} color="rgba(255,255,255,0.5)" />
+                                            </TouchableOpacity>
                                         </>
                                     )}
                                 </>
@@ -1288,7 +1314,7 @@ export default function TimerList({
                         <TouchableOpacity style={styles.addButton} onPress={onAddTimer} activeOpacity={0.8}>
                             <MaterialIcons name="add" size={28} color="#000" />
                         </TouchableOpacity>
-                    </>
+                    </View>
                 )}
             </SafeAreaView>
 
@@ -1848,12 +1874,16 @@ const styles = StyleSheet.create({
     headerCardPortrait: {
         marginHorizontal: 16,
         marginTop: 10,
-        paddingVertical: 14,
-        paddingHorizontal: 16,
+        paddingVertical: 12,
+        paddingHorizontal: 14,
         borderRadius: 24,
-        backgroundColor: 'rgba(15, 15, 15, 0.6)',
+        backgroundColor: 'rgba(10, 10, 12, 0.85)',
         borderWidth: 1,
-        borderColor: 'rgba(255,255,255,0.06)',
+        borderColor: 'rgba(0, 229, 255, 0.07)',
+        shadowColor: '#00E5FF',
+        shadowOffset: { width: 0, height: 2 },
+        shadowOpacity: 0.08,
+        shadowRadius: 12,
     },
 
     headerCollapseBtnTop: {
@@ -1867,12 +1897,43 @@ const styles = StyleSheet.create({
         borderColor: 'rgba(255,255,255,0.08)',
     },
 
+    portraitLogoWrapper: {
+        width: 32,
+        height: 32,
+        marginRight: 4,
+        justifyContent: 'center',
+        alignItems: 'center',
+    },
+
+    portraitLogo: {
+        width: 32,
+        height: 32,
+    },
+
     toggleWithCountRowPortrait: {
         flexDirection: 'row',
         alignItems: 'center',
         justifyContent: 'space-between',
         marginBottom: 12,
         gap: 8,
+    },
+
+    portraitHeaderTitleRow: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        marginBottom: 12,
+        paddingBottom: 10,
+        borderBottomWidth: 1,
+        borderBottomColor: 'rgba(255,255,255,0.05)',
+    },
+
+    portraitHeaderTitle: {
+        fontSize: 11,
+        fontWeight: '900' as const,
+        letterSpacing: 3,
+        color: 'rgba(255,255,255,0.45)',
+        textTransform: 'uppercase' as const,
     },
 
     dateControlRowPortrait: {
