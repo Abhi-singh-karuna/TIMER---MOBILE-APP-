@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
     View,
     Text,
@@ -10,10 +10,13 @@ import {
     TextInput,
     TouchableWithoutFeedback,
     Keyboard,
+    Image,
+    ActivityIndicator,
+    Alert,
 } from 'react-native';
 import { ScrollView, GestureHandlerRootView } from 'react-native-gesture-handler';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { MaterialIcons } from '@expo/vector-icons';
+import { MaterialIcons, AntDesign } from '@expo/vector-icons';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
 
@@ -25,6 +28,10 @@ import GeneralSection from './GeneralSection';
 import InfoSection from './InfoSection';
 import QuickMessageSection from './QuickMessageSection';
 import DataManagementSection from './DataManagementSection';
+import AccountSection from './AccountSection';
+import { getCurrentUser, signInWithGoogle, configureGoogleSignIn } from '../../../services/GoogleDriveService';
+import type { User } from '@react-native-google-signin/google-signin';
+import Constants, { AppOwnership } from 'expo-constants';
 import TimeOfDayBackgroundScreen from './TimeOfDayBackgroundScreen';
 import { styles } from './styles';
 import {
@@ -173,15 +180,58 @@ export default function SettingsScreen({
     const { width, height } = useWindowDimensions();
     const isLandscape = width > height;
 
-    const [activeTab, setActiveTab] = useState<'customization' | 'sound' | 'categories' | 'quickmsg' | 'general' | 'datamgmt' | 'about' | 'leave' | null>(isLandscape ? 'customization' : null);
+    const [activeTab, setActiveTab] = useState<'customization' | 'sound' | 'categories' | 'quickmsg' | 'general' | 'datamgmt' | 'account' | 'about' | 'leave' | null>(isLandscape ? 'account' : null);
     const [resetKey, setResetKey] = useState(0);
     const [isHidePreview, setIsHidePreview] = useState(false);
     const [activeSubPage, setActiveSubPage] = useState<null | 'timeOfDayBackground'>(null);
+
+    const wasAutoSelected = useRef(isLandscape);
+
+    // Auto-select a section when rotating to landscape if no section is active
+    useEffect(() => {
+        if (isLandscape && !activeTab) {
+            setActiveTab('account');
+            wasAutoSelected.current = true;
+        } else if (!isLandscape && activeTab === 'account' && wasAutoSelected.current) {
+            setActiveTab(null);
+            wasAutoSelected.current = false;
+        }
+    }, [isLandscape, activeTab]);
 
     // Clear confirm popup (type "Clear all" to confirm)
     const [clearConfirmType, setClearConfirmType] = useState<'time' | 'task' | 'alldata' | null>(null);
     const [confirmInput, setConfirmInput] = useState('');
     const [confirmError, setConfirmError] = useState(false);
+
+    const [user, setUser] = useState<User | null>(null);
+    const [isLoginLoading, setIsLoginLoading] = useState(false);
+
+    useEffect(() => {
+        configureGoogleSignIn();
+        const fetchUser = async () => {
+            const userInfo = await getCurrentUser();
+            if (userInfo) setUser(userInfo);
+        };
+        fetchUser();
+    }, []);
+
+    const handleHeaderLogin = async () => {
+        if (Constants.appOwnership === AppOwnership.Expo) {
+            Alert.alert('Not Supported', 'Cloud Sync requires a native builds.');
+            return;
+        }
+        setIsLoginLoading(true);
+        try {
+            const userInfo = await signInWithGoogle();
+            if (userInfo) {
+                setUser(userInfo);
+            }
+        } catch (error: any) {
+            Alert.alert('Sign In Error', error.message);
+        } finally {
+            setIsLoginLoading(false);
+        }
+    };
 
     // Adjusted sidebar width to 40% for better symmetry
     const sidebarWidth = width * 0.40;
@@ -252,7 +302,7 @@ export default function SettingsScreen({
     }
 
 
-    const renderPortraitMenuCard = (id: 'customization' | 'sound' | 'categories' | 'quickmsg' | 'general' | 'datamgmt' | 'about' | 'leave' | 'timeline', icon: keyof typeof MaterialIcons.glyphMap, title: string, desc: string) => (
+    const renderPortraitMenuCard = (id: 'customization' | 'sound' | 'categories' | 'quickmsg' | 'general' | 'datamgmt' | 'account' | 'about' | 'leave' | 'timeline', icon: keyof typeof MaterialIcons.glyphMap, title: string, desc: string) => (
         <View style={styles.portraitMenuCardBezel}>
             <TouchableOpacity
                 style={[styles.portraitMenuCardTrack, { flexDirection: 'row', alignItems: 'center', padding: 18 }]}
@@ -266,16 +316,89 @@ export default function SettingsScreen({
                 activeOpacity={0.8}
             >
                 <View style={styles.portraitMenuIconWrap}>
-                    <MaterialIcons name={icon} size={22} color="#FFFFFF" />
+                    <MaterialIcons name={icon} size={20} color="#FFFFFF" />
                 </View>
                 <View style={styles.portraitMenuTextWrap}>
                     <Text style={styles.portraitMenuTitle}>{title}</Text>
                     <Text style={styles.portraitMenuDesc} numberOfLines={1}>{desc}</Text>
                 </View>
-                <MaterialIcons name="chevron-right" size={18} color="rgba(255,255,255,0.15)" />
+                <MaterialIcons name="chevron-right" size={20} color="rgba(255,255,255,0.1)" />
             </TouchableOpacity>
         </View>
     );
+
+    const renderLandscapeProfileSidebar = () => {
+        if (!user) return null;
+        
+        const photo = user?.user?.photo;
+        const displayName = user?.user?.name || 'Authenticated';
+        const initials = user?.user?.givenName?.[0] || user?.user?.email?.[0] || 'G';
+
+        return (
+            <TouchableOpacity 
+                style={styles.landscapeSidebarProfile}
+                onPress={() => setActiveTab('account')}
+                activeOpacity={0.7}
+            >
+                <View style={styles.landscapeSidebarAvatar}>
+                    {photo ? (
+                        <Image source={{ uri: photo }} style={styles.landscapeSidebarAvatarImage} />
+                    ) : (
+                        <Text style={styles.landscapeSidebarAvatarText}>{initials}</Text>
+                    )}
+                </View>
+                <Text style={styles.landscapeSidebarName} numberOfLines={1}>
+                    {displayName}
+                </Text>
+                <MaterialIcons name="chevron-right" size={18} color="rgba(255,255,255,0.3)" />
+            </TouchableOpacity>
+        );
+    };
+
+    const renderProfileHeader = () => {
+        const photo = user?.user?.photo;
+        const name = user?.user?.name || (user ? 'Authenticated User' : 'Guest User');
+        const email = user?.user?.email || 'Login to sync your data';
+        const initials = user?.user?.givenName?.[0] || user?.user?.email?.[0] || 'G';
+
+        return (
+            <View style={styles.premiumAccountContainer}>
+                <View style={[styles.avatarGlowWrapper, { marginBottom: 24 }]}>
+                    <View style={[styles.premiumAvatarGlow, { backgroundColor: user ? 'rgba(90, 80, 255, 0.2)' : 'rgba(255, 255, 255, 0.05)' }]} />
+                    {photo ? (
+                        <Image source={{ uri: photo }} style={styles.premiumAvatar} />
+                    ) : (
+                        <View style={[styles.premiumAvatar, { backgroundColor: 'rgba(255,255,255,0.08)', alignItems: 'center', justifyContent: 'center', borderWidth: 0 }]}>
+                            <Text style={[styles.portraitProfileAvatarText, { fontSize: 36, opacity: 0.9 }]}>
+                                {initials}
+                            </Text>
+                        </View>
+                    )}
+                </View>
+
+                <Text style={styles.premiumTitle}>{name}</Text>
+                <Text style={[styles.premiumSubtitle, { marginBottom: user ? 24 : 32 }]}>{email}</Text>
+
+                {user ? (
+                    <View style={styles.proMemberPill}>
+                        <MaterialIcons name="verified" size={14} color="#fff" style={{ marginRight: 6 }} />
+                        <Text style={styles.proMemberText}>PRO MEMBER</Text>
+                    </View>
+                ) : (
+                    <TouchableOpacity 
+                        style={[styles.premiumLoginButton, { width: '85%', alignSelf: 'center' }]} 
+                        onPress={handleHeaderLogin}
+                        activeOpacity={0.8}
+                    >
+                        <View style={styles.premiumGoogleIconWrap}>
+                            <AntDesign name="google" size={20} color="#EA4335" />
+                        </View>
+                        <Text style={styles.premiumLoginButtonText}>Login with Google</Text>
+                    </TouchableOpacity>
+                )}
+            </View>
+        );
+    };
 
     const renderPortraitLayout = () => {
         if (!activeTab) {
@@ -285,6 +408,8 @@ export default function SettingsScreen({
                     contentContainerStyle={styles.scrollContent}
                     showsVerticalScrollIndicator={false}
                 >
+                    {renderProfileHeader()}
+
                     <View style={styles.portraitMenuSection}>
                         <Text style={styles.portraitSectionLabel}>APPEARANCE</Text>
                         {renderPortraitMenuCard('customization', 'palette', 'Theme', 'Colors, presets and visual style')}
@@ -301,12 +426,23 @@ export default function SettingsScreen({
                     <View style={styles.portraitMenuSection}>
                         <Text style={styles.portraitSectionLabel}>SYSTEM</Text>
                         {renderPortraitMenuCard('general', 'settings', 'General', 'App behavior and restrictions')}
+                        {renderPortraitMenuCard('account', 'account-circle', 'Account', 'Profile and synchronization')}
                         {renderPortraitMenuCard('datamgmt', 'storage', 'Data Mgmt', 'Cloud sync, cleanup and export')}
                         {renderPortraitMenuCard('about', 'info', 'About', 'App version and information')}
                     </View>
 
                     <View style={{ height: 40 }} />
                 </ScrollView>
+            );
+        }
+
+        // Separate render for full-page screens in portrait
+        if (activeTab === 'account') {
+            return (
+                <AccountSection
+                    isLandscape={false}
+                    onBack={() => setActiveTab(null)}
+                />
             );
         }
 
@@ -395,7 +531,7 @@ export default function SettingsScreen({
     };
 
     const renderLandscapeLayout = () => {
-        const renderSidebarButton = (id: 'customization' | 'sound' | 'categories' | 'quickmsg' | 'general' | 'timeline' | 'datamgmt' | 'about' | 'leave', icon: keyof typeof MaterialIcons.glyphMap, label: string) => {
+        const renderSidebarButton = (id: 'customization' | 'sound' | 'categories' | 'quickmsg' | 'general' | 'timeline' | 'datamgmt' | 'account' | 'about' | 'leave', icon: keyof typeof MaterialIcons.glyphMap, label: string) => {
             const isActive = activeTab === id;
             return (
                 <TouchableOpacity
@@ -447,6 +583,7 @@ export default function SettingsScreen({
             >
                 {/* Left Panel - Permanent Preview + Sidebar Buttons */}
                 <View style={[styles.leftSidebarCard, { width: '40%' }]}>
+                    {renderLandscapeProfileSidebar()}
                     {isHidePreview ? (
                         <TouchableOpacity
                             style={styles.showPreviewButton}
@@ -495,6 +632,7 @@ export default function SettingsScreen({
                                 {renderSidebarButton('quickmsg', 'chat', 'Quick Msg')}
                                 {renderSidebarButton('general', 'settings', 'General')}
                                 {renderSidebarButton('timeline', 'timeline', 'Timeline BG')}
+                                {renderSidebarButton('account', 'account-circle', 'Account')}
                                 {renderSidebarButton('datamgmt', 'storage', 'Data Mgmt')}
                                 {renderSidebarButton('about', 'info', 'About')}
                             </View>
@@ -592,6 +730,12 @@ export default function SettingsScreen({
                             />
                         )}
 
+                        {activeTab === 'account' && (
+                            <AccountSection
+                                isLandscape={true}
+                            />
+                        )}
+
                         {activeTab === 'about' && (
                             <InfoSection isLandscape={true} />
                         )}
@@ -617,24 +761,20 @@ export default function SettingsScreen({
                     style={styles.safeArea}
                     edges={['left', 'right']}
                 >
-                    {/* Header - Only visible in portrait */}
-                    {!isLandscape && (
-                        <View style={[styles.header, styles.headerGlass, { borderBottomWidth: 0.5, borderBottomColor: 'rgba(255,255,255,0.08)' }]}>
+                    {/* Header - Only visible in portrait, Hidden if account page is active */}
+                    {!isLandscape && activeTab !== 'account' && (
+                        <View style={[styles.header, styles.headerGlass, { borderBottomWidth: 0, paddingBottom: 0 }]}>
                             <TouchableOpacity
                                 style={styles.backButton}
                                 onPress={() => activeTab ? setActiveTab(null) : onBack()}
                                 activeOpacity={0.7}
                             >
                                 <MaterialIcons
-                                    name={activeTab ? "chevron-left" : "arrow-back-ios"}
-                                    size={activeTab ? 28 : 20}
-                                    color="rgba(255,255,255,0.7)"
-                                    style={{ marginLeft: activeTab ? 0 : 6 }}
+                                    name="chevron-left"
+                                    size={30}
+                                    color="rgba(255,255,255,0.8)"
                                 />
                             </TouchableOpacity>
-                            <Text style={styles.headerTitle}>
-                                {activeTab ? activeTab.toUpperCase().replace('DATAMGMT', 'DATA MGMT').replace('QUICKMSG', 'QUICK MSG') : 'SETTINGS'}
-                            </Text>
                             <View style={styles.headerSpacer} />
                         </View>
                     )}
