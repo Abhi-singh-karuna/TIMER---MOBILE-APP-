@@ -66,6 +66,7 @@ type Folder = {
     isLocked?: boolean;
     lockCode?: string; // 4 digits
     createdAt: number;
+    trashedAt?: number;
 };
 
 type GeneralNote = {
@@ -375,6 +376,10 @@ export default function NotesPanel({ visible, dateKey, onClose, onPresenceChange
     const insets = useSafeAreaInsets();
     const { width, height } = useWindowDimensions();
     const isLandscape = width > height;
+    const folderModalMaxHeight = React.useMemo(() => {
+        // Prevent content from overlapping the create button in landscape/smaller heights
+        return Math.floor(height * (isLandscape ? 0.72 : 0.82));
+    }, [height, isLandscape]);
 
     const [loading, setLoading] = React.useState(false);
     const [savedText, setSavedText] = React.useState('');
@@ -415,12 +420,18 @@ export default function NotesPanel({ visible, dateKey, onClose, onPresenceChange
 
     const [confirmMoveToTrashNoteId, setConfirmMoveToTrashNoteId] = React.useState<string | null>(null);
     const [confirmDeleteForeverNoteId, setConfirmDeleteForeverNoteId] = React.useState<string | null>(null);
+    const [confirmDeleteAllTrashVisible, setConfirmDeleteAllTrashVisible] = React.useState(false);
+    const [confirmDeleteForeverFolderId, setConfirmDeleteForeverFolderId] = React.useState<string | null>(null);
     
     const [isKeyboardVisible, setIsKeyboardVisible] = React.useState(false);
     const richEditorRef = React.useRef<RichEditor | null>(null);
     const [isNotesEditorExpanded, setIsNotesEditorExpanded] = React.useState(false);
     const [showNotesInlineConfig, setShowNotesInlineConfig] = React.useState(false);
     const [notesEditorFontSizePx, setNotesEditorFontSizePx] = React.useState(17);
+    const [folderActionsPopupFolder, setFolderActionsPopupFolder] = React.useState<Folder | null>(null);
+    const [folderLockModalFolder, setFolderLockModalFolder] = React.useState<Folder | null>(null);
+    const [folderLockPin, setFolderLockPin] = React.useState('');
+    const [isDeletingLockedFolder, setIsDeletingLockedFolder] = React.useState(false);
     const [notesEditorTextColor, setNotesEditorTextColor] = React.useState(NOTES_DEFAULT_TEXT_COLOR);
 
     const [pinModalVisible, setPinModalVisible] = React.useState(false);
@@ -444,10 +455,11 @@ export default function NotesPanel({ visible, dateKey, onClose, onPresenceChange
     const plainDraftText = React.useMemo(() => stripHtmlToText(draftText), [draftText]);
     const charCount = plainDraftText.length;
     const readTime = Math.max(1, Math.ceil(charCount / 500));
-    const trashCount = React.useMemo(
-        () => generalNotes.filter(n => n.folderId === TRASH_FOLDER_ID).length,
-        [generalNotes]
-    );
+    const trashCount = React.useMemo(() => {
+        const notesInTrash = generalNotes.filter(n => n.folderId === TRASH_FOLDER_ID).length;
+        const trashedFolders = folders.filter(f => f.id !== TRASH_FOLDER_ID && f.trashedAt).length;
+        return notesInTrash + trashedFolders;
+    }, [generalNotes, folders]);
 
     const noteTitleFor = React.useCallback((note?: GeneralNote | null) => {
         const t = (note?.title || '').trim();
@@ -656,6 +668,30 @@ export default function NotesPanel({ visible, dateKey, onClose, onPresenceChange
         setPinModalVisible(true);
     }, [folders, unlockedFolderIds, notesLocksEnabled, notesLocksRequireEveryTime, lockedOutFolderIds]);
 
+    const openEditFolderModal = React.useCallback((folder: Folder) => {
+        setFolderToEdit(folder);
+        setNewFolderName(folder.name);
+        setNewFolderEmoji(folder.emoji);
+        setNewFolderColor(folder.color || PRESET_FOLDER_COLORS[0]);
+        setNewFolderLocked(!!folder.isLocked);
+        setNewFolderLockCode((folder.lockCode || '').toString());
+        setIsCreatingFolder(true);
+    }, []);
+
+    const openEditFolderModalWithLockToggle = React.useCallback((folder: Folder) => {
+        // Toggle lock/unlock, but still open the "EDIT FOLDER" popup so user can confirm/update.
+        const nextLocked = !folder.isLocked;
+        setFolderToEdit(folder);
+        setNewFolderName(folder.name);
+        setNewFolderEmoji(folder.emoji);
+        setNewFolderColor(folder.color || PRESET_FOLDER_COLORS[0]);
+        setNewFolderLocked(nextLocked);
+        // If we are locking, require user to enter the 4-digit code.
+        setNewFolderLockCode(nextLocked ? '' : (folder.lockCode || '').toString());
+        setIsCreatingFolder(true);
+    }, []);
+
+
     const onSubmitPin = React.useCallback(async () => {
         const pin = pinDraft.trim();
         if (!/^\d{4}$/.test(pin)) return;
@@ -785,30 +821,72 @@ export default function NotesPanel({ visible, dateKey, onClose, onPresenceChange
         }
     }, [generalNotes, currentNoteId]);
 
+    const deleteAllTrashNotes = React.useCallback(async () => {
+        const trashNotes = generalNotes.filter(n => n.folderId === TRASH_FOLDER_ID);
+        const trashedFolders = folders.filter(f => f.trashedAt);
+        
+        if (trashNotes.length === 0 && trashedFolders.length === 0) {
+            setConfirmDeleteAllTrashVisible(false);
+            return;
+        }
+
+        const remainingFolders = folders.filter(f => !f.trashedAt);
+        const remainingNotes = generalNotes.filter(n => {
+            const isNoteIndividuallyTrashed = n.folderId === TRASH_FOLDER_ID;
+            const isNoteInTrashedFolder = trashedFolders.some(f => f.id === n.folderId);
+            return !isNoteIndividuallyTrashed && !isNoteInTrashedFolder;
+        });
+
+        setFolders(remainingFolders);
+        setGeneralNotes(remainingNotes);
+        await saveFolders(remainingFolders);
+        await saveGeneralNotes(remainingNotes);
+
+        if (currentNoteId && (trashNotes.some(n => n.id === currentNoteId) || trashedFolders.some(f => f.id === currentNoteId))) {
+            setCurrentNoteId(null);
+            setDraftTitle('');
+            setSavedTitle('');
+            setDraftText('');
+            setSavedText('');
+            setMode('edit');
+            setIsNotesEditorExpanded(false);
+        }
+
+        setConfirmDeleteAllTrashVisible(false);
+    }, [generalNotes, folders, currentNoteId]);
+
     const restoreNoteFromTrash = React.useCallback(async (id: string) => {
         const note = generalNotes.find(n => n.id === id);
         if (!note) return;
         if (note.folderId !== TRASH_FOLDER_ID) return;
 
         const desiredFolderId = note.trashedFromFolderId;
-        const desiredFolderExists = !!desiredFolderId && folders.some(f => f.id === desiredFolderId && f.id !== TRASH_FOLDER_ID);
-        const fallbackFolder = folders.find(f => f.id !== TRASH_FOLDER_ID);
-
-        let targetFolderId = desiredFolderExists ? desiredFolderId! : (fallbackFolder?.id ?? null);
+        const desiredFolder = desiredFolderId ? folders.find(f => f.id === desiredFolderId && f.id !== TRASH_FOLDER_ID) : null;
+        let targetFolderId = desiredFolder?.id ?? null;
         let nextFolders = folders;
 
-        if (!targetFolderId) {
-            const restoredFolder: Folder = {
-                id: `restored_${Date.now().toString()}`,
-                name: 'Restored',
-                emoji: '📥',
-                color: '#2196F3',
-                createdAt: Date.now(),
-            };
-            nextFolders = sortFoldersWithTrashLast([restoredFolder, ...folders.filter(f => f.id !== TRASH_FOLDER_ID), getTrashFolder()]);
-            targetFolderId = restoredFolder.id;
+        if (desiredFolder && desiredFolder.trashedAt) {
+            // Restore the folder too if it was trashed
+            nextFolders = folders.map(f => f.id === desiredFolderId ? { ...f, trashedAt: undefined } : f);
             setFolders(nextFolders);
             await saveFolders(nextFolders);
+        } else if (!targetFolderId) {
+            const fallbackFolder = folders.find(f => f.id !== TRASH_FOLDER_ID && !f.trashedAt);
+            if (fallbackFolder) {
+                targetFolderId = fallbackFolder.id;
+            } else {
+                const restoredFolder: Folder = {
+                    id: `restored_${Date.now().toString()}`,
+                    name: 'Restored',
+                    emoji: '📥',
+                    color: '#2196F3',
+                    createdAt: Date.now(),
+                };
+                nextFolders = sortFoldersWithTrashLast([restoredFolder, ...folders.filter(f => f.id !== TRASH_FOLDER_ID), getTrashFolder()]);
+                targetFolderId = restoredFolder.id;
+                setFolders(nextFolders);
+                await saveFolders(nextFolders);
+            }
         }
 
         const updated = generalNotes.map(n => n.id === id ? ({
@@ -826,31 +904,89 @@ export default function NotesPanel({ visible, dateKey, onClose, onPresenceChange
     const handleDeleteFolder = async (id: string) => {
         if (id === TRASH_FOLDER_ID) return;
 
-        // Move notes to trash instead of deleting
-        const movedNotes = generalNotes.map(n => {
-            if (n.folderId !== id) return n;
-            return {
-                ...n,
-                folderId: TRASH_FOLDER_ID,
-                trashedFromFolderId: n.folderId,
-                trashedAt: Date.now(),
-                updatedAt: Date.now(),
-            };
+        const now = Date.now();
+        const updatedFolders = folders.map(f => f.id === id ? { ...f, trashedAt: now } : f);
+        
+        setFolders(updatedFolders);
+        await saveFolders(updatedFolders);
+        
+        const deletingFolderIsOpen = currentFolderId === id;
+        const deletingNoteIsOpen = !!currentNoteId && generalNotes.some(n => n.id === currentNoteId && n.folderId === id);
+
+        if (deletingFolderIsOpen || deletingNoteIsOpen) {
+            // After trashing a folder, show the Trash so the user can see it.
+            setCurrentFolderId(TRASH_FOLDER_ID);
+            setCurrentNoteId(null);
+            setIsNotesEditorExpanded(false);
+            setDraftTitle('');
+            setSavedTitle('');
+            setDraftText('');
+            setSavedText('');
+            setMode('edit');
+        }
+    };
+
+    const handleToggleFolderLock = React.useCallback(async () => {
+        if (!folderLockModalFolder) return;
+        const pin = folderLockPin.trim();
+        if (!/^\d{4}$/.test(pin)) return;
+
+        const f = folderLockModalFolder;
+        const isLocking = !f.isLocked;
+
+        if (!isLocking) {
+            // Unlocking: verify PIN
+            if (pin !== (f.lockCode || '').toString()) {
+                // We'll reset PIN on error
+                setFolderLockPin('');
+                return;
+            }
+        }
+
+        const updatedFolders = folders.map(folder => {
+            if (folder.id === f.id) {
+                return {
+                    ...folder,
+                    isLocked: isLocking,
+                    lockCode: isLocking ? pin : '',
+                };
+            }
+            return folder;
         });
 
+        setFolders(updatedFolders);
+        await saveFolders(updatedFolders);
+        
+        if (isDeletingLockedFolder) {
+            handleDeleteFolder(f.id);
+            setIsDeletingLockedFolder(false);
+        }
+
+        setFolderLockModalFolder(null);
+        setFolderLockPin('');
+    }, [folderLockModalFolder, folderLockPin, folders, isDeletingLockedFolder, handleDeleteFolder]);
+
+    const restoreFolderFromTrash = React.useCallback(async (id: string) => {
+        const updated = folders.map(f => f.id === id ? { ...f, trashedAt: undefined } : f);
+        setFolders(updated);
+        await saveFolders(updated);
+    }, [folders]);
+
+    const deleteFolderForever = React.useCallback(async (id: string) => {
+        if (id === TRASH_FOLDER_ID) return;
         const remainingFolders = folders.filter(f => f.id !== id);
+        const remainingNotes = generalNotes.filter(n => n.folderId !== id);
         
         setFolders(remainingFolders);
-        setGeneralNotes(movedNotes);
+        setGeneralNotes(remainingNotes);
         
         await saveFolders(remainingFolders);
-        await saveGeneralNotes(movedNotes);
+        await saveGeneralNotes(remainingNotes);
         
         if (currentFolderId === id) {
             setCurrentFolderId(null);
-            setCurrentNoteId(null);
         }
-    };
+    }, [folders, generalNotes, currentFolderId]);
 
     const handleSaveGeneralNote = async (text: string, title: string) => {
         if (!currentNoteId) return;
@@ -1254,6 +1390,7 @@ export default function NotesPanel({ visible, dateKey, onClose, onPresenceChange
                                             visible={isCreatingFolder}
                                             transparent
                                             animationType="fade"
+                                            supportedOrientations={['portrait', 'landscape']}
                                             onRequestClose={() => {
                                                 setIsCreatingFolder(false);
                                                 setFolderToEdit(null);
@@ -1263,9 +1400,23 @@ export default function NotesPanel({ visible, dateKey, onClose, onPresenceChange
                                                 setIsCreatingFolder(false);
                                                 setFolderToEdit(null);
                                             }}>
-                                                <View style={styles.modalOverlay}>
+                                                <View style={[styles.modalOverlay, isLandscape && styles.modalOverlayLandscape]}>
                                                     <TouchableWithoutFeedback onPress={e => e.stopPropagation()}>
-                                                        <View style={styles.premiumPopup}>
+                                                        <KeyboardAvoidingView
+                                                            behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+                                                            // Do not use flex:1 here; otherwise the modal content
+                                                            // stretches to full height and no longer looks like a centered popup.
+                                                            style={{ alignSelf: 'stretch' }}
+                                                        >
+                                                            <ScrollView
+                                                                style={[
+                                                                    styles.premiumPopup,
+                                                                    isLandscape ? { maxHeight: folderModalMaxHeight } : undefined,
+                                                                ]}
+                                                                showsVerticalScrollIndicator={false}
+                                                                keyboardShouldPersistTaps="handled"
+                                                                contentContainerStyle={{ paddingBottom: 6 }}
+                                                            >
                                                             <View style={styles.popupHeader}>
                                                                 <Text style={styles.popupTitle}>{folderToEdit ? 'EDIT FOLDER' : 'NEW FOLDER'}</Text>
                                                                 <TouchableOpacity onPress={() => {
@@ -1316,46 +1467,13 @@ export default function NotesPanel({ visible, dateKey, onClose, onPresenceChange
                                                                 ))}
                                                             </ScrollView>
 
-                                                            <View style={styles.lockRow}>
-                                                                <Text style={styles.lockRowLabel}>LOCK</Text>
-                                                                <TouchableOpacity
-                                                                    style={[styles.lockToggle, newFolderLocked && styles.lockToggleActive]}
-                                                                    onPress={() => setNewFolderLocked(v => !v)}
-                                                                >
-                                                                    <MaterialIcons
-                                                                        name={newFolderLocked ? 'lock' : 'lock-open'}
-                                                                        size={16}
-                                                                        color={newFolderLocked ? '#fff' : 'rgba(255,255,255,0.6)'}
-                                                                    />
-                                                                    <Text style={[styles.lockToggleText, newFolderLocked && styles.lockToggleTextActive]}>
-                                                                        {newFolderLocked ? 'Locked' : 'Unlocked'}
-                                                                    </Text>
-                                                                </TouchableOpacity>
-                                                            </View>
-
-                                                            {newFolderLocked && (
-                                                                <>
-                                                                    <Text style={styles.popupLabel}>4-DIGIT CODE</Text>
-                                                                    <TextInput
-                                                                        style={styles.pinInput}
-                                                                        value={newFolderLockCode}
-                                                                        onChangeText={(t) => setNewFolderLockCode(t.replace(/[^\d]/g, '').slice(0, 4))}
-                                                                        placeholder="••••"
-                                                                        placeholderTextColor="rgba(255,255,255,0.2)"
-                                                                        keyboardType="number-pad"
-                                                                        secureTextEntry
-                                                                        maxLength={4}
-                                                                    />
-                                                                </>
-                                                            )}
-
                                                             <TouchableOpacity
                                                                 style={[
                                                                     styles.popupPrimaryBtn,
-                                                                    (!newFolderName.trim() || (newFolderLocked && !/^\d{4}$/.test(newFolderLockCode.trim()))) && { opacity: 0.5 }
+                                                                    !newFolderName.trim() && { opacity: 0.5 }
                                                                 ]}
                                                                 onPress={handleCreateFolder}
-                                                                disabled={!newFolderName.trim() || (newFolderLocked && !/^\d{4}$/.test(newFolderLockCode.trim()))}
+                                                                disabled={!newFolderName.trim()}
                                                             >
                                                                 <Text style={styles.popupPrimaryBtnText}>{folderToEdit ? 'Update Folder' : 'Create Folder'}</Text>
                                                             </TouchableOpacity>
@@ -1373,14 +1491,15 @@ export default function NotesPanel({ visible, dateKey, onClose, onPresenceChange
                                                                     <Text style={styles.popupDeleteBtnText}>Delete Folder</Text>
                                                                 </TouchableOpacity>
                                                             )}
-                                                        </View>
+                                                            </ScrollView>
+                                                        </KeyboardAvoidingView>
                                                     </TouchableWithoutFeedback>
                                                 </View>
                                             </TouchableWithoutFeedback>
                                         </Modal>
 
                                         <View style={styles.folderGrid}>
-                                            {folders.filter(f => f.id !== TRASH_FOLDER_ID).map(f => (
+                                            {folders.filter(f => f.id !== TRASH_FOLDER_ID && !f.trashedAt).map(f => (
                                                 <View key={f.id} style={styles.folderCardWrapper}>
                                                     <TouchableOpacity
                                                         style={[
@@ -1392,13 +1511,7 @@ export default function NotesPanel({ visible, dateKey, onClose, onPresenceChange
                                                         disabled={!!lockedOutFolderIds[f.id]}
                                                         onLongPress={() => {
                                                             if (f.id === TRASH_FOLDER_ID) return;
-                                                            setFolderToEdit(f);
-                                                            setNewFolderName(f.name);
-                                                            setNewFolderEmoji(f.emoji);
-                                                            setNewFolderColor(f.color || PRESET_FOLDER_COLORS[0]);
-                                                            setNewFolderLocked(!!f.isLocked);
-                                                            setNewFolderLockCode((f.lockCode || '').toString());
-                                                            setIsCreatingFolder(true);
+                                                            setFolderActionsPopupFolder(f);
                                                         }}
                                                     >
                                                         <View style={styles.folderCardTopRow}>
@@ -1409,24 +1522,37 @@ export default function NotesPanel({ visible, dateKey, onClose, onPresenceChange
                                                                 <Text style={styles.folderEmojiText}>{f.emoji}</Text>
                                                             </View>
 
-                                                            {f.isLocked && (
-                                                                <View style={[
+                                                        <TouchableOpacity
+                                                            activeOpacity={0.85}
+                                                            onLongPress={() => {
+                                                                if (f.id === TRASH_FOLDER_ID) return;
+                                                                if (lockedOutFolderIds[f.id]) return;
+                                                                setFolderActionsPopupFolder(f);
+                                                            }}
+                                                        >
+                                                        {f.isLocked && (
+                                                            <View
+                                                                style={[
                                                                     styles.folderStatusPill,
                                                                     styles.folderStatusPillLocked,
-                                                                ]}>
-                                                                    <MaterialIcons
-                                                                        name="lock"
-                                                                        size={14}
-                                                                        color="#FF9800"
-                                                                    />
-                                                                    <Text style={[
+                                                                ]}
+                                                            >
+                                                                <MaterialIcons
+                                                                    name="lock"
+                                                                    size={14}
+                                                                    color="#FF9800"
+                                                                />
+                                                                <Text
+                                                                    style={[
                                                                         styles.folderStatusText,
                                                                         styles.folderStatusTextLocked,
-                                                                    ]}>
-                                                                        LOCKED
-                                                                    </Text>
-                                                                </View>
-                                                            )}
+                                                                    ]}
+                                                                >
+                                                                    LOCKED
+                                                                </Text>
+                                                            </View>
+                                                        )}
+                                                        </TouchableOpacity>
                                                         </View>
 
                                                         <Text style={styles.folderNameText} numberOfLines={1}>{f.name}</Text>
@@ -1438,7 +1564,7 @@ export default function NotesPanel({ visible, dateKey, onClose, onPresenceChange
                                             ))}
                                         </View>
 
-                                        {folders.filter(f => f.id !== TRASH_FOLDER_ID).length === 0 && !isCreatingFolder && (
+                                        {folders.filter(f => f.id !== TRASH_FOLDER_ID && !f.trashedAt).length === 0 && !isCreatingFolder && (
                                             <View style={styles.emptyItemsWrapper}>
                                                 <Text style={styles.emptyItemsText}>No folders yet. Tap the icon to create one.</Text>
                                             </View>
@@ -1459,7 +1585,24 @@ export default function NotesPanel({ visible, dateKey, onClose, onPresenceChange
                                             <Text style={styles.sectionTitle}>
                                                 {currentFolderId === TRASH_FOLDER_ID ? 'TRASH' : `NOTES IN ${currentFolder?.name.toUpperCase()}`}
                                             </Text>
-                                            {currentFolderId !== TRASH_FOLDER_ID && (
+                                            {currentFolderId === TRASH_FOLDER_ID ? (
+                                                <TouchableOpacity
+                                                    onPress={() => setConfirmDeleteAllTrashVisible(true)}
+                                                    disabled={trashCount === 0}
+                                                    activeOpacity={0.8}
+                                                    style={[
+                                                        styles.trashDeleteAllBtn,
+                                                        trashCount === 0 && styles.trashDeleteAllBtnDisabled,
+                                                    ]}
+                                                >
+                                                    <MaterialIcons
+                                                        name="delete-sweep"
+                                                        size={18}
+                                                        color={trashCount === 0 ? 'rgba(255,255,255,0.25)' : '#FF3D00'}
+                                                    />
+                                                    <Text style={styles.trashDeleteAllBtnText}>DELETE ALL</Text>
+                                                </TouchableOpacity>
+                                            ) : (
                                                 <TouchableOpacity onPress={handleCreateNote}>
                                                     <MaterialIcons name="add-circle" size={20} color="#4CAF50" />
                                                 </TouchableOpacity>
@@ -1467,6 +1610,42 @@ export default function NotesPanel({ visible, dateKey, onClose, onPresenceChange
                                         </View>
 
                                         <View style={styles.notesGrid}>
+                                            {currentFolderId === TRASH_FOLDER_ID && folders
+                                                .filter(f => f.id !== TRASH_FOLDER_ID && f.trashedAt)
+                                                .sort((a, b) => (b.trashedAt || 0) - (a.trashedAt || 0))
+                                                .map(f => (
+                                                    <View key={f.id} style={styles.folderCardWrapper}>
+                                                        <View style={[styles.folderCard, styles.trashFolderCard]}>
+                                                            <View style={styles.folderCardTopRow}>
+                                                                <View style={styles.folderEmojiBox}>
+                                                                    <Text style={styles.folderEmojiText}>{f.emoji}</Text>
+                                                                </View>
+                                                                <View style={styles.trashNoteActions}>
+                                                                    <TouchableOpacity
+                                                                        style={styles.trashActionBtn}
+                                                                        onPress={() => restoreFolderFromTrash(f.id)}
+                                                                    >
+                                                                        <MaterialIcons name="restore" size={16} color="rgba(76, 175, 80, 0.85)" />
+                                                                    </TouchableOpacity>
+                                                                    <TouchableOpacity
+                                                                        style={[styles.trashActionBtn, styles.trashActionBtnDanger]}
+                                                                        onPress={() => setConfirmDeleteForeverFolderId(f.id)}
+                                                                    >
+                                                                        <MaterialIcons name="delete-outline" size={16} color="rgba(255, 61, 0, 0.75)" />
+                                                                    </TouchableOpacity>
+                                                                </View>
+                                                            </View>
+                                                            <Text style={styles.folderNameText} numberOfLines={1}>{f.name}</Text>
+                                                            <Text style={styles.folderCountText}>
+                                                                {generalNotes.filter(n => n.folderId === f.id).length} notes
+                                                            </Text>
+                                                            <Text style={styles.noteCardMeta} numberOfLines={1}>
+                                                                Trashed {new Date(f.trashedAt!).toLocaleDateString()}
+                                                            </Text>
+                                                        </View>
+                                                    </View>
+                                                ))
+                                            }
                                             {generalNotes
                                                 .filter(n => n.folderId === currentFolderId)
                                                 .sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0))
@@ -1635,11 +1814,212 @@ export default function NotesPanel({ visible, dateKey, onClose, onPresenceChange
                         </ScrollView>
                     )}
 
+                    {/* Folder Actions Popup */}
+                    <Modal
+                        visible={!!folderActionsPopupFolder}
+                        transparent
+                        animationType="fade"
+                        supportedOrientations={['portrait', 'landscape']}
+                        onRequestClose={() => setFolderActionsPopupFolder(null)}
+                    >
+                        <TouchableWithoutFeedback onPress={() => setFolderActionsPopupFolder(null)}>
+                            <View style={styles.modalOverlay}>
+                                <TouchableWithoutFeedback onPress={e => e.stopPropagation()}>
+                                    <View style={styles.folderActionsPopup}>
+                                        <View style={styles.popupHeader}>
+                                            <Text style={styles.popupTitle}>FOLDER ACTIONS</Text>
+                                            <TouchableOpacity onPress={() => setFolderActionsPopupFolder(null)}>
+                                                <MaterialIcons name="close" size={20} color="rgba(255,255,255,0.4)" />
+                                            </TouchableOpacity>
+                                        </View>
+                                        
+                                        <View style={styles.folderActionsGrid}>
+                                            <TouchableOpacity 
+                                                style={styles.folderActionBtn}
+                                                onPress={() => {
+                                                    const f = folderActionsPopupFolder;
+                                                    setFolderActionsPopupFolder(null);
+                                                    if (f) openEditFolderModal(f);
+                                                }}
+                                            >
+                                                <View style={[styles.folderActionIconBox, { backgroundColor: 'rgba(76, 175, 80, 0.1)' }]}>
+                                                    <MaterialIcons name="edit" size={20} color="#4CAF50" />
+                                                </View>
+                                                <Text style={styles.folderActionBtnText}>UPDATE</Text>
+                                            </TouchableOpacity>
+
+                                            <TouchableOpacity 
+                                                 style={styles.folderActionBtn}
+                                                 onPress={() => {
+                                                     const f = folderActionsPopupFolder;
+                                                     if (f && f.isLocked) {
+                                                         setIsDeletingLockedFolder(true);
+                                                         setFolderLockModalFolder(f);
+                                                         setFolderLockPin('');
+                                                         setFolderActionsPopupFolder(null);
+                                                     } else {
+                                                         setFolderActionsPopupFolder(null);
+                                                         if (f) handleDeleteFolder(f.id);
+                                                     }
+                                                 }}
+                                             >
+                                                 <View style={[styles.folderActionIconBox, { backgroundColor: 'rgba(255, 61, 0, 0.1)' }]}>
+                                                     <MaterialIcons name="delete" size={20} color="#FF3D00" />
+                                                 </View>
+                                                 <Text style={styles.folderActionBtnText}>DELETE</Text>
+                                             </TouchableOpacity>
+
+                                            <TouchableOpacity 
+                                                style={styles.folderActionBtn}
+                                                onPress={() => {
+                                                    const f = folderActionsPopupFolder;
+                                                    setFolderActionsPopupFolder(null);
+                                                    if (f) {
+                                                        if (lockedOutFolderIds[f.id]) return;
+                                                        setFolderLockModalFolder(f);
+                                                        setFolderLockPin('');
+                                                    }
+                                                }}
+                                            >
+                                                <View style={[styles.folderActionIconBox, { backgroundColor: 'rgba(255, 152, 0, 0.1)' }]}>
+                                                    <MaterialIcons 
+                                                        name={folderActionsPopupFolder?.isLocked ? 'lock-open' : 'lock'} 
+                                                        size={20} 
+                                                        color="#FF9800" 
+                                                    />
+                                                </View>
+                                                <Text style={styles.folderActionBtnText}>
+                                                    {folderActionsPopupFolder?.isLocked ? 'UNLOCK' : 'LOCK'}
+                                                </Text>
+                                            </TouchableOpacity>
+                                        </View>
+                                    </View>
+                                </TouchableWithoutFeedback>
+                            </View>
+                        </TouchableWithoutFeedback>
+                    </Modal>
+
+                    {/* Dedicated Folder Lock/Unlock Modal */}
+                    <Modal
+                        visible={!!folderLockModalFolder}
+                        transparent
+                        animationType="slide"
+                        supportedOrientations={['portrait', 'landscape']}
+                        onRequestClose={() => setFolderLockModalFolder(null)}
+                    >
+                        <TouchableWithoutFeedback onPress={() => setFolderLockModalFolder(null)}>
+                            <View style={styles.modalOverlay}>
+                                <TouchableWithoutFeedback onPress={e => e.stopPropagation()}>
+                                    <View style={styles.folderLockPopup}>
+                                        <View style={styles.popupHeader}>
+                                            <Text style={styles.popupTitle}>
+                                                {folderLockModalFolder?.isLocked ? 'UNLOCK FOLDER' : 'LOCK FOLDER'}
+                                            </Text>
+                                            <TouchableOpacity onPress={() => setFolderLockModalFolder(null)}>
+                                                <MaterialIcons name="close" size={20} color="rgba(255,255,255,0.4)" />
+                                            </TouchableOpacity>
+                                        </View>
+
+                                        <Text style={styles.confirmText}>
+                                            {isDeletingLockedFolder 
+                                                ? 'Unlock this folder to proceed with moving it to trash.'
+                                                : folderLockModalFolder?.isLocked 
+                                                    ? 'Enter your 4-digit PIN to remove the lock from this folder.' 
+                                                    : 'Set a 4-digit PIN to restrict access to this folder and its notes.'}
+                                        </Text>
+
+                                        <View style={styles.lockInputContainer}>
+                                            <TextInput
+                                                style={styles.folderLockPinInput}
+                                                value={folderLockPin}
+                                                onChangeText={(t) => setFolderLockPin(t.replace(/[^\d]/g, '').slice(0, 4))}
+                                                placeholder="••••"
+                                                placeholderTextColor="rgba(255,255,255,0.15)"
+                                                keyboardType="number-pad"
+                                                secureTextEntry
+                                                maxLength={4}
+                                                autoFocus
+                                            />
+                                        </View>
+
+                                        <View style={styles.confirmActions}>
+                                            <TouchableOpacity 
+                                                style={styles.confirmBtn} 
+                                                onPress={() => {
+                                                    setFolderLockModalFolder(null);
+                                                    setIsDeletingLockedFolder(false);
+                                                }}
+                                            >
+                                                <Text style={styles.confirmBtnText}>CANCEL</Text>
+                                            </TouchableOpacity>
+                                            <TouchableOpacity
+                                                style={[
+                                                    styles.confirmBtn,
+                                                    styles.confirmBtnPrimary,
+                                                    (!/^\d{4}$/.test(folderLockPin)) && { opacity: 0.5 }
+                                                ]}
+                                                onPress={handleToggleFolderLock}
+                                                disabled={!/^\d{4}$/.test(folderLockPin)}
+                                            >
+                                                <Text style={[styles.confirmBtnText, styles.confirmBtnTextPrimary]}>
+                                                    {isDeletingLockedFolder ? 'UNLOCK & DELETE' : (folderLockModalFolder?.isLocked ? 'UNLOCK' : 'CONFIRM')}
+                                                </Text>
+                                            </TouchableOpacity>
+                                        </View>
+                                    </View>
+                                </TouchableWithoutFeedback>
+                            </View>
+                        </TouchableWithoutFeedback>
+                    </Modal>
+
+                    {/* Confirm: Delete Folder Forever */}
+                    <Modal
+                        visible={!!confirmDeleteForeverFolderId}
+                        transparent
+                        animationType="fade"
+                        supportedOrientations={['portrait', 'landscape']}
+                        onRequestClose={() => setConfirmDeleteForeverFolderId(null)}
+                    >
+                        <TouchableWithoutFeedback onPress={() => setConfirmDeleteForeverFolderId(null)}>
+                            <View style={styles.modalOverlay}>
+                                <TouchableWithoutFeedback onPress={e => e.stopPropagation()}>
+                                    <View style={styles.confirmPopup}>
+                                        <View style={styles.popupHeader}>
+                                            <Text style={styles.popupTitle}>DELETE FOLDER FOREVER?</Text>
+                                            <TouchableOpacity onPress={() => setConfirmDeleteForeverFolderId(null)}>
+                                                <MaterialIcons name="close" size={20} color="rgba(255,255,255,0.4)" />
+                                            </TouchableOpacity>
+                                        </View>
+                                        <Text style={styles.confirmText}>
+                                            This will permanently delete the folder and all notes inside it. This action can’t be undone.
+                                        </Text>
+                                        <View style={styles.confirmActions}>
+                                            <TouchableOpacity style={styles.confirmBtn} onPress={() => setConfirmDeleteForeverFolderId(null)}>
+                                                <Text style={styles.confirmBtnText}>CANCEL</Text>
+                                            </TouchableOpacity>
+                                            <TouchableOpacity
+                                                style={[styles.confirmBtn, styles.confirmBtnDanger]}
+                                                onPress={async () => {
+                                                    const id = confirmDeleteForeverFolderId;
+                                                    setConfirmDeleteForeverFolderId(null);
+                                                    if (id) await deleteFolderForever(id);
+                                                }}
+                                            >
+                                                <Text style={[styles.confirmBtnText, styles.confirmBtnTextDanger]}>DELETE</Text>
+                                            </TouchableOpacity>
+                                        </View>
+                                    </View>
+                                </TouchableWithoutFeedback>
+                            </View>
+                        </TouchableWithoutFeedback>
+                    </Modal>
+
                     {/* Confirm: Move to Trash */}
                     <Modal
                         visible={!!confirmMoveToTrashNoteId}
                         transparent
                         animationType="fade"
+                        supportedOrientations={['portrait', 'landscape']}
                         onRequestClose={() => setConfirmMoveToTrashNoteId(null)}
                     >
                         <TouchableWithoutFeedback onPress={() => setConfirmMoveToTrashNoteId(null)}>
@@ -1681,6 +2061,7 @@ export default function NotesPanel({ visible, dateKey, onClose, onPresenceChange
                         visible={!!confirmDeleteForeverNoteId}
                         transparent
                         animationType="fade"
+                        supportedOrientations={['portrait', 'landscape']}
                         onRequestClose={() => setConfirmDeleteForeverNoteId(null)}
                     >
                         <TouchableWithoutFeedback onPress={() => setConfirmDeleteForeverNoteId(null)}>
@@ -1717,11 +2098,59 @@ export default function NotesPanel({ visible, dateKey, onClose, onPresenceChange
                         </TouchableWithoutFeedback>
                     </Modal>
 
+                    {/* Confirm: Delete All Trash */}
+                    <Modal
+                        visible={confirmDeleteAllTrashVisible}
+                        transparent
+                        animationType="fade"
+                        supportedOrientations={['portrait', 'landscape']}
+                        onRequestClose={() => setConfirmDeleteAllTrashVisible(false)}
+                    >
+                        <TouchableWithoutFeedback onPress={() => setConfirmDeleteAllTrashVisible(false)}>
+                            <View style={styles.modalOverlay}>
+                                <TouchableWithoutFeedback onPress={e => e.stopPropagation()}>
+                                    <View style={styles.confirmPopup}>
+                                        <View style={styles.popupHeader}>
+                                            <Text style={styles.popupTitle}>DELETE ALL TRASH?</Text>
+                                            <TouchableOpacity onPress={() => setConfirmDeleteAllTrashVisible(false)}>
+                                                <MaterialIcons name="close" size={20} color="rgba(255,255,255,0.4)" />
+                                            </TouchableOpacity>
+                                        </View>
+
+                                        <Text style={styles.confirmText}>
+                                            This will permanently delete {trashCount} note{trashCount === 1 ? '' : 's'} in Trash.
+                                        </Text>
+
+                                        <View style={styles.confirmActions}>
+                                            <TouchableOpacity
+                                                style={styles.confirmBtn}
+                                                onPress={() => setConfirmDeleteAllTrashVisible(false)}
+                                            >
+                                                <Text style={styles.confirmBtnText}>CANCEL</Text>
+                                            </TouchableOpacity>
+
+                                            <TouchableOpacity
+                                                style={[styles.confirmBtn, styles.confirmBtnDanger]}
+                                                onPress={async () => {
+                                                    await deleteAllTrashNotes();
+                                                }}
+                                                disabled={trashCount === 0}
+                                            >
+                                                <Text style={[styles.confirmBtnText, styles.confirmBtnTextDanger]}>DELETE</Text>
+                                            </TouchableOpacity>
+                                        </View>
+                                    </View>
+                                </TouchableWithoutFeedback>
+                            </View>
+                        </TouchableWithoutFeedback>
+                    </Modal>
+
                     {/* PIN modal for locked folders */}
                     <Modal
                         visible={pinModalVisible}
                         transparent
                         animationType="fade"
+                        supportedOrientations={['portrait', 'landscape']}
                         onRequestClose={() => setPinModalVisible(false)}
                     >
                         <TouchableWithoutFeedback onPress={() => setPinModalVisible(false)}>
@@ -1866,6 +2295,26 @@ const styles = StyleSheet.create({
     },
     trashHeaderTextActive: {
         color: 'rgba(255,255,255,0.9)',
+    },
+    trashDeleteAllBtn: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 8,
+        paddingHorizontal: 10,
+        height: 28,
+        borderRadius: 14,
+        backgroundColor: 'rgba(255, 61, 0, 0.08)',
+        borderWidth: 1,
+        borderColor: 'rgba(255, 61, 0, 0.18)',
+    },
+    trashDeleteAllBtnDisabled: {
+        opacity: 0.4,
+    },
+    trashDeleteAllBtnText: {
+        fontSize: 10,
+        fontWeight: '900',
+        letterSpacing: 0.2,
+        color: '#FF3D00',
     },
     segmentedControl: {
         flexDirection: 'row',
@@ -2335,6 +2784,10 @@ const styles = StyleSheet.create({
         backgroundColor: 'rgba(255, 152, 0, 0.10)',
         borderColor: 'rgba(255, 152, 0, 0.18)',
     },
+    folderStatusPillUnlocked: {
+        backgroundColor: 'rgba(76, 175, 80, 0.08)',
+        borderColor: 'rgba(76, 175, 80, 0.18)',
+    },
     folderStatusText: {
         fontSize: 9,
         fontWeight: '900',
@@ -2342,6 +2795,9 @@ const styles = StyleSheet.create({
     },
     folderStatusTextLocked: {
         color: '#FF9800',
+    },
+    folderStatusTextUnlocked: {
+        color: 'rgba(76,175,80,0.95)',
     },
     folderNameText: {
         color: '#fff',
@@ -2728,14 +3184,8 @@ const styles = StyleSheet.create({
         color: '#fff',
         fontSize: 18,
         fontWeight: '800',
-        letterSpacing: 8,
+        letterSpacing: 6,
         textAlign: 'center',
-    },
-    pinErrorText: {
-        marginTop: 10,
-        color: 'rgba(255, 61, 0, 0.9)',
-        fontSize: 12,
-        fontWeight: '800',
     },
     // config toggle UI lives in expanded top bar (icon-only)
     generalNoteDate: {
@@ -2780,33 +3230,42 @@ const styles = StyleSheet.create({
     },
     modalOverlay: {
         flex: 1,
-        backgroundColor: 'rgba(0,0,0,0.85)',
+        backgroundColor: 'rgba(0,0,0,0.96)',
         justifyContent: 'center',
-        padding: 20,
+        alignItems: 'center',
+        padding: 16,
+    },
+    modalOverlayLandscape: {
+        padding: 12,
+        // Keep popup centered; prevent overlap via ScrollView maxHeight in landscape.
     },
     premiumPopup: {
-        backgroundColor: '#111',
+        backgroundColor: '#050505',
         borderRadius: 24,
-        padding: 24,
+        padding: 20,
         borderWidth: 1,
-        borderColor: 'rgba(255,255,255,0.1)',
+        borderColor: 'rgba(255,255,255,0.06)',
         shadowColor: '#000',
-        shadowOffset: { width: 0, height: 20 },
-        shadowOpacity: 0.5,
-        shadowRadius: 40,
-        elevation: 10,
+        shadowOffset: { width: 0, height: 10 },
+        shadowOpacity: 0.6,
+        shadowRadius: 30,
+        elevation: 12,
+        width: '92%',
+        maxWidth: 360,
     },
     confirmPopup: {
-        backgroundColor: '#111',
+        backgroundColor: '#050505',
         borderRadius: 24,
-        padding: 24,
+        padding: 20,
         borderWidth: 1,
-        borderColor: 'rgba(255,255,255,0.1)',
+        borderColor: 'rgba(255,255,255,0.06)',
         shadowColor: '#000',
-        shadowOffset: { width: 0, height: 20 },
-        shadowOpacity: 0.5,
-        shadowRadius: 40,
-        elevation: 10,
+        shadowOffset: { width: 0, height: 10 },
+        shadowOpacity: 0.6,
+        shadowRadius: 30,
+        elevation: 12,
+        width: '90%',
+        maxWidth: 340,
     },
     confirmText: {
         color: 'rgba(255,255,255,0.55)',
@@ -2814,19 +3273,95 @@ const styles = StyleSheet.create({
         lineHeight: 18,
         marginTop: 6,
     },
+    folderActionsPopup: {
+        backgroundColor: '#050505',
+        borderRadius: 28,
+        padding: 20,
+        width: '92%',
+        maxWidth: 350,
+        borderWidth: 1,
+        borderColor: 'rgba(255,255,255,0.06)',
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 10 },
+        shadowOpacity: 0.6,
+        shadowRadius: 30,
+        elevation: 15,
+        alignSelf: 'center',
+    },
+    folderLockPopup: {
+        backgroundColor: '#050505',
+        borderRadius: 24,
+        padding: 20,
+        width: '92%',
+        maxWidth: 330,
+        borderWidth: 1,
+        borderColor: 'rgba(255,255,255,0.06)',
+    },
+    lockInputContainer: {
+        alignItems: 'center',
+        marginVertical: 18,
+    },
+    folderLockPinInput: {
+        backgroundColor: 'rgba(255,255,255,0.03)',
+        width: 110,
+        height: 52,
+        borderRadius: 14,
+        textAlign: 'center',
+        fontSize: 22,
+        color: '#fff',
+        fontWeight: '700',
+        borderWidth: 1,
+        borderColor: 'rgba(255,255,255,0.06)',
+    },
+    confirmBtnPrimary: {
+        backgroundColor: 'rgba(76, 175, 80, 0.15)',
+        borderColor: 'rgba(76, 175, 80, 0.2)',
+    },
+    confirmBtnTextPrimary: {
+        color: '#4CAF50',
+    },
+    folderActionsGrid: {
+        flexDirection: 'row',
+        justifyContent: 'space-between',
+        marginTop: 20,
+        gap: 10,
+    },
+    folderActionBtn: {
+        flex: 1,
+        alignItems: 'center',
+        paddingVertical: 12,
+        backgroundColor: 'rgba(255,255,255,0.03)',
+        borderRadius: 16,
+        borderWidth: 1,
+        borderColor: 'rgba(255,255,255,0.05)',
+    },
+    folderActionIconBox: {
+        width: 44,
+        height: 44,
+        borderRadius: 14,
+        alignItems: 'center',
+        justifyContent: 'center',
+        marginBottom: 8,
+    },
+    folderActionBtnText: {
+        color: 'rgba(255,255,255,0.6)',
+        fontSize: 10,
+        fontWeight: '700',
+        letterSpacing: 0.5,
+    },
     confirmActions: {
         flexDirection: 'row',
         justifyContent: 'flex-end',
-        gap: 12,
-        marginTop: 20,
+        gap: 10,
+        marginTop: 18,
     },
     confirmBtn: {
         paddingHorizontal: 16,
         paddingVertical: 10,
         borderRadius: 12,
-        backgroundColor: 'rgba(255,255,255,0.04)',
+        backgroundColor: 'rgba(255,255,255,0.03)',
         borderWidth: 1,
-        borderColor: 'rgba(255,255,255,0.06)',
+        borderColor: 'rgba(255,255,255,0.05)',
     },
     confirmBtnDanger: {
         backgroundColor: 'rgba(255, 61, 0, 0.12)',
@@ -2845,7 +3380,7 @@ const styles = StyleSheet.create({
         flexDirection: 'row',
         justifyContent: 'space-between',
         alignItems: 'center',
-        marginBottom: 24,
+        marginBottom: 16,
     },
     popupTitle: {
         fontSize: 10,
@@ -2853,12 +3388,18 @@ const styles = StyleSheet.create({
         color: 'rgba(255,255,255,0.4)',
         letterSpacing: 2,
     },
+    pinErrorText: {
+        marginTop: 10,
+        color: 'rgba(255, 61, 0, 0.9)',
+        fontSize: 12,
+        fontWeight: '800',
+    },
     folderPopupInput: {
-        fontSize: 24,
+        fontSize: 20,
         fontWeight: '700',
         color: '#fff',
-        marginBottom: 32,
-        paddingVertical: 10,
+        marginBottom: 14,
+        paddingVertical: 8,
         borderBottomWidth: 1,
         borderBottomColor: 'rgba(255,255,255,0.05)',
     },
@@ -2867,12 +3408,12 @@ const styles = StyleSheet.create({
         fontWeight: '800',
         color: 'rgba(255,255,255,0.3)',
         letterSpacing: 1,
-        marginBottom: 12,
+        marginBottom: 6,
     },
     colorPickerRow: {
         flexDirection: 'row',
         gap: 12,
-        marginBottom: 32,
+        marginBottom: 14,
     },
     colorDot: {
         width: 30,
@@ -2886,40 +3427,7 @@ const styles = StyleSheet.create({
         transform: [{ scale: 1.1 }],
     },
     emojiPickerScroll: {
-        marginBottom: 32,
-    },
-    lockRow: {
-        marginBottom: 22,
-    },
-    lockRowLabel: {
-        fontSize: 9,
-        fontWeight: '800',
-        color: 'rgba(255,255,255,0.3)',
-        letterSpacing: 1,
         marginBottom: 12,
-    },
-    lockToggle: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        gap: 10,
-        height: 40,
-        borderRadius: 14,
-        paddingHorizontal: 14,
-        backgroundColor: 'rgba(255,255,255,0.03)',
-        borderWidth: 1,
-        borderColor: 'rgba(255,255,255,0.06)',
-    },
-    lockToggleActive: {
-        backgroundColor: 'rgba(76,175,80,0.10)',
-        borderColor: 'rgba(76,175,80,0.18)',
-    },
-    lockToggleText: {
-        fontSize: 12,
-        fontWeight: '800',
-        color: 'rgba(255,255,255,0.55)',
-    },
-    lockToggleTextActive: {
-        color: '#fff',
     },
     emojiBtn: {
         width: 44,
@@ -2941,7 +3449,7 @@ const styles = StyleSheet.create({
     popupPrimaryBtn: {
         backgroundColor: '#fff',
         borderRadius: 16,
-        paddingVertical: 16,
+        paddingVertical: 12,
         alignItems: 'center',
     },
     popupPrimaryBtnText: {
