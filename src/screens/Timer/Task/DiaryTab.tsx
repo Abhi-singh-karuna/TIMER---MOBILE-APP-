@@ -110,6 +110,9 @@ export default function DiaryTab(props: {
     const [showConfig, setShowConfig] = React.useState(false);
     const [fontSizePx, setFontSizePx] = React.useState(17);
     const [selectedColor, setSelectedColor] = React.useState(DIARY_DEFAULT_TEXT_COLOR);
+    const [showMentions, setShowMentions] = React.useState(false);
+    const [mentionOptions, setMentionOptions] = React.useState<string[]>([]);
+    const [mentionPos, setMentionPos] = React.useState({ x: 0, y: 0 });
     // templates intentionally removed for diary
     const insets = useSafeAreaInsets();
 
@@ -128,6 +131,34 @@ export default function DiaryTab(props: {
         // keep editor in sync when font size changes
         requestAnimationFrame(() => applyAppearance());
     }, [fontSizePx, applyAppearance]);
+
+    const triggerMentionCoords = React.useCallback(() => {
+        richEditorRef.current?.commandDOM(`
+            (function(){
+                var sel = window.getSelection();
+                if (sel.rangeCount > 0) {
+                    var range = sel.getRangeAt(0);
+                    var rect = range.getBoundingClientRect();
+                    window.ReactNativeWebView.postMessage(JSON.stringify({
+                        type: 'MENTION_COORDS',
+                        data: { x: rect.left, y: rect.top }
+                    }));
+                }
+            })()
+        `);
+    }, []);
+
+    const handleEditorMessage = React.useCallback((event: any) => {
+        try {
+            const data = (event && event.nativeEvent && event.nativeEvent.data) || event;
+            const msg = typeof data === 'string' ? JSON.parse(data) : data;
+            if (msg.type === 'MENTION_COORDS') {
+                setMentionPos(msg.data);
+            }
+        } catch (e) {
+            // ignore
+        }
+    }, []);
 
     const applySelectionColor = React.useCallback((color: string) => {
         setSelectedColor(color);
@@ -188,6 +219,7 @@ export default function DiaryTab(props: {
                     </TouchableOpacity>
                 </View>
 
+
                 <ScrollView style={styles.editorScroll} showsVerticalScrollIndicator={false}>
                     <RichEditor
                         ref={(r) => { richEditorRef.current = r; }}
@@ -204,7 +236,31 @@ export default function DiaryTab(props: {
                             `,
                         }}
                         editorInitializedCallback={applyAppearance}
-                        onChange={(html) => setDraftText(html)}
+                        onKeyUp={(d: any) => {
+                            const key = typeof d === 'string' ? d : d?.key;
+                            if (key === '@') {
+                                const now = new Date();
+                                const dateStr = now.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' });
+                                const timeStr = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+                                setMentionOptions([dateStr, timeStr, `${dateStr} ${timeStr}`]);
+                                setShowMentions(true);
+                                triggerMentionCoords();
+                            } else {
+                                if (showMentions) setShowMentions(false);
+                            }
+                        }}
+                        onChange={(html) => {
+                            setDraftText(html);
+                            if (html.endsWith('@') || html.endsWith('@</div>') || html.endsWith('@<br>')) {
+                                const now = new Date();
+                                const dateStr = now.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' });
+                                const timeStr = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+                                setMentionOptions([dateStr, timeStr, `${dateStr} ${timeStr}`]);
+                                setShowMentions(true);
+                                triggerMentionCoords();
+                            }
+                        }}
+                        onMessage={handleEditorMessage}
                         style={styles.richEditor}
                     />
                 </ScrollView>
@@ -239,6 +295,31 @@ export default function DiaryTab(props: {
                         <Text style={styles.statsText}>&lt; {readTime} MIN READ</Text>
                     </View>
                 </View>
+
+                {/* Mention Suggestions Popup - Floating above cursor */}
+                {showMentions && (
+                    <View style={[styles.mentionPopupInline, {
+                        position: 'absolute',
+                        top: Math.max(0, mentionPos.y - 50),
+                        left: Math.min(300, mentionPos.x), // reasonable constraint
+                        bottom: undefined
+                    }]}>
+                        <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+                            {mentionOptions.map((opt, idx) => (
+                                <TouchableOpacity 
+                                    key={idx} 
+                                    style={styles.mentionItem}
+                                    onPress={() => {
+                                        richEditorRef.current?.insertText(opt);
+                                        setShowMentions(false);
+                                    }}
+                                >
+                                    <Text style={styles.mentionItemText}>{opt}</Text>
+                                </TouchableOpacity>
+                            ))}
+                        </ScrollView>
+                    </View>
+                )}
             </View>
 
             {/* Diary templates modal removed */}
@@ -354,6 +435,7 @@ export default function DiaryTab(props: {
                             </View>
                         )}
 
+
                         <View style={styles.expandedEditorBody}>
                             <RichEditor
                                 ref={(r) => { richEditorRef.current = r; }}
@@ -373,10 +455,59 @@ export default function DiaryTab(props: {
                                     `,
                                 }}
                                 editorInitializedCallback={applyAppearance}
-                                onChange={(html) => setDraftText(html)}
+                                onKeyUp={(d: any) => {
+                                    const key = typeof d === 'string' ? d : d?.key;
+                                    if (key === '@') {
+                                        const now = new Date();
+                                        const dateStr = now.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' });
+                                        const timeStr = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+                                        setMentionOptions([dateStr, timeStr, `${dateStr} ${timeStr}`]);
+                                        setShowMentions(true);
+                                        triggerMentionCoords();
+                                    } else {
+                                        if (showMentions) setShowMentions(false);
+                                    }
+                                }}
+                                onChange={(html) => {
+                                    setDraftText(html);
+                                    if (html.endsWith('@') || html.endsWith('@</div>') || html.endsWith('@<br>')) {
+                                        const now = new Date();
+                                        const dateStr = now.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' });
+                                        const timeStr = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+                                        setMentionOptions([dateStr, timeStr, `${dateStr} ${timeStr}`]);
+                                        setShowMentions(true);
+                                        triggerMentionCoords();
+                                    }
+                                }}
+                                onMessage={handleEditorMessage}
                                 style={styles.richEditor}
                             />
                         </View>
+
+                        {/* Mention Suggestions Popup for Expanded Editor - Floating above cursor */}
+                        {showMentions && (
+                            <View style={[styles.mentionPopup, {
+                                position: 'absolute',
+                                top: Math.max(0, mentionPos.y - 50),
+                                left: Math.min(300, mentionPos.x),
+                                bottom: undefined
+                            }]}>
+                                <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+                                    {mentionOptions.map((opt, idx) => (
+                                        <TouchableOpacity 
+                                            key={idx} 
+                                            style={styles.mentionItem}
+                                            onPress={() => {
+                                                richEditorRef.current?.insertText(opt);
+                                                setShowMentions(false);
+                                            }}
+                                        >
+                                            <Text style={styles.mentionItemText}>{opt}</Text>
+                                        </TouchableOpacity>
+                                    ))}
+                                </ScrollView>
+                            </View>
+                        )}
                     </View>
                 </View>
             </Modal>
