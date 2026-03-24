@@ -41,6 +41,7 @@ export default function GoalManagement({
     const [expandedGoalIds, setExpandedGoalIds] = useState<string[]>([]);
     const [menuGoalId, setMenuGoalId] = useState<string | null>(null);
     const [selectedTaskIdPerGoal, setSelectedTaskIdPerGoal] = useState<Record<string, number | null>>({});
+    const [hiddenGraphIds, setHiddenGraphIds] = useState<string[]>([]);
     const [expandedGraphIds, setExpandedGraphIds] = useState<string[]>([]);
     const [selectedDayData, setSelectedDayData] = useState<{ date: string, segments: any[], title: string } | null>(null);
 
@@ -274,9 +275,26 @@ export default function GoalManagement({
         };
 
         const maxHeight = isExpanded ? 180 : 50;
+        
+        // Calculate dynamic Max Duration for Y-axis scaling
+        const maxDataMins = Math.max(...data.map(day => 
+            (day.segments || []).reduce((acc: number, s: any) => acc + (s.durationMinutes || 0), 0)
+        ), 0);
+        const maxDataHrs = maxDataMins / 60;
+
+        // Determine a 'Nice' top hour for the Y-axis
+        let topHr = isExpanded ? 10 : 4; 
+        if (maxDataHrs > 0) {
+            if (isExpanded) {
+                topHr = Math.max(4, Math.ceil(maxDataHrs / 2) * 2);
+            } else {
+                topHr = Math.max(2, Math.ceil(maxDataHrs));
+            }
+        }
+
         const yAxisLabelsHr = isExpanded
-            ? ['10h', '7.5h', '5h', '2.5h', '0h']
-            : ['4h', '2h', '0h'];
+            ? [topHr + 'h', (topHr * 0.75).toFixed(1).replace('.0', '') + 'h', (topHr * 0.5).toFixed(1).replace('.0', '') + 'h', (topHr * 0.25).toFixed(1).replace('.0', '') + 'h', '0h']
+            : [topHr + 'h', (topHr * 0.5).toFixed(1).replace('.0', '') + 'h', '0h'];
 
         const gridLines = isExpanded
             ? [0, 45, 90, 135, 180]
@@ -340,20 +358,20 @@ export default function GoalManagement({
                             {data.map((day, i) => {
                                 const segments = day.segments || [];
                                 const totalMins = segments.reduce((acc: number, s: any) => acc + (s.durationMinutes || 0), 0);
-                                const maxMinutes = isExpanded ? 600 : 240;
-                                const scale = totalMins > maxMinutes ? maxHeight / totalMins : (maxHeight / maxMinutes);
+                                const maxMinutes = topHr * 60;
+                                const scale = maxHeight / maxMinutes;
 
                                 return (
                                     <TouchableOpacity 
                                         key={i} 
-                                        style={styles.barOuter}
+                                        style={[styles.barOuter, { height: maxHeight + 25 }]}
                                         onPress={() => setSelectedDayData({
                                             date: day.date,
                                             segments: day.segments,
                                             title: title || 'PERFORMANCE LOG'
                                         })}
                                     >
-                                        <View style={[styles.barContainer, { height: maxHeight }]}>
+                                        <View style={[styles.barContainer, { height: maxHeight, marginBottom: 0 }]}>
                                             {segments.length > 0 ? (
                                                 [...segments].reverse().map((seg: any, idx: number) => (
                                                     <View 
@@ -380,9 +398,11 @@ export default function GoalManagement({
                                                 ]} />
                                             )}
                                         </View>
-                                        <Text style={[styles.barDate, day.date === todayStr && styles.barDateToday]}>
-                                            {day.date.split('-')[2]}
-                                        </Text>
+                                        <View style={{ height: 25, width: '100%', alignItems: 'center', justifyContent: 'center' }}>
+                                            <Text style={[styles.barDate, day.date === todayStr && styles.barDateToday]}>
+                                                {day.date.split('-')[2]}
+                                            </Text>
+                                        </View>
                                     </TouchableOpacity>
                                 );
                             })}
@@ -396,7 +416,7 @@ export default function GoalManagement({
     const renderTaskItem = (task: Task, isSelected: boolean, onSelect: () => void, goal: Goal) => {
         const stages = task.stages || [];
         let displayProgress = 0;
-        let statusColor = '#4CAF50';
+        let statusColor = '#00E676';
 
         if (stages.length > 0) {
             displayProgress = (stages.filter(s => s.status === 'Done').length / stages.length) * 100;
@@ -406,9 +426,9 @@ export default function GoalManagement({
             else displayProgress = 0;
         }
 
-        if (task.status === 'In Progress') statusColor = '#FFC107';
+        if (task.status === 'In Progress') statusColor = '#FFB300';
         else if (task.status === 'Completed') statusColor = '#00E676';
-        else statusColor = 'rgba(255,255,255,0.4)';
+        else statusColor = 'rgba(255,255,255,0.2)';
 
         return (
             <TouchableOpacity 
@@ -417,54 +437,33 @@ export default function GoalManagement({
                     LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
                     onSelect();
                 }}
+                activeOpacity={0.7}
                 style={[
-                    styles.miniTaskCard, 
-                    isLandscape && styles.miniTaskCardLandscape,
-                    isSelected && { borderColor: '#00E5FF', borderWidth: 1 }
+                    styles.miniTaskCardHorizontal, 
+                    isSelected && styles.miniTaskCardSelected
                 ]}
             >
-                <View style={styles.miniTaskHeader}>
-                    <View style={styles.miniTaskTitleSection}>
-                        <Text style={[styles.miniTaskTitle, isSelected && { color: '#00E5FF' }]} numberOfLines={1}>{task.title.toUpperCase()}</Text>
-                        <View style={styles.taskActionIcons}>
-                            <TouchableOpacity onPress={(e) => { 
-                                e.stopPropagation(); 
-                                Alert.alert(
-                                    "Unlink Task",
-                                    "Are you sure you want to remove this task from this goal?",
-                                    [
-                                        { text: "Cancel", style: "cancel" },
-                                        { text: "Unlink", style: "destructive", onPress: () => onUnlinkTask(goal.id, task.id) }
-                                    ]
-                                );
-                            }}>
-                                <MaterialIcons name="link-off" size={14} color="rgba(255,255,255,0.4)" />
-                            </TouchableOpacity>
-                        </View>
+                <View style={styles.miniTaskHeaderCompact}>
+                    <View style={[styles.statusIndicatorSmall, { backgroundColor: statusColor }]} />
+                    <Text style={[styles.miniTaskTitleCompact, isSelected && { color: '#00E5FF' }]} numberOfLines={1}>
+                        {task.title.toUpperCase()}
+                    </Text>
+                </View>
+
+                <View style={styles.miniTaskMidCompact}>
+                    <Text style={styles.miniTaskMetaCompact}>{stages.length} SUBTASKS</Text>
+                </View>
+
+                <View style={styles.miniTaskFooterCompact}>
+                    <View style={styles.miniProgressBarTrackCompact}>
+                        <View style={[styles.miniProgressBarFillCompact, { width: `${displayProgress}%`, backgroundColor: isSelected ? '#00E5FF' : statusColor }]} />
                     </View>
-                    <View style={styles.miniTaskLeftFooter}>
-                        <View style={styles.miniSignalRow}>
-                            <View style={[styles.miniSignalBar, { height: 4, opacity: 0.3 }]} />
-                            <View style={[styles.miniSignalBar, { height: 7, opacity: 0.5 }]} />
-                            <View style={[styles.miniSignalBar, { height: 10, opacity: 0.8, backgroundColor: statusColor }]} />
-                        </View>
-                        <Text style={[styles.miniTaskPercent, { color: statusColor }]}>{Math.round(displayProgress)}%</Text>
-                    </View>
+                    <Text style={styles.miniPercentTextCompact}>{Math.round(displayProgress)}%</Text>
                 </View>
 
                 {isSelected && (
-                    <View style={styles.inlineGraphSection}>
-                        <GoalActivityGraph 
-                            data={getTaskActivityData(task, goal.startDate || goal.createdAt, goal.endDate || new Date().toISOString())} 
-                            title={`DRILL-DOWN: ${task.title.toUpperCase()}`}
-                            goalId={`${goal.id}-${task.id}`}
-                        />
-                    </View>
+                    <View style={styles.selectedIndicatorBar} />
                 )}
-
-                <View style={styles.miniTaskProgressBg}>
-                    <View style={[styles.miniTaskProgressFill, { width: `${displayProgress}%`, backgroundColor: statusColor }]} />
-                </View>
             </TouchableOpacity>
         );
     };
@@ -508,14 +507,22 @@ export default function GoalManagement({
 
                             {/* Left Pane: Core Objective */}
                             <View style={[styles.hudLeft, isLandscape && styles.hudLeftLandscape]}>
-                                <View style={styles.unifiedTitleRow}>
+                                <View style={styles.hudHeaderTactical}>
                                     <View style={styles.goalIconContainer}>
-                                        <MaterialIcons name="track-changes" size={24} color={accentColor} />
+                                        <LinearGradient
+                                            colors={[accentColor, 'rgba(0,229,255,0.3)']}
+                                            style={styles.iconGradient}
+                                        >
+                                            <MaterialIcons name="track-changes" size={22} color="#000" />
+                                        </LinearGradient>
                                     </View>
                                     <View style={styles.titleTextContainer}>
-                                        <Text style={styles.hudBadgeTextMini}>
-                                            ID-{goal.id.slice(0, 4)} // {getGoalTypeLabel(goal.type)}
-                                        </Text>
+                                        <View style={styles.badgeRow}>
+                                            <View style={styles.idBadge}>
+                                                <Text style={styles.idBadgeText}>ID-{goal.id.slice(-4)}</Text>
+                                            </View>
+                                            <Text style={styles.typeLabelText}>{getGoalTypeLabel(goal.type).toUpperCase()}</Text>
+                                        </View>
                                         <Text style={styles.unifiedTitleText}>{displayTitle.toUpperCase()}</Text>
                                     </View>
                                     <View style={styles.integratedActions}>
@@ -561,89 +568,141 @@ export default function GoalManagement({
                                         </View>
                                     </View>
                                 </View>
-
-                                <View style={styles.timelineRowUnified}>
-                                    <View style={styles.datePill}>
-                                        <Text style={styles.dateType}>START TARGET (OPTIONAL)</Text>
-                                        <Text style={[styles.dateVal, isLandscape && { fontSize: 8 }]}>{startLabel}</Text>
-                                    </View>
-                                    <View style={styles.timelineTrackUnified}>
-                                        <View style={styles.segmentedProgressRow}>
-                                            {Array.from({ length: 10 }).map((_, i) => (
-                                                <View
-                                                    key={i}
-                                                    style={[
-                                                        styles.progressSegment,
-                                                        {
-                                                            backgroundColor: i < (displayProgress / 10) ? accentColor : 'rgba(255,255,255,0.05)',
-                                                            opacity: i < (displayProgress / 10) ? 0.8 : 0.3
-                                                        }
-                                                    ]}
-                                                />
-                                            ))}
-                                        </View>
-                                    </View>
-                                    <View style={styles.datePill}>
-                                        <Text style={styles.dateType}>END TARGET</Text>
-                                        <Text style={[styles.dateVal, isLandscape && { fontSize: 8 }]}>{endLabel}</Text>
-                                    </View>
-                                </View>
-
-                                {isLandscape && (
-                                    <View style={{ marginTop: 10 }}>
-                                        <GoalActivityGraph 
-                                            data={getGoalActivityData(goal, tasks)} 
-                                            title="OVERALL PERFORMANCE" 
-                                            goalId={goal.id}
-                                        />
-                                    </View>
-                                )}
                             </View>
 
-                            {/* Right Pane: Target Deployment / Activity Graph */}
+                            {/* Main Tactical Body */}
                             <View style={[styles.hudRightUnified, isLandscape && styles.hudRightLandscapeUnified]}>
                                 <View style={styles.rightHeaderIntegrated}>
-                                    <Text style={styles.rightHeaderTextUnified}>ACTIVITY & DEPLOYMENT</Text>
-                                    <View style={styles.activeStatusPill}>
-                                        <View style={styles.pulseContainer}>
-                                            <View style={[styles.activePulseOuter, { opacity: 0.2 }]} />
-                                            <View style={styles.activePulse} />
+                                    <View style={styles.deploymentHeaderRow}>
+                                        <Text style={styles.rightHeaderTextUnified}>ACTIVITY & DEPLOYMENT</Text>
+                                        <View style={styles.activeStatusPill}>
+                                            <View style={styles.pulseContainer}>
+                                                <View style={[styles.activePulseOuter, { opacity: 0.2 }]} />
+                                                <View style={styles.activePulse} />
+                                            </View>
+                                            <Text style={styles.rightHeaderCountUnified}>{associatedTasks.length} LINKED</Text>
                                         </View>
-                                        <Text style={styles.rightHeaderCountUnified}>{associatedTasks.length} LINKED</Text>
                                     </View>
+                                    <TouchableOpacity 
+                                        onPress={() => {
+                                            LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+                                            setHiddenGraphIds(prev => 
+                                                prev.includes(goal.id) ? prev.filter(id => id !== goal.id) : [...prev, goal.id]
+                                            );
+                                        }}
+                                        style={styles.telemetryToggleBtn}
+                                    >
+                                        <MaterialIcons 
+                                            name={hiddenGraphIds.includes(goal.id) ? "unfold-more" : "unfold-less"} 
+                                            size={14} 
+                                            color="rgba(0,229,255,0.6)" 
+                                        />
+                                    </TouchableOpacity>
                                 </View>
 
                                 {associatedTasks.length > 0 ? (
                                     <View style={[styles.activityContent, isLandscape && { flex: 1 }]}>
-                                        {!isLandscape && (
-                                            <GoalActivityGraph 
-                                                data={getGoalActivityData(goal, tasks)} 
-                                                title="COMBINED PERFORMANCE" 
-                                                goalId={goal.id}
-                                            />
-                                        )}
-                                        
-                                        <ScrollView
-                                            style={styles.tasksScrollUnified}
-                                            showsVerticalScrollIndicator={false}
-                                        >
-                                            <View style={styles.tasksContainerUnified}>
-                                                {associatedTasks.slice(0, 10).map(task => 
-                                                    renderTaskItem(
-                                                        task, 
-                                                        selectedTaskIdPerGoal[goal.id] === task.id,
-                                                        () => {
-                                                            const currentSelected = selectedTaskIdPerGoal[goal.id];
-                                                            setSelectedTaskIdPerGoal(prev => ({
-                                                                ...prev,
-                                                                [goal.id]: currentSelected === task.id ? null : task.id
-                                                            }));
-                                                        },
-                                                        goal
-                                                    )
-                                                )}
+                                        {!hiddenGraphIds.includes(goal.id) && (
+                                            <View style={styles.combinedSystemGraphWrapper}>
+                                                <View style={styles.combinedGraphHeader}>
+                                                    <MaterialIcons name="analytics" size={10} color="rgba(0,229,255,0.4)" />
+                                                    <Text style={styles.combinedGraphLabelText}>STRATEGIC SYSTEM PERFORMANCE</Text>
+                                                </View>
+                                                <GoalActivityGraph 
+                                                    data={getGoalActivityData(goal, tasks)} 
+                                                    title="TOTAL TELEMETRY" 
+                                                    goalId={`combined-${goal.id}`}
+                                                />
                                             </View>
+                                        )}
+
+                                        <ScrollView
+                                            horizontal
+                                            style={styles.deploymentDeckScroll}
+                                            contentContainerStyle={styles.deploymentDeckContent}
+                                            showsHorizontalScrollIndicator={false}
+                                        >
+                                            {associatedTasks.map(task => 
+                                                renderTaskItem(
+                                                    task, 
+                                                    selectedTaskIdPerGoal[goal.id] === task.id,
+                                                    () => {
+                                                        const currentSelected = selectedTaskIdPerGoal[goal.id];
+                                                        setSelectedTaskIdPerGoal(prev => ({
+                                                            ...prev,
+                                                            [goal.id]: currentSelected === task.id ? null : task.id
+                                                        }));
+                                                    },
+                                                    goal
+                                                )
+                                            )}
                                         </ScrollView>
+
+                                        {/* Unified Drill-Down Analytics Panel */}
+                                        {selectedTaskIdPerGoal[goal.id] && (
+                                            <BlurView intensity={30} tint="dark" style={styles.unifiedAnalyticsPanel}>
+                                                {(() => {
+                                                    const selectedTask = associatedTasks.find(t => t.id === selectedTaskIdPerGoal[goal.id]);
+                                                    if (!selectedTask) return null;
+                                                    
+                                                    const stages = selectedTask.stages || [];
+                                                    let progress = 0;
+                                                    if (stages.length > 0) progress = (stages.filter(s => s.status === 'Done').length / stages.length) * 100;
+                                                    else progress = selectedTask.status === 'Completed' ? 100 : (selectedTask.status === 'In Progress' ? 50 : 0);
+
+                                                    return (
+                                                        <>
+                                                            <View style={styles.analyticsHeaderRow}>
+                                                                <Text style={styles.analyticsLabelText}>DEPLOYMENT ANALYTICS</Text>
+                                                                <TouchableOpacity 
+                                                                    onPress={() => {
+                                                                        Alert.alert(
+                                                                            "DECOUPLE OPERATIONAL TARGET",
+                                                                            `Are you sure you want to decouple "${selectedTask.title.toUpperCase()}" from this Strategic Objective?`,
+                                                                            [
+                                                                                { text: "CANCEL", style: "cancel" },
+                                                                                { 
+                                                                                    text: "CONFIRM UNLINK", 
+                                                                                    onPress: () => onUnlinkTask(goal.id, selectedTask.id),
+                                                                                    style: "destructive" 
+                                                                                }
+                                                                            ]
+                                                                        );
+                                                                    }}
+                                                                    style={styles.unlinkActionBtn}
+                                                                >
+                                                                    <MaterialIcons name="link-off" size={10} color="#FF5252" />
+                                                                    <Text style={styles.unlinkActionText}>UNLINK</Text>
+                                                                </TouchableOpacity>
+                                                            </View>
+
+                                                            <View style={styles.microMetricsRow}>
+                                                                <View style={styles.microMetric}>
+                                                                    <Text style={styles.microMetricLabel}>EST. AIRTIME</Text>
+                                                                    <Text style={styles.microMetricVal}>12.4H</Text>
+                                                                </View>
+                                                                <View style={styles.metricDivider} />
+                                                                <View style={styles.microMetric}>
+                                                                    <Text style={styles.microMetricLabel}>STREAK</Text>
+                                                                    <Text style={styles.microMetricVal}>4 DAYS</Text>
+                                                                </View>
+                                                                <View style={styles.metricDivider} />
+                                                                <View style={styles.microMetric}>
+                                                                    <Text style={styles.microMetricLabel}>COMPLETION</Text>
+                                                                    <Text style={styles.microMetricVal}>{Math.round(progress)}%</Text>
+                                                                </View>
+                                                            </View>
+
+                                                            <GoalActivityGraph 
+                                                                data={getTaskActivityData(selectedTask, goal.startDate || goal.createdAt, goal.endDate || new Date().toISOString())} 
+                                                                title={`DRILL-DOWN: ${selectedTask.title.toUpperCase()}`}
+                                                                goalId={`${goal.id}-${selectedTask.id}`}
+                                                            />
+                                                        </>
+                                                    );
+                                                })()}
+                                            </BlurView>
+                                        )}
                                     </View>
                                 ) : (
                                     <TouchableOpacity
@@ -654,6 +713,27 @@ export default function GoalManagement({
                                         <Text style={styles.emptyTasksHUDTextUnified}>LINK EXISTING TASKS TO BEGIN</Text>
                                     </TouchableOpacity>
                                 )}
+
+                                {/* Ultra-Compact Strategic Status Bar */}
+                                <View style={styles.compactMissionFooter}>
+                                    <View style={styles.statusPillGroup}>
+                                        <View style={styles.compactPill}>
+                                            <Text style={styles.compactPillLabel}>STRT</Text>
+                                            <Text style={styles.compactPillVal}>{startLabel}</Text>
+                                        </View>
+                                        <View style={styles.compactPill}>
+                                            <Text style={styles.compactPillLabel}>DLIN</Text>
+                                            <Text style={styles.compactPillVal}>{endLabel}</Text>
+                                        </View>
+                                    </View>
+                                    
+                                    <View style={styles.compactProgressSection}>
+                                        <View style={styles.slimProgressBarTrack}>
+                                            <View style={[styles.slimProgressBarFill, { width: `${displayProgress}%`, backgroundColor: accentColor }]} />
+                                        </View>
+                                        <Text style={styles.compactProgressText}>{Math.round(displayProgress)}% COMPLETE</Text>
+                                    </View>
+                                </View>
                             </View>
                         </View>
                     </LinearGradient>
@@ -796,20 +876,16 @@ const styles = StyleSheet.create({
         width: '100%',
     },
     dashboardCard: {
-        borderRadius: 20,
+        borderRadius: 24,
         overflow: 'hidden',
         borderWidth: 1,
-        borderColor: 'rgba(255,255,255,0.1)',
+        borderColor: 'rgba(255,255,255,0.08)',
         elevation: 10,
-        shadowColor: '#000',
-        shadowOffset: { width: 0, height: 4 },
-        shadowOpacity: 0.3,
-        shadowRadius: 10,
+        backgroundColor: 'rgba(20,20,20,0.4)',
     },
     cardContent: {
         padding: 16,
     },
-
     hudBody: {
         flexDirection: 'column',
     },
@@ -823,41 +899,123 @@ const styles = StyleSheet.create({
     hudLeftLandscape: {
         flex: 0.45,
     },
-    unifiedTitleRow: {
+    hudHeaderTactical: {
         flexDirection: 'row',
-        alignItems: 'center',
-        marginBottom: 16,
+        alignItems: 'flex-start',
+        marginBottom: 20,
         gap: 12,
     },
     goalIconContainer: {
         width: 44,
         height: 44,
-        borderRadius: 12,
-        backgroundColor: 'rgba(0,229,255,0.05)',
+    },
+    iconGradient: {
+        width: '100%',
+        height: '100%',
+        borderRadius: 14,
         alignItems: 'center',
         justifyContent: 'center',
+        shadowColor: '#00E5FF',
+        shadowOpacity: 0.4,
+        shadowRadius: 10,
+    },
+    badgeRow: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 8,
+        marginBottom: 4,
+    },
+    idBadge: {
+        backgroundColor: 'rgba(0,229,255,0.08)',
+        paddingHorizontal: 6,
+        paddingVertical: 2,
+        borderRadius: 4,
         borderWidth: 1,
-        borderColor: 'rgba(0,229,255,0.1)',
+        borderColor: 'rgba(0,229,255,0.2)',
+    },
+    idBadgeText: {
+        fontSize: 8,
+        fontWeight: '900',
+        color: '#00E5FF',
+        letterSpacing: 0.5,
+    },
+    typeLabelText: {
+        fontSize: 8,
+        fontWeight: '900',
+        color: 'rgba(255,255,255,0.4)',
+        letterSpacing: 1.5,
+    },
+    unifiedTitleText: {
+        fontSize: 20,
+        fontWeight: '900',
+        color: '#fff',
+        letterSpacing: 1.2,
+    },
+    missionTimeline: {
+        backgroundColor: 'rgba(0,0,0,0.3)',
+        borderRadius: 16,
+        padding: 14,
+        marginBottom: 20,
+        borderWidth: 1,
+        borderColor: 'rgba(255,255,255,0.06)',
+    },
+    timelineLabels: {
+        flexDirection: 'row',
+        justifyContent: 'space-between',
+        marginBottom: 12,
+    },
+    timelinePill: {
+        gap: 2,
+    },
+    timelinePillLabel: {
+        fontSize: 7,
+        fontWeight: '900',
+        color: 'rgba(255,255,255,0.25)',
+        letterSpacing: 1.5,
+    },
+    timelinePillVal: {
+        fontSize: 11,
+        fontWeight: '700',
+        color: '#fff',
+    },
+    timelineTrackUnified: {
+        height: 6,
+        justifyContent: 'center',
+    },
+    progressCounterText: {
+        flexDirection: 'row',
+        justifyContent: 'space-between',
+        marginTop: 10,
+        alignItems: 'center',
+    },
+    progressLabel: {
+        fontSize: 7,
+        fontWeight: '900',
+        color: 'rgba(255,255,255,0.4)',
+        letterSpacing: 1,
+    },
+    progressValue: {
+        fontSize: 10,
+        fontWeight: '900',
+        letterSpacing: 1,
+    },
+    segmentedProgressRow: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 3,
+        height: 6,
+    },
+    progressSegment: {
+        flex: 1,
+        borderRadius: 2,
     },
     titleTextContainer: {
         flex: 1,
     },
-    hudBadgeTextMini: {
-        fontSize: 7,
-        fontWeight: '900',
-        color: 'rgba(255,255,255,0.2)',
-        letterSpacing: 1,
-        marginBottom: 2,
-    },
-    unifiedTitleText: {
-        fontSize: 16,
-        fontWeight: '900',
-        color: '#fff',
-        letterSpacing: 0.5,
-    },
     integratedActions: {
         flexDirection: 'row',
         gap: 8,
+        marginLeft: 'auto',
     },
     hudActionBtnSmall: {
         width: 32,
@@ -869,42 +1027,32 @@ const styles = StyleSheet.create({
         borderWidth: 1,
         borderColor: 'rgba(255,255,255,0.05)',
     },
-    timelineRowUnified: {
+    tacticalTooltip: {
+        position: 'absolute',
+        top: 38,
+        right: 0,
+        width: 110,
+        borderRadius: 14,
+        overflow: 'hidden',
+        borderWidth: 1,
+        borderColor: 'rgba(255,255,255,0.1)',
+        zIndex: 1000,
+    },
+    tooltipItem: {
         flexDirection: 'row',
         alignItems: 'center',
-        marginBottom: 20,
-        gap: 12,
+        padding: 12,
+        gap: 8,
     },
-    datePill: {
-        alignItems: 'center',
-    },
-    dateType: {
-        fontSize: 6,
+    tooltipText: {
+        fontSize: 8,
         fontWeight: '900',
-        color: 'rgba(255,255,255,0.2)',
-        letterSpacing: 0.5,
-        marginBottom: 2,
+        color: '#fff',
+        letterSpacing: 1,
     },
-    dateVal: {
-        fontSize: 9,
-        fontWeight: '900',
-        color: 'rgba(255,255,255,0.6)',
-    },
-    timelineTrackUnified: {
-        flex: 1,
-        height: 6,
-        justifyContent: 'center',
-    },
-    segmentedProgressRow: {
-        flexDirection: 'row',
-        gap: 3,
-        height: 4,
-        alignItems: 'center',
-    },
-    progressSegment: {
-        flex: 1,
-        height: '100%',
-        borderRadius: 1,
+    tooltipSeparator: {
+        height: 1,
+        backgroundColor: 'rgba(255,255,255,0.05)',
     },
 
 
@@ -924,6 +1072,21 @@ const styles = StyleSheet.create({
         justifyContent: 'space-between',
         alignItems: 'center',
         marginBottom: 12,
+    },
+    rightHeaderActions: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 8,
+    },
+    telemetryToggleBtn: {
+        width: 24,
+        height: 24,
+        borderRadius: 12,
+        backgroundColor: 'rgba(0,229,255,0.05)',
+        alignItems: 'center',
+        justifyContent: 'center',
+        borderWidth: 1,
+        borderColor: 'rgba(0,229,255,0.1)',
     },
     rightHeaderTextUnified: {
         fontSize: 8,
@@ -973,101 +1136,152 @@ const styles = StyleSheet.create({
     tasksContainerHorizontalUnified: {
         flexDirection: 'row',
     },
-    miniTaskCard: {
-        backgroundColor: 'rgba(255,255,255,0.04)',
+    deploymentDeckScroll: {
+        marginBottom: 12,
+    },
+    deploymentDeckContent: {
+        paddingRight: 20,
+        gap: 10,
+    },
+    miniTaskCardHorizontal: {
+        width: 150,
+        backgroundColor: 'rgba(255,255,255,0.02)',
         borderRadius: 12,
-        padding: 12,
+        padding: 10,
         borderWidth: 1,
-        borderColor: 'rgba(255,255,255,0.05)',
-        width: '100%',
+        borderColor: 'rgba(255,255,255,0.04)',
+        position: 'relative',
+        overflow: 'hidden',
     },
-    miniTaskCardLandscape: {
-        width: '100%',
-        paddingVertical: 8,
+    miniTaskCardSelected: {
+        borderColor: 'rgba(0,229,255,0.3)',
+        backgroundColor: 'rgba(0,229,255,0.04)',
     },
-    miniTaskHeader: {
-        flexDirection: 'row',
-        justifyContent: 'space-between',
-        alignItems: 'center',
-        marginBottom: 8,
-    },
-    miniTaskTitle: {
-        fontSize: 10,
-        fontWeight: '900',
-        color: 'rgba(255,255,255,0.8)',
-        flex: 1,
-        marginRight: 8,
-        letterSpacing: 0.5,
-    },
-    miniTaskActions: {
-        flexDirection: 'row',
-    },
-    miniTaskProgressBg: {
-        height: 3,
-        backgroundColor: 'rgba(255,255,255,0.05)',
-        borderRadius: 1.5,
-        marginBottom: 8,
-    },
-    miniTaskProgressFill: {
-        height: '100%',
-        borderRadius: 1.5,
-    },
-    miniTaskFooter: {
-        flexDirection: 'row',
-        justifyContent: 'space-between',
-        alignItems: 'center',
-    },
-    miniTaskLeftFooter: {
+    miniTaskHeaderCompact: {
         flexDirection: 'row',
         alignItems: 'center',
-        gap: 8,
+        gap: 6,
+        marginBottom: 6,
     },
-    miniSignalRow: {
-        flexDirection: 'row',
-        alignItems: 'flex-end',
-        gap: 2,
+    statusIndicatorSmall: {
+        width: 4,
+        height: 4,
+        borderRadius: 2,
     },
-    miniSignalBar: {
-        width: 3,
-        backgroundColor: 'rgba(255,255,255,0.1)',
-        borderRadius: 1,
-        marginHorizontal: 1,
-    },
-    tacticalTooltip: {
-        position: 'absolute',
-        top: 30,
-        right: 0,
-        width: 100,
-        borderRadius: 12,
-        padding: 8,
-        borderWidth: 1,
-        borderColor: 'rgba(255,255,255,0.1)',
-        backgroundColor: 'rgba(0,0,0,0.9)',
-        zIndex: 200,
-        elevation: 15,
-        shadowColor: '#000',
-        shadowOffset: { width: 0, height: 4 },
-        shadowOpacity: 0.5,
-        shadowRadius: 10,
-    },
-    tooltipItem: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        gap: 8,
-        paddingVertical: 6,
-    },
-    tooltipSeparator: {
-        height: 1,
-        backgroundColor: 'rgba(255,255,255,0.05)',
-        marginVertical: 4,
-    },
-    tooltipText: {
-        fontSize: 8,
+    miniTaskTitleCompact: {
+        fontSize: 9,
         fontWeight: '900',
         color: 'rgba(255,255,255,0.6)',
+        letterSpacing: 0.5,
+        flex: 1,
+    },
+    miniTaskMidCompact: {
+        marginBottom: 8,
+    },
+    miniTaskMetaCompact: {
+        fontSize: 7,
+        fontWeight: '900',
+        color: 'rgba(255,255,255,0.2)',
+        letterSpacing: 0.5,
+    },
+    miniTaskFooterCompact: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        gap: 6,
+    },
+    miniProgressBarTrackCompact: {
+        flex: 1,
+        height: 2,
+        backgroundColor: 'rgba(255,255,255,0.05)',
+        borderRadius: 1,
+        overflow: 'hidden',
+    },
+    miniProgressBarFillCompact: {
+        height: '100%',
+        borderRadius: 1,
+    },
+    miniPercentTextCompact: {
+        fontSize: 7,
+        fontWeight: '900',
+        color: 'rgba(255,255,255,0.3)',
+    },
+    selectedIndicatorBar: {
+        position: 'absolute',
+        bottom: 0,
+        left: 0,
+        right: 0,
+        height: 2,
+        backgroundColor: '#00E5FF',
+    },
+    unifiedAnalyticsPanel: {
+        borderRadius: 16,
+        overflow: 'hidden',
+        borderWidth: 1,
+        borderColor: 'rgba(255,255,255,0.06)',
+        padding: 14,
+        backgroundColor: 'rgba(0,0,0,0.2)',
+    },
+    analyticsHeaderRow: {
+        flexDirection: 'row',
+        justifyContent: 'space-between',
+        alignItems: 'center',
+        marginBottom: 12,
+    },
+    analyticsLabelText: {
+        fontSize: 8,
+        fontWeight: '900',
+        color: 'rgba(255,255,255,0.3)',
+        letterSpacing: 1.5,
+    },
+    unlinkActionBtn: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 4,
+        backgroundColor: 'rgba(255,82,82,0.05)',
+        paddingHorizontal: 8,
+        paddingVertical: 4,
+        borderRadius: 6,
+        borderWidth: 1,
+        borderColor: 'rgba(255,82,82,0.1)',
+    },
+    unlinkActionText: {
+        fontSize: 7,
+        fontWeight: '900',
+        color: '#FF5252',
         letterSpacing: 1,
     },
 
+    microMetricsRow: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        backgroundColor: 'rgba(255,255,255,0.02)',
+        borderRadius: 8,
+        padding: 10,
+        marginBottom: 12,
+    },
+    microMetric: {
+        alignItems: 'center',
+        flex: 1,
+    },
+    microMetricLabel: {
+        fontSize: 6,
+        fontWeight: '900',
+        color: 'rgba(255,255,255,0.2)',
+        letterSpacing: 1,
+        marginBottom: 2,
+    },
+    microMetricVal: {
+        fontSize: 10,
+        fontWeight: '900',
+        color: '#fff',
+    },
+    metricDivider: {
+        width: 1,
+        height: 12,
+        backgroundColor: 'rgba(255,255,255,0.05)',
+    },
     miniTaskPercent: {
         fontSize: 9,
         fontWeight: '900',
@@ -1151,8 +1365,89 @@ const styles = StyleSheet.create({
         alignItems: 'center',
         justifyContent: 'center',
     },
+    deploymentHeaderRow: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 8,
+    },
+    compactMissionFooter: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        paddingTop: 12,
+        marginTop: 12,
+        borderTopWidth: 1,
+        borderTopColor: 'rgba(255,255,255,0.05)',
+    },
+    statusPillGroup: {
+        flexDirection: 'row',
+        gap: 8,
+    },
+    compactPill: {
+        backgroundColor: 'rgba(255,255,255,0.02)',
+        paddingHorizontal: 6,
+        paddingVertical: 4,
+        borderRadius: 4,
+        alignItems: 'center',
+    },
+    compactPillLabel: {
+        fontSize: 5,
+        fontWeight: '900',
+        color: 'rgba(255,255,255,0.2)',
+        letterSpacing: 1,
+    },
+    compactPillVal: {
+        fontSize: 8,
+        fontWeight: '900',
+        color: '#fff',
+    },
+    compactProgressSection: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 10,
+        flex: 1,
+        justifyContent: 'flex-end',
+    },
+    slimProgressBarTrack: {
+        height: 2,
+        backgroundColor: 'rgba(255,255,255,0.05)',
+        width: 80,
+        borderRadius: 1,
+        overflow: 'hidden',
+    },
+    slimProgressBarFill: {
+        height: '100%',
+        borderRadius: 1,
+    },
+    compactProgressText: {
+        fontSize: 8,
+        fontWeight: '900',
+        color: 'rgba(255,255,255,0.4)',
+        letterSpacing: 1,
+    },
     activityContent: {
         marginTop: 10,
+    },
+    combinedSystemGraphWrapper: {
+        marginBottom: 16,
+        backgroundColor: 'rgba(255,255,255,0.01)',
+        borderRadius: 12,
+        padding: 8,
+        borderWidth: 1,
+        borderColor: 'rgba(255,255,255,0.03)',
+    },
+    combinedGraphHeader: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 6,
+        marginBottom: 8,
+        paddingLeft: 4,
+    },
+    combinedGraphLabelText: {
+        fontSize: 7,
+        fontWeight: '900',
+        color: 'rgba(255,255,255,0.3)',
+        letterSpacing: 1.5,
     },
     graphWrapper: {
         marginBottom: 10,
@@ -1186,7 +1481,6 @@ const styles = StyleSheet.create({
         fontSize: 6,
         fontWeight: '900',
         color: 'rgba(255,255,255,0.2)',
-        marginTop: 4,
     },
     barDateToday: {
         color: '#00E5FF',
