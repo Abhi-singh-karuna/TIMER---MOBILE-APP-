@@ -2235,8 +2235,8 @@ interface TaskListProps {
     categories: Category[];
     selectedDate: Date;
     onDateChange: (date: Date) => void;
-    activeView?: 'timer' | 'task';
-    onViewChange?: (view: 'timer' | 'task') => void;
+    activeView?: 'timer' | 'task' | 'goal';
+    onViewChange?: (view: 'timer' | 'task' | 'goal') => void;
     onSettings?: () => void;
     isPastTasksDisabled?: boolean;
     dailyStartMinutes?: number;
@@ -2259,6 +2259,8 @@ interface TaskListProps {
     timerTextColor?: string;
     /** Slider/button accent colour from Settings (used by full-screen timer slide-to-complete). */
     sliderButtonColor?: string;
+    /** Custom content to render (e.g., Goal Management) instead of the task grid in certain views. */
+    renderCustomContent?: () => React.ReactNode;
 }
 
 export default function TaskList({
@@ -2289,6 +2291,7 @@ export default function TaskList({
     onLiveViewShown,
     timerTextColor = '#FFFFFF',
     sliderButtonColor = '#FFFFFF',
+    renderCustomContent,
 }: TaskListProps) {
     const { width: screenWidth, height: screenHeight } = useWindowDimensions();
     const isLandscape = screenWidth > screenHeight;
@@ -3303,7 +3306,7 @@ export default function TaskList({
                                                             styles.viewToggleBtn,
                                                             activeView === 'timer' && styles.viewToggleBtnActive
                                                         ]}
-                                                        onPress={() => onViewChange('timer')}
+                                                        onPress={() => onViewChange && onViewChange('timer')}
                                                         activeOpacity={0.7}
                                                     >
                                                         <MaterialIcons
@@ -3321,7 +3324,7 @@ export default function TaskList({
                                                             styles.viewToggleBtn,
                                                             activeView === 'task' && styles.viewToggleBtnActive
                                                         ]}
-                                                        onPress={() => onViewChange('task')}
+                                                        onPress={() => onViewChange && onViewChange('task')}
                                                         activeOpacity={0.7}
                                                     >
                                                         <MaterialIcons
@@ -3333,6 +3336,24 @@ export default function TaskList({
                                                             styles.viewToggleText,
                                                             activeView === 'task' && styles.viewToggleTextActive
                                                         ]}>TASK</Text>
+                                                    </TouchableOpacity>
+                                                    <TouchableOpacity
+                                                        style={[
+                                                            styles.viewToggleBtn,
+                                                            activeView === 'goal' && styles.viewToggleBtnActive
+                                                        ]}
+                                                        onPress={() => onViewChange && onViewChange('goal')}
+                                                        activeOpacity={0.7}
+                                                    >
+                                                        <MaterialIcons
+                                                            name="flag"
+                                                            size={14}
+                                                            color={activeView === 'goal' ? '#fff' : 'rgba(255,255,255,0.4)'}
+                                                        />
+                                                        <Text style={[
+                                                            styles.viewToggleText,
+                                                            activeView === 'goal' && styles.viewToggleTextActive
+                                                        ]}>GOAL</Text>
                                                     </TouchableOpacity>
                                                 </View>
                                                 <View style={styles.completionCountBadge}>
@@ -3590,9 +3611,11 @@ export default function TaskList({
                             </View>
                         </View>
 
-                        {/* Right Panel - Task Grid */}
+                        {/* Right Panel - Task Grid or Custom Content */}
                         <View style={styles.rightPanel}>
-                            {showHistoryPanel ? (
+                            {activeView === 'goal' && renderCustomContent ? (
+                                renderCustomContent()
+                            ) : showHistoryPanel ? (
                                 <View style={styles.expandedTakeoverContainer}>
                                     {renderHistoryPanel('landscape')}
                                 </View>
@@ -3729,13 +3752,13 @@ export default function TaskList({
                                             resizeMode="contain"
                                         />
                                     </View>
-                                    <View style={[styles.viewToggleContainer, { flex: 0, width: 148 }]}>
+                                    <View style={[styles.viewToggleContainer, { flex: 0, width: 210 }]}>
                                         <TouchableOpacity
                                             style={[
                                                 styles.viewToggleBtn,
                                                 activeView === 'timer' && styles.viewToggleBtnActive
                                             ]}
-                                            onPress={() => onViewChange('timer')}
+                                            onPress={() => onViewChange && onViewChange('timer')}
                                             activeOpacity={0.7}
                                         >
                                             <MaterialIcons
@@ -3753,7 +3776,7 @@ export default function TaskList({
                                                 styles.viewToggleBtn,
                                                 activeView === 'task' && styles.viewToggleBtnActive
                                             ]}
-                                            onPress={() => onViewChange('task')}
+                                            onPress={() => onViewChange && onViewChange('task')}
                                             activeOpacity={0.7}
                                         >
                                             <MaterialIcons
@@ -3766,14 +3789,34 @@ export default function TaskList({
                                                 activeView === 'task' && styles.viewToggleTextActive
                                             ]}>TASK</Text>
                                         </TouchableOpacity>
+                                        <TouchableOpacity
+                                            style={[
+                                                styles.viewToggleBtn,
+                                                activeView === 'goal' && styles.viewToggleBtnActive
+                                            ]}
+                                            onPress={() => onViewChange && onViewChange('goal')}
+                                            activeOpacity={0.7}
+                                        >
+                                            <MaterialIcons
+                                                name="flag"
+                                                size={14}
+                                                color={activeView === 'goal' ? '#fff' : 'rgba(255,255,255,0.4)'}
+                                            />
+                                            <Text style={[
+                                                styles.viewToggleText,
+                                                activeView === 'goal' && styles.viewToggleTextActive
+                                            ]}>GOAL</Text>
+                                        </TouchableOpacity>
                                     </View>
                                     {/* Completion Count + Notes + Settings + Collapse Button */}
                                     <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-                                        <View style={styles.completionCountBadge}>
-                                            <Text style={styles.completionCountText}>
-                                                {completedCount}/{completedCount + pendingCount + inProgressCount}
-                                            </Text>
-                                        </View>
+                                        {activeView !== 'goal' && (
+                                            <View style={styles.completionCountBadge}>
+                                                <Text style={styles.completionCountText}>
+                                                    {completedCount}/{completedCount + pendingCount + inProgressCount}
+                                                </Text>
+                                            </View>
+                                        )}
 
                                         <NotesIconButton
                                             active={showNotesPanel}
@@ -3813,7 +3856,9 @@ export default function TaskList({
                                 </View>
                             )}
 
-                            {/* 2. Date Controls Row */}
+                            {activeView !== 'goal' && (
+                                <>
+                                    {/* 2. Date Controls Row */}
                             <View style={[styles.dateControlRowPortrait, { marginBottom: isPortraitHeaderExpanded ? 8 : 0 }]}>
                                 <TouchableOpacity
                                     style={styles.dateLandscapeRow}
@@ -4010,88 +4055,98 @@ export default function TaskList({
                                     )}
                                 </>
                             ) : null}
-                        </View>
+                        </>
+                    )}
+                </View>
 
                         {/* Separator */}
-                        <View style={styles.separatorContainer}>
-                            <LinearGradient
-                                colors={['transparent', 'rgba(255,255,255,0.2)', 'transparent']}
-                                start={{ x: 0, y: 0.5 }}
-                                end={{ x: 1, y: 0.5 }}
-                                style={styles.separator}
-                            />
-                        </View>
+                        {activeView !== 'goal' && (
+                            <View style={styles.separatorContainer}>
+                                <LinearGradient
+                                    colors={['transparent', 'rgba(255,255,255,0.2)', 'transparent']}
+                                    start={{ x: 0, y: 0.5 }}
+                                    end={{ x: 1, y: 0.5 }}
+                                    style={styles.separator}
+                                />
+                            </View>
+                        )}
 
-                        <FlatList
-                            data={showHistoryPanel ? [] : filteredTasks}
-                            keyExtractor={(item) => String(item.id)}
-                            renderItem={({ item: task }) => {
-                                // Safety check: skip null/undefined tasks
-                                if (!task || !task.id || !task.forDate) {
-                                    return null;
-                                }
-                                return (
-                                    <View style={{ paddingHorizontal: 16 }}>
-                                        <TaskCard
-                                            key={`${task.id}-${task.forDate}`}
-                                            task={task}
-                                            onToggle={() => onToggleTask(task)}
-                                            onDelete={() => onDeleteTask(task)}
-                                            onEdit={() => onEditTask?.(task)}
-                                            isLandscape={false}
-                                            categories={categories}
-                                            dailyStartMinutes={dailyStartMinutes}
-                                            isPastTasksDisabled={isPastTasksDisabled}
-                                            onOpenMenu={() => {
-                                                setSelectedActionTask(task);
-                                                setActionModalVisible(true);
-                                            }}
-                                            isExpanded={expandedTaskId === task.id}
-                                            onExpand={() => {
-                                                LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
-                                                setExpandedTaskId(expandedTaskId === task.id ? null : task.id);
-                                            }}
-                                            onUpdateComment={onUpdateComment}
-                                            onEditComment={onEditComment}
-                                            onDeleteComment={onDeleteComment}
-                                            onUpdateStages={onUpdateStages}
-                                            quickMessages={quickMessages}
-                                            allTasks={tasks}
-                                            leaveDays={leaveDays}
-                                        />
-                                    </View>
-                                );
-                            }}
-                            ListEmptyComponent={() => (
-                                showHistoryPanel ? (
-                                    <View style={{ paddingHorizontal: 16, paddingTop: 8, paddingBottom: 16, flex: 1 }}>
-                                        {renderHistoryPanel('portrait')}
-                                    </View>
-                                ) : (
-                                    <View style={{ gap: 16, paddingHorizontal: 16 }}>
-                                        {[1, 2].map(i => (
-                                            <TouchableOpacity
-                                                key={`p${i}`}
-                                                style={[styles.taskCard, styles.placeholderCard]}
-                                                onPress={onAddTask}
-                                                activeOpacity={0.7}
-                                            >
-                                                <View style={styles.placeholderContent}>
-                                                    <MaterialIcons name="add-task" size={32} color="rgba(255,255,255,0.2)" />
-                                                    <Text style={styles.placeholderText}>NEW TASK</Text>
-                                                </View>
-                                            </TouchableOpacity>
-                                        ))}
-                                    </View>
-                                )
-                            )}
-                            contentContainerStyle={[styles.scrollContent, { paddingHorizontal: 0 }]}
-                            showsVerticalScrollIndicator={false}
-                            keyboardShouldPersistTaps="handled"
-                        />
+                        {activeView === 'goal' && renderCustomContent ? (
+                            <View style={{ flex: 1, marginTop: 15 }}>
+                                {renderCustomContent()}
+                            </View>
+                        ) : (
+                            <FlatList
+                                data={showHistoryPanel ? [] : filteredTasks}
+                                keyExtractor={(item) => String(item.id)}
+                                renderItem={({ item: task }) => {
+                                    // Safety check: skip null/undefined tasks
+                                    if (!task || !task.id || !task.forDate) {
+                                        return null;
+                                    }
+                                    return (
+                                        <View style={{ paddingHorizontal: 16 }}>
+                                            <TaskCard
+                                                key={`${task.id}-${task.forDate}`}
+                                                task={task}
+                                                onToggle={() => onToggleTask(task)}
+                                                onDelete={() => onDeleteTask(task)}
+                                                onEdit={() => onEditTask?.(task)}
+                                                isLandscape={false}
+                                                categories={categories}
+                                                dailyStartMinutes={dailyStartMinutes}
+                                                isPastTasksDisabled={isPastTasksDisabled}
+                                                onOpenMenu={() => {
+                                                    setSelectedActionTask(task);
+                                                    setActionModalVisible(true);
+                                                }}
+                                                isExpanded={expandedTaskId === task.id}
+                                                onExpand={() => {
+                                                    LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+                                                    setExpandedTaskId(expandedTaskId === task.id ? null : task.id);
+                                                }}
+                                                onUpdateComment={onUpdateComment}
+                                                onEditComment={onEditComment}
+                                                onDeleteComment={onDeleteComment}
+                                                onUpdateStages={onUpdateStages}
+                                                quickMessages={quickMessages}
+                                                allTasks={tasks}
+                                                leaveDays={leaveDays}
+                                            />
+                                        </View>
+                                    );
+                                }}
+                                ListEmptyComponent={() => (
+                                    showHistoryPanel ? (
+                                        <View style={{ paddingHorizontal: 16, paddingTop: 8, paddingBottom: 16, flex: 1 }}>
+                                            {renderHistoryPanel('portrait')}
+                                        </View>
+                                    ) : (
+                                        <View style={{ gap: 16, paddingHorizontal: 16 }}>
+                                            {[1, 2].map(i => (
+                                                <TouchableOpacity
+                                                    key={`p${i}`}
+                                                    style={[styles.taskCard, styles.placeholderCard]}
+                                                    onPress={onAddTask}
+                                                    activeOpacity={0.7}
+                                                >
+                                                    <View style={styles.placeholderContent}>
+                                                        <MaterialIcons name="add-task" size={32} color="rgba(255,255,255,0.2)" />
+                                                        <Text style={styles.placeholderText}>NEW TASK</Text>
+                                                    </View>
+                                                </TouchableOpacity>
+                                            ))}
+                                        </View>
+                                    )
+                                )}
+                                contentContainerStyle={[styles.scrollContent, { paddingHorizontal: 0 }]}
+                                showsVerticalScrollIndicator={false}
+                                keyboardShouldPersistTaps="handled"
+                            />
+                        )}
 
                         {/* FAB */}
-                        {!showHistoryPanel && (
+                        {!showHistoryPanel && activeView !== 'goal' && (
                             <TouchableOpacity
                                 style={[styles.addButton, !isLandscape && styles.addButtonPortrait]}
                                 onPress={onAddTask}

@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { LogBox, AppState, AppStateStatus, LayoutAnimation, UIManager, Platform, Keyboard, TouchableWithoutFeedback, View, Pressable } from 'react-native';
+import { LogBox, AppState, AppStateStatus, LayoutAnimation, UIManager, Platform, Keyboard, TouchableWithoutFeedback, View, Pressable, Dimensions } from 'react-native';
 import * as Notifications from 'expo-notifications';
 import { StatusBar } from 'expo-status-bar';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
@@ -24,10 +24,12 @@ import TaskComplete from './src/screens/Timer/TaskComplete';
 import SettingsScreen from './src/screens/Timer/Settings';
 import AddTimerModal from './src/components/AddTimerModal';
 import AddTaskModal from './src/components/AddTaskModal';
+import AddGoalModal from './src/components/GoalManagement/AddGoalModal';
 import DeleteModal from './src/components/DeleteModal';
-import { Timer, Task, TaskStage, Category, QuickMessage, DEFAULT_CATEGORIES, DEFAULT_QUICK_MESSAGES, CATEGORIES_KEY, QUICK_MESSAGES_KEY, LANDSCAPE_PRESETS, Recurrence, SyncMode, StageStatus } from './src/constants/data';
+import GoalManagement from './src/screens/Timer/GoalManagement';
+import { Timer, Task, TaskStage, Category, QuickMessage, DEFAULT_CATEGORIES, DEFAULT_QUICK_MESSAGES, CATEGORIES_KEY, QUICK_MESSAGES_KEY, LANDSCAPE_PRESETS, Recurrence, SyncMode, StageStatus, Goal, GoalType } from './src/constants/data';
 import { Alert } from 'react-native';
-import { loadTimers, saveTimers } from './src/utils/storage';
+import { loadTimers, saveTimers, loadGoals, saveGoals } from './src/utils/storage';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import {
   requestNotificationPermissions,
@@ -216,10 +218,16 @@ export default function App() {
   const [timerToEdit, setTimerToEdit] = useState<Timer | null>(null);
   const [isPastTimersDisabled, setIsPastTimersDisabled] = useState(false);
   const [isPastTasksDisabled, setIsPastTasksDisabled] = useState(false);
-  const [activeView, setActiveViewState] = useState<'timer' | 'task'>('timer');
+  const [activeView, setActiveViewState] = useState<'timer' | 'task' | 'goal'>('timer');
   const [shouldShowLiveView, setShouldShowLiveView] = useState(false);
   const [quickMessages, setQuickMessages] = useState<QuickMessage[]>(DEFAULT_QUICK_MESSAGES);
   const [timeOfDayBackgroundConfig, setTimeOfDayBackgroundConfig] = useState<TimeOfDayBackgroundConfig>(DEFAULT_TIME_OF_DAY_BACKGROUND_CONFIG);
+
+  // Goal state
+  const [goals, setGoals] = useState<Goal[]>([]);
+  const [addGoalModalVisible, setAddGoalModalVisible] = useState(false);
+  const [goalToEdit, setGoalToEdit] = useState<Goal | null>(null);
+  const [addGoalParentId, setAddGoalParentId] = useState<string | null>(null);
 
   // Enable LayoutAnimation on Android
   if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
@@ -227,7 +235,7 @@ export default function App() {
   }
 
   // Smooth view change with animation
-  const setActiveView = (view: 'timer' | 'task') => {
+  const setActiveView = (view: 'timer' | 'task' | 'goal') => {
     LayoutAnimation.configureNext({
       duration: 250,
       create: { type: LayoutAnimation.Types.easeInEaseOut, property: LayoutAnimation.Properties.opacity },
@@ -416,6 +424,10 @@ export default function App() {
           saveTasks(norm.tasks);
         }
       }
+
+      // Load goals
+      const storedGoals = await loadGoals();
+      setGoals(storedGoals);
 
       // Load/seed time-of-day background slots (single source of truth)
       const cfg = await loadOrSeedTimeOfDayBackgroundConfig();
@@ -1604,6 +1616,112 @@ export default function App() {
     : 0;
 
 
+  // --- GOAL HANDLERS ---
+  const handleAddGoal = async (goalData: Partial<Goal>) => {
+    const now = new Date().toISOString();
+    const newGoal: Goal = {
+      id: Date.now().toString(),
+      title: goalData.title || '',
+      parentId: goalData.parentId || null,
+      type: goalData.type || 'goal',
+      targetSettings: goalData.targetSettings,
+      taskIds: goalData.taskIds,
+      taskId: goalData.taskId,
+      startDate: goalData.startDate,
+      endDate: goalData.endDate,
+      progress: 0,
+      createdAt: now,
+      updatedAt: now,
+    };
+    const updated = [...goals, newGoal];
+    setGoals(updated);
+    await saveGoals(updated);
+    setAddGoalModalVisible(false);
+  };
+
+  const handleUpdateGoal = async (id: string, goalData: Partial<Goal>) => {
+    const now = new Date().toISOString();
+    const updated = goals.map(g => g.id === id ? { ...g, ...goalData, updatedAt: now } : g);
+    setGoals(updated);
+    await saveGoals(updated);
+    setAddGoalModalVisible(false);
+    setGoalToEdit(null);
+  };
+
+  const handleDeleteGoal = async (id: string) => {
+    // Delete goal and all its children recursively
+    const idsToDelete = new Set<string>([id]);
+    const findChildren = (parentId: string) => {
+      goals.forEach(g => {
+        if (g.parentId === parentId) {
+          idsToDelete.add(g.id);
+          findChildren(g.id);
+        }
+      });
+    };
+    findChildren(id);
+
+    const updated = goals.filter(g => !idsToDelete.has(g.id));
+    setGoals(updated);
+    await saveGoals(updated);
+  };
+
+  const handleUpdateGoalProgress = async (id: string, progress: number) => {
+    const now = new Date().toISOString();
+    let updatedGoals = goals.map(g => g.id === id ? { ...g, progress, updatedAt: now } : g);
+
+    // Aggregate progress up the hierarchy
+    const updateParentProgress = (parentId: string | null) => {
+      if (!parentId) return;
+      const children = updatedGoals.filter(g => g.parentId === parentId);
+      const avgProgress = children.reduce((acc, child) => acc + child.progress, 0) / children.length;
+      const parent = updatedGoals.find(g => g.id === parentId);
+      if (parent) {
+        updatedGoals = updatedGoals.map(g => g.id === parentId ? { ...g, progress: avgProgress, updatedAt: now } : g);
+        updateParentProgress(parent.parentId);
+      }
+    };
+
+    const updatedGoal = updatedGoals.find(g => g.id === id);
+    if (updatedGoal) {
+      updateParentProgress(updatedGoal.parentId);
+    }
+
+    setGoals(updatedGoals);
+    await saveGoals(updatedGoals);
+  };
+
+  const handleUnlinkTask = async (goalId: string, taskId: number) => {
+    const idsToUnlink = new Set<string>([goalId]);
+    const findChildren = (parentId: string) => {
+      goals.forEach(g => {
+        if (g.parentId === parentId) {
+          idsToUnlink.add(g.id);
+          findChildren(g.id);
+        }
+      });
+    };
+    findChildren(goalId);
+
+    const updated = goals.map(g => {
+      if (idsToUnlink.has(g.id)) {
+        const newTaskIds = (g.taskIds || []).filter(id => id !== taskId);
+        const newGoal = {
+          ...g,
+          taskIds: newTaskIds,
+          updatedAt: new Date().toISOString()
+        };
+        if (g.taskId === taskId) {
+          delete newGoal.taskId;
+        }
+        return newGoal;
+      }
+      return g;
+    });
+    setGoals(updated);
+    await saveGoals(updated);
+  };
+
   const renderScreen = () => {
     switch (currentScreen) {
       case 'active':
@@ -1735,6 +1853,66 @@ export default function App() {
               sliderButtonColor={sliderButtonColor}
             />
           );
+        } else if (activeView === 'goal') {
+          return (
+            <TaskList
+              tasks={tasks}
+              onAddTask={() => setAddTaskModalVisible(true)}
+              onToggleTask={handleToggleTask}
+              onDeleteTask={handleDeleteTask}
+              onEditTask={handleEditTask}
+              onUpdateComment={handleUpdateComment}
+              onEditComment={handleEditComment}
+              onDeleteComment={handleDeleteComment}
+              onUpdateStages={handleUpdateStages}
+              onPinTask={handlePinTask}
+              onDisableTask={handleDisableTask}
+              categories={categories}
+              selectedDate={selectedDate}
+              onDateChange={setSelectedDate}
+              activeView={activeView}
+              onViewChange={setActiveView}
+              onSettings={() => setCurrentScreen('settings')}
+              isPastTasksDisabled={isPastTasksDisabled}
+              dailyStartMinutes={dailyStartMinutes}
+              quickMessages={quickMessages}
+              timeOfDaySlots={slotsForDate(timeOfDayBackgroundConfig, selectedDate)}
+              runningTimer={timers.find(t => t.status === 'Running') ?? null}
+              onOpenActiveTimer={(timer) => {
+                if (timer) {
+                  setActiveTimer(timer);
+                  setActiveView('timer');
+                  setCurrentScreen('active');
+                } else {
+                  setActiveView('timer');
+                }
+              }}
+              initialShowLive={shouldShowLiveView}
+              onLiveViewShown={() => setShouldShowLiveView(false)}
+              timerTextColor={timerTextColor}
+              sliderButtonColor={sliderButtonColor}
+              renderCustomContent={() => (
+                <GoalManagement
+                  goals={goals}
+                  tasks={tasks}
+                  isLandscape={Dimensions.get('window').width > Dimensions.get('window').height}
+                  onAddGoal={(parentId) => {
+                    setAddGoalParentId(parentId);
+                    setGoalToEdit(null);
+                    setAddGoalModalVisible(true);
+                  }}
+                  onEditGoal={(goal) => {
+                    setGoalToEdit(goal);
+                    setAddGoalParentId(goal.parentId);
+                    setAddGoalModalVisible(true);
+                  }}
+                  onDeleteGoal={handleDeleteGoal}
+                  onUpdateProgress={handleUpdateGoalProgress}
+                  onUnlinkTask={handleUnlinkTask}
+                />
+              )}
+            />
+          );
         }
 
       default:
@@ -1846,6 +2024,20 @@ export default function App() {
               initialDate={getLogicalDate(selectedDate, dailyStartMinutes)}
               dailyStartMinutes={dailyStartMinutes}
               isPastTasksDisabled={isPastTasksDisabled}
+            />
+
+            <AddGoalModal
+              visible={addGoalModalVisible}
+              onCancel={() => {
+                setAddGoalModalVisible(false);
+                setGoalToEdit(null);
+              }}
+              onAdd={handleAddGoal}
+              onUpdate={handleUpdateGoal}
+              goalToEdit={goalToEdit}
+              parentId={addGoalParentId}
+              tasks={tasks}
+              categories={categories}
             />
 
             <StatusBar style="light" />

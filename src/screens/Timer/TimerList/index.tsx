@@ -106,8 +106,8 @@ interface TimerListProps {
     soundRepetition?: number;
     isPastTimersDisabled: boolean;
     categories: Category[];
-    activeView?: 'timer' | 'task';
-    onViewChange?: (view: 'timer' | 'task') => void;
+    activeView?: 'timer' | 'task' | 'goal';
+    onViewChange?: (view: 'timer' | 'task' | 'goal') => void;
     /** Called when the live button is clicked - should switch to task view and open live view */
     onRequestLiveView?: () => void;
 }
@@ -162,7 +162,7 @@ export default function TimerList({
     const [internalSelectedDate, setInternalSelectedDate] = useState(propSelectedDate);
     const slideAnim = useRef(new Animated.Value(0)).current;
     const fadeAnim = useRef(new Animated.Value(1)).current;
-    const toggleSlideAnim = useRef(new Animated.Value(activeView === 'task' ? 1 : 0)).current;
+    const toggleSlideAnim = useRef(new Animated.Value(activeView === 'timer' ? 0 : activeView === 'task' ? 1 : 2)).current;
     const [toggleContainerWidth, setToggleContainerWidth] = useState(0);
     const [completedPopupTimer, setCompletedPopupTimer] = useState<Timer | null>(null);
     const prevTimersRef = React.useRef<Timer[]>([]);
@@ -185,7 +185,7 @@ export default function TimerList({
     // Reset toggle slider position when orientation changes
     // Without this, the slider carries over its landscape offset into portrait, making it misaligned
     useEffect(() => {
-        toggleSlideAnim.setValue(activeView === 'task' ? 1 : 0);
+        toggleSlideAnim.setValue(activeView === 'timer' ? 0 : activeView === 'task' ? 1 : 2);
     }, [isLandscape, activeView]);
 
     // Reset measured width when orientation changes so onLayout recalculates
@@ -693,8 +693,8 @@ export default function TimerList({
                                                         {
                                                             transform: [{
                                                                 translateX: toggleSlideAnim.interpolate({
-                                                                    inputRange: [0, 1],
-                                                                    outputRange: [0, Math.max(54, toggleContainerWidth / 2)]
+                                                                    inputRange: [0, 1, 2],
+                                                                    outputRange: [0, toggleContainerWidth / 3, (toggleContainerWidth * 2) / 3]
                                                                 })
                                                             }]
                                                         }
@@ -709,7 +709,7 @@ export default function TimerList({
                                                             friction: 8,
                                                             tension: 100,
                                                         }).start();
-                                                        onViewChange('timer');
+                                                        if (onViewChange) onViewChange('timer');
                                                     }}
                                                     activeOpacity={0.7}
                                                 >
@@ -732,7 +732,7 @@ export default function TimerList({
                                                             friction: 8,
                                                             tension: 100,
                                                         }).start();
-                                                        onViewChange('task');
+                                                        if (onViewChange) onViewChange('task');
                                                     }}
                                                     activeOpacity={0.7}
                                                 >
@@ -745,6 +745,29 @@ export default function TimerList({
                                                         styles.viewToggleText,
                                                         activeView === 'task' && styles.viewToggleTextActive
                                                     ]}>TASK</Text>
+                                                </TouchableOpacity>
+                                                <TouchableOpacity
+                                                    style={styles.viewToggleBtn}
+                                                    onPress={() => {
+                                                        Animated.spring(toggleSlideAnim, {
+                                                            toValue: 2,
+                                                            useNativeDriver: true,
+                                                            friction: 8,
+                                                            tension: 100,
+                                                        }).start();
+                                                        if (onViewChange) onViewChange('goal');
+                                                    }}
+                                                    activeOpacity={0.7}
+                                                >
+                                                    <MaterialIcons
+                                                        name="flag"
+                                                        size={14}
+                                                        color={activeView === 'goal' ? '#fff' : 'rgba(255,255,255,0.4)'}
+                                                    />
+                                                    <Text style={[
+                                                        styles.viewToggleText,
+                                                        activeView === 'goal' && styles.viewToggleTextActive
+                                                    ]}>GOAL</Text>
                                                 </TouchableOpacity>
                                             </View>
                                             <View style={styles.completionCountBadge}>
@@ -985,7 +1008,7 @@ export default function TimerList({
                                         />
                                     </View>
                                     <View
-                                        style={[styles.viewToggleContainer, { flex: 0, width: 148 }]}
+                                        style={[styles.viewToggleContainer, { flex: 0, width: 210 }]}
                                         onLayout={(e) => setToggleContainerWidth(e.nativeEvent.layout.width)}
                                     >
                                         <Animated.View
@@ -994,8 +1017,8 @@ export default function TimerList({
                                                 {
                                                     transform: [{
                                                         translateX: toggleSlideAnim.interpolate({
-                                                            inputRange: [0, 1],
-                                                            outputRange: [0, Math.max(68, toggleContainerWidth / 2)]
+                                                            inputRange: [0, 1, 2],
+                                                            outputRange: [0, toggleContainerWidth / 3, (toggleContainerWidth * 2) / 3]
                                                         })
                                                     }]
                                                 }
@@ -1010,7 +1033,7 @@ export default function TimerList({
                                                     friction: 8,
                                                     tension: 100,
                                                 }).start();
-                                                onViewChange('timer');
+                                                if (onViewChange) onViewChange('timer');
                                             }}
                                             activeOpacity={0.7}
                                         >
@@ -1033,7 +1056,7 @@ export default function TimerList({
                                                     friction: 8,
                                                     tension: 100,
                                                 }).start();
-                                                onViewChange('task');
+                                                if (onViewChange) onViewChange('task');
                                             }}
                                             activeOpacity={0.7}
                                         >
@@ -1046,6 +1069,29 @@ export default function TimerList({
                                                 styles.viewToggleText,
                                                 activeView === 'task' && styles.viewToggleTextActive
                                             ]}>TASK</Text>
+                                        </TouchableOpacity>
+                                        <TouchableOpacity
+                                            style={styles.viewToggleBtn}
+                                            onPress={() => {
+                                                Animated.spring(toggleSlideAnim, {
+                                                    toValue: 2,
+                                                    useNativeDriver: true,
+                                                    friction: 8,
+                                                    tension: 100,
+                                                }).start();
+                                                if (onViewChange) onViewChange('goal');
+                                            }}
+                                            activeOpacity={0.7}
+                                        >
+                                            <MaterialIcons
+                                                name="flag"
+                                                size={14}
+                                                color={activeView === 'goal' ? '#fff' : 'rgba(255,255,255,0.4)'}
+                                            />
+                                            <Text style={[
+                                                styles.viewToggleText,
+                                                activeView === 'goal' && styles.viewToggleTextActive
+                                            ]}>GOAL</Text>
                                         </TouchableOpacity>
                                     </View>
                                      {/* Completion Count + Notes + Settings + Expand */}

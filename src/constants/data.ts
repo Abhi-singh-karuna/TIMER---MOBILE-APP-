@@ -260,3 +260,27 @@ export const LANDSCAPE_PRESETS = [
     text: '#FFFFFF'
   },
 ];
+
+export type GoalType = 'goal' | 'category' | 'task';
+
+export interface GoalTargetSettings {
+  hoursPerDay: number;
+  daysPerWeek: number[]; // 0–6 (Sun–Sat)
+  monthlyGoal: string; // e.g. "100 hours" or "Read 5 books"
+}
+
+export interface Goal {
+  id: string;
+  title: string;
+  description?: string;
+  parentId: string | null;
+  type: GoalType;
+  targetSettings?: GoalTargetSettings;
+  taskIds?: number[]; // Links to multiple tasks
+  taskId?: number;    // Backward compatibility for single task link
+  progress: number;
+  startDate?: string; // YYYY-MM-DD
+  endDate?: string;   // YYYY-MM-DD
+  createdAt: string;
+  updatedAt: string;
+}
