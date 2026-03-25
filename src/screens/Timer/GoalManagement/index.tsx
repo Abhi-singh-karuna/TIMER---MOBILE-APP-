@@ -77,6 +77,7 @@ export default function GoalManagement({
     // Notes state
     const [showNotesPanel, setShowNotesPanel] = useState(false);
     const [selectedDateHasNote, setSelectedDateHasNote] = useState(false);
+    const [isPortraitHeaderExpanded, setIsPortraitHeaderExpanded] = useState(false); // Default collapsed
 
     // Get logical date for notes tracking
     const selectedLogical = useMemo(() => {
@@ -88,7 +89,7 @@ export default function GoalManagement({
     const NAV_TABS = [
         { key: 'timer' as const, icon: 'timer',     label: 'TIMER' },
         { key: 'task'  as const, icon: 'check-box', label: 'TASK'  },
-        { key: 'goal'  as const, icon: 'flag',      label: 'GOAL'  },
+        { key: 'goal'  as const, icon: 'track-changes', label: 'GOAL'  },
     ];
     const NAV_LOOP_COPIES = 7;
     const navTabCount = NAV_TABS.length;
@@ -254,6 +255,75 @@ export default function GoalManagement({
         };
         checkNote();
     }, [selectedLogical]);
+
+    const renderInfiniteViewToggle = (isPortrait: boolean = false) => {
+        return (
+            <Animated.View
+                style={[
+                    styles.viewToggleContainerCompact,
+                    isToggleInteracting && styles.viewToggleContainerCompactInteracting,
+                    {
+                        transform: [{
+                            scale: toggleInteractionAnim.interpolate({
+                                inputRange: [0, 1],
+                                outputRange: [1, 1.015],
+                            }),
+                        }],
+                    },
+                ]}
+            >
+                {NAV_TABS.map((tab, idx) => {
+                    const isActive = currentActiveView === tab.key;
+                    return (
+                        <TouchableOpacity
+                            key={tab.key}
+                            style={[
+                                styles.viewToggleBtnCompact,
+                                isActive && styles.viewToggleBtnCompactActive
+                            ]}
+                            onPress={() => {
+                                const centeredLoopIndex = (navMiddleCopyIndex * navTabCount) + idx;
+                                setActiveLoopIndex(centeredLoopIndex);
+                                triggerSelectionHaptic();
+                                onViewChange && onViewChange(tab.key);
+                            }}
+                            activeOpacity={0.75}
+                        >
+                            <Animated.View
+                                style={[
+                                    styles.viewToggleBtnInner,
+                                    {
+                                        transform: [
+                                            { scale: tabContainerScale[idx] },
+                                            { translateY: tabContainerLift[idx] },
+                                        ],
+                                    },
+                                ]}
+                            >
+                                <Animated.View style={{ transform: [{ scale: tabIconScale[idx] }] }}>
+                                    <MaterialIcons
+                                        name={tab.icon as any}
+                                        size={13}
+                                        color={isActive ? '#000' : 'rgba(255,255,255,0.45)'}
+                                    />
+                                </Animated.View>
+                                <Animated.Text
+                                    style={[
+                                        styles.viewToggleTextCompact,
+                                        isActive && styles.viewToggleTextActiveCompact,
+                                        { opacity: tabLabelOpacity[idx] },
+                                    ]}
+                                    numberOfLines={1}
+                                >
+                                    {tab.label}
+                                </Animated.Text>
+                            </Animated.View>
+                        </TouchableOpacity>
+                    );
+                })}
+            </Animated.View>
+        );
+    };
 
 
 
@@ -950,185 +1020,88 @@ export default function GoalManagement({
     }, [goals]);
     const goalHeaderStats = useMemo(() => ({
         goalCount: rootGoals.length || 3,
-        totalHours: '42.0H', // dummy analytics as requested
+        totalHours: '42.0H', // dummy analytics
     }), [rootGoals.length]);
 
-    const scrollTopPad = isLandscape ? (insets.top + 12) : (insets.top + 126);
+    // Pad the scroll content so it starts below our absolute header
+    const scrollTopPad = isLandscape ? (insets.top + 100) : (insets.top + 145);
 
     return (
         <View style={styles.container}>
-            {!isLandscape && (
-                <View style={styles.premiumHeaderWrapper}>
-                    {/* Status Bar Mask to hide content behind system icons */}
-                    <View style={[styles.statusBarMask, { height: insets.top }]} />
-                    
-                    {/* Smooth Gradient Fade */}
-                    <LinearGradient
-                        colors={['#000', 'rgba(0,0,0,0.8)', 'transparent']}
-                        style={styles.headerGradientFade}
-                    />
-
-                    <View style={[styles.premiumHeaderCapsuleContainer, { top: insets.top + 10 }]}>
-                        <BlurView intensity={80} tint="dark" style={styles.premiumHeaderCapsule}>
-                            <View style={styles.goalHeaderTopRow}>
-                                {/* Logo Section */}
-                                <View style={styles.headerLogoContainer}>
-                                    <Image
-                                        source={APP_LOGO}
-                                        style={styles.headerLogo}
-                                        resizeMode="contain"
-                                    />
-                                </View>
-
-                                {/* Navigation Toggle — Scalable Animated Segmented Control */}
-                                <View style={styles.headerToggleContainer}>
-                                    <Animated.View
-                                        style={[
-                                            styles.viewToggleContainerCompact,
-                                            isToggleInteracting && styles.viewToggleContainerCompactInteracting,
-                                            {
-                                                transform: [{
-                                                    scale: toggleInteractionAnim.interpolate({
-                                                        inputRange: [0, 1],
-                                                        outputRange: [1, 1.015],
-                                                    }),
-                                                }],
-                                            },
-                                        ]}
-                                        onLayout={(e) => setContainerWidth(e.nativeEvent.layout.width)}
-                                    >
-                                        <ScrollView
-                                            ref={toggleScrollRef}
-                                            horizontal
-                                            style={styles.viewToggleScroll}
-                                            contentContainerStyle={[
-                                                styles.viewToggleScrollContent,
-                                                { paddingHorizontal: headerToggleSideInset },
-                                            ]}
-                                            showsHorizontalScrollIndicator={false}
-                                            decelerationRate="fast"
-                                            bounces={false}
-                                            snapToInterval={headerToggleItemWidth}
-                                            snapToAlignment="start"
-                                            disableIntervalMomentum
-                                            onTouchStart={() => setIsToggleInteracting(true)}
-                                            onTouchEnd={() => setIsToggleInteracting(false)}
-                                            onTouchCancel={() => setIsToggleInteracting(false)}
-                                            onScrollBeginDrag={() => setIsToggleInteracting(true)}
-                                            onMomentumScrollBegin={() => setIsToggleInteracting(true)}
-                                            onScrollEndDrag={(e) => {
-                                                setIsToggleInteracting(false);
-                                                settleInfiniteToggle(e.nativeEvent.contentOffset.x);
-                                            }}
-                                            onMomentumScrollEnd={(e) => {
-                                                setIsToggleInteracting(false);
-                                                settleInfiniteToggle(e.nativeEvent.contentOffset.x);
-                                            }}
-                                        >
-                                            {loopedNavTabs.map((tab) => {
-                                                const isActive = activeLoopIndex === tab.loopIndex;
-                                                return (
-                                                    <TouchableOpacity
-                                                        key={`${tab.key}-${tab.loopIndex}`}
-                                                        style={[
-                                                            styles.viewToggleBtnCompact,
-                                                            { width: headerToggleItemWidth },
-                                                            isActive && styles.viewToggleBtnCompactActive
-                                                        ]}
-                                                        onPress={() => {
-                                                            setActiveLoopIndex(tab.loopIndex);
-                                                            centerToggleLoopIndex(tab.loopIndex, true);
-                                                            triggerSelectionHaptic();
-                                                            onViewChange && onViewChange(tab.key);
-                                                        }}
-                                                        activeOpacity={0.75}
-                                                    >
-                                                        <Animated.View
-                                                            style={[
-                                                                styles.viewToggleBtnInner,
-                                                                {
-                                                                    transform: [
-                                                                        { scale: tabContainerScale[tab.realIndex] },
-                                                                        { translateY: tabContainerLift[tab.realIndex] },
-                                                                    ],
-                                                                },
-                                                            ]}
-                                                        >
-                                                            <Animated.View style={{ transform: [{ scale: tabIconScale[tab.realIndex] }] }}>
-                                                                <MaterialIcons
-                                                                    name={tab.icon as any}
-                                                                    size={13}
-                                                                    color={isActive ? '#000' : 'rgba(255,255,255,0.45)'}
-                                                                />
-                                                            </Animated.View>
-                                                            <Animated.Text
-                                                                style={[
-                                                                    styles.viewToggleTextCompact,
-                                                                    isActive && styles.viewToggleTextActiveCompact,
-                                                                    { opacity: tabLabelOpacity[tab.realIndex] },
-                                                                ]}
-                                                                numberOfLines={1}
-                                                            >
-                                                                {tab.label}
-                                                            </Animated.Text>
-                                                        </Animated.View>
-                                                    </TouchableOpacity>
-                                                );
-                                            })}
-                                        </ScrollView>
-                                    </Animated.View>
-                                </View>
-
-                                {/* Header Actions: Notes & Settings - Black & White Theme */}
-                                <View style={styles.headerActionsContainer}>
-                                    <TouchableOpacity
-                                        style={[styles.headerActionBtn, selectedDateHasNote && styles.headerActionBtnActiveBW]}
-                                        onPress={() => {
-                                            LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
-                                            setShowNotesPanel(true);
-                                        }}
-                                        activeOpacity={0.7}
-                                    >
-                                        <MaterialIcons 
-                                            name={selectedDateHasNote ? "event-note" : "note-add"} 
-                                            size={18} 
-                                            color={selectedDateHasNote ? "#fff" : "rgba(255,255,255,0.6)"} 
-                                        />
-                                    </TouchableOpacity>
-
-                                    <TouchableOpacity
-                                        style={styles.headerActionBtn}
-                                        onPress={onSettings}
-                                        activeOpacity={0.7}
-                                    >
-                                        <MaterialIcons name="settings" size={18} color="rgba(255,255,255,0.6)" />
-                                    </TouchableOpacity>
-                                </View>
+            {/* Unified Fixed Header Wrapper */}
+            <View style={styles.premiumHeaderWrapper}>
+                <View style={[styles.statusBarMask, { height: insets.top }]} />
+                <View style={[styles.headerCardPortrait, { marginTop: isLandscape ? 0 : 10, borderRadius: isLandscape ? 0 : 24, backgroundColor: isLandscape ? 'transparent' : 'rgba(10, 10, 12, 0.85)', borderWidth: isLandscape ? 0 : 1 }]}>
+                    {/* 1. View Toggle & Collapse Row */}
+                    <View style={styles.toggleWithCountRowPortrait}>
+                        <View style={styles.toggleClusterPortrait}>
+                            <View style={styles.portraitLogoWrapper}>
+                                <Image source={APP_LOGO} style={styles.portraitLogo} resizeMode="contain" />
                             </View>
-
-                            <View style={styles.goalHeaderMetricsRow}>
-                                <View style={styles.goalHeaderMetricCard}>
-                                    <Text style={styles.goalHeaderMetricLabel}>GOALS</Text>
-                                    <Text style={styles.goalHeaderMetricValue}>{goalHeaderStats.goalCount}</Text>
-                                </View>
-                                <View style={styles.goalHeaderMetricCard}>
-                                    <Text style={styles.goalHeaderMetricLabel}>DURATION</Text>
-                                    <Text style={styles.goalHeaderMetricValue}>{goalHeaderStats.totalHours}</Text>
-                                </View>
-                            </View>
-                        </BlurView>
-
-                        <View style={styles.goalHeaderDividerContainer}>
-                            <LinearGradient
-                                colors={['transparent', 'rgba(255,255,255,0.22)', 'transparent']}
-                                start={{ x: 0, y: 0.5 }}
-                                end={{ x: 1, y: 0.5 }}
-                                style={styles.goalHeaderDivider}
-                            />
+                            {renderInfiniteViewToggle(true)}
+                        </View>
+                        <View style={styles.headerRightActionsPortrait}>
+                            <TouchableOpacity
+                                style={[styles.headerCollapseBtnTop, { opacity: 0.4 }]}
+                                disabled={true}
+                                onPress={() => {}}
+                                activeOpacity={1}
+                            >
+                                <MaterialIcons
+                                    name="keyboard-arrow-down"
+                                    size={22}
+                                    color="rgba(255,255,255,0.6)"
+                                />
+                            </TouchableOpacity>
                         </View>
                     </View>
+
+                    {/* 2. Metrics & Actions Row */}
+                    <View style={[styles.dateControlRowPortrait, { marginBottom: isPortraitHeaderExpanded ? 8 : 0 }]}>
+                        <View style={styles.goalHeaderMetricCard}>
+                            <Text style={styles.goalHeaderMetricLabel}>GOALS</Text>
+                            <Text style={styles.goalHeaderMetricValue}>
+                                {goals ? goals.filter(g => !g.parentId).length : 0}
+                            </Text>
+                        </View>
+                        <View style={styles.goalHeaderMetricCard}>
+                            <Text style={styles.goalHeaderMetricLabel}>DURATION</Text>
+                            <Text style={styles.goalHeaderMetricValue}>
+                                {goals ? goals.reduce((acc, g) => acc + (g.type === 'goal' ? 1 : 0), 0) : 0}H
+                            </Text>
+                        </View>
+
+                        <NotesIconButton
+                            active={showNotesPanel}
+                            hasNote={selectedDateHasNote}
+                            onPress={() => {
+                                LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+                                setShowNotesPanel(!showNotesPanel);
+                            }}
+                        />
+
+                        {onSettings && (
+                            <TouchableOpacity
+                                style={styles.headerIconBtnPortrait}
+                                onPress={onSettings}
+                                activeOpacity={0.7}
+                            >
+                                <MaterialIcons name="settings" size={16} color="rgba(255,255,255,0.7)" />
+                            </TouchableOpacity>
+                        )}
+                    </View>
                 </View>
-            )}
+
+                {/* Horizontal Separator */}
+                <View style={styles.separatorContainer}>
+                    <LinearGradient
+                        colors={['transparent', 'rgba(255,255,255,0.2)', 'transparent']}
+                        start={{ x: 0, y: 0.5 }}
+                        end={{ x: 1, y: 0.5 }}
+                        style={styles.separator}
+                    />
+                </View>
+            </View>
             <ScrollView
                 style={styles.scrollView}
                 contentContainerStyle={[
@@ -1182,14 +1155,6 @@ export default function GoalManagement({
                     right: isLandscape ? (Math.max(insets.right, 20)) : 20,
                 }
             ]}>
-                <TouchableOpacity
-                    style={styles.fabSecondary}
-                    onPress={onClose}
-                    activeOpacity={0.75}
-                >
-                    <MaterialIcons name="close" size={24} color="rgba(255,255,255,0.6)" />
-                </TouchableOpacity>
-
                 <TouchableOpacity
                     style={styles.fab}
                     onPress={() => onAddGoal(null, 'goal')}
@@ -1282,68 +1247,176 @@ const styles = StyleSheet.create({
         height: 140, // Fade out content smoothly as it scrolls up
         zIndex: -1,
     },
-    premiumHeaderCapsuleContainer: {
-        position: 'absolute',
-        left: 0,
-        right: 0,
-        alignItems: 'center',
-        paddingHorizontal: 16,
-    },
-    premiumHeaderCapsule: {
-        width: '100%',
-        flexDirection: 'column',
-        alignItems: 'stretch',
+    // Unified Header Styles
+    headerCardPortrait: {
+        marginHorizontal: 16,
+        marginTop: 10,
+        paddingVertical: 12,
         paddingHorizontal: 14,
-        paddingVertical: 8,
         borderRadius: 24,
+        backgroundColor: 'rgba(10, 10, 12, 0.85)',
         borderWidth: 1,
         borderColor: 'rgba(0, 229, 255, 0.07)',
-        backgroundColor: 'rgba(10, 10, 12, 0.85)',
-        gap: 8,
-        overflow: 'hidden',
         shadowColor: '#00E5FF',
         shadowOffset: { width: 0, height: 2 },
         shadowOpacity: 0.08,
         shadowRadius: 12,
     },
-    goalHeaderTopRow: {
+    toggleWithCountRowPortrait: {
         flexDirection: 'row',
         alignItems: 'center',
+        justifyContent: 'space-between',
+        width: '100%',
+        marginBottom: 10,
     },
-    goalHeaderMetricsRow: {
-        marginTop: 6,
+    toggleClusterPortrait: {
         flexDirection: 'row',
+        alignItems: 'center',
+        flex: 1,
+        minWidth: 0,
+        gap: 6,
+        marginRight: 8,
+    },
+    portraitLogoWrapper: {
+        width: 32,
+        height: 32,
+        marginRight: 4,
+        justifyContent: 'center',
+        alignItems: 'center',
+    },
+    portraitLogo: {
+        width: 32,
+        height: 32,
+    },
+    headerRightActionsPortrait: {
+        flexDirection: 'row',
+        alignItems: 'center',
         gap: 8,
     },
-    goalHeaderMetricCard: {
-        flex: 1,
-        paddingVertical: 5,
-        borderRadius: 10,
-        borderWidth: 1,
-        borderColor: 'rgba(255,255,255,0.12)',
-        backgroundColor: 'rgba(255,255,255,0.04)',
+    headerCollapseBtnTop: {
+        width: 32,
+        height: 32,
         alignItems: 'center',
+        justifyContent: 'center',
+        borderRadius: 16,
+        backgroundColor: 'rgba(255,255,255,0.05)',
+        borderWidth: 1,
+        borderColor: 'rgba(255,255,255,0.08)',
+    },
+    dateControlRowPortrait: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        width: '100%',
+    },
+    goalHeaderMetricsRow: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 12,
+    },
+    goalHeaderMetricCard: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        backgroundColor: 'rgba(0,0,0,0.3)',
+        paddingHorizontal: 10,
+        paddingVertical: 6,
+        borderRadius: 12,
+        borderWidth: 1,
+        borderColor: 'rgba(255,255,255,0.05)',
+        gap: 6,
     },
     goalHeaderMetricLabel: {
         fontSize: 7,
-        fontWeight: '800',
-        color: 'rgba(255,255,255,0.45)',
-        letterSpacing: 0.7,
+        fontWeight: '900',
+        color: 'rgba(255,255,255,0.4)',
+        letterSpacing: 1,
     },
     goalHeaderMetricValue: {
-        marginTop: 1,
-        fontSize: 11,
-        fontWeight: '800',
+        fontSize: 10,
+        fontWeight: '900',
         color: '#fff',
-        letterSpacing: 0.6,
     },
-    goalHeaderDividerContainer: {
-        width: '100%',
-        marginTop: 10,
-        paddingHorizontal: 8,
+    headerIconBtnPortrait: {
+        width: 36,
+        height: 36,
+        borderRadius: 12,
+        backgroundColor: 'rgba(255,255,255,0.05)',
+        alignItems: 'center',
+        justifyContent: 'center',
+        borderWidth: 1,
+        borderColor: 'rgba(255,255,255,0.08)',
     },
-    goalHeaderDivider: {
+    separatorContainer: {
+        paddingHorizontal: 40,
+        marginVertical: 10,
+    },
+    separator: {
         height: 1,
+    },
+    emptyBoxTitle: {
+        fontSize: 16,
+        fontWeight: '900',
+        color: '#fff',
+        letterSpacing: 2,
+        marginTop: 20,
+        marginBottom: 8,
+    },
+    emptyBoxText: {
+        fontSize: 12,
+        color: 'rgba(255,255,255,0.3)',
+        textAlign: 'center',
+        lineHeight: 18,
+    },
+    rebootBtn: {
+        marginTop: 32,
+        width: '100%',
+    },
+    rebootBtnGradient: {
+        paddingVertical: 14,
+        borderRadius: 12,
+        alignItems: 'center',
+    },
+    rebootText: {
+        fontSize: 12,
+        fontWeight: '900',
+        color: '#000',
+        letterSpacing: 1,
+    },
+    fabContainer: {
+        position: 'absolute',
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 12,
+    },
+    fab: {
+        width: 56,
+        height: 56,
+        borderRadius: 28,
+        alignItems: 'center',
+        justifyContent: 'center',
+        backgroundColor: '#fff',
+        borderWidth: 1,
+        borderColor: 'rgba(255,255,255,0.2)',
+        elevation: 8,
+        shadowColor: '#000',
+        shadowOpacity: 0.35,
+        shadowRadius: 10,
+        shadowOffset: { width: 0, height: 4 },
+    },
+    fabSecondary: {
+        width: 44,
+        height: 44,
+        borderRadius: 22,
+        alignItems: 'center',
+        justifyContent: 'center',
+        backgroundColor: 'rgba(30,30,32,0.9)',
+        borderWidth: 1,
+        borderColor: 'rgba(255,255,255,0.1)',
+        elevation: 4,
+        shadowColor: '#000',
+        shadowOpacity: 0.2,
+        shadowRadius: 6,
+        shadowOffset: { width: 0, height: 2 },
     },
     headerLogoContainer: {
         paddingLeft: 4,
@@ -1359,38 +1432,39 @@ const styles = StyleSheet.create({
     viewToggleContainer: {
         flex: 1,
         flexDirection: 'row',
-        backgroundColor: 'rgba(255, 255, 255, 0.05)',
+        backgroundColor: 'rgba(15, 15, 15, 0.5)',
         borderRadius: 12,
-        padding: 4,
+        padding: 2,
         borderWidth: 1,
         borderColor: 'rgba(255, 255, 255, 0.1)',
-        gap: 4,
+        gap: 0,
     },
     viewToggleBtn: {
         flex: 1,
         flexDirection: 'row',
         alignItems: 'center',
         justifyContent: 'center',
+        gap: 4,
         paddingVertical: 8,
-        borderRadius: 8,
-        gap: 6,
+        paddingHorizontal: 8,
+        borderRadius: 10,
+        backgroundColor: 'transparent',
     },
     viewToggleBtnActive: {
-        backgroundColor: 'rgba(255, 255, 255, 0.1)',
-        borderWidth: 1,
-        borderColor: 'rgba(0, 229, 255, 0.4)',
+        backgroundColor: '#fff',
     },
     viewToggleText: {
-        fontSize: 10,
-        fontWeight: '900',
-        color: 'rgba(255, 255, 255, 0.35)',
+        fontSize: 9,
+        fontWeight: '800',
+        color: 'rgba(255, 255, 255, 0.4)',
         letterSpacing: 0.8,
     },
     viewToggleTextActive: {
-        color: '#fff',
+        color: '#000',
         fontWeight: '900',
     },
     viewToggleContainerCompact: {
+        flex: 1,
         flexDirection: 'row',
         backgroundColor: 'rgba(15, 15, 15, 0.5)',
         borderRadius: 12,
@@ -1410,11 +1484,13 @@ const styles = StyleSheet.create({
         alignItems: 'center',
     },
     viewToggleBtnCompact: {
-        flexShrink: 0,
-        paddingVertical: 7,
-        paddingHorizontal: 8,
+        flex: 1,
+        paddingVertical: 8,
+        paddingHorizontal: 10,
         borderRadius: 10,
-        backgroundColor: 'transparent',
+        alignItems: 'center',
+        justifyContent: 'center',
+        flexShrink: 1,
     },
     viewToggleBtnInner: {
         flexDirection: 'row',
@@ -1426,8 +1502,6 @@ const styles = StyleSheet.create({
         backgroundColor: '#fff',
     },
     viewToggleButtonsOverlay: {
-        flex: 1,
-        flexDirection: 'row',
         zIndex: 10,
     },
     viewToggleTextCompact: {
@@ -1933,71 +2007,6 @@ const styles = StyleSheet.create({
         alignItems: 'center',
         justifyContent: 'center',
         overflow: 'hidden',
-    },
-    emptyBoxTitle: {
-        fontSize: 16,
-        fontWeight: '900',
-        color: '#fff',
-        letterSpacing: 2,
-        marginTop: 20,
-        marginBottom: 8,
-    },
-    emptyBoxText: {
-        fontSize: 12,
-        color: 'rgba(255,255,255,0.3)',
-        textAlign: 'center',
-        lineHeight: 18,
-    },
-    rebootBtn: {
-        marginTop: 32,
-        width: '100%',
-    },
-    rebootBtnGradient: {
-        paddingVertical: 14,
-        borderRadius: 12,
-        alignItems: 'center',
-    },
-    rebootText: {
-        fontSize: 12,
-        fontWeight: '900',
-        color: '#000',
-        letterSpacing: 1,
-    },
-    fabContainer: {
-        position: 'absolute',
-        flexDirection: 'row',
-        alignItems: 'center',
-        gap: 12,
-    },
-    fab: {
-        width: 56,
-        height: 56,
-        borderRadius: 28,
-        alignItems: 'center',
-        justifyContent: 'center',
-        backgroundColor: '#fff',
-        borderWidth: 1,
-        borderColor: 'rgba(255,255,255,0.2)',
-        elevation: 8,
-        shadowColor: '#000',
-        shadowOpacity: 0.35,
-        shadowRadius: 10,
-        shadowOffset: { width: 0, height: 4 },
-    },
-    fabSecondary: {
-        width: 44,
-        height: 44,
-        borderRadius: 22,
-        alignItems: 'center',
-        justifyContent: 'center',
-        backgroundColor: 'rgba(30,30,32,0.9)',
-        borderWidth: 1,
-        borderColor: 'rgba(255,255,255,0.1)',
-        elevation: 4,
-        shadowColor: '#000',
-        shadowOpacity: 0.2,
-        shadowRadius: 6,
-        shadowOffset: { width: 0, height: 2 },
     },
     deploymentHeaderRow: {
         flexDirection: 'row',

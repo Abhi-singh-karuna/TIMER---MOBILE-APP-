@@ -25,7 +25,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { BlurView } from 'expo-blur';
 import { MaterialIcons } from '@expo/vector-icons';
 import DraggableFlatList, { RenderItemParams } from 'react-native-draggable-flatlist';
-import { Category, Task, TaskStage, QuickMessage, StageStatus, Timer, LEAVE_DAYS_KEY } from '../../../constants/data';
+import { Timer, Task, TaskStage, Category, QuickMessage, Goal, StageStatus, LEAVE_DAYS_KEY } from '../../../constants/data';
 import TaskActionModal from '../../../components/TaskActionModal';
 import LiveFocusView from './LiveFocusView';
 import StageActionPopup from './StageActionPopup';
@@ -1554,10 +1554,14 @@ const styles = StyleSheet.create({
         alignItems: 'center',
         justifyContent: 'center',
         gap: 4,
-        paddingVertical: 7,
+        paddingVertical: 8,
         paddingHorizontal: 8,
         borderRadius: 10,
         backgroundColor: 'transparent',
+    },
+    viewToggleBtnCompact: {
+        flex: 1,
+        flexShrink: 1,
     },
     viewToggleBtnInner: {
         flexDirection: 'row',
@@ -2274,6 +2278,29 @@ const styles = StyleSheet.create({
         color: 'rgba(255,255,255,0.4)',
         letterSpacing: 0.2,
     },
+    goalHeaderMetricCard: {
+        flex: 1,
+        paddingVertical: 8,
+        paddingHorizontal: 10,
+        borderRadius: 12,
+        backgroundColor: 'rgba(255,255,255,0.05)',
+        borderWidth: 1,
+        borderColor: 'rgba(255,255,255,0.08)',
+        alignItems: 'center',
+        justifyContent: 'center',
+    },
+    goalHeaderMetricLabel: {
+        fontSize: 9,
+        fontWeight: '800',
+        color: 'rgba(255,255,255,0.4)',
+        letterSpacing: 0.5,
+        marginBottom: 2,
+    },
+    goalHeaderMetricValue: {
+        fontSize: 14,
+        fontWeight: '800',
+        color: '#fff',
+    },
 });
 type SyncMode = 'none' | 'all' | 'future';
 
@@ -2298,6 +2325,7 @@ interface TaskListProps {
     onPinTask?: (task: Task) => void;
     onDisableTask?: (task: Task) => void;
     quickMessages?: QuickMessage[];
+    goals?: Goal[];
     timeOfDaySlots?: TimeOfDaySlotConfigList;
     runningTimer?: Timer | null;
     /** Open the active/expanded running timer (ActiveTimer) or Timer list when the dock live timer is tapped. */
@@ -2335,6 +2363,7 @@ export default function TaskList({
     onPinTask,
     onDisableTask,
     quickMessages,
+    goals,
     timeOfDaySlots,
     runningTimer,
     onOpenActiveTimer,
@@ -2435,7 +2464,6 @@ export default function TaskList({
             onViewChange(selectedTab.key);
         }
         const centeredLoopIndex = (navMiddleCopyIndex * navTabCount) + baseIdx;
-        setActiveLoopIndex(centeredLoopIndex);
         centerToggleLoopIndex(centeredLoopIndex, false);
     };
     const [showBacklog, setShowBacklog] = useState(false);
@@ -3460,76 +3488,46 @@ export default function TaskList({
                     }],
                 },
             ]}
-            onLayout={(e) => setToggleContainerWidth(e.nativeEvent.layout.width)}
         >
-            <ScrollView
-                ref={toggleScrollRef}
-                horizontal
-                style={styles.viewToggleScroll}
-                contentContainerStyle={[
-                    styles.viewToggleScrollContent,
-                    { paddingHorizontal: headerToggleSideInset },
-                ]}
-                showsHorizontalScrollIndicator={false}
-                decelerationRate="fast"
-                bounces={false}
-                snapToInterval={headerToggleItemWidth}
-                snapToAlignment="start"
-                disableIntervalMomentum
-                onTouchStart={() => setIsToggleInteracting(true)}
-                onTouchEnd={() => setIsToggleInteracting(false)}
-                onTouchCancel={() => setIsToggleInteracting(false)}
-                onScrollBeginDrag={() => setIsToggleInteracting(true)}
-                onMomentumScrollBegin={() => setIsToggleInteracting(true)}
-                onScrollEndDrag={(e) => {
-                    setIsToggleInteracting(false);
-                    settleInfiniteToggle(e.nativeEvent.contentOffset.x);
-                }}
-                onMomentumScrollEnd={(e) => {
-                    setIsToggleInteracting(false);
-                    settleInfiniteToggle(e.nativeEvent.contentOffset.x);
-                }}
-            >
-                {loopedNavTabs.map((tab) => {
-                    const isActive = activeLoopIndex === tab.loopIndex;
-                    return (
-                        <TouchableOpacity
-                            key={`${tab.key}-${tab.loopIndex}`}
-                            style={[
-                                styles.viewToggleBtn,
-                                { width: headerToggleItemWidth },
-                                isActive && styles.viewToggleBtnActive,
-                            ]}
-                            onPress={() => {
-                                setActiveLoopIndex(tab.loopIndex);
-                                centerToggleLoopIndex(tab.loopIndex, true);
-                                triggerSelectionHaptic();
-                                onViewChange && onViewChange(tab.key);
-                            }}
-                            activeOpacity={0.75}
-                        >
-                            <View style={styles.viewToggleBtnInner}>
-                                <Animated.View style={{ transform: [{ scale: tabIconScale[tab.realIndex] }] }}>
-                                    <MaterialIcons
-                                        name={tab.icon as any}
-                                        size={13}
-                                        color={isActive ? '#000' : 'rgba(255,255,255,0.45)'}
-                                    />
-                                </Animated.View>
-                                <Animated.Text
-                                    style={[
-                                        styles.viewToggleText,
-                                        isActive && styles.viewToggleTextActive,
-                                        { opacity: tabLabelOpacity[tab.realIndex] },
-                                    ]}
-                                >
-                                    {tab.label}
-                                </Animated.Text>
-                            </View>
-                        </TouchableOpacity>
-                    );
-                })}
-            </ScrollView>
+            {NAV_TABS.map((tab, idx) => {
+                const isActive = currentActiveView === tab.key;
+                return (
+                    <TouchableOpacity
+                        key={tab.key}
+                        style={[
+                            styles.viewToggleBtn,
+                            styles.viewToggleBtnCompact,
+                            isActive && styles.viewToggleBtnActive,
+                        ]}
+                        onPress={() => {
+                            const centeredLoopIndex = (navMiddleCopyIndex * navTabCount) + idx;
+                            setActiveLoopIndex(centeredLoopIndex);
+                            triggerSelectionHaptic();
+                            onViewChange && onViewChange(tab.key);
+                        }}
+                        activeOpacity={0.75}
+                    >
+                        <View style={styles.viewToggleBtnInner}>
+                            <Animated.View style={{ transform: [{ scale: tabIconScale[idx] }] }}>
+                                <MaterialIcons
+                                    name={tab.icon as any}
+                                    size={13}
+                                    color={isActive ? '#000' : 'rgba(255,255,255,0.45)'}
+                                />
+                            </Animated.View>
+                            <Animated.Text
+                                style={[
+                                    styles.viewToggleText,
+                                    isActive && styles.viewToggleTextActive,
+                                    { opacity: tabLabelOpacity[idx] },
+                                ]}
+                            >
+                                {tab.label}
+                            </Animated.Text>
+                        </View>
+                    </TouchableOpacity>
+                );
+            })}
         </Animated.View>
     );
 
@@ -3557,7 +3555,8 @@ export default function TaskList({
                 {isLandscape ? (
                     <>
                         {/* Left Panel - Analytics Dashboard */}
-                        <View style={[styles.leftPanel, { width: screenWidth * 0.30 }]}>
+                        {activeView !== 'goal' && (
+                            <View style={[styles.leftPanel, { width: screenWidth * 0.30 }]}>
                             <View style={styles.analyticsCardWrapper}>
                                 <ScrollView showsVerticalScrollIndicator={false} style={styles.leftPanelScroll}>
                                     {/* Toggle + Completion Count Row */}
@@ -3822,6 +3821,7 @@ export default function TaskList({
                                 </View>
                             </View>
                         </View>
+                    )}
 
                         {/* Right Panel - Task Grid or Custom Content */}
                         <View style={styles.rightPanel}>
@@ -3952,43 +3952,24 @@ export default function TaskList({
                     // PORTRAIT LAYOUT
                     <>
                         {/* Header Card - OUTSIDE FlatList to prevent blinking */}
-                        <View style={[styles.headerCardPortrait, { flex: 0, minHeight: 0 }]}>
-                            {/* 1. View Toggle & Completion Count Row */}
-                            {onViewChange && (
-                                <View key={`task-toggle-row-${orientationNonce}`} style={styles.toggleWithCountRowPortrait}>
-                                    <View style={styles.toggleClusterPortrait}>
-                                        {/* App Logo Branding */}
-                                        <View style={styles.portraitLogoWrapper}>
-                                            <Image
-                                                source={APP_LOGO}
-                                                style={styles.portraitLogo}
-                                                resizeMode="contain"
-                                            />
+                        {activeView !== 'goal' && (
+                            <View style={[styles.headerCardPortrait, { flex: 0, minHeight: 0 }]}>
+                                {/* 1. View Toggle & Completion Count Row */}
+                                {onViewChange && (
+                                    <View key={`task-toggle-row-${orientationNonce}`} style={styles.toggleWithCountRowPortrait}>
+                                        <View style={styles.toggleClusterPortrait}>
+                                            {/* App Logo Branding */}
+                                            <View style={styles.portraitLogoWrapper}>
+                                                <Image
+                                                    source={APP_LOGO}
+                                                    style={styles.portraitLogo}
+                                                    resizeMode="contain"
+                                                />
+                                            </View>
+                                            {renderInfiniteViewToggle(true)}
                                         </View>
-                                        {renderInfiniteViewToggle(true)}
-                                    </View>
-                                    {/* Completion Count + Notes + Settings + Collapse Button */}
-                                    <View style={styles.headerRightActionsPortrait}>
-                                        <NotesIconButton
-                                            active={showNotesPanel}
-                                            hasNote={selectedDateHasNote}
-                                            onPress={() => {
-                                                LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
-                                                setShowNotesPanel(!showNotesPanel);
-                                            }}
-                                        />
-
-                                        {onSettings && (
-                                            <TouchableOpacity
-                                                style={styles.headerIconBtnPortrait}
-                                                onPress={onSettings}
-                                                activeOpacity={0.7}
-                                            >
-                                                <MaterialIcons name="settings" size={16} color="rgba(255,255,255,0.7)" />
-                                            </TouchableOpacity>
-                                        )}
-
-                                        {activeView !== 'goal' && (
+                                        {/* Collapse Button only in Row 1 */}
+                                        <View style={styles.headerRightActionsPortrait}>
                                             <TouchableOpacity
                                                 style={styles.headerCollapseBtnTop}
                                                 onPress={() => {
@@ -4004,213 +3985,229 @@ export default function TaskList({
                                                     color="rgba(255,255,255,0.6)"
                                                 />
                                             </TouchableOpacity>
-                                        )}
-                                    </View>
-                                </View>
-                            )}
-
-                            {activeView !== 'goal' && (
-                                <>
-                                    {/* 2. Date Controls Row */}
-                            <View style={[styles.dateControlRowPortrait, { marginBottom: isPortraitHeaderExpanded ? 8 : 0 }]}>
-                                <TouchableOpacity
-                                    style={styles.dateLandscapeRow}
-                                    onPress={() => {
-                                        LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
-                                        if (showCalendar) {
-                                            setShowCalendar(false);
-                                            setIsPortraitHeaderExpanded(false);
-                                        } else {
-                                            if (!isPortraitHeaderExpanded) {
-                                                setViewDate(new Date());
-                                            }
-                                            setShowCalendar(true);
-                                            setIsPortraitHeaderExpanded(true);
-                                        }
-                                    }}
-                                    activeOpacity={0.7}
-                                >
-                                    <MaterialIcons name="calendar-today" size={14} color="#fff" />
-                                    <Text style={styles.dateLandscapeText}>
-                                        {isToday ? `  ${dayName}, ${dayNum} ${monthName}` : `  ${dateLabel} ${monthName}`}
-                                    </Text>
-                                    <MaterialIcons
-                                        name={showCalendar ? "keyboard-arrow-up" : "keyboard-arrow-down"}
-                                        size={16}
-                                        color="rgba(255,255,255,0.5)"
-                                        style={{ marginLeft: 4 }}
-                                    />
-                                </TouchableOpacity>
-
-                                <TouchableOpacity
-                                    style={[styles.todayNavBtn, showLive && { backgroundColor: 'rgba(255, 61, 0, 0.08)', borderColor: 'rgba(255, 61, 0, 0.2)' }]}
-                                    onPress={() => setShowLive(!showLive)}
-                                    onLongPress={() => setShowDisabledTasks(!showDisabledTasks)}
-                                    activeOpacity={0.7}
-                                >
-                                    <View style={{ position: 'relative' }}>
-                                        <MaterialIcons name="sensors" size={12} color="#FF3D00" />
-                                        {!showDisabledTasks && (
-                                            <View style={{
-                                                position: 'absolute',
-                                                top: -3, right: -4,
-                                                width: 7, height: 7,
-                                                borderRadius: 3.5,
-                                                backgroundColor: '#FF9100',
-                                                alignItems: 'center',
-                                                justifyContent: 'center',
-                                            }}>
-                                                <MaterialIcons name="block" size={5} color="#fff" />
-                                            </View>
-                                        )}
-                                    </View>
-                                </TouchableOpacity>
-
-                                <TouchableOpacity
-                                    style={[styles.todayNavBtn, isToday && styles.todayNavBtnActive]}
-                                    onPress={() => {
-                                        const start = getStartOfLogicalDay(new Date(), dailyStartMinutes);
-                                        onDateChange(start);
-                                        setViewDate(start);
-                                    }}
-                                    activeOpacity={0.7}
-                                >
-                                    <MaterialIcons name="today" size={12} color={isToday ? "#4CAF50" : "rgba(255,255,255,0.4)"} />
-                                    <View style={styles.todayLabelBlock}>
-                                        <Text style={[styles.todayNavText, isToday && styles.todayNavTextActive, { marginLeft: 0 }]}>TODAY</Text>
-                                        <Text style={[styles.todayRangeLabel, isToday && styles.todayRangeLabelActive]}>({formatDailyStartRangeCompact(dailyStartMinutes)})</Text>
-                                    </View>
-                                </TouchableOpacity>
-                            </View>
-
-                            {/* 3. Expandable content */}
-                            {isPortraitHeaderExpanded ? (
-                                <>
-                                    {showCalendar ? (
-                                        <View style={styles.portraitCalendarContainer}>
-                                            {renderCalendar()}
                                         </View>
-                                    ) : (
-                                        <>
-                                            <View style={styles.compactStatsGrid}>
-                                                <View style={styles.compactStatRow}>
-                                                    <View style={styles.compactStatItem}>
-                                                        <Text style={styles.compactStatLabel}>PENDING</Text>
-                                                        <Text style={styles.compactStatValue}>{pendingCount}</Text>
-                                                    </View>
-                                                    <View style={styles.compactStatItem}>
-                                                        <Text style={styles.compactStatLabel}>IN PROGRESS</Text>
-                                                        <Text style={styles.compactStatValue}>{inProgressCount}</Text>
+                                    </View>
+                                )}
+
+                                {/* 2. Date Controls / Goal Metrics Row */}
+                                <View style={[styles.dateControlRowPortrait, { marginBottom: isPortraitHeaderExpanded ? 8 : 0 }]}>
+                                    <TouchableOpacity
+                                        style={styles.dateLandscapeRow}
+                                        onPress={() => {
+                                            LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+                                            if (showCalendar) {
+                                                setShowCalendar(false);
+                                                setIsPortraitHeaderExpanded(false);
+                                            } else {
+                                                if (!isPortraitHeaderExpanded) {
+                                                    setViewDate(new Date());
+                                                }
+                                                setShowCalendar(true);
+                                                setIsPortraitHeaderExpanded(true);
+                                            }
+                                        }}
+                                        activeOpacity={0.7}
+                                    >
+                                        <MaterialIcons name="calendar-today" size={14} color="#fff" />
+                                        <Text style={styles.dateLandscapeText}>
+                                            {isToday ? `  ${dayName}, ${dayNum} ${monthName}` : `  ${dateLabel} ${monthName}`}
+                                        </Text>
+                                        <MaterialIcons
+                                            name={showCalendar ? "keyboard-arrow-up" : "keyboard-arrow-down"}
+                                            size={16}
+                                            color="rgba(255,255,255,0.5)"
+                                            style={{ marginLeft: 4 }}
+                                        />
+                                    </TouchableOpacity>
+
+                                    <TouchableOpacity
+                                        style={[styles.todayNavBtn, showLive && { backgroundColor: 'rgba(255, 61, 0, 0.08)', borderColor: 'rgba(255, 61, 0, 0.2)' }]}
+                                        onPress={() => setShowLive(!showLive)}
+                                        onLongPress={() => setShowDisabledTasks(!showDisabledTasks)}
+                                        activeOpacity={0.7}
+                                    >
+                                        <View style={{ position: 'relative' }}>
+                                            <MaterialIcons name="sensors" size={12} color="#FF3D00" />
+                                            {!showDisabledTasks && (
+                                                <View style={{
+                                                    position: 'absolute',
+                                                    top: -3, right: -4,
+                                                    width: 7, height: 7,
+                                                    borderRadius: 3.5,
+                                                    backgroundColor: '#FF9100',
+                                                    alignItems: 'center',
+                                                    justifyContent: 'center',
+                                                }}>
+                                                    <MaterialIcons name="block" size={5} color="#fff" />
+                                                </View>
+                                            )}
+                                        </View>
+                                    </TouchableOpacity>
+
+                                    <TouchableOpacity
+                                        style={[styles.todayNavBtn, isToday && styles.todayNavBtnActive]}
+                                        onPress={() => {
+                                            const start = getStartOfLogicalDay(new Date(), dailyStartMinutes);
+                                            onDateChange(start);
+                                            setViewDate(start);
+                                        }}
+                                        activeOpacity={0.7}
+                                    >
+                                        <MaterialIcons name="today" size={12} color={isToday ? "#4CAF50" : "rgba(255,255,255,0.4)"} />
+                                        <View style={styles.todayLabelBlock}>
+                                            <Text style={[styles.todayNavText, isToday && styles.todayNavTextActive, { marginLeft: 0 }]}>TODAY</Text>
+                                            <Text style={[styles.todayRangeLabel, isToday && styles.todayRangeLabelActive]}>({formatDailyStartRangeCompact(dailyStartMinutes)})</Text>
+                                        </View>
+                                    </TouchableOpacity>
+
+                                    {/* Notes & Settings icons always visible in Row 2 */}
+                                    <NotesIconButton
+                                        active={showNotesPanel}
+                                        hasNote={selectedDateHasNote}
+                                        onPress={() => {
+                                            LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+                                            setShowNotesPanel(!showNotesPanel);
+                                        }}
+                                    />
+
+                                    {onSettings && (
+                                        <TouchableOpacity
+                                            style={styles.headerIconBtnPortrait}
+                                            onPress={onSettings}
+                                            activeOpacity={0.7}
+                                        >
+                                            <MaterialIcons name="settings" size={16} color="rgba(255,255,255,0.7)" />
+                                        </TouchableOpacity>
+                                    )}
+                                </View>
+
+                                {/* 3. Expandable content - only for non-goal view for now */}
+                                {isPortraitHeaderExpanded && (
+                                    <>
+                                        {showCalendar ? (
+                                            <View style={styles.portraitCalendarContainer}>
+                                                {renderCalendar()}
+                                            </View>
+                                        ) : (
+                                            <>
+                                                <View style={styles.compactStatsGrid}>
+                                                    <View style={styles.compactStatRow}>
+                                                        <View style={styles.compactStatItem}>
+                                                            <Text style={styles.compactStatLabel}>PENDING</Text>
+                                                            <Text style={styles.compactStatValue}>{pendingCount}</Text>
+                                                        </View>
+                                                        <View style={styles.compactStatItem}>
+                                                            <Text style={styles.compactStatLabel}>IN PROGRESS</Text>
+                                                            <Text style={styles.compactStatValue}>{inProgressCount}</Text>
+                                                        </View>
                                                     </View>
                                                 </View>
-                                            </View>
-                                            <View style={styles.filtersSection}>
-                                                <View style={styles.filterHeaderRow}>
-                                                    <Text style={styles.filterHeaderLabel}>FILTERS</Text>
-                                                    <View style={styles.filterHeaderActions}>
-                                                        <TouchableOpacity
-                                                            style={[styles.historyHeaderBtn, showHistoryPanel && styles.historyHeaderBtnActive]}
-                                                            onPress={() => {
-                                                                LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
-                                                                setShowNotesPanel(false);
-                                                                if (!showHistoryPanel) setExpandedTaskId(null);
-                                                                setShowHistoryPanel(!showHistoryPanel);
-                                                            }}
-                                                            activeOpacity={0.7}
-                                                        >
-                                                            <MaterialIcons name="history" size={14} color="#FF3D00" />
-                                                            <Text style={styles.historyHeaderBtnText}>HISTORY</Text>
-                                                            <View style={styles.historyHeaderBadge}>
-                                                                <Text style={styles.historyHeaderBadgeText}>
-                                                                    {(previousSubtasksQuery.trim() || previousSubtasksRange !== 'ALL' || previousSubtasksStageStatus !== 'ALL')
-                                                                        ? `${filteredPreviousIncompleteStages.length}/${previousIncompleteStages.length}`
-                                                                        : `${previousIncompleteStages.length}`}
+                                                <View style={styles.filtersSection}>
+                                                    <View style={styles.filterHeaderRow}>
+                                                        <Text style={styles.filterHeaderLabel}>FILTERS</Text>
+                                                        <View style={styles.filterHeaderActions}>
+                                                            <TouchableOpacity
+                                                                style={[styles.historyHeaderBtn, showHistoryPanel && styles.historyHeaderBtnActive]}
+                                                                onPress={() => {
+                                                                    LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+                                                                    setShowNotesPanel(false);
+                                                                    if (!showHistoryPanel) setExpandedTaskId(null);
+                                                                    setShowHistoryPanel(!showHistoryPanel);
+                                                                }}
+                                                                activeOpacity={0.7}
+                                                            >
+                                                                <MaterialIcons name="history" size={14} color="#FF3D00" />
+                                                                <Text style={styles.historyHeaderBtnText}>HISTORY</Text>
+                                                                <View style={styles.historyHeaderBadge}>
+                                                                    <Text style={styles.historyHeaderBadgeText}>
+                                                                        {(previousSubtasksQuery.trim() || previousSubtasksRange !== 'ALL' || previousSubtasksStageStatus !== 'ALL')
+                                                                            ? `${filteredPreviousIncompleteStages.length}/${previousIncompleteStages.length}`
+                                                                            : `${previousIncompleteStages.length}`}
+                                                                    </Text>
+                                                                </View>
+                                                            </TouchableOpacity>
+                                                            <TouchableOpacity
+                                                                style={[styles.backlogHeaderBtn, showBacklog && styles.backlogHeaderBtnActive]}
+                                                                onPress={() => setShowBacklog(!showBacklog)}
+                                                                activeOpacity={0.7}
+                                                            >
+                                                                <MaterialIcons
+                                                                    name={showBacklog ? "event-note" : "event-busy"}
+                                                                    size={14}
+                                                                    color={showBacklog ? "#4CAF50" : "rgba(255,255,255,0.4)"}
+                                                                />
+                                                                <Text style={[styles.backlogHeaderBtnText, showBacklog && styles.backlogHeaderBtnTextActive]}>BACKLOG</Text>
+                                                            </TouchableOpacity>
+                                                        </View>
+                                                    </View>
+                                                    <View style={styles.expandableFilterContainer}>
+                                                        <TouchableOpacity style={styles.expandableHeader} onPress={() => setIsCategoryExpanded(!isCategoryExpanded)} activeOpacity={0.7}>
+                                                            <View style={styles.expandableHeaderLeft}>
+                                                                <MaterialIcons
+                                                                    name={filterCategoryIds.length === 0 ? 'category' : (categories.find(c => c.id === filterCategoryIds[0])?.icon || 'category')}
+                                                                    size={16}
+                                                                    color={filterCategoryIds.length === 0 ? 'rgba(255,255,255,0.4)' : (categories.find(c => c.id === filterCategoryIds[0])?.color || '#fff')}
+                                                                />
+                                                                <Text style={styles.expandableHeaderText}>
+                                                                    {filterCategoryIds.length === 0 ? ' Category (All)' : filterCategoryIds.length === 1 ? ` ${categories.find(c => c.id === filterCategoryIds[0])?.name}` : ` ${filterCategoryIds.length} categories`}
                                                                 </Text>
                                                             </View>
+                                                            <MaterialIcons name={isCategoryExpanded ? "expand-less" : "expand-more"} size={20} color="rgba(255,255,255,0.3)" />
                                                         </TouchableOpacity>
-                                                        <TouchableOpacity
-                                                            style={[styles.backlogHeaderBtn, showBacklog && styles.backlogHeaderBtnActive]}
-                                                            onPress={() => setShowBacklog(!showBacklog)}
-                                                            activeOpacity={0.7}
-                                                        >
-                                                            <MaterialIcons
-                                                                name={showBacklog ? "event-note" : "event-busy"}
-                                                                size={14}
-                                                                color={showBacklog ? "#4CAF50" : "rgba(255,255,255,0.4)"}
-                                                            />
-                                                            <Text style={[styles.backlogHeaderBtnText, showBacklog && styles.backlogHeaderBtnTextActive]}>BACKLOG</Text>
+                                                        {isCategoryExpanded && (
+                                                            <View style={styles.expandedContent}>
+                                                                <TouchableOpacity style={[styles.miniChip, filterCategoryIds.length === 0 && styles.miniChipActive]} onPress={() => setFilterCategoryIds([])}>
+                                                                    <Text style={[styles.miniChipText, filterCategoryIds.length === 0 && styles.miniChipTextActive]}>All</Text>
+                                                                </TouchableOpacity>
+                                                                {categories.map(cat => {
+                                                                    const isSelected = filterCategoryIds.includes(cat.id);
+                                                                    return (
+                                                                        <TouchableOpacity
+                                                                            key={cat.id}
+                                                                            style={[styles.miniChip, isSelected && { backgroundColor: `${cat.color}20`, borderColor: cat.color }]}
+                                                                            onPress={() => setFilterCategoryIds(prev => prev.includes(cat.id) ? prev.filter(id => id !== cat.id) : [...prev, cat.id])}
+                                                                        >
+                                                                            <MaterialIcons name={cat.icon} size={10} color={isSelected ? cat.color : 'rgba(255,255,255,0.4)'} />
+                                                                            <Text style={[styles.miniChipText, isSelected && { color: cat.color }]}> {cat.name}</Text>
+                                                                        </TouchableOpacity>
+                                                                    );
+                                                                })}
+                                                            </View>
+                                                        )}
+                                                    </View>
+                                                    <View style={styles.expandableFilterContainer}>
+                                                        <TouchableOpacity style={styles.expandableHeader} onPress={() => setIsStatusExpanded(!isStatusExpanded)} activeOpacity={0.7}>
+                                                            <View style={styles.expandableHeaderLeft}>
+                                                                <MaterialIcons name="tune" size={16} color={filterStatus === 'All' ? 'rgba(255,255,255,0.4)' : '#fff'} />
+                                                                <Text style={styles.expandableHeaderText}>{filterStatus === 'All' ? ' Status' : ` ${filterStatus}`}</Text>
+                                                            </View>
+                                                            <MaterialIcons name={isStatusExpanded ? "expand-less" : "expand-more"} size={20} color="rgba(255,255,255,0.3)" />
                                                         </TouchableOpacity>
+                                                        {isStatusExpanded && (
+                                                            <View style={styles.expandedContent}>
+                                                                {['All', 'Pending', 'In Progress', 'Completed'].map(status => (
+                                                                    <TouchableOpacity key={status} style={[styles.miniChip, filterStatus === status && styles.miniChipActive]} onPress={() => setFilterStatus(status)}>
+                                                                        <Text style={[styles.miniChipText, filterStatus === status && styles.miniChipTextActive]}>{status}</Text>
+                                                                    </TouchableOpacity>
+                                                                ))}
+                                                            </View>
+                                                        )}
                                                     </View>
                                                 </View>
-                                                <View style={styles.expandableFilterContainer}>
-                                                    <TouchableOpacity style={styles.expandableHeader} onPress={() => setIsCategoryExpanded(!isCategoryExpanded)} activeOpacity={0.7}>
-                                                        <View style={styles.expandableHeaderLeft}>
-                                                            <MaterialIcons
-                                                                name={filterCategoryIds.length === 0 ? 'category' : (categories.find(c => c.id === filterCategoryIds[0])?.icon || 'category')}
-                                                                size={16}
-                                                                color={filterCategoryIds.length === 0 ? 'rgba(255,255,255,0.4)' : (categories.find(c => c.id === filterCategoryIds[0])?.color || '#fff')}
-                                                            />
-                                                            <Text style={styles.expandableHeaderText}>
-                                                                {filterCategoryIds.length === 0 ? ' Category (All)' : filterCategoryIds.length === 1 ? ` ${categories.find(c => c.id === filterCategoryIds[0])?.name}` : ` ${filterCategoryIds.length} categories`}
-                                                            </Text>
-                                                        </View>
-                                                        <MaterialIcons name={isCategoryExpanded ? "expand-less" : "expand-more"} size={20} color="rgba(255,255,255,0.3)" />
-                                                    </TouchableOpacity>
-                                                    {isCategoryExpanded && (
-                                                        <View style={styles.expandedContent}>
-                                                            <TouchableOpacity style={[styles.miniChip, filterCategoryIds.length === 0 && styles.miniChipActive]} onPress={() => setFilterCategoryIds([])}>
-                                                                <Text style={[styles.miniChipText, filterCategoryIds.length === 0 && styles.miniChipTextActive]}>All</Text>
-                                                            </TouchableOpacity>
-                                                            {categories.map(cat => {
-                                                                const isSelected = filterCategoryIds.includes(cat.id);
-                                                                return (
-                                                                    <TouchableOpacity
-                                                                        key={cat.id}
-                                                                        style={[styles.miniChip, isSelected && { backgroundColor: `${cat.color}20`, borderColor: cat.color }]}
-                                                                        onPress={() => setFilterCategoryIds(prev => prev.includes(cat.id) ? prev.filter(id => id !== cat.id) : [...prev, cat.id])}
-                                                                    >
-                                                                        <MaterialIcons name={cat.icon} size={10} color={isSelected ? cat.color : 'rgba(255,255,255,0.4)'} />
-                                                                        <Text style={[styles.miniChipText, isSelected && { color: cat.color }]}> {cat.name}</Text>
-                                                                    </TouchableOpacity>
-                                                                );
-                                                            })}
-                                                        </View>
-                                                    )}
-                                                </View>
-                                                <View style={styles.expandableFilterContainer}>
-                                                    <TouchableOpacity style={styles.expandableHeader} onPress={() => setIsStatusExpanded(!isStatusExpanded)} activeOpacity={0.7}>
-                                                        <View style={styles.expandableHeaderLeft}>
-                                                            <MaterialIcons name="tune" size={16} color={filterStatus === 'All' ? 'rgba(255,255,255,0.4)' : '#fff'} />
-                                                            <Text style={styles.expandableHeaderText}>{filterStatus === 'All' ? ' Status' : ` ${filterStatus}`}</Text>
-                                                        </View>
-                                                        <MaterialIcons name={isStatusExpanded ? "expand-less" : "expand-more"} size={20} color="rgba(255,255,255,0.3)" />
-                                                    </TouchableOpacity>
-                                                    {isStatusExpanded && (
-                                                        <View style={styles.expandedContent}>
-                                                            {['All', 'Pending', 'In Progress', 'Completed'].map(status => (
-                                                                <TouchableOpacity key={status} style={[styles.miniChip, filterStatus === status && styles.miniChipActive]} onPress={() => setFilterStatus(status)}>
-                                                                    <Text style={[styles.miniChipText, filterStatus === status && styles.miniChipTextActive]}>{status}</Text>
-                                                                </TouchableOpacity>
-                                                            ))}
-                                                        </View>
-                                                    )}
-                                                </View>
-                                            </View>
-                                            {/* Detailed Reports */}
-                                            <TouchableOpacity
-                                                style={[styles.detailedReportsBtn, { marginTop: 4 }]}
-                                                onPress={() => {/* TODO */}}
-                                            >
-                                                <Text style={styles.detailedReportsText}>DETAILED REPORTS</Text>
-                                                <MaterialIcons name="chevron-right" size={20} color="rgba(255,255,255,0.5)" />
-                                            </TouchableOpacity>
-                                        </>
-                                    )}
-                                </>
-                            ) : null}
-                        </>
-                    )}
-                </View>
+                                                {/* Detailed Reports */}
+                                                <TouchableOpacity
+                                                    style={[styles.detailedReportsBtn, { marginTop: 4 }]}
+                                                    onPress={() => {/* TODO */ }}
+                                                >
+                                                    <Text style={styles.detailedReportsText}>DETAILED REPORTS</Text>
+                                                    <MaterialIcons name="chevron-right" size={20} color="rgba(255,255,255,0.5)" />
+                                                </TouchableOpacity>
+                                            </>
+                                        )}
+                                    </>
+                                )}
+                            </View>
+                        )}
 
                         {/* Separator */}
                         {activeView !== 'goal' && (
@@ -4223,8 +4220,7 @@ export default function TaskList({
                                 />
                             </View>
                         )}
-
-                        {activeView === 'goal' && renderCustomContent ? (
+                    {activeView === 'goal' && renderCustomContent ? (
                             <View style={{ flex: 1, marginTop: 15 }}>
                                 {renderCustomContent()}
                             </View>
@@ -4299,7 +4295,7 @@ export default function TaskList({
                         )}
 
                         {/* FAB */}
-                        {!showHistoryPanel && activeView !== 'goal' && (
+                        {!showHistoryPanel && (
                             <TouchableOpacity
                                 style={[styles.addButton, !isLandscape && styles.addButtonPortrait]}
                                 onPress={onAddTask}
@@ -4309,8 +4305,7 @@ export default function TaskList({
                             </TouchableOpacity>
                         )}
                     </>
-                )
-                }
+                )}
 
                 {showNotesPanel && (
                     <View style={styles.notesTakeoverOverlay}>

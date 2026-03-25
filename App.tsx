@@ -1947,6 +1947,7 @@ export default function App() {
               setShouldShowLiveView(true);
               setActiveView('task');
             }}
+            goals={goals}
           />
         );
     }

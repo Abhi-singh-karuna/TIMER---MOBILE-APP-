@@ -23,7 +23,7 @@ import { MaterialIcons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
 import { AudioModule } from 'expo-audio';
 import { activateKeepAwakeAsync, deactivateKeepAwake } from 'expo-keep-awake';
-import { Timer, Category, SOUND_OPTIONS } from '../../../constants/data';
+import { Timer, Category, SOUND_OPTIONS, Goal } from '../../../constants/data';
 import { getLogicalDate, getStartOfLogicalDay, DEFAULT_DAILY_START_MINUTES, formatDailyStartRangeCompact } from '../../../utils/dailyStartTime';
 import NotesPanel, { NotesIconButton, hasDayNote } from '../Task/NotesPanel';
 
@@ -109,8 +109,8 @@ interface TimerListProps {
     categories: Category[];
     activeView?: 'timer' | 'task' | 'goal';
     onViewChange?: (view: 'timer' | 'task' | 'goal') => void;
-    /** Called when the live button is clicked - should switch to task view and open live view */
     onRequestLiveView?: () => void;
+    goals: Goal[];
 }
 
 export default function TimerList({
@@ -132,7 +132,8 @@ export default function TimerList({
     categories,
     activeView = 'timer',
     onViewChange,
-    onRequestLiveView
+    onRequestLiveView,
+    goals
 }: TimerListProps & { selectedDate: Date; onDateChange: (date: Date) => void; dailyStartMinutes?: number }) {
     const [filterCategoryId, setFilterCategoryId] = useState<string>('All');
     const [filterStatus, setFilterStatus] = useState<string>('All');
@@ -780,76 +781,46 @@ export default function TimerList({
                     }],
                 },
             ]}
-            onLayout={(e) => setToggleContainerWidth(e.nativeEvent.layout.width)}
         >
-            <ScrollView
-                ref={toggleScrollRef}
-                horizontal
-                style={styles.viewToggleScroll}
-                contentContainerStyle={[
-                    styles.viewToggleScrollContent,
-                    { paddingHorizontal: headerToggleSideInset },
-                ]}
-                showsHorizontalScrollIndicator={false}
-                decelerationRate="fast"
-                bounces={false}
-                snapToInterval={headerToggleItemWidth}
-                snapToAlignment="start"
-                disableIntervalMomentum
-                onTouchStart={() => setIsToggleInteracting(true)}
-                onTouchEnd={() => setIsToggleInteracting(false)}
-                onTouchCancel={() => setIsToggleInteracting(false)}
-                onScrollBeginDrag={() => setIsToggleInteracting(true)}
-                onMomentumScrollBegin={() => setIsToggleInteracting(true)}
-                onScrollEndDrag={(e) => {
-                    setIsToggleInteracting(false);
-                    settleInfiniteToggle(e.nativeEvent.contentOffset.x);
-                }}
-                onMomentumScrollEnd={(e) => {
-                    setIsToggleInteracting(false);
-                    settleInfiniteToggle(e.nativeEvent.contentOffset.x);
-                }}
-            >
-                {loopedNavTabs.map((tab) => {
-                    const isActive = activeLoopIndex === tab.loopIndex;
-                    return (
-                        <TouchableOpacity
-                            key={`${tab.key}-${tab.loopIndex}`}
-                            style={[
-                                styles.viewToggleBtn,
-                                { width: headerToggleItemWidth },
-                                isActive && styles.viewToggleBtnActive,
-                            ]}
-                            onPress={() => {
-                                setActiveLoopIndex(tab.loopIndex);
-                                centerToggleLoopIndex(tab.loopIndex, true);
-                                triggerSelectionHaptic();
-                                onViewChange && onViewChange(tab.key);
-                            }}
-                            activeOpacity={0.75}
-                        >
-                            <Animated.View style={styles.viewToggleBtnInner}>
-                                <Animated.View style={{ transform: [{ scale: tabIconScale[tab.realIndex] }] }}>
-                                    <MaterialIcons
-                                        name={tab.icon as any}
-                                        size={13}
-                                        color={isActive ? '#000' : 'rgba(255,255,255,0.45)'}
-                                    />
-                                </Animated.View>
-                                <Animated.Text
-                                    style={[
-                                        styles.viewToggleText,
-                                        isActive && styles.viewToggleTextActive,
-                                        { opacity: tabLabelOpacity[tab.realIndex] },
-                                    ]}
-                                >
-                                    {tab.label}
-                                </Animated.Text>
+            {NAV_TABS.map((tab, idx) => {
+                const isActive = currentActiveView === tab.key;
+                return (
+                    <TouchableOpacity
+                        key={tab.key}
+                        style={[
+                            styles.viewToggleBtn,
+                            styles.viewToggleBtnCompact,
+                            isActive && styles.viewToggleBtnActive,
+                        ]}
+                        onPress={() => {
+                            const centeredLoopIndex = (navMiddleCopyIndex * navTabCount) + idx;
+                            setActiveLoopIndex(centeredLoopIndex);
+                            triggerSelectionHaptic();
+                            onViewChange && onViewChange(tab.key);
+                        }}
+                        activeOpacity={0.75}
+                    >
+                        <Animated.View style={styles.viewToggleBtnInner}>
+                            <Animated.View style={{ transform: [{ scale: tabIconScale[idx] }] }}>
+                                <MaterialIcons
+                                    name={tab.icon as any}
+                                    size={13}
+                                    color={isActive ? '#000' : 'rgba(255,255,255,0.45)'}
+                                />
                             </Animated.View>
-                        </TouchableOpacity>
-                    );
-                })}
-            </ScrollView>
+                            <Animated.Text
+                                style={[
+                                    styles.viewToggleText,
+                                    isActive && styles.viewToggleTextActive,
+                                    { opacity: tabLabelOpacity[idx] },
+                                ]}
+                            >
+                                {tab.label}
+                            </Animated.Text>
+                        </Animated.View>
+                    </TouchableOpacity>
+                );
+            })}
         </Animated.View>
     );
 
@@ -865,7 +836,8 @@ export default function TimerList({
                     // LANDSCAPE LAYOUT - Matching Reference Design
                     <>
                         {/* Left Panel - Analytics Dashboard */}
-                        <View style={[styles.leftPanel, { width: screenWidth * 0.30 }]}>
+                        {!isGoalView && (
+                            <View style={[styles.leftPanel, { width: screenWidth * 0.30 }]}>
                             {/* Single Analytics Card containing all content */}
                             <View style={styles.analyticsCardWrapper}>
                                 <ScrollView showsVerticalScrollIndicator={false} style={styles.leftPanelScroll}>
@@ -1082,6 +1054,7 @@ export default function TimerList({
                                 </View>
                             </View>
                         </View>
+                    )}
 
                         {/* Right Panel - Timer Grid */}
                         <View style={styles.rightPanel}>
@@ -1102,7 +1075,9 @@ export default function TimerList({
                 ) : (
                     // PORTRAIT LAYOUT — key forces full remount on orientation change
                     <View key={isLandscape ? 'land' : 'port'} style={{ flex: 1 }}>
-                        <View style={[styles.headerCardPortrait, isGoalView && styles.headerCardPortraitGoal, { flex: 0, minHeight: 0 }]}>
+                        {!isGoalView && (
+                            <>
+                                <View style={[styles.headerCardPortrait, isGoalView && styles.headerCardPortraitGoal, { flex: 0, minHeight: 0 }]}>
                             {/* 1. View Toggle & Completion Count Row */}
                             {onViewChange && (
                                 <View style={[styles.toggleWithCountRowPortrait, isGoalView && styles.toggleWithCountRowPortraitGoal]}>
@@ -1117,29 +1092,9 @@ export default function TimerList({
                                         </View>
                                         {renderInfiniteViewToggle(true)}
                                     </View>
-                                     {/* Completion Count + Notes + Settings + Expand */}
-                                    <View style={styles.headerRightActionsPortrait}>
-                                        <NotesIconButton
-                                            active={showNotesPanel}
-                                            hasNote={selectedDateHasNote}
-                                            onPress={() => {
-                                                LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
-                                                setShowReportPopup(false);
-                                                setShowNotesPanel(!showNotesPanel);
-                                            }}
-                                        />
-
-                                        {onSettings && (
-                                            <TouchableOpacity
-                                                style={[styles.headerIconBtnPortrait, isGoalView && styles.headerIconBtnPortraitGoal]}
-                                                onPress={onSettings}
-                                                activeOpacity={0.7}
-                                            >
-                                                <MaterialIcons name="settings" size={16} color="rgba(255,255,255,0.7)" />
-                                            </TouchableOpacity>
-                                        )}
-
-                                        {!isGoalView && (
+                                    {/* Collapse Button only in Row 1 */}
+                                    {!isGoalView && (
+                                        <View style={styles.headerRightActionsPortrait}>
                                             <TouchableOpacity
                                                 style={styles.headerCollapseBtnTop}
                                                 onPress={() => {
@@ -1155,76 +1110,112 @@ export default function TimerList({
                                                     color="rgba(255,255,255,0.6)"
                                                 />
                                             </TouchableOpacity>
-                                        )}
-                                    </View>
+                                        </View>
+                                    )}
                                 </View>
                             )}
 
                             {/* 2. Date Controls Row */}
                             <View style={[styles.dateControlRowPortrait, { marginBottom: isPortraitHeaderExpanded ? 8 : 0 }]}>
-                                <TouchableOpacity
-                                    style={styles.dateLandscapeRow}
+                                {isGoalView ? (
+                                    <>
+                                        {/* Goal Metrics for Row 2 when in Goal tab */}
+                                        <View style={styles.goalHeaderMetricCard}>
+                                            <Text style={styles.goalHeaderMetricLabel}>GOALS</Text>
+                                            <Text style={styles.goalHeaderMetricValue}>
+                                                {goals.filter((g: Goal) => !g.parentId).length}
+                                            </Text>
+                                        </View>
+                                        <View style={styles.goalHeaderMetricCard}>
+                                            <Text style={styles.goalHeaderMetricLabel}>DURATION</Text>
+                                            <Text style={styles.goalHeaderMetricValue}>
+                                                {goals.reduce((acc: number, g: Goal) => acc + (g.type === 'goal' ? 1 : 0), 0)}H
+                                            </Text>
+                                        </View>
+                                    </>
+                                ) : (
+                                    <>
+                                        <TouchableOpacity
+                                            style={styles.dateLandscapeRow}
+                                            onPress={() => {
+                                                LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+                                                if (showCalendar) {
+                                                    setShowCalendar(false);
+                                                    setIsPortraitHeaderExpanded(false);
+                                                } else {
+                                                    if (!isPortraitHeaderExpanded) {
+                                                        setViewDate(new Date());
+                                                    }
+                                                    setShowCalendar(true);
+                                                    setIsPortraitHeaderExpanded(true);
+                                                }
+                                            }}
+                                            activeOpacity={0.7}
+                                        >
+                                            <MaterialIcons name="calendar-today" size={14} color="#fff" />
+                                            <Text style={styles.dateLandscapeText}>
+                                                {isToday ? `  ${dayName}, ${dayNum} ${monthName}` : `  ${dateLabel} ${monthName}`}
+                                            </Text>
+                                            <MaterialIcons
+                                                name={showCalendar ? "keyboard-arrow-up" : "keyboard-arrow-down"}
+                                                size={16}
+                                                color="rgba(255,255,255,0.3)"
+                                                style={{ marginLeft: 4 }}
+                                            />
+                                        </TouchableOpacity>
+
+                                        <TouchableOpacity
+                                            style={styles.todayNavBtn}
+                                            onPress={() => {
+                                                if (onRequestLiveView) {
+                                                    onRequestLiveView();
+                                                } else if (onViewChange) {
+                                                    onViewChange('task');
+                                                }
+                                            }}
+                                            activeOpacity={0.7}
+                                        >
+                                            <MaterialIcons name="sensors" size={12} color="#FF3D00" />
+                                        </TouchableOpacity>
+
+                                        <TouchableOpacity
+                                            style={[styles.todayNavBtn, isToday && styles.todayNavBtnActive]}
+                                            onPress={() => {
+                                                const start = getStartOfLogicalDay(new Date(), dailyStartMinutes);
+                                                onDateChange(start);
+                                                setViewDate(start);
+                                            }}
+                                            activeOpacity={0.7}
+                                        >
+                                            <MaterialIcons name="today" size={12} color={isToday ? "#4CAF50" : "rgba(255,255,255,0.4)"} />
+                                            <View style={styles.todayLabelBlock}>
+                                                <Text style={[styles.todayNavText, isToday && styles.todayNavTextActive, { marginLeft: 0 }]}>TODAY</Text>
+                                                <Text style={[styles.todayRangeLabel, isToday && styles.todayRangeLabelActive]}>({formatDailyStartRangeCompact(dailyStartMinutes)})</Text>
+                                            </View>
+                                        </TouchableOpacity>
+                                    </>
+                                )}
+
+                                {/* Notes & Settings icons always visible in Row 2 */}
+                                <NotesIconButton
+                                    active={showNotesPanel}
+                                    hasNote={selectedDateHasNote}
                                     onPress={() => {
                                         LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
-                                        if (showCalendar) {
-                                            // Close Calendar and Collapse Header
-                                            setShowCalendar(false);
-                                            setIsPortraitHeaderExpanded(false);
-                                        } else {
-                                            // Open Calendar and Expand Header
-                                            if (!isPortraitHeaderExpanded) {
-                                                setViewDate(new Date());
-                                            }
-                                            setShowCalendar(true);
-                                            setIsPortraitHeaderExpanded(true);
-                                        }
+                                        setShowReportPopup(false);
+                                        setShowNotesPanel(!showNotesPanel);
                                     }}
-                                    activeOpacity={0.7}
-                                >
-                                    <MaterialIcons name="calendar-today" size={14} color="#fff" />
-                                    <Text style={styles.dateLandscapeText}>
-                                        {isToday ? `  ${dayName}, ${dayNum} ${monthName}` : `  ${dateLabel} ${monthName}`}
-                                    </Text>
-                                    <MaterialIcons
-                                        name={showCalendar ? "keyboard-arrow-up" : "keyboard-arrow-down"}
-                                        size={16}
-                                        color="rgba(255,255,255,0.3)"
-                                        style={{ marginLeft: 4 }}
-                                    />
-                                </TouchableOpacity>
+                                />
 
-                                <View style={{ flexDirection: 'row', gap: 6 }}>
+                                {onSettings && (
                                     <TouchableOpacity
-                                        style={styles.todayNavBtn}
-                                        onPress={() => {
-                                            if (onRequestLiveView) {
-                                                onRequestLiveView();
-                                            } else if (onViewChange) {
-                                                onViewChange('task');
-                                            }
-                                        }}
+                                        style={[styles.headerIconBtnPortrait, isGoalView && styles.headerIconBtnPortraitGoal]}
+                                        onPress={onSettings}
                                         activeOpacity={0.7}
                                     >
-                                        <MaterialIcons name="sensors" size={12} color="#FF3D00" />
+                                        <MaterialIcons name="settings" size={16} color="rgba(255,255,255,0.7)" />
                                     </TouchableOpacity>
-
-                                    <TouchableOpacity
-                                        style={[styles.todayNavBtn, isToday && styles.todayNavBtnActive]}
-                                        onPress={() => {
-                                            const start = getStartOfLogicalDay(new Date(), dailyStartMinutes);
-                                            onDateChange(start);
-                                            setViewDate(start);
-                                        }}
-                                        activeOpacity={0.7}
-                                    >
-                                        <MaterialIcons name="today" size={12} color={isToday ? "#4CAF50" : "rgba(255,255,255,0.4)"} />
-                                        <View style={styles.todayLabelBlock}>
-                                            <Text style={[styles.todayNavText, isToday && styles.todayNavTextActive, { marginLeft: 0 }]}>TODAY</Text>
-                                            <Text style={[styles.todayRangeLabel, isToday && styles.todayRangeLabelActive]}>({formatDailyStartRangeCompact(dailyStartMinutes)})</Text>
-                                        </View>
-                                    </TouchableOpacity>
-                                </View>
-                            </View>
+                                )}</View>
 
                             {/* 3. Calendar or Stats/Filters (Collapsible) */}
                             {isPortraitHeaderExpanded && (
@@ -1366,6 +1357,8 @@ export default function TimerList({
                                 style={styles.separator}
                             />
                         </View>
+                            </>
+                        )}
 
                         {/* Timer Cards */}
                         <ScrollView
@@ -2822,6 +2815,35 @@ const styles = StyleSheet.create({
         color: 'rgba(255,255,255,0.7)',
         marginBottom: 6,
     },
+    completionCountText: {
+        fontSize: 10,
+        fontWeight: 'bold',
+        color: 'rgba(255,255,255,0.7)',
+        marginLeft: 4,
+    },
+    // Goal Header Styles for Unified Row 2
+    goalHeaderMetricCard: {
+        backgroundColor: 'rgba(255,255,255,0.08)',
+        borderRadius: 12,
+        paddingHorizontal: 12,
+        paddingVertical: 6,
+        flexDirection: 'row',
+        alignItems: 'center',
+        borderWidth: 1,
+        borderColor: 'rgba(255,255,255,0.1)',
+        marginRight: 8,
+    },
+    goalHeaderMetricLabel: {
+        color: 'rgba(255,255,255,0.4)',
+        fontSize: 10,
+        fontWeight: '800',
+        marginRight: 6,
+    },
+    goalHeaderMetricValue: {
+        color: '#fff',
+        fontSize: 12,
+        fontWeight: '700',
+    },
 
     timeRemainingValueRow: {
         flexDirection: 'row',
@@ -3719,10 +3741,14 @@ const styles = StyleSheet.create({
         alignItems: 'center',
         justifyContent: 'center',
         gap: 4,
-        paddingVertical: 7,
+        paddingVertical: 8,
         paddingHorizontal: 8,
         borderRadius: 10,
         backgroundColor: 'transparent',
+    },
+    viewToggleBtnCompact: {
+        flex: 1,
+        flexShrink: 1,
     },
     viewToggleScroll: {
         flex: 1,
@@ -3781,11 +3807,5 @@ const styles = StyleSheet.create({
     completionCountBadgeCompactPortrait: {
         paddingHorizontal: 8,
         paddingVertical: 5,
-    },
-    completionCountText: {
-        fontSize: 13,
-        fontWeight: '800',
-        color: '#4CAF50',
-        letterSpacing: 0.5,
     },
 });
