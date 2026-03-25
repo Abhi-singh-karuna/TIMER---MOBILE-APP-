@@ -20,6 +20,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
 import { BlurView } from 'expo-blur';
 import { MaterialIcons } from '@expo/vector-icons';
+import * as Haptics from 'expo-haptics';
 import { AudioModule } from 'expo-audio';
 import { activateKeepAwakeAsync, deactivateKeepAwake } from 'expo-keep-awake';
 import { Timer, Category, SOUND_OPTIONS } from '../../../constants/data';
@@ -152,6 +153,7 @@ export default function TimerList({
 
     const { width: screenWidth, height: screenHeight } = useWindowDimensions();
     const isLandscape = screenWidth > screenHeight;
+    const isGoalView = activeView === 'goal';
     const [showReportPopup, setShowReportPopup] = useState(false);
     const [showNotesPanel, setShowNotesPanel] = useState(false);
     const [selectedDateHasNote, setSelectedDateHasNote] = useState(false);
@@ -162,8 +164,82 @@ export default function TimerList({
     const [internalSelectedDate, setInternalSelectedDate] = useState(propSelectedDate);
     const slideAnim = useRef(new Animated.Value(0)).current;
     const fadeAnim = useRef(new Animated.Value(1)).current;
-    const toggleSlideAnim = useRef(new Animated.Value(activeView === 'timer' ? 0 : activeView === 'task' ? 1 : 2)).current;
     const [toggleContainerWidth, setToggleContainerWidth] = useState(0);
+    const [isToggleInteracting, setIsToggleInteracting] = useState(false);
+    const toggleScrollRef = useRef<ScrollView | null>(null);
+    const didInitInfiniteToggleRef = useRef(false);
+    const currentActiveView = activeView || 'timer';
+    const NAV_TABS = [
+        { key: 'timer' as const, icon: 'timer', label: 'TIMER' },
+        { key: 'task' as const, icon: 'check-box', label: 'TASK' },
+        { key: 'goal' as const, icon: 'track-changes', label: 'GOAL' },
+    ];
+    const NAV_LOOP_COPIES = 7;
+    const navTabCount = NAV_TABS.length;
+    const navMiddleCopyIndex = Math.floor(NAV_LOOP_COPIES / 2);
+    const initialTabIdxRaw = NAV_TABS.findIndex(t => t.key === currentActiveView);
+    const initialTabIdx = initialTabIdxRaw >= 0 ? initialTabIdxRaw : 0;
+    const initialCenteredLoopIndex = (navMiddleCopyIndex * navTabCount) + initialTabIdx;
+    const [activeLoopIndex, setActiveLoopIndex] = useState(initialCenteredLoopIndex);
+    const toggleInteractionAnim = useRef(new Animated.Value(0)).current;
+    const tabIconScale = useRef(
+        NAV_TABS.map((_, idx) => new Animated.Value(idx === initialTabIdx ? 1.14 : 0.94))
+    ).current;
+    const tabLabelOpacity = useRef(
+        NAV_TABS.map((_, idx) => new Animated.Value(idx === initialTabIdx ? 1 : 0.72))
+    ).current;
+    const loopedNavTabs = React.useMemo(
+        () =>
+            Array.from({ length: navTabCount * NAV_LOOP_COPIES }, (_, loopIndex) => {
+                const realIndex = loopIndex % navTabCount;
+                const tab = NAV_TABS[realIndex];
+                return { ...tab, realIndex, loopIndex };
+            }),
+        [navTabCount]
+    );
+    const headerToggleItemWidth = React.useMemo(() => {
+        if (!toggleContainerWidth) return 100;
+        return Math.max(92, Math.floor((toggleContainerWidth - 4) / 2));
+    }, [toggleContainerWidth]);
+    const headerToggleSideInset = React.useMemo(() => {
+        if (!toggleContainerWidth) return 2;
+        return Math.max(2, Math.floor((toggleContainerWidth - headerToggleItemWidth) / 2));
+    }, [toggleContainerWidth, headerToggleItemWidth]);
+
+    const centerToggleLoopIndex = (loopIndex: number, animated: boolean = true) => {
+        if (!toggleContainerWidth) return;
+        const contentWidth = (headerToggleItemWidth * loopedNavTabs.length) + (headerToggleSideInset * 2);
+        const maxOffset = Math.max(0, contentWidth - toggleContainerWidth);
+        const targetX = Math.max(0, Math.min(loopIndex * headerToggleItemWidth, maxOffset));
+        toggleScrollRef.current?.scrollTo({ x: targetX, animated });
+    };
+    const triggerSelectionHaptic = () => {
+        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
+    };
+    const getTabIndexByView = (view: 'timer' | 'task' | 'goal') => {
+        const idx = NAV_TABS.findIndex(t => t.key === view);
+        return idx >= 0 ? idx : 0;
+    };
+    const centerToggleForView = (view: 'timer' | 'task' | 'goal', animated: boolean = true) => {
+        const baseIdx = getTabIndexByView(view);
+        const centeredLoopIndex = (navMiddleCopyIndex * navTabCount) + baseIdx;
+        setActiveLoopIndex(centeredLoopIndex);
+        centerToggleLoopIndex(centeredLoopIndex, animated);
+    };
+    const settleInfiniteToggle = (offsetX: number) => {
+        if (!toggleContainerWidth || headerToggleItemWidth <= 0) return;
+        const nearestLoopIndex = Math.round(offsetX / headerToggleItemWidth);
+        const safeLoopIndex = Math.max(0, Math.min(loopedNavTabs.length - 1, nearestLoopIndex));
+        const baseIdx = ((safeLoopIndex % navTabCount) + navTabCount) % navTabCount;
+        const selectedTab = NAV_TABS[baseIdx];
+        if (selectedTab && selectedTab.key !== currentActiveView && onViewChange) {
+            triggerSelectionHaptic();
+            onViewChange(selectedTab.key);
+        }
+        const centeredLoopIndex = (navMiddleCopyIndex * navTabCount) + baseIdx;
+        setActiveLoopIndex(centeredLoopIndex);
+        centerToggleLoopIndex(centeredLoopIndex, false);
+    };
     const [completedPopupTimer, setCompletedPopupTimer] = useState<Timer | null>(null);
     const prevTimersRef = React.useRef<Timer[]>([]);
     const playCountRef = useRef(0);
@@ -182,16 +258,49 @@ export default function TimerList({
         };
     }, [timers]);
 
-    // Reset toggle slider position when orientation changes
-    // Without this, the slider carries over its landscape offset into portrait, making it misaligned
-    useEffect(() => {
-        toggleSlideAnim.setValue(activeView === 'timer' ? 0 : activeView === 'task' ? 1 : 2);
-    }, [isLandscape, activeView]);
-
-    // Reset measured width when orientation changes so onLayout recalculates
+    // Reset measured width and loop anchor when orientation changes so onLayout recalculates
     useEffect(() => {
         setToggleContainerWidth(0);
+        didInitInfiniteToggleRef.current = false;
     }, [isLandscape]);
+
+    useEffect(() => {
+        const targetValue = ((activeLoopIndex % navTabCount) + navTabCount) % navTabCount;
+        NAV_TABS.forEach((_, idx) => {
+            const isActive = idx === targetValue;
+            Animated.spring(tabIconScale[idx], {
+                toValue: isActive ? 1.14 : 0.94,
+                useNativeDriver: true,
+                friction: 7,
+                tension: 120,
+            }).start();
+            Animated.timing(tabLabelOpacity[idx], {
+                toValue: isActive ? 1 : 0.72,
+                duration: 180,
+                easing: Easing.out(Easing.cubic),
+                useNativeDriver: false,
+            }).start();
+        });
+    }, [activeLoopIndex, navTabCount]);
+
+    useEffect(() => {
+        if (!toggleContainerWidth) return;
+        if (!didInitInfiniteToggleRef.current) {
+            centerToggleForView(currentActiveView, false);
+            didInitInfiniteToggleRef.current = true;
+            return;
+        }
+        centerToggleForView(currentActiveView, true);
+    }, [toggleContainerWidth, currentActiveView, headerToggleItemWidth, headerToggleSideInset]);
+
+    useEffect(() => {
+        Animated.timing(toggleInteractionAnim, {
+            toValue: isToggleInteracting ? 1 : 0,
+            duration: isToggleInteracting ? 120 : 220,
+            easing: Easing.out(Easing.quad),
+            useNativeDriver: true,
+        }).start();
+    }, [isToggleInteracting]);
 
     // Play completion sound when popup shows
     useEffect(() => {
@@ -656,6 +765,94 @@ export default function TimerList({
         ));
     };
 
+    const renderInfiniteViewToggle = (isPortrait: boolean = false) => (
+        <Animated.View
+            style={[
+                styles.viewToggleContainer,
+                isPortrait && styles.viewToggleContainerPortrait,
+                isToggleInteracting && styles.viewToggleContainerInteracting,
+                {
+                    transform: [{
+                        scale: toggleInteractionAnim.interpolate({
+                            inputRange: [0, 1],
+                            outputRange: [1, 1.015],
+                        }),
+                    }],
+                },
+            ]}
+            onLayout={(e) => setToggleContainerWidth(e.nativeEvent.layout.width)}
+        >
+            <ScrollView
+                ref={toggleScrollRef}
+                horizontal
+                style={styles.viewToggleScroll}
+                contentContainerStyle={[
+                    styles.viewToggleScrollContent,
+                    { paddingHorizontal: headerToggleSideInset },
+                ]}
+                showsHorizontalScrollIndicator={false}
+                decelerationRate="fast"
+                bounces={false}
+                snapToInterval={headerToggleItemWidth}
+                snapToAlignment="start"
+                disableIntervalMomentum
+                onTouchStart={() => setIsToggleInteracting(true)}
+                onTouchEnd={() => setIsToggleInteracting(false)}
+                onTouchCancel={() => setIsToggleInteracting(false)}
+                onScrollBeginDrag={() => setIsToggleInteracting(true)}
+                onMomentumScrollBegin={() => setIsToggleInteracting(true)}
+                onScrollEndDrag={(e) => {
+                    setIsToggleInteracting(false);
+                    settleInfiniteToggle(e.nativeEvent.contentOffset.x);
+                }}
+                onMomentumScrollEnd={(e) => {
+                    setIsToggleInteracting(false);
+                    settleInfiniteToggle(e.nativeEvent.contentOffset.x);
+                }}
+            >
+                {loopedNavTabs.map((tab) => {
+                    const isActive = activeLoopIndex === tab.loopIndex;
+                    return (
+                        <TouchableOpacity
+                            key={`${tab.key}-${tab.loopIndex}`}
+                            style={[
+                                styles.viewToggleBtn,
+                                { width: headerToggleItemWidth },
+                                isActive && styles.viewToggleBtnActive,
+                            ]}
+                            onPress={() => {
+                                setActiveLoopIndex(tab.loopIndex);
+                                centerToggleLoopIndex(tab.loopIndex, true);
+                                triggerSelectionHaptic();
+                                onViewChange && onViewChange(tab.key);
+                            }}
+                            activeOpacity={0.75}
+                        >
+                            <Animated.View style={styles.viewToggleBtnInner}>
+                                <Animated.View style={{ transform: [{ scale: tabIconScale[tab.realIndex] }] }}>
+                                    <MaterialIcons
+                                        name={tab.icon as any}
+                                        size={13}
+                                        color={isActive ? '#000' : 'rgba(255,255,255,0.45)'}
+                                    />
+                                </Animated.View>
+                                <Animated.Text
+                                    style={[
+                                        styles.viewToggleText,
+                                        isActive && styles.viewToggleTextActive,
+                                        { opacity: tabLabelOpacity[tab.realIndex] },
+                                    ]}
+                                >
+                                    {tab.label}
+                                </Animated.Text>
+                            </Animated.View>
+                        </TouchableOpacity>
+                    );
+                })}
+            </ScrollView>
+        </Animated.View>
+    );
+
     return (
         <LinearGradient
             colors={['#000000', '#000000']}
@@ -681,98 +878,8 @@ export default function TimerList({
                                                 <View style={{ width: 1, height: 16, backgroundColor: 'rgba(255,255,255,0.1)' }} />
                                                 <Text style={{ color: 'rgba(255,255,255,0.4)', fontSize: 10, letterSpacing: 2, fontWeight: '600' }}>CHRONOSCAPE</Text>
                                             </View>
-                                            <View style={styles.toggleWithCountRow}>
-                                            <View
-                                                style={styles.viewToggleContainer}
-                                                onLayout={(e) => setToggleContainerWidth(e.nativeEvent.layout.width)}
-                                            >
-                                                {/* Animated Sliding Indicator */}
-                                                <Animated.View
-                                                    style={[
-                                                        styles.viewToggleSlider,
-                                                        {
-                                                            transform: [{
-                                                                translateX: toggleSlideAnim.interpolate({
-                                                                    inputRange: [0, 1, 2],
-                                                                    outputRange: [0, toggleContainerWidth / 3, (toggleContainerWidth * 2) / 3]
-                                                                })
-                                                            }]
-                                                        }
-                                                    ]}
-                                                />
-                                                <TouchableOpacity
-                                                    style={styles.viewToggleBtn}
-                                                    onPress={() => {
-                                                        Animated.spring(toggleSlideAnim, {
-                                                            toValue: 0,
-                                                            useNativeDriver: true,
-                                                            friction: 8,
-                                                            tension: 100,
-                                                        }).start();
-                                                        if (onViewChange) onViewChange('timer');
-                                                    }}
-                                                    activeOpacity={0.7}
-                                                >
-                                                    <MaterialIcons
-                                                        name="timer"
-                                                        size={14}
-                                                        color={activeView === 'timer' ? '#fff' : 'rgba(255,255,255,0.4)'}
-                                                    />
-                                                    <Text style={[
-                                                        styles.viewToggleText,
-                                                        activeView === 'timer' && styles.viewToggleTextActive
-                                                    ]}>TIMER</Text>
-                                                </TouchableOpacity>
-                                                <TouchableOpacity
-                                                    style={styles.viewToggleBtn}
-                                                    onPress={() => {
-                                                        Animated.spring(toggleSlideAnim, {
-                                                            toValue: 1,
-                                                            useNativeDriver: true,
-                                                            friction: 8,
-                                                            tension: 100,
-                                                        }).start();
-                                                        if (onViewChange) onViewChange('task');
-                                                    }}
-                                                    activeOpacity={0.7}
-                                                >
-                                                    <MaterialIcons
-                                                        name="check-box"
-                                                        size={14}
-                                                        color={activeView === 'task' ? '#fff' : 'rgba(255,255,255,0.4)'}
-                                                    />
-                                                    <Text style={[
-                                                        styles.viewToggleText,
-                                                        activeView === 'task' && styles.viewToggleTextActive
-                                                    ]}>TASK</Text>
-                                                </TouchableOpacity>
-                                                <TouchableOpacity
-                                                    style={styles.viewToggleBtn}
-                                                    onPress={() => {
-                                                        Animated.spring(toggleSlideAnim, {
-                                                            toValue: 2,
-                                                            useNativeDriver: true,
-                                                            friction: 8,
-                                                            tension: 100,
-                                                        }).start();
-                                                        if (onViewChange) onViewChange('goal');
-                                                    }}
-                                                    activeOpacity={0.7}
-                                                >
-                                                    <MaterialIcons
-                                                        name="flag"
-                                                        size={14}
-                                                        color={activeView === 'goal' ? '#fff' : 'rgba(255,255,255,0.4)'}
-                                                    />
-                                                    <Text style={[
-                                                        styles.viewToggleText,
-                                                        activeView === 'goal' && styles.viewToggleTextActive
-                                                    ]}>GOAL</Text>
-                                                </TouchableOpacity>
-                                            </View>
-                                            <View style={styles.completionCountBadge}>
-                                                <Text style={styles.completionCountText}>{completedCount}/{totalCount}</Text>
-                                            </View>
+                                            <View style={[styles.toggleWithCountRow, isGoalView && styles.toggleWithCountRowGoal]}>
+                                            {renderInfiniteViewToggle(false)}
                                         </View>
                                         </>
                                     )}
@@ -995,111 +1102,23 @@ export default function TimerList({
                 ) : (
                     // PORTRAIT LAYOUT — key forces full remount on orientation change
                     <View key={isLandscape ? 'land' : 'port'} style={{ flex: 1 }}>
-                        <View style={[styles.headerCardPortrait, { flex: 0, minHeight: 0 }]}>
+                        <View style={[styles.headerCardPortrait, isGoalView && styles.headerCardPortraitGoal, { flex: 0, minHeight: 0 }]}>
                             {/* 1. View Toggle & Completion Count Row */}
                             {onViewChange && (
-                                <View style={styles.toggleWithCountRowPortrait}>
-                                    {/* App Logo Branding */}
-                                    <View style={styles.portraitLogoWrapper}>
-                                        <Image
-                                            source={APP_LOGO}
-                                            style={styles.portraitLogo}
-                                            resizeMode="contain"
-                                        />
-                                    </View>
-                                    <View
-                                        style={[styles.viewToggleContainer, { flex: 0, width: 210 }]}
-                                        onLayout={(e) => setToggleContainerWidth(e.nativeEvent.layout.width)}
-                                    >
-                                        <Animated.View
-                                            style={[
-                                                styles.viewToggleSlider,
-                                                {
-                                                    transform: [{
-                                                        translateX: toggleSlideAnim.interpolate({
-                                                            inputRange: [0, 1, 2],
-                                                            outputRange: [0, toggleContainerWidth / 3, (toggleContainerWidth * 2) / 3]
-                                                        })
-                                                    }]
-                                                }
-                                            ]}
-                                        />
-                                        <TouchableOpacity
-                                            style={styles.viewToggleBtn}
-                                            onPress={() => {
-                                                Animated.spring(toggleSlideAnim, {
-                                                    toValue: 0,
-                                                    useNativeDriver: true,
-                                                    friction: 8,
-                                                    tension: 100,
-                                                }).start();
-                                                if (onViewChange) onViewChange('timer');
-                                            }}
-                                            activeOpacity={0.7}
-                                        >
-                                            <MaterialIcons
-                                                name="timer"
-                                                size={14}
-                                                color={activeView === 'timer' ? '#fff' : 'rgba(255,255,255,0.4)'}
+                                <View style={[styles.toggleWithCountRowPortrait, isGoalView && styles.toggleWithCountRowPortraitGoal]}>
+                                    <View style={styles.toggleClusterPortrait}>
+                                        {/* App Logo Branding */}
+                                        <View style={styles.portraitLogoWrapper}>
+                                            <Image
+                                                source={APP_LOGO}
+                                                style={styles.portraitLogo}
+                                                resizeMode="contain"
                                             />
-                                            <Text style={[
-                                                styles.viewToggleText,
-                                                activeView === 'timer' && styles.viewToggleTextActive
-                                            ]}>TIMER</Text>
-                                        </TouchableOpacity>
-                                        <TouchableOpacity
-                                            style={styles.viewToggleBtn}
-                                            onPress={() => {
-                                                Animated.spring(toggleSlideAnim, {
-                                                    toValue: 1,
-                                                    useNativeDriver: true,
-                                                    friction: 8,
-                                                    tension: 100,
-                                                }).start();
-                                                if (onViewChange) onViewChange('task');
-                                            }}
-                                            activeOpacity={0.7}
-                                        >
-                                            <MaterialIcons
-                                                name="check-box"
-                                                size={14}
-                                                color={activeView === 'task' ? '#fff' : 'rgba(255,255,255,0.4)'}
-                                            />
-                                            <Text style={[
-                                                styles.viewToggleText,
-                                                activeView === 'task' && styles.viewToggleTextActive
-                                            ]}>TASK</Text>
-                                        </TouchableOpacity>
-                                        <TouchableOpacity
-                                            style={styles.viewToggleBtn}
-                                            onPress={() => {
-                                                Animated.spring(toggleSlideAnim, {
-                                                    toValue: 2,
-                                                    useNativeDriver: true,
-                                                    friction: 8,
-                                                    tension: 100,
-                                                }).start();
-                                                if (onViewChange) onViewChange('goal');
-                                            }}
-                                            activeOpacity={0.7}
-                                        >
-                                            <MaterialIcons
-                                                name="flag"
-                                                size={14}
-                                                color={activeView === 'goal' ? '#fff' : 'rgba(255,255,255,0.4)'}
-                                            />
-                                            <Text style={[
-                                                styles.viewToggleText,
-                                                activeView === 'goal' && styles.viewToggleTextActive
-                                            ]}>GOAL</Text>
-                                        </TouchableOpacity>
+                                        </View>
+                                        {renderInfiniteViewToggle(true)}
                                     </View>
                                      {/* Completion Count + Notes + Settings + Expand */}
-                                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-                                        <View style={styles.completionCountBadge}>
-                                            <Text style={styles.completionCountText}>{completedCount}/{totalCount}</Text>
-                                        </View>
-
+                                    <View style={styles.headerRightActionsPortrait}>
                                         <NotesIconButton
                                             active={showNotesPanel}
                                             hasNote={selectedDateHasNote}
@@ -1112,7 +1131,7 @@ export default function TimerList({
 
                                         {onSettings && (
                                             <TouchableOpacity
-                                                style={styles.headerIconBtnPortrait}
+                                                style={[styles.headerIconBtnPortrait, isGoalView && styles.headerIconBtnPortraitGoal]}
                                                 onPress={onSettings}
                                                 activeOpacity={0.7}
                                             >
@@ -1120,22 +1139,23 @@ export default function TimerList({
                                             </TouchableOpacity>
                                         )}
 
-                                        {/* Expand/Collapse Toggle */}
-                                        <TouchableOpacity
-                                            style={styles.headerCollapseBtnTop}
-                                            onPress={() => {
-                                                LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
-                                                setIsPortraitHeaderExpanded(!isPortraitHeaderExpanded);
-                                            }}
-                                            activeOpacity={0.7}
-                                            hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-                                        >
-                                            <MaterialIcons
-                                                name={isPortraitHeaderExpanded ? "keyboard-arrow-up" : "keyboard-arrow-down"}
-                                                size={22}
-                                                color="rgba(255,255,255,0.6)"
-                                            />
-                                        </TouchableOpacity>
+                                        {!isGoalView && (
+                                            <TouchableOpacity
+                                                style={styles.headerCollapseBtnTop}
+                                                onPress={() => {
+                                                    LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+                                                    setIsPortraitHeaderExpanded(!isPortraitHeaderExpanded);
+                                                }}
+                                                activeOpacity={0.7}
+                                                hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                                            >
+                                                <MaterialIcons
+                                                    name={isPortraitHeaderExpanded ? "keyboard-arrow-up" : "keyboard-arrow-down"}
+                                                    size={22}
+                                                    color="rgba(255,255,255,0.6)"
+                                                />
+                                            </TouchableOpacity>
+                                        )}
                                     </View>
                                 </View>
                             )}
@@ -1931,6 +1951,14 @@ const styles = StyleSheet.create({
         shadowOpacity: 0.08,
         shadowRadius: 12,
     },
+    headerCardPortraitGoal: {
+        marginTop: 8,
+        paddingVertical: 10,
+        paddingHorizontal: 10,
+        borderRadius: 20,
+        borderColor: 'rgba(0,229,255,0.12)',
+        backgroundColor: 'rgba(7, 10, 12, 0.92)',
+    },
 
     headerCollapseBtnTop: {
         width: 32,
@@ -1941,6 +1969,12 @@ const styles = StyleSheet.create({
         backgroundColor: 'rgba(255,255,255,0.05)',
         borderWidth: 1,
         borderColor: 'rgba(255,255,255,0.08)',
+    },
+    headerCollapseBtnTopGoal: {
+        width: 30,
+        height: 30,
+        borderRadius: 15,
+        backgroundColor: 'rgba(255,255,255,0.04)',
     },
 
     portraitLogoWrapper: {
@@ -1962,6 +1996,23 @@ const styles = StyleSheet.create({
         justifyContent: 'space-between',
         marginBottom: 12,
         gap: 8,
+    },
+    toggleClusterPortrait: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        flex: 1,
+        minWidth: 0,
+        gap: 6,
+    },
+    headerRightActionsPortrait: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 6,
+        flexShrink: 0,
+    },
+    toggleWithCountRowPortraitGoal: {
+        marginBottom: 8,
+        gap: 6,
     },
 
     portraitHeaderTitleRow: {
@@ -2005,6 +2056,12 @@ const styles = StyleSheet.create({
         justifyContent: 'center',
         borderWidth: 1,
         borderColor: 'rgba(255,255,255,0.08)',
+    },
+    headerIconBtnPortraitGoal: {
+        width: 32,
+        height: 32,
+        borderRadius: 10,
+        backgroundColor: 'rgba(255,255,255,0.04)',
     },
 
     headerIconBtnActivePortrait: {
@@ -3638,47 +3695,69 @@ const styles = StyleSheet.create({
     viewToggleContainer: {
         flex: 1,
         flexDirection: 'row',
-        gap: 4,
-        backgroundColor: 'rgba(255, 255, 255, 0.03)',
-        borderRadius: 10,
-        padding: 3,
+        backgroundColor: 'rgba(15, 15, 15, 0.5)',
+        borderRadius: 12,
+        padding: 2,
         borderWidth: 1,
-        borderColor: 'rgba(255, 255, 255, 0.06)',
+        borderColor: 'rgba(255, 255, 255, 0.1)',
+    },
+    viewToggleContainerInteracting: {
+        borderColor: 'rgba(255, 255, 255, 0.2)',
+        backgroundColor: 'rgba(20, 20, 20, 0.8)',
+    },
+    viewToggleContainerPortrait: {
+        minWidth: 0,
+    },
+    viewToggleContainerGoal: {
+        borderRadius: 12,
+        borderColor: 'rgba(255, 255, 255, 0.1)',
+        backgroundColor: 'rgba(15, 15, 15, 0.5)',
     },
     viewToggleBtn: {
-        flex: 1,
+        flexShrink: 0,
         flexDirection: 'row',
         alignItems: 'center',
         justifyContent: 'center',
-        gap: 6,
-        paddingVertical: 8,
-        paddingHorizontal: 12,
-        borderRadius: 8,
+        gap: 4,
+        paddingVertical: 7,
+        paddingHorizontal: 8,
+        borderRadius: 10,
         backgroundColor: 'transparent',
+    },
+    viewToggleScroll: {
+        flex: 1,
+    },
+    viewToggleScrollContent: {
+        alignItems: 'center',
+    },
+    viewToggleBtnInner: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'center',
+        gap: 4,
+    },
+    viewToggleBtnGoal: {
+        gap: 4,
+        paddingVertical: 7,
+        paddingHorizontal: 8,
+        borderRadius: 10,
     },
     viewToggleBtnActive: {
-        backgroundColor: 'transparent',
-        borderWidth: 1,
-        borderColor: 'rgba(255, 255, 255, 0.15)',
-    },
-    viewToggleSlider: {
-        position: 'absolute',
-        top: 3,
-        left: 3,
-        width: '48%',
-        height: 32,
-        backgroundColor: 'rgba(255, 255, 255, 0.12)',
-        borderRadius: 8,
+        backgroundColor: '#fff',
     },
     viewToggleText: {
-        fontSize: 10,
-        fontWeight: '700',
+        fontSize: 9,
+        fontWeight: '800',
         color: 'rgba(255, 255, 255, 0.4)',
-        letterSpacing: 1,
+        letterSpacing: 0.8,
+    },
+    viewToggleTextGoal: {
+        fontSize: 9,
+        letterSpacing: 0.8,
     },
     viewToggleTextActive: {
-        color: '#fff',
-        fontWeight: '800',
+        color: '#000',
+        fontWeight: '900',
     },
     toggleWithCountRow: {
         flexDirection: 'row',
@@ -3687,6 +3766,10 @@ const styles = StyleSheet.create({
         marginBottom: 12,
         gap: 8,
     },
+    toggleWithCountRowGoal: {
+        marginBottom: 10,
+        gap: 6,
+    },
     completionCountBadge: {
         backgroundColor: 'rgba(76, 175, 80, 0.15)',
         paddingHorizontal: 10,
@@ -3694,6 +3777,10 @@ const styles = StyleSheet.create({
         borderRadius: 10,
         borderWidth: 1,
         borderColor: 'rgba(76, 175, 80, 0.25)',
+    },
+    completionCountBadgeCompactPortrait: {
+        paddingHorizontal: 8,
+        paddingVertical: 5,
     },
     completionCountText: {
         fontSize: 13,

@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState, useMemo, useEffect, useRef } from 'react';
 import {
     View,
     Text,
@@ -8,13 +8,25 @@ import {
     Dimensions,
     LayoutAnimation,
     Alert,
+    Image,
+    Platform,
+    Animated,
+    Easing,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { BlurView } from 'expo-blur';
 import { MaterialIcons } from '@expo/vector-icons';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import * as Haptics from 'expo-haptics';
+
+const APP_LOGO = require('../../../../assets/logo-transparent.png');
+
+const { width } = Dimensions.get('window');
 
 import { Goal, GoalType, Task } from '../../../constants/data';
 import { shouldRecurOnDate, expandRecurringTaskForDate } from '../../../utils/recurrenceUtils';
+import NotesPanel, { NotesIconButton, hasDayNote } from '../Task/NotesPanel';
+import { getLogicalDate, getStartOfLogicalDay, DEFAULT_DAILY_START_MINUTES } from '../../../utils/dailyStartTime';
 
 
 interface GoalManagementProps {
@@ -26,6 +38,12 @@ interface GoalManagementProps {
     isLandscape: boolean;
     tasks: Task[];
     onUnlinkTask: (goalId: string, taskId: number) => void;
+    onClose: () => void;
+    onViewChange: (view: 'timer' | 'task' | 'goal') => void;
+    activeView?: 'timer' | 'task' | 'goal';
+    onSettings?: () => void;
+    onShowNotes?: () => void;
+    selectedDate?: Date;
 }
 
 export default function GoalManagement({
@@ -37,13 +55,205 @@ export default function GoalManagement({
     isLandscape,
     tasks,
     onUnlinkTask,
+    onClose,
+    onViewChange,
+    activeView,
+    onSettings,
+    onShowNotes,
+    selectedDate,
 }: GoalManagementProps) {
+    const insets = useSafeAreaInsets();
     const [expandedGoalIds, setExpandedGoalIds] = useState<string[]>([]);
     const [menuGoalId, setMenuGoalId] = useState<string | null>(null);
     const [selectedTaskIdPerGoal, setSelectedTaskIdPerGoal] = useState<Record<string, number | null>>({});
     const [hiddenGraphIds, setHiddenGraphIds] = useState<string[]>([]);
     const [expandedGraphIds, setExpandedGraphIds] = useState<string[]>([]);
     const [selectedDayData, setSelectedDayData] = useState<{ date: string, segments: any[], title: string } | null>(null);
+    const [isHeaderCompact, setIsHeaderCompact] = useState(false);
+    const [containerWidth, setContainerWidth] = useState(0);
+    const [deckContainerWidth, setDeckContainerWidth] = useState(0);
+    const [isToggleInteracting, setIsToggleInteracting] = useState(false);
+    
+    // Notes state
+    const [showNotesPanel, setShowNotesPanel] = useState(false);
+    const [selectedDateHasNote, setSelectedDateHasNote] = useState(false);
+
+    // Get logical date for notes tracking
+    const selectedLogical = useMemo(() => {
+        const date = selectedDate || new Date();
+        return getLogicalDate(date, DEFAULT_DAILY_START_MINUTES);
+    }, [selectedDate]);
+
+    // Per-tab animated values
+    const NAV_TABS = [
+        { key: 'timer' as const, icon: 'timer',     label: 'TIMER' },
+        { key: 'task'  as const, icon: 'check-box', label: 'TASK'  },
+        { key: 'goal'  as const, icon: 'flag',      label: 'GOAL'  },
+    ];
+    const NAV_LOOP_COPIES = 7;
+    const navTabCount = NAV_TABS.length;
+    const navMiddleCopyIndex = Math.floor(NAV_LOOP_COPIES / 2);
+    const currentActiveView = activeView || 'goal';
+
+    const initialTabIdxRaw = NAV_TABS.findIndex(t => t.key === currentActiveView);
+    const initialTabIdx = initialTabIdxRaw >= 0 ? initialTabIdxRaw : 0;
+    const initialCenteredLoopIndex = (navMiddleCopyIndex * navTabCount) + initialTabIdx;
+    const toggleScrollRef = useRef<ScrollView | null>(null);
+    const didInitInfiniteToggleRef = useRef(false);
+    const toggleInteractionAnim = useRef(new Animated.Value(0)).current;
+    const [activeLoopIndex, setActiveLoopIndex] = useState(initialCenteredLoopIndex);
+
+    const loopedNavTabs = useMemo(
+        () =>
+            Array.from({ length: navTabCount * NAV_LOOP_COPIES }, (_, loopIndex) => {
+                const realIndex = loopIndex % navTabCount;
+                const tab = NAV_TABS[realIndex];
+                return { ...tab, realIndex, loopIndex };
+            }),
+        [navTabCount]
+    );
+
+    // iconScale uses native driver (transform only)
+    const tabIconScale = useRef(
+        NAV_TABS.map((_, idx) => new Animated.Value(idx === initialTabIdx ? 1.16 : 0.94))
+    ).current;
+    const tabContainerScale = useRef(
+        NAV_TABS.map((_, idx) => new Animated.Value(idx === initialTabIdx ? 1 : 0.96))
+    ).current;
+    const tabContainerLift = useRef(
+        NAV_TABS.map((_, idx) => new Animated.Value(idx === initialTabIdx ? -1 : 0))
+    ).current;
+
+    // labelOpacity is non-native (opacity needs layout)
+    const tabLabelOpacity = useRef(
+        NAV_TABS.map((_, idx) => new Animated.Value(idx === initialTabIdx ? 1 : 0.72))
+    ).current;
+
+    // Keep only 2 tabs visible at once; remaining tabs are reachable by horizontal scroll.
+    const headerToggleItemWidth = useMemo(() => {
+        if (!containerWidth) return 100;
+        return Math.max(92, Math.floor((containerWidth - 4) / 2));
+    }, [containerWidth]);
+    const headerToggleSideInset = useMemo(() => {
+        if (!containerWidth) return 2;
+        return Math.max(2, Math.floor((containerWidth - headerToggleItemWidth) / 2));
+    }, [containerWidth, headerToggleItemWidth]);
+
+    const centerToggleLoopIndex = (loopIndex: number, animated: boolean = true) => {
+        if (!containerWidth) return;
+        const contentWidth = (headerToggleItemWidth * loopedNavTabs.length) + (headerToggleSideInset * 2);
+        const maxOffset = Math.max(0, contentWidth - containerWidth);
+        const targetX = Math.max(0, Math.min(loopIndex * headerToggleItemWidth, maxOffset));
+        toggleScrollRef.current?.scrollTo({ x: targetX, animated });
+    };
+    const triggerSelectionHaptic = () => {
+        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
+    };
+
+    const getTabIndexByView = (view: 'timer' | 'task' | 'goal') => {
+        const idx = NAV_TABS.findIndex(t => t.key === view);
+        return idx >= 0 ? idx : 0;
+    };
+
+    const centerToggleForView = (view: 'timer' | 'task' | 'goal', animated: boolean = true) => {
+        const baseIdx = getTabIndexByView(view);
+        const centeredLoopIndex = (navMiddleCopyIndex * navTabCount) + baseIdx;
+        setActiveLoopIndex(centeredLoopIndex);
+        centerToggleLoopIndex(centeredLoopIndex, animated);
+    };
+
+    const settleInfiniteToggle = (offsetX: number) => {
+        if (!containerWidth || headerToggleItemWidth <= 0) return;
+
+        const nearestLoopIndex = Math.round(offsetX / headerToggleItemWidth);
+        const safeLoopIndex = Math.max(0, Math.min(loopedNavTabs.length - 1, nearestLoopIndex));
+        const baseIdx = ((safeLoopIndex % navTabCount) + navTabCount) % navTabCount;
+        const selectedTab = NAV_TABS[baseIdx];
+
+        if (selectedTab && selectedTab.key !== currentActiveView) {
+            onViewChange && onViewChange(selectedTab.key);
+            triggerSelectionHaptic();
+        }
+
+        // Re-anchor to middle copy to keep the loop infinite in both directions.
+        const centeredLoopIndex = (navMiddleCopyIndex * navTabCount) + baseIdx;
+        setActiveLoopIndex(centeredLoopIndex);
+        const centeredOffset = centeredLoopIndex * headerToggleItemWidth;
+        if (Math.abs(centeredOffset - offsetX) > 0.5) {
+            centerToggleLoopIndex(centeredLoopIndex, false);
+        }
+    };
+
+    // Constrain the horizontal task deck to max 2 visible cards.
+    const taskCardWidth = useMemo(() => {
+        if (!deckContainerWidth) return 150;
+        const gutter = 10; // matches `deploymentDeckContent` gap
+        const raw = deckContainerWidth / 2 - gutter / 2;
+        return Math.max(120, Math.floor(raw));
+    }, [deckContainerWidth]);
+    
+    useEffect(() => {
+        const targetValue = ((activeLoopIndex % navTabCount) + navTabCount) % navTabCount;
+
+        // Animate each tab independently
+        NAV_TABS.forEach((_, idx) => {
+            const isActive = idx === targetValue;
+            // Icon scale — native driver OK (transform)
+            Animated.spring(tabIconScale[idx], {
+                toValue: isActive ? 1.16 : 0.94,
+                useNativeDriver: true,
+                friction: 6,
+                tension: 120,
+            }).start();
+            Animated.spring(tabContainerScale[idx], {
+                toValue: isActive ? 1 : 0.96,
+                useNativeDriver: true,
+                friction: 7,
+                tension: 110,
+            }).start();
+            Animated.spring(tabContainerLift[idx], {
+                toValue: isActive ? -1 : 0,
+                useNativeDriver: true,
+                friction: 7,
+                tension: 120,
+            }).start();
+            // Label fade — non-native (opacity layout interplay)
+            Animated.timing(tabLabelOpacity[idx], {
+                toValue: isActive ? 1 : 0.72,
+                duration: 180,
+                easing: Easing.out(Easing.cubic),
+                useNativeDriver: false,
+            }).start();
+        });
+    }, [activeLoopIndex, navTabCount]);
+
+    useEffect(() => {
+        if (!containerWidth) return;
+        if (!didInitInfiniteToggleRef.current) {
+            centerToggleForView(currentActiveView, false);
+            didInitInfiniteToggleRef.current = true;
+            return;
+        }
+        centerToggleForView(currentActiveView, true);
+    }, [containerWidth, currentActiveView, headerToggleItemWidth, headerToggleSideInset]);
+
+    useEffect(() => {
+        Animated.timing(toggleInteractionAnim, {
+            toValue: isToggleInteracting ? 1 : 0,
+            duration: isToggleInteracting ? 120 : 220,
+            easing: Easing.out(Easing.quad),
+            useNativeDriver: true,
+        }).start();
+    }, [isToggleInteracting]);
+
+    // Track if current date has a note
+    useEffect(() => {
+        const checkNote = async () => {
+            const hasNote = await hasDayNote(selectedLogical);
+            setSelectedDateHasNote(hasNote);
+        };
+        checkNote();
+    }, [selectedLogical]);
 
 
 
@@ -440,12 +650,13 @@ export default function GoalManagement({
                 activeOpacity={0.7}
                 style={[
                     styles.miniTaskCardHorizontal, 
+                    { width: taskCardWidth },
                     isSelected && styles.miniTaskCardSelected
                 ]}
             >
                 <View style={styles.miniTaskHeaderCompact}>
                     <View style={[styles.statusIndicatorSmall, { backgroundColor: statusColor }]} />
-                    <Text style={[styles.miniTaskTitleCompact, isSelected && { color: '#00E5FF' }]} numberOfLines={1}>
+                    <Text style={[styles.miniTaskTitleCompact, isSelected && { color: '#fff' }]} numberOfLines={1}>
                         {task.title.toUpperCase()}
                     </Text>
                 </View>
@@ -456,7 +667,7 @@ export default function GoalManagement({
 
                 <View style={styles.miniTaskFooterCompact}>
                     <View style={styles.miniProgressBarTrackCompact}>
-                        <View style={[styles.miniProgressBarFillCompact, { width: `${displayProgress}%`, backgroundColor: isSelected ? '#00E5FF' : statusColor }]} />
+                        <View style={[styles.miniProgressBarFillCompact, { width: `${displayProgress}%`, backgroundColor: isSelected ? '#fff' : statusColor }]} />
                     </View>
                     <Text style={styles.miniPercentTextCompact}>{Math.round(displayProgress)}%</Text>
                 </View>
@@ -491,7 +702,7 @@ export default function GoalManagement({
         }
 
         const displayTitle = goal.title;
-        const accentColor = '#00E5FF';
+        const accentColor = '#FFFFFF';
         const startLabel = formatDateCompact(goal.startDate || goal.createdAt);
         const endLabel = formatDateCompact(goal.endDate);
 
@@ -510,7 +721,7 @@ export default function GoalManagement({
                                 <View style={styles.hudHeaderTactical}>
                                     <View style={styles.goalIconContainer}>
                                         <LinearGradient
-                                            colors={[accentColor, 'rgba(0,229,255,0.3)']}
+                                            colors={['#FFFFFF', 'rgba(255,255,255,0.3)']}
                                             style={styles.iconGradient}
                                         >
                                             <MaterialIcons name="track-changes" size={22} color="#000" />
@@ -583,21 +794,6 @@ export default function GoalManagement({
                                             <Text style={styles.rightHeaderCountUnified}>{associatedTasks.length} LINKED</Text>
                                         </View>
                                     </View>
-                                    <TouchableOpacity 
-                                        onPress={() => {
-                                            LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
-                                            setHiddenGraphIds(prev => 
-                                                prev.includes(goal.id) ? prev.filter(id => id !== goal.id) : [...prev, goal.id]
-                                            );
-                                        }}
-                                        style={styles.telemetryToggleBtn}
-                                    >
-                                        <MaterialIcons 
-                                            name={hiddenGraphIds.includes(goal.id) ? "unfold-more" : "unfold-less"} 
-                                            size={14} 
-                                            color="rgba(0,229,255,0.6)" 
-                                        />
-                                    </TouchableOpacity>
                                 </View>
 
                                 {associatedTasks.length > 0 ? (
@@ -605,7 +801,7 @@ export default function GoalManagement({
                                         {!hiddenGraphIds.includes(goal.id) && (
                                             <View style={styles.combinedSystemGraphWrapper}>
                                                 <View style={styles.combinedGraphHeader}>
-                                                    <MaterialIcons name="analytics" size={10} color="rgba(0,229,255,0.4)" />
+                                                    <MaterialIcons name="analytics" size={10} color="rgba(255,255,255,0.4)" />
                                                     <Text style={styles.combinedGraphLabelText}>STRATEGIC SYSTEM PERFORMANCE</Text>
                                                 </View>
                                                 <GoalActivityGraph 
@@ -621,6 +817,7 @@ export default function GoalManagement({
                                             style={styles.deploymentDeckScroll}
                                             contentContainerStyle={styles.deploymentDeckContent}
                                             showsHorizontalScrollIndicator={false}
+                                            onLayout={(e) => setDeckContainerWidth(e.nativeEvent.layout.width)}
                                         >
                                             {associatedTasks.map(task => 
                                                 renderTaskItem(
@@ -743,14 +940,201 @@ export default function GoalManagement({
     };
 
     const rootGoals = useMemo(() => goals.filter(g => g.parentId === null), [goals]);
+    const linkedTaskCount = useMemo(() => {
+        const ids = new Set<number>();
+        goals.forEach(g => {
+            (g.taskIds || []).forEach(id => ids.add(id));
+            if (g.taskId) ids.add(g.taskId);
+        });
+        return ids.size;
+    }, [goals]);
+    const goalHeaderStats = useMemo(() => ({
+        goalCount: rootGoals.length || 3,
+        totalHours: '42.0H', // dummy analytics as requested
+    }), [rootGoals.length]);
+
+    const scrollTopPad = isLandscape ? (insets.top + 12) : (insets.top + 126);
 
     return (
         <View style={styles.container}>
+            {!isLandscape && (
+                <View style={styles.premiumHeaderWrapper}>
+                    {/* Status Bar Mask to hide content behind system icons */}
+                    <View style={[styles.statusBarMask, { height: insets.top }]} />
+                    
+                    {/* Smooth Gradient Fade */}
+                    <LinearGradient
+                        colors={['#000', 'rgba(0,0,0,0.8)', 'transparent']}
+                        style={styles.headerGradientFade}
+                    />
+
+                    <View style={[styles.premiumHeaderCapsuleContainer, { top: insets.top + 10 }]}>
+                        <BlurView intensity={80} tint="dark" style={styles.premiumHeaderCapsule}>
+                            <View style={styles.goalHeaderTopRow}>
+                                {/* Logo Section */}
+                                <View style={styles.headerLogoContainer}>
+                                    <Image
+                                        source={APP_LOGO}
+                                        style={styles.headerLogo}
+                                        resizeMode="contain"
+                                    />
+                                </View>
+
+                                {/* Navigation Toggle — Scalable Animated Segmented Control */}
+                                <View style={styles.headerToggleContainer}>
+                                    <Animated.View
+                                        style={[
+                                            styles.viewToggleContainerCompact,
+                                            isToggleInteracting && styles.viewToggleContainerCompactInteracting,
+                                            {
+                                                transform: [{
+                                                    scale: toggleInteractionAnim.interpolate({
+                                                        inputRange: [0, 1],
+                                                        outputRange: [1, 1.015],
+                                                    }),
+                                                }],
+                                            },
+                                        ]}
+                                        onLayout={(e) => setContainerWidth(e.nativeEvent.layout.width)}
+                                    >
+                                        <ScrollView
+                                            ref={toggleScrollRef}
+                                            horizontal
+                                            style={styles.viewToggleScroll}
+                                            contentContainerStyle={[
+                                                styles.viewToggleScrollContent,
+                                                { paddingHorizontal: headerToggleSideInset },
+                                            ]}
+                                            showsHorizontalScrollIndicator={false}
+                                            decelerationRate="fast"
+                                            bounces={false}
+                                            snapToInterval={headerToggleItemWidth}
+                                            snapToAlignment="start"
+                                            disableIntervalMomentum
+                                            onTouchStart={() => setIsToggleInteracting(true)}
+                                            onTouchEnd={() => setIsToggleInteracting(false)}
+                                            onTouchCancel={() => setIsToggleInteracting(false)}
+                                            onScrollBeginDrag={() => setIsToggleInteracting(true)}
+                                            onMomentumScrollBegin={() => setIsToggleInteracting(true)}
+                                            onScrollEndDrag={(e) => {
+                                                setIsToggleInteracting(false);
+                                                settleInfiniteToggle(e.nativeEvent.contentOffset.x);
+                                            }}
+                                            onMomentumScrollEnd={(e) => {
+                                                setIsToggleInteracting(false);
+                                                settleInfiniteToggle(e.nativeEvent.contentOffset.x);
+                                            }}
+                                        >
+                                            {loopedNavTabs.map((tab) => {
+                                                const isActive = activeLoopIndex === tab.loopIndex;
+                                                return (
+                                                    <TouchableOpacity
+                                                        key={`${tab.key}-${tab.loopIndex}`}
+                                                        style={[
+                                                            styles.viewToggleBtnCompact,
+                                                            { width: headerToggleItemWidth },
+                                                            isActive && styles.viewToggleBtnCompactActive
+                                                        ]}
+                                                        onPress={() => {
+                                                            setActiveLoopIndex(tab.loopIndex);
+                                                            centerToggleLoopIndex(tab.loopIndex, true);
+                                                            triggerSelectionHaptic();
+                                                            onViewChange && onViewChange(tab.key);
+                                                        }}
+                                                        activeOpacity={0.75}
+                                                    >
+                                                        <Animated.View
+                                                            style={[
+                                                                styles.viewToggleBtnInner,
+                                                                {
+                                                                    transform: [
+                                                                        { scale: tabContainerScale[tab.realIndex] },
+                                                                        { translateY: tabContainerLift[tab.realIndex] },
+                                                                    ],
+                                                                },
+                                                            ]}
+                                                        >
+                                                            <Animated.View style={{ transform: [{ scale: tabIconScale[tab.realIndex] }] }}>
+                                                                <MaterialIcons
+                                                                    name={tab.icon as any}
+                                                                    size={13}
+                                                                    color={isActive ? '#000' : 'rgba(255,255,255,0.45)'}
+                                                                />
+                                                            </Animated.View>
+                                                            <Animated.Text
+                                                                style={[
+                                                                    styles.viewToggleTextCompact,
+                                                                    isActive && styles.viewToggleTextActiveCompact,
+                                                                    { opacity: tabLabelOpacity[tab.realIndex] },
+                                                                ]}
+                                                                numberOfLines={1}
+                                                            >
+                                                                {tab.label}
+                                                            </Animated.Text>
+                                                        </Animated.View>
+                                                    </TouchableOpacity>
+                                                );
+                                            })}
+                                        </ScrollView>
+                                    </Animated.View>
+                                </View>
+
+                                {/* Header Actions: Notes & Settings - Black & White Theme */}
+                                <View style={styles.headerActionsContainer}>
+                                    <TouchableOpacity
+                                        style={[styles.headerActionBtn, selectedDateHasNote && styles.headerActionBtnActiveBW]}
+                                        onPress={() => {
+                                            LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+                                            setShowNotesPanel(true);
+                                        }}
+                                        activeOpacity={0.7}
+                                    >
+                                        <MaterialIcons 
+                                            name={selectedDateHasNote ? "event-note" : "note-add"} 
+                                            size={18} 
+                                            color={selectedDateHasNote ? "#fff" : "rgba(255,255,255,0.6)"} 
+                                        />
+                                    </TouchableOpacity>
+
+                                    <TouchableOpacity
+                                        style={styles.headerActionBtn}
+                                        onPress={onSettings}
+                                        activeOpacity={0.7}
+                                    >
+                                        <MaterialIcons name="settings" size={18} color="rgba(255,255,255,0.6)" />
+                                    </TouchableOpacity>
+                                </View>
+                            </View>
+
+                            <View style={styles.goalHeaderMetricsRow}>
+                                <View style={styles.goalHeaderMetricCard}>
+                                    <Text style={styles.goalHeaderMetricLabel}>GOALS</Text>
+                                    <Text style={styles.goalHeaderMetricValue}>{goalHeaderStats.goalCount}</Text>
+                                </View>
+                                <View style={styles.goalHeaderMetricCard}>
+                                    <Text style={styles.goalHeaderMetricLabel}>DURATION</Text>
+                                    <Text style={styles.goalHeaderMetricValue}>{goalHeaderStats.totalHours}</Text>
+                                </View>
+                            </View>
+                        </BlurView>
+
+                        <View style={styles.goalHeaderDividerContainer}>
+                            <LinearGradient
+                                colors={['transparent', 'rgba(255,255,255,0.22)', 'transparent']}
+                                start={{ x: 0, y: 0.5 }}
+                                end={{ x: 1, y: 0.5 }}
+                                style={styles.goalHeaderDivider}
+                            />
+                        </View>
+                    </View>
+                </View>
+            )}
             <ScrollView
                 style={styles.scrollView}
                 contentContainerStyle={[
                     styles.scrollContent,
-                    isLandscape && styles.scrollContentLandscape
+                    { paddingTop: scrollTopPad },
+                    { paddingBottom: isLandscape ? (Math.max(insets.bottom, 20) + 100) : 100 },
                 ]}
                 showsVerticalScrollIndicator={false}
             >
@@ -760,7 +1144,7 @@ export default function GoalManagement({
                 {goals.filter(g => !g.parentId).length === 0 && (
                     <View style={styles.emptySection}>
                         <BlurView intensity={20} tint="dark" style={styles.emptyBox}>
-                            <MaterialIcons name="security" size={40} color="rgba(0,229,255,0.2)" />
+                            <MaterialIcons name="security" size={40} color="rgba(255,255,255,0.2)" />
                             <Text style={styles.emptyBoxTitle}>SYSTEM OFFLINE</Text>
                             <Text style={styles.emptyBoxText}>No strategic objectives detected in current neural space.</Text>
                             <TouchableOpacity
@@ -768,7 +1152,7 @@ export default function GoalManagement({
                                 onPress={() => onAddGoal(null, 'goal')}
                             >
                                 <LinearGradient
-                                    colors={['#00E5FF', '#2196F3']}
+                                    colors={['#FFFFFF', '#444444']}
                                     style={styles.rebootBtnGradient}
                                 >
                                     <Text style={styles.rebootText}>INITIALIZE SYSTEM</Text>
@@ -779,17 +1163,41 @@ export default function GoalManagement({
                 )}
             </ScrollView>
 
-            <TouchableOpacity
-                style={styles.fab}
-                onPress={() => onAddGoal(null, 'goal')}
-            >
-                <LinearGradient
-                    colors={['#00E5FF', '#2196F3']}
-                    style={styles.fabGradient}
+            {/* Notes Panel Overlay */}
+            {showNotesPanel && (
+                <View style={styles.notesTakeoverOverlay}>
+                    <NotesPanel
+                        visible={showNotesPanel}
+                        dateKey={selectedLogical}
+                        onClose={() => setShowNotesPanel(false)}
+                        onPresenceChange={setSelectedDateHasNote}
+                    />
+                </View>
+            )}
+
+            <View style={[
+                styles.fabContainer,
+                {
+                    bottom: isLandscape ? (Math.max(insets.bottom, 16) + 12) : 20,
+                    right: isLandscape ? (Math.max(insets.right, 20)) : 20,
+                }
+            ]}>
+                <TouchableOpacity
+                    style={styles.fabSecondary}
+                    onPress={onClose}
+                    activeOpacity={0.75}
                 >
-                    <MaterialIcons name="add" size={32} color="#fff" />
-                </LinearGradient>
-            </TouchableOpacity>
+                    <MaterialIcons name="close" size={24} color="rgba(255,255,255,0.6)" />
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                    style={styles.fab}
+                    onPress={() => onAddGoal(null, 'goal')}
+                    activeOpacity={0.75}
+                >
+                    <MaterialIcons name="add" size={28} color="#000" />
+                </TouchableOpacity>
+            </View>
 
             {selectedDayData && (
                 <View style={styles.modalOverlay}>
@@ -855,12 +1263,231 @@ const styles = StyleSheet.create({
         flex: 1,
         backgroundColor: '#000',
     },
+    premiumHeaderWrapper: {
+        position: 'absolute',
+        top: 0,
+        left: 0,
+        right: 0,
+        zIndex: 1000,
+    },
+    statusBarMask: {
+        width: '100%',
+        backgroundColor: '#000',
+    },
+    headerGradientFade: {
+        position: 'absolute',
+        top: 0,
+        left: 0,
+        right: 0,
+        height: 140, // Fade out content smoothly as it scrolls up
+        zIndex: -1,
+    },
+    premiumHeaderCapsuleContainer: {
+        position: 'absolute',
+        left: 0,
+        right: 0,
+        alignItems: 'center',
+        paddingHorizontal: 16,
+    },
+    premiumHeaderCapsule: {
+        width: '100%',
+        flexDirection: 'column',
+        alignItems: 'stretch',
+        paddingHorizontal: 14,
+        paddingVertical: 8,
+        borderRadius: 24,
+        borderWidth: 1,
+        borderColor: 'rgba(0, 229, 255, 0.07)',
+        backgroundColor: 'rgba(10, 10, 12, 0.85)',
+        gap: 8,
+        overflow: 'hidden',
+        shadowColor: '#00E5FF',
+        shadowOffset: { width: 0, height: 2 },
+        shadowOpacity: 0.08,
+        shadowRadius: 12,
+    },
+    goalHeaderTopRow: {
+        flexDirection: 'row',
+        alignItems: 'center',
+    },
+    goalHeaderMetricsRow: {
+        marginTop: 6,
+        flexDirection: 'row',
+        gap: 8,
+    },
+    goalHeaderMetricCard: {
+        flex: 1,
+        paddingVertical: 5,
+        borderRadius: 10,
+        borderWidth: 1,
+        borderColor: 'rgba(255,255,255,0.12)',
+        backgroundColor: 'rgba(255,255,255,0.04)',
+        alignItems: 'center',
+    },
+    goalHeaderMetricLabel: {
+        fontSize: 7,
+        fontWeight: '800',
+        color: 'rgba(255,255,255,0.45)',
+        letterSpacing: 0.7,
+    },
+    goalHeaderMetricValue: {
+        marginTop: 1,
+        fontSize: 11,
+        fontWeight: '800',
+        color: '#fff',
+        letterSpacing: 0.6,
+    },
+    goalHeaderDividerContainer: {
+        width: '100%',
+        marginTop: 10,
+        paddingHorizontal: 8,
+    },
+    goalHeaderDivider: {
+        height: 1,
+    },
+    headerLogoContainer: {
+        paddingLeft: 4,
+    },
+    headerLogo: {
+        width: 32,
+        height: 32,
+    },
+    headerToggleContainer: {
+        flex: 1,
+        justifyContent: 'center',
+    },
+    viewToggleContainer: {
+        flex: 1,
+        flexDirection: 'row',
+        backgroundColor: 'rgba(255, 255, 255, 0.05)',
+        borderRadius: 12,
+        padding: 4,
+        borderWidth: 1,
+        borderColor: 'rgba(255, 255, 255, 0.1)',
+        gap: 4,
+    },
+    viewToggleBtn: {
+        flex: 1,
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'center',
+        paddingVertical: 8,
+        borderRadius: 8,
+        gap: 6,
+    },
+    viewToggleBtnActive: {
+        backgroundColor: 'rgba(255, 255, 255, 0.1)',
+        borderWidth: 1,
+        borderColor: 'rgba(0, 229, 255, 0.4)',
+    },
+    viewToggleText: {
+        fontSize: 10,
+        fontWeight: '900',
+        color: 'rgba(255, 255, 255, 0.35)',
+        letterSpacing: 0.8,
+    },
+    viewToggleTextActive: {
+        color: '#fff',
+        fontWeight: '900',
+    },
+    viewToggleContainerCompact: {
+        flexDirection: 'row',
+        backgroundColor: 'rgba(15, 15, 15, 0.5)',
+        borderRadius: 12,
+        padding: 2,
+        borderWidth: 1,
+        borderColor: 'rgba(255, 255, 255, 0.1)',
+        overflow: 'hidden',
+    },
+    viewToggleContainerCompactInteracting: {
+        borderColor: 'rgba(255, 255, 255, 0.2)',
+        backgroundColor: 'rgba(20, 20, 20, 0.8)',
+    },
+    viewToggleScroll: {
+        flex: 1,
+    },
+    viewToggleScrollContent: {
+        alignItems: 'center',
+    },
+    viewToggleBtnCompact: {
+        flexShrink: 0,
+        paddingVertical: 7,
+        paddingHorizontal: 8,
+        borderRadius: 10,
+        backgroundColor: 'transparent',
+    },
+    viewToggleBtnInner: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'center',
+        gap: 4,
+    },
+    viewToggleBtnCompactActive: {
+        backgroundColor: '#fff',
+    },
+    viewToggleButtonsOverlay: {
+        flex: 1,
+        flexDirection: 'row',
+        zIndex: 10,
+    },
+    viewToggleTextCompact: {
+        color: 'rgba(255,255,255,0.4)',
+        fontSize: 9,
+        fontWeight: '800',
+        letterSpacing: 0.8,
+    },
+    viewToggleTextActiveCompact: {
+        color: '#000',
+        fontWeight: '900',
+    },
+    viewToggleSlider: {
+        position: 'absolute',
+        top: 2,
+        bottom: 2,
+        left: 2,
+        backgroundColor: '#fff',
+        borderRadius: 10,
+        zIndex: 5,
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 2 },
+        shadowOpacity: 0.25,
+        shadowRadius: 6,
+        elevation: 4,
+    },
+    headerActionsContainer: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 8,
+        marginLeft: 8,
+    },
+    headerActionBtn: {
+        width: 32,
+        height: 32,
+        borderRadius: 10,
+        backgroundColor: 'rgba(255,255,255,0.04)',
+        alignItems: 'center',
+        justifyContent: 'center',
+        borderWidth: 1,
+        borderColor: 'rgba(255,255,255,0.08)',
+    },
+    headerActionBtnActive: {
+        backgroundColor: 'rgba(76, 175, 80, 0.08)',
+        borderColor: 'rgba(76, 175, 80, 0.2)',
+    },
+    headerActionBtnActiveBW: {
+        backgroundColor: 'rgba(255, 255, 255, 0.1)',
+        borderColor: 'rgba(255, 255, 255, 0.3)',
+    },
+    notesTakeoverOverlay: {
+        ...StyleSheet.absoluteFillObject,
+        zIndex: 2000,
+        backgroundColor: '#000',
+    },
     scrollView: {
         flex: 1,
     },
     scrollContent: {
         padding: 16,
-        paddingBottom: 120,
     },
     scrollContentLandscape: {
         paddingHorizontal: 20,
@@ -915,7 +1542,7 @@ const styles = StyleSheet.create({
         borderRadius: 14,
         alignItems: 'center',
         justifyContent: 'center',
-        shadowColor: '#00E5FF',
+        shadowColor: '#fff',
         shadowOpacity: 0.4,
         shadowRadius: 10,
     },
@@ -926,17 +1553,17 @@ const styles = StyleSheet.create({
         marginBottom: 4,
     },
     idBadge: {
-        backgroundColor: 'rgba(0,229,255,0.08)',
+        backgroundColor: 'rgba(255,255,255,0.1)',
         paddingHorizontal: 6,
         paddingVertical: 2,
         borderRadius: 4,
         borderWidth: 1,
-        borderColor: 'rgba(0,229,255,0.2)',
+        borderColor: 'rgba(255,255,255,0.25)',
     },
     idBadgeText: {
         fontSize: 8,
         fontWeight: '900',
-        color: '#00E5FF',
+        color: '#fff',
         letterSpacing: 0.5,
     },
     typeLabelText: {
@@ -977,10 +1604,6 @@ const styles = StyleSheet.create({
         fontSize: 11,
         fontWeight: '700',
         color: '#fff',
-    },
-    timelineTrackUnified: {
-        height: 6,
-        justifyContent: 'center',
     },
     progressCounterText: {
         flexDirection: 'row',
@@ -1078,16 +1701,6 @@ const styles = StyleSheet.create({
         alignItems: 'center',
         gap: 8,
     },
-    telemetryToggleBtn: {
-        width: 24,
-        height: 24,
-        borderRadius: 12,
-        backgroundColor: 'rgba(0,229,255,0.05)',
-        alignItems: 'center',
-        justifyContent: 'center',
-        borderWidth: 1,
-        borderColor: 'rgba(0,229,255,0.1)',
-    },
     rightHeaderTextUnified: {
         fontSize: 8,
         fontWeight: '900',
@@ -1097,7 +1710,7 @@ const styles = StyleSheet.create({
     activeStatusPill: {
         flexDirection: 'row',
         alignItems: 'center',
-        backgroundColor: 'rgba(0,229,255,0.05)',
+        backgroundColor: 'rgba(255,255,255,0.08)',
         paddingHorizontal: 8,
         paddingVertical: 4,
         borderRadius: 8,
@@ -1114,18 +1727,18 @@ const styles = StyleSheet.create({
         width: 10,
         height: 10,
         borderRadius: 5,
-        backgroundColor: '#00E5FF',
+        backgroundColor: '#fff',
     },
     activePulse: {
         width: 4,
         height: 4,
         borderRadius: 2,
-        backgroundColor: '#00E5FF',
+        backgroundColor: '#fff',
     },
     rightHeaderCountUnified: {
         fontSize: 7,
         fontWeight: '900',
-        color: '#00E5FF',
+        color: '#fff',
     },
     tasksScrollUnified: {
         flex: 1,
@@ -1154,8 +1767,8 @@ const styles = StyleSheet.create({
         overflow: 'hidden',
     },
     miniTaskCardSelected: {
-        borderColor: 'rgba(0,229,255,0.3)',
-        backgroundColor: 'rgba(0,229,255,0.04)',
+        borderColor: 'rgba(255,255,255,0.4)',
+        backgroundColor: 'rgba(255,255,255,0.08)',
     },
     miniTaskHeaderCompact: {
         flexDirection: 'row',
@@ -1212,7 +1825,7 @@ const styles = StyleSheet.create({
         left: 0,
         right: 0,
         height: 2,
-        backgroundColor: '#00E5FF',
+        backgroundColor: '#fff',
     },
     unifiedAnalyticsPanel: {
         borderRadius: 16,
@@ -1316,7 +1929,7 @@ const styles = StyleSheet.create({
         padding: 40,
         borderRadius: 32,
         borderWidth: 1,
-        borderColor: 'rgba(0,229,255,0.1)',
+        borderColor: 'rgba(255,255,255,0.15)',
         alignItems: 'center',
         justifyContent: 'center',
         overflow: 'hidden',
@@ -1347,23 +1960,44 @@ const styles = StyleSheet.create({
     rebootText: {
         fontSize: 12,
         fontWeight: '900',
-        color: '#fff',
+        color: '#000',
         letterSpacing: 1,
     },
-    fab: {
+    fabContainer: {
         position: 'absolute',
-        bottom: 30,
-        right: 30,
-        width: 60,
-        height: 60,
-        borderRadius: 18,
-        elevation: 10,
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 12,
     },
-    fabGradient: {
-        flex: 1,
-        borderRadius: 18,
+    fab: {
+        width: 56,
+        height: 56,
+        borderRadius: 28,
         alignItems: 'center',
         justifyContent: 'center',
+        backgroundColor: '#fff',
+        borderWidth: 1,
+        borderColor: 'rgba(255,255,255,0.2)',
+        elevation: 8,
+        shadowColor: '#000',
+        shadowOpacity: 0.35,
+        shadowRadius: 10,
+        shadowOffset: { width: 0, height: 4 },
+    },
+    fabSecondary: {
+        width: 44,
+        height: 44,
+        borderRadius: 22,
+        alignItems: 'center',
+        justifyContent: 'center',
+        backgroundColor: 'rgba(30,30,32,0.9)',
+        borderWidth: 1,
+        borderColor: 'rgba(255,255,255,0.1)',
+        elevation: 4,
+        shadowColor: '#000',
+        shadowOpacity: 0.2,
+        shadowRadius: 6,
+        shadowOffset: { width: 0, height: 2 },
     },
     deploymentHeaderRow: {
         flexDirection: 'row',
@@ -1483,7 +2117,7 @@ const styles = StyleSheet.create({
         color: 'rgba(255,255,255,0.2)',
     },
     barDateToday: {
-        color: '#00E5FF',
+        color: '#fff',
     },
     graphSubLabel: {
         fontSize: 7,
@@ -1611,7 +2245,7 @@ const styles = StyleSheet.create({
     popupDateText: {
         fontSize: 9,
         fontWeight: '900',
-        color: '#00E5FF',
+        color: '#FFFFFF',
         letterSpacing: 1.5,
     },
     popupTitleText: {

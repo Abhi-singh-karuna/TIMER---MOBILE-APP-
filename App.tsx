@@ -1909,6 +1909,10 @@ export default function App() {
                   onDeleteGoal={handleDeleteGoal}
                   onUpdateProgress={handleUpdateGoalProgress}
                   onUnlinkTask={handleUnlinkTask}
+                  onClose={() => setActiveView('timer')}
+                  onViewChange={setActiveView}
+                  onSettings={() => setCurrentScreen('settings')}
+                  selectedDate={selectedDate}
                 />
               )}
             />
