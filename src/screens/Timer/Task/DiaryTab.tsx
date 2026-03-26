@@ -1,6 +1,7 @@
 import * as React from 'react';
-import { Modal, ScrollView, Text, TextInput, TouchableOpacity, TouchableWithoutFeedback, View } from 'react-native';
-import { MaterialIcons } from '@expo/vector-icons';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import { Keyboard, KeyboardAvoidingView, Modal, Platform, ScrollView, Text, TextInput, TouchableOpacity, TouchableWithoutFeedback, View } from 'react-native';
+import { MaterialIcons, MaterialCommunityIcons } from '@expo/vector-icons';
 import type { StyleProp, ViewStyle } from 'react-native';
 import { RichEditor, RichToolbar, actions } from 'react-native-pell-rich-editor';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -18,6 +19,8 @@ const DIARY_COLOR_OPTIONS = [
     '#FFEB3B', // yellow
     '#FF3D00', // red
 ] as const;
+
+const DIARY_FONT_SIZE_KEY = '@timer_app_notes_font_size_v1';
 
 function stripHtmlToText(html: string): string {
     const input = (html || '').toString();
@@ -113,8 +116,35 @@ export default function DiaryTab(props: {
     const [showMentions, setShowMentions] = React.useState(false);
     const [mentionOptions, setMentionOptions] = React.useState<string[]>([]);
     const [mentionPos, setMentionPos] = React.useState({ x: 0, y: 0 });
+    const [isKeyboardVisible, setIsKeyboardVisible] = React.useState(false);
+
+    React.useEffect(() => {
+        const showSub = Keyboard.addListener('keyboardDidShow', () => setIsKeyboardVisible(true));
+        const hideSub = Keyboard.addListener('keyboardDidHide', () => setIsKeyboardVisible(false));
+        return () => {
+            showSub.remove();
+            hideSub.remove();
+        };
+    }, []);
+
     // templates intentionally removed for diary
     const insets = useSafeAreaInsets();
+
+    const loadFontSize = React.useCallback(async () => {
+        try {
+            const fs = await AsyncStorage.getItem(DIARY_FONT_SIZE_KEY);
+            if (fs) {
+                const n = Number(fs);
+                if (n >= 12 && n <= 24) setFontSizePx(n);
+            }
+        } catch {
+            // ignore
+        }
+    }, []);
+
+    React.useEffect(() => {
+        loadFontSize();
+    }, [loadFontSize]);
 
     const applyAppearance = React.useCallback(() => {
         const px = Math.max(12, Math.min(24, fontSizePx));
@@ -220,19 +250,32 @@ export default function DiaryTab(props: {
                 </View>
 
 
-                <ScrollView style={styles.editorScroll} showsVerticalScrollIndicator={false}>
+                <ScrollView
+                    style={{ height: 300 }}
+                    showsVerticalScrollIndicator={false}
+                    keyboardShouldPersistTaps="handled"
+                    nestedScrollEnabled={true}
+                >
                     <RichEditor
                         ref={(r) => { richEditorRef.current = r; }}
                         initialContentHTML={draftText}
                         placeholder="How was your day? Write your thoughts here..."
                         disabled={mode !== 'edit'}
+                        useContainer={false}
+                        initialHeight={500}
                         editorStyle={{
                             backgroundColor: 'transparent',
                             color: DIARY_DEFAULT_TEXT_COLOR,
                             placeholderColor: 'rgba(255,255,255,0.2)',
                             cssText: `
                                 * { font-family: ${'Georgia'}; }
-                                body { font-size: ${fontSizePx}px; line-height: 1.55; padding: 0; margin: 0; }
+                                body {
+                                    font-size: ${fontSizePx}px;
+                                    line-height: 1.55;
+                                    padding: 0;
+                                    margin: 0;
+                                    padding-bottom: ${isKeyboardVisible ? '150px' : '16px'};
+                                }
                             `,
                         }}
                         editorInitializedCallback={applyAppearance}
@@ -261,7 +304,7 @@ export default function DiaryTab(props: {
                             }
                         }}
                         onMessage={handleEditorMessage}
-                        style={styles.richEditor}
+                        style={{ minHeight: 500 }}
                     />
                 </ScrollView>
 
@@ -338,9 +381,12 @@ export default function DiaryTab(props: {
                             { paddingTop: insets.top + 6, paddingBottom: insets.bottom + 6 },
                         ]}
                     >
-                        <View style={styles.expandedTopBar}>
-                            <TouchableOpacity style={styles.expandedTopBtn} onPress={() => setIsExpanded(false)}>
-                                <MaterialIcons name="arrow-back" size={18} color="rgba(255,255,255,0.6)" />
+                        <View style={[styles.expandedTopBar, { paddingHorizontal: 16 }]}>
+                            <TouchableOpacity
+                                style={styles.expandedTopIconBtn}
+                                onPress={() => setIsExpanded(false)}
+                            >
+                                <MaterialIcons name="arrow-back" size={20} color="#fff" />
                             </TouchableOpacity>
 
                             <View style={styles.expandedModeToggle}>
@@ -350,7 +396,6 @@ export default function DiaryTab(props: {
                                 >
                                     <Text style={[styles.expandedModeText, mode === 'view' && styles.expandedModeTextActive]}>VIEW</Text>
                                 </TouchableOpacity>
-                                <View style={styles.expandedModeDivider} />
                                 <TouchableOpacity
                                     style={[styles.expandedModeBtn, mode === 'edit' && styles.expandedModeBtnActive]}
                                     onPress={() => setMode('edit')}
@@ -363,20 +408,28 @@ export default function DiaryTab(props: {
                                 {mode === 'edit' && (
                                     <TouchableOpacity
                                         style={[styles.expandedTopBtn, showConfig && styles.expandedTopBtnActive]}
-                                        onPress={() => setShowConfig(v => !v)}
+                                        onPress={() => setShowConfig(!showConfig)}
                                         activeOpacity={0.85}
                                     >
-                                        <MaterialIcons name="tune" size={18} color={showConfig ? '#4CAF50' : 'rgba(255,255,255,0.6)'} />
+                                        <MaterialIcons
+                                            name="tune"
+                                            size={18}
+                                            color={showConfig ? '#4CAF50' : 'rgba(255,255,255,0.6)'}
+                                        />
                                     </TouchableOpacity>
                                 )}
-                                <TouchableOpacity style={styles.expandedTopBtn} onPress={() => setIsExpanded(false)}>
+
+                                <TouchableOpacity
+                                    style={styles.expandedTopBtn}
+                                    onPress={() => setIsExpanded(false)}
+                                >
                                     <MaterialIcons name="close-fullscreen" size={18} color="rgba(255,255,255,0.6)" />
                                 </TouchableOpacity>
                             </View>
                         </View>
 
                         {mode === 'edit' && showConfig && (
-                            <View style={styles.richToolbarBlockCompact}>
+                            <View style={[styles.richToolbarBlockCompact, { paddingHorizontal: 16 }]}>
                                 <RichToolbar
                                     editor={richEditorRef}
                                     actions={[
@@ -402,14 +455,26 @@ export default function DiaryTab(props: {
                                         <Text style={styles.inlineConfigLabel}>SIZE</Text>
                                         <TouchableOpacity
                                             style={styles.inlineConfigBtn}
-                                            onPress={() => setFontSizePx(v => Math.max(12, v - 1))}
+                                            onPress={() => {
+                                                setFontSizePx(v => {
+                                                    const next = Math.max(12, v - 1);
+                                                    AsyncStorage.setItem(DIARY_FONT_SIZE_KEY, next.toString()).catch(() => {});
+                                                    return next;
+                                                });
+                                            }}
                                         >
                                             <Text style={styles.inlineConfigBtnText}>A-</Text>
                                         </TouchableOpacity>
                                         <Text style={styles.inlineConfigValue}>{fontSizePx}px</Text>
                                         <TouchableOpacity
                                             style={styles.inlineConfigBtn}
-                                            onPress={() => setFontSizePx(v => Math.min(24, v + 1))}
+                                            onPress={() => {
+                                                setFontSizePx(v => {
+                                                    const next = Math.min(24, v + 1);
+                                                    AsyncStorage.setItem(DIARY_FONT_SIZE_KEY, next.toString()).catch(() => {});
+                                                    return next;
+                                                });
+                                            }}
                                         >
                                             <Text style={styles.inlineConfigBtnText}>A+</Text>
                                         </TouchableOpacity>
@@ -437,51 +502,72 @@ export default function DiaryTab(props: {
 
 
                         <View style={styles.expandedEditorBody}>
-                            <RichEditor
-                                ref={(r) => { richEditorRef.current = r; }}
-                                key={`diary_${dateKey}`}
-                                initialContentHTML={draftText}
-                                placeholder="How was your day? Write your thoughts here..."
-                                disabled={mode !== 'edit'}
-                                useContainer={false}
-                                initialHeight={520}
-                                editorStyle={{
-                                    backgroundColor: 'transparent',
-                                    color: DIARY_DEFAULT_TEXT_COLOR,
-                                    placeholderColor: 'rgba(255,255,255,0.2)',
-                                    cssText: `
-                                        * { font-family: ${'Georgia'}; }
-                                        body { font-size: ${fontSizePx}px; line-height: 1.65; padding: 0; margin: 0; }
-                                    `,
-                                }}
-                                editorInitializedCallback={applyAppearance}
-                                onKeyUp={(d: any) => {
-                                    const key = typeof d === 'string' ? d : d?.key;
-                                    if (key === '@') {
-                                        const now = new Date();
-                                        const dateStr = now.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' });
-                                        const timeStr = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-                                        setMentionOptions([dateStr, timeStr, `${dateStr} ${timeStr}`]);
-                                        setShowMentions(true);
-                                        triggerMentionCoords();
-                                    } else {
-                                        if (showMentions) setShowMentions(false);
-                                    }
-                                }}
-                                onChange={(html) => {
-                                    setDraftText(html);
-                                    if (html.endsWith('@') || html.endsWith('@</div>') || html.endsWith('@<br>')) {
-                                        const now = new Date();
-                                        const dateStr = now.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' });
-                                        const timeStr = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-                                        setMentionOptions([dateStr, timeStr, `${dateStr} ${timeStr}`]);
-                                        setShowMentions(true);
-                                        triggerMentionCoords();
-                                    }
-                                }}
-                                onMessage={handleEditorMessage}
-                                style={styles.richEditor}
-                            />
+                            <KeyboardAvoidingView
+                                behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+                                style={{ flex: 1 }}
+                                keyboardVerticalOffset={Platform.OS === 'ios' ? insets.top + 60 : 0}
+                            >
+                                <ScrollView
+                                    style={{ flex: 1 }}
+                                    contentContainerStyle={{ flexGrow: 1, paddingBottom: 40 }}
+                                    showsVerticalScrollIndicator={true}
+                                    keyboardShouldPersistTaps="handled"
+                                    nestedScrollEnabled={true}
+                                >
+                                    <RichEditor
+                                        ref={(r) => { richEditorRef.current = r; }}
+                                        key={`diary_${dateKey}`}
+                                        initialContentHTML={draftText}
+                                        placeholder="How was your day? Write your thoughts here..."
+                                        disabled={mode !== 'edit'}
+                                        useContainer={false}
+                                        initialHeight={200}
+                                        editorStyle={{
+                                            backgroundColor: 'transparent',
+                                            color: DIARY_DEFAULT_TEXT_COLOR,
+                                            placeholderColor: 'rgba(255,255,255,0.2)',
+                                            cssText: `
+                                                * { font-family: ${'Georgia'}; }
+                                                body {
+                                                    font-size: ${fontSizePx}px;
+                                                    line-height: 1.65;
+                                                    padding: 0;
+                                                    margin: 0;
+                                                    padding-bottom: 24px;
+                                                    min-height: 90vh;
+                                                }
+                                            `,
+                                        }}
+                                        editorInitializedCallback={applyAppearance}
+                                        onKeyUp={(d: any) => {
+                                            const key = typeof d === 'string' ? d : d?.key;
+                                            if (key === '@') {
+                                                const now = new Date();
+                                                const dateStr = now.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' });
+                                                const timeStr = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+                                                setMentionOptions([dateStr, timeStr, `${dateStr} ${timeStr}`]);
+                                                setShowMentions(true);
+                                                triggerMentionCoords();
+                                            } else {
+                                                if (showMentions) setShowMentions(false);
+                                            }
+                                        }}
+                                        onChange={(html) => {
+                                            setDraftText(html);
+                                            if (html.endsWith('@') || html.endsWith('@</div>') || html.endsWith('@<br>')) {
+                                                const now = new Date();
+                                                const dateStr = now.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' });
+                                                const timeStr = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+                                                setMentionOptions([dateStr, timeStr, `${dateStr} ${timeStr}`]);
+                                                setShowMentions(true);
+                                                triggerMentionCoords();
+                                            }
+                                        }}
+                                        onMessage={handleEditorMessage}
+                                        style={{ minHeight: 200 }}
+                                    />
+                                </ScrollView>
+                            </KeyboardAvoidingView>
                         </View>
 
                         {/* Mention Suggestions Popup for Expanded Editor - Floating above cursor */}

@@ -27,6 +27,7 @@ const GENERAL_NOTES_STORAGE_KEY = '@timer_app_general_notes';
 const NOTES_LOCKS_ENABLED_KEY = '@timer_app_notes_locks_enabled_v1';
 const NOTES_LOCKS_REQUIRE_EVERY_TIME_KEY = '@timer_app_notes_locks_require_every_time_v1';
 const NOTES_LOCKS_MAX_ATTEMPTS_KEY = '@timer_app_notes_locks_max_attempts_v1';
+const NOTES_FONT_SIZE_KEY = '@timer_app_notes_font_size_v1';
 
 const TRASH_FOLDER_ID = '__trash__';
 const NOTES_DEFAULT_TEXT_COLOR = 'rgba(255,255,255,0.86)';
@@ -571,6 +572,16 @@ export default function NotesPanel({ visible, dateKey, onClose, onPresenceChange
             } catch {
                 setNotesLocksMaxAttempts(5);
             }
+
+            try {
+                const fs = await AsyncStorage.getItem(NOTES_FONT_SIZE_KEY);
+                if (fs) {
+                    const n = Number(fs);
+                    if (n >= 12 && n <= 24) setNotesEditorFontSizePx(n);
+                }
+            } catch {
+                // ignore
+            }
         })();
     }, []);
 
@@ -1072,7 +1083,11 @@ export default function NotesPanel({ visible, dateKey, onClose, onPresenceChange
         <View style={styles.container}>
             <LinearGradient colors={['#000', '#0A0A0A']} style={StyleSheet.absoluteFill} />
             
-            <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={{ flex: 1 }}>
+            <KeyboardAvoidingView 
+                behavior={Platform.OS === 'ios' ? 'padding' : undefined} 
+                style={{ flex: 1 }}
+                keyboardVerticalOffset={Platform.OS === 'ios' ? insets.top + 10 : 0}
+            >
                 <View style={[styles.safeArea, { paddingTop: insets.top + 10, paddingBottom: insets.bottom + 10 }]}>
                     
                     {/* Header Section */}
@@ -1194,9 +1209,24 @@ export default function NotesPanel({ visible, dateKey, onClose, onPresenceChange
                     </View>
                     )}
 
-                    {isExpandedNotesEditor ? (
-                        <View style={styles.expandedEditorRoot}>
-                            <View style={styles.expandedTopBar}>
+                    {isExpandedNotesEditor && (
+                        <Modal
+                            visible={true}
+                            transparent={false}
+                            animationType="fade"
+                            onRequestClose={() => {
+                                setIsNotesEditorExpanded(false);
+                                setCurrentNoteId(null);
+                            }}
+                        >
+                            <View style={{ flex: 1, backgroundColor: '#000' }}>
+                                <View
+                                    style={[
+                                        styles.expandedEditorRoot,
+                                        { paddingTop: insets.top + 6, paddingBottom: insets.bottom + 6 }
+                                    ]}
+                                >
+                                    <View style={[styles.expandedTopBar, { paddingHorizontal: 16 }]}>
                                 <TouchableOpacity
                                     style={styles.expandedTopBtn}
                                     onPress={() => {
@@ -1247,7 +1277,7 @@ export default function NotesPanel({ visible, dateKey, onClose, onPresenceChange
                                 </View>
                             </View>
 
-                            <View style={styles.expandedTitleRow}>
+                            <View style={[styles.expandedTitleRow, { paddingHorizontal: 16 }]}>
                                 <TextInput
                                     style={styles.expandedTitleInput}
                                     value={draftTitle}
@@ -1260,7 +1290,7 @@ export default function NotesPanel({ visible, dateKey, onClose, onPresenceChange
                             </View>
 
                             {mode === 'edit' && showNotesInlineConfig && (
-                                <View style={styles.richToolbarBlockCompact}>
+                                <View style={[styles.richToolbarBlockCompact, { paddingHorizontal: 16 }]}>
                                     <RichToolbar
                                         editor={richEditorRef}
                                         actions={[
@@ -1289,6 +1319,7 @@ export default function NotesPanel({ visible, dateKey, onClose, onPresenceChange
                                                 onPress={() => {
                                                     setNotesEditorFontSizePx((v) => {
                                                         const next = Math.max(12, v - 1);
+                                                        AsyncStorage.setItem(NOTES_FONT_SIZE_KEY, next.toString()).catch(() => {});
                                                         requestAnimationFrame(() => applyNotesEditorAppearance());
                                                         return next;
                                                     });
@@ -1302,6 +1333,7 @@ export default function NotesPanel({ visible, dateKey, onClose, onPresenceChange
                                                 onPress={() => {
                                                     setNotesEditorFontSizePx((v) => {
                                                         const next = Math.min(24, v + 1);
+                                                        AsyncStorage.setItem(NOTES_FONT_SIZE_KEY, next.toString()).catch(() => {});
                                                         requestAnimationFrame(() => applyNotesEditorAppearance());
                                                         return next;
                                                     });
@@ -1337,47 +1369,71 @@ export default function NotesPanel({ visible, dateKey, onClose, onPresenceChange
                             )}
 
                             <View style={styles.expandedEditorBody}>
-                                <RichEditor
-                                    ref={(r) => { richEditorRef.current = r; }}
-                                    initialContentHTML={draftText}
-                                    placeholder="Write your note here..."
-                                    editorStyle={{
-                                        backgroundColor: 'transparent',
-                                        color: '#fff',
-                                        placeholderColor: 'rgba(255,255,255,0.2)',
-                                        cssText: `
-                                            * { font-family: -apple-system, system-ui, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif; }
-                                            body { font-size: ${notesEditorFontSizePx}px; line-height: 1.55; padding: 0; margin: 0; }
-                                        `,
-                                    }}
-                                    onKeyUp={(d: any) => {
-                                        const key = typeof d === 'string' ? d : d?.key;
-                                        if (key === '@') {
-                                            const now = new Date();
-                                            const dateStr = now.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' });
-                                            const timeStr = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-                                            setMentionOptions([dateStr, timeStr, `${dateStr} ${timeStr}`]);
-                                            setShowMentions(true);
-                                            triggerMentionCoords();
-                                        } else {
-                                            if (showMentions) setShowMentions(false);
-                                        }
-                                    }}
-                                    onChange={(html) => {
-                                        setDraftText(html);
-                                        if (html.endsWith('@') || html.endsWith('@</div>') || html.endsWith('@<br>')) {
-                                            const now = new Date();
-                                            const dateStr = now.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' });
-                                            const timeStr = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-                                            setMentionOptions([dateStr, timeStr, `${dateStr} ${timeStr}`]);
-                                            setShowMentions(true);
-                                            triggerMentionCoords();
-                                        }
-                                    }}
-                                    onMessage={handleEditorMessage}
-                                    editorInitializedCallback={applyNotesEditorAppearance}
-                                    style={styles.richEditor}
-                                />
+                                <KeyboardAvoidingView
+                                    behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+                                    style={{ flex: 1 }}
+                                    keyboardVerticalOffset={Platform.OS === 'ios' ? insets.top + 60 : 0}
+                                >
+                                    <ScrollView
+                                        style={{ flex: 1 }}
+                                        contentContainerStyle={{ flexGrow: 1, paddingBottom: 40 }}
+                                        showsVerticalScrollIndicator={true}
+                                        keyboardShouldPersistTaps="handled"
+                                        nestedScrollEnabled={true}
+                                    >
+                                        <RichEditor
+                                            ref={(r) => { richEditorRef.current = r; }}
+                                            initialContentHTML={draftText}
+                                            placeholder="Write your note here..."
+                                            useContainer={false}
+                                            initialHeight={200}
+                                            editorStyle={{
+                                                backgroundColor: 'transparent',
+                                                color: '#fff',
+                                                placeholderColor: 'rgba(255,255,255,0.2)',
+                                                cssText: `
+                                                    * { font-family: -apple-system, system-ui, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif; }
+                                                    body {
+                                                        font-size: ${notesEditorFontSizePx}px;
+                                                        line-height: 1.55;
+                                                        padding: 0;
+                                                        margin: 0;
+                                                        padding-bottom: 24px;
+                                                        min-height: 90vh;
+                                                    }
+                                                `,
+                                            }}
+                                            onKeyUp={(d: any) => {
+                                                const key = typeof d === 'string' ? d : d?.key;
+                                                if (key === '@') {
+                                                    const now = new Date();
+                                                    const dateStr = now.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' });
+                                                    const timeStr = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+                                                    setMentionOptions([dateStr, timeStr, `${dateStr} ${timeStr}`]);
+                                                    setShowMentions(true);
+                                                    triggerMentionCoords();
+                                                } else {
+                                                    if (showMentions) setShowMentions(false);
+                                                }
+                                            }}
+                                            onChange={(html) => {
+                                                setDraftText(html);
+                                                if (html.endsWith('@') || html.endsWith('@</div>') || html.endsWith('@<br>')) {
+                                                    const now = new Date();
+                                                    const dateStr = now.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' });
+                                                    const timeStr = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+                                                    setMentionOptions([dateStr, timeStr, `${dateStr} ${timeStr}`]);
+                                                    setShowMentions(true);
+                                                    triggerMentionCoords();
+                                                }
+                                            }}
+                                            disabled={mode !== 'edit'}
+                                            onMessage={handleEditorMessage}
+                                            editorInitializedCallback={applyNotesEditorAppearance}
+                                            style={{ minHeight: 200 }}
+                                        />
+                                    </ScrollView>
+                                </KeyboardAvoidingView>
                             </View>
 
                             {/* Mention Suggestions Popup - Floating above cursor */}
@@ -1405,8 +1461,11 @@ export default function NotesPanel({ visible, dateKey, onClose, onPresenceChange
                                 </View>
                             )}
                         </View>
-                    ) : (
-                        /* Main Content Card ScrollArea */
+                    </View>
+                </Modal>
+            )}
+
+                    {/* Main Content Card ScrollArea */}
                         <ScrollView 
                             style={styles.scrollArea} 
                             contentContainerStyle={styles.scrollContent}
@@ -1840,47 +1899,57 @@ export default function NotesPanel({ visible, dateKey, onClose, onPresenceChange
                                             <View style={styles.editorTitleDivider} />
                                             
                                             <View style={styles.richEditorWrap}>
-                                                <RichEditor
-                                                    ref={(r) => { richEditorRef.current = r; }}
-                                                    initialContentHTML={draftText}
-                                                    placeholder="Type your note here..."
-                                                    editorStyle={{
-                                                        backgroundColor: 'transparent',
-                                                        color: '#fff',
-                                                        placeholderColor: 'rgba(255,255,255,0.2)',
-                                                        cssText: `
-                                                            * { font-family: -apple-system, system-ui, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif; }
-                                                            body { font-size: ${notesEditorFontSizePx}px; line-height: 1.55; padding: 0; margin: 0; }
-                                                        `,
-                                                    }}
-                                                    onKeyUp={(d: any) => {
-                                                        const key = typeof d === 'string' ? d : d?.key;
-                                                        if (key === '@') {
-                                                            const now = new Date();
-                                                            const dateStr = now.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' });
-                                                            const timeStr = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-                                                            setMentionOptions([dateStr, timeStr, `${dateStr} ${timeStr}`]);
-                                                            setShowMentions(true);
-                                                            triggerMentionCoords();
-                                                        } else {
-                                                            if (showMentions) setShowMentions(false);
-                                                        }
-                                                    }}
-                                                    onChange={(html) => {
-                                                        setDraftText(html);
-                                                        if (html.endsWith('@') || html.endsWith('@</div>') || html.endsWith('@<br>')) {
-                                                            const now = new Date();
-                                                            const dateStr = now.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' });
-                                                            const timeStr = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-                                                            setMentionOptions([dateStr, timeStr, `${dateStr} ${timeStr}`]);
-                                                            setShowMentions(true);
-                                                            triggerMentionCoords();
-                                                        }
-                                                    }}
-                                                    onMessage={handleEditorMessage}
-                                                    editorInitializedCallback={applyNotesEditorAppearance}
-                                                    style={styles.richEditor}
-                                                />
+                                                <ScrollView
+                                                    style={{ flex: 1 }}
+                                                    showsVerticalScrollIndicator={false}
+                                                    keyboardShouldPersistTaps="handled"
+                                                    nestedScrollEnabled={true}
+                                                >
+                                                    <RichEditor
+                                                        ref={(r) => { richEditorRef.current = r; }}
+                                                        initialContentHTML={draftText}
+                                                        placeholder="Type your note here..."
+                                                        useContainer={false}
+                                                        initialHeight={500}
+                                                        editorStyle={{
+                                                            backgroundColor: 'transparent',
+                                                            color: '#fff',
+                                                            placeholderColor: 'rgba(255,255,255,0.2)',
+                                                            cssText: `
+                                                                * { font-family: -apple-system, system-ui, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif; }
+                                                                body { font-size: ${notesEditorFontSizePx}px; line-height: 1.55; padding: 0; margin: 0; padding-bottom: ${isKeyboardVisible ? '150px' : '16px'}; }
+                                                            `,
+                                                        }}
+                                                        onKeyUp={(d: any) => {
+                                                            const key = typeof d === 'string' ? d : d?.key;
+                                                            if (key === '@') {
+                                                                const now = new Date();
+                                                                const dateStr = now.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' });
+                                                                const timeStr = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+                                                                setMentionOptions([dateStr, timeStr, `${dateStr} ${timeStr}`]);
+                                                                setShowMentions(true);
+                                                                triggerMentionCoords();
+                                                            } else {
+                                                                if (showMentions) setShowMentions(false);
+                                                            }
+                                                        }}
+                                                        onChange={(html) => {
+                                                            setDraftText(html);
+                                                            if (html.endsWith('@') || html.endsWith('@</div>') || html.endsWith('@<br>')) {
+                                                                const now = new Date();
+                                                                const dateStr = now.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' });
+                                                                const timeStr = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+                                                                setMentionOptions([dateStr, timeStr, `${dateStr} ${timeStr}`]);
+                                                                setShowMentions(true);
+                                                                triggerMentionCoords();
+                                                            }
+                                                        }}
+                                                        disabled={mode !== 'edit'}
+                                                        onMessage={handleEditorMessage}
+                                                        editorInitializedCallback={applyNotesEditorAppearance}
+                                                        style={{ minHeight: 500 }}
+                                                    />
+                                                </ScrollView>
                                             </View>
                                             
                                             {/* Mention Suggestions Popup for Inline Editor - Floating above cursor */}
@@ -1938,7 +2007,6 @@ export default function NotesPanel({ visible, dateKey, onClose, onPresenceChange
                                 </View>
                             )}
                         </ScrollView>
-                    )}
 
                     {/* Folder Actions Popup */}
                     <Modal
@@ -2505,12 +2573,12 @@ const styles = StyleSheet.create({
         backgroundColor: '#111111',
         borderRadius: 24,
         padding: 16,
-        flex: 1,
         borderWidth: 1,
         borderColor: 'rgba(255,255,255,0.03)',
     },
     editorScroll: {
         flex: 1,
+        height: 260,
     },
     textInput: {
         fontSize: 18,
@@ -3163,7 +3231,7 @@ const styles = StyleSheet.create({
     },
     richEditorWrap: {
         flex: 1,
-        minHeight: 260,
+        height: 260,
     },
     richEditor: {
         flex: 1,
@@ -3180,7 +3248,6 @@ const styles = StyleSheet.create({
     },
     expandedEditorRoot: {
         flex: 1,
-        paddingHorizontal: 16,
         paddingTop: 2,
         paddingBottom: 6,
     },

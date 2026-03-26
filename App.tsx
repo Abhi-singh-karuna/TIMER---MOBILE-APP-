@@ -1916,6 +1916,7 @@ export default function App() {
                   onSettings={() => setCurrentScreen('settings')}
                   selectedDate={selectedDate}
                   hideLeftPanel={isLandscape}
+                  dailyStartMinutes={dailyStartMinutes}
                 />
               )}
             />

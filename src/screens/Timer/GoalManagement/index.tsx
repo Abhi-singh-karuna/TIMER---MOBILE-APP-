@@ -47,6 +47,7 @@ interface GoalManagementProps {
     onShowNotes?: () => void;
     selectedDate?: Date;
     hideLeftPanel?: boolean;
+    dailyStartMinutes?: number;
 }
 
 export default function GoalManagement({
@@ -65,6 +66,7 @@ export default function GoalManagement({
     onShowNotes,
     selectedDate,
     hideLeftPanel,
+    dailyStartMinutes = DEFAULT_DAILY_START_MINUTES,
 }: GoalManagementProps) {
     const insets = useSafeAreaInsets();
     const [expandedGoalIds, setExpandedGoalIds] = useState<string[]>([]);
@@ -81,11 +83,10 @@ export default function GoalManagement({
     const [showNotesPanel, setShowNotesPanel] = useState(false);
     const [selectedDateHasNote, setSelectedDateHasNote] = useState(false);
 
-    // Get logical date for notes tracking
     const selectedLogical = useMemo(() => {
         const date = selectedDate || new Date();
-        return getLogicalDate(date, DEFAULT_DAILY_START_MINUTES);
-    }, [selectedDate]);
+        return getLogicalDate(date, dailyStartMinutes);
+    }, [selectedDate, dailyStartMinutes]);
 
     // Per-tab animated values
     const NAV_TABS = [
