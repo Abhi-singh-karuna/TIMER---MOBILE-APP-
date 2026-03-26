@@ -309,7 +309,34 @@ const styles = StyleSheet.create({
         flexDirection: 'row',
         alignItems: 'center',
         justifyContent: 'space-between',
-        marginBottom: 16,
+        width: '100%',
+    },
+    goalHeaderMetricsRow: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 12,
+    },
+    goalHeaderMetricCard: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        backgroundColor: 'rgba(0,0,0,0.3)',
+        paddingHorizontal: 10,
+        paddingVertical: 6,
+        borderRadius: 12,
+        borderWidth: 1,
+        borderColor: 'rgba(255,255,255,0.05)',
+        gap: 6,
+    },
+    goalHeaderMetricLabel: {
+        fontSize: 7,
+        fontWeight: '900',
+        color: 'rgba(255,255,255,0.4)',
+        letterSpacing: 1,
+    },
+    goalHeaderMetricValue: {
+        fontSize: 10,
+        fontWeight: '900',
+        color: '#fff',
     },
     headerCollapseBtnTop: {
         width: 32,
@@ -2278,29 +2305,6 @@ const styles = StyleSheet.create({
         color: 'rgba(255,255,255,0.4)',
         letterSpacing: 0.2,
     },
-    goalHeaderMetricCard: {
-        flex: 1,
-        paddingVertical: 8,
-        paddingHorizontal: 10,
-        borderRadius: 12,
-        backgroundColor: 'rgba(255,255,255,0.05)',
-        borderWidth: 1,
-        borderColor: 'rgba(255,255,255,0.08)',
-        alignItems: 'center',
-        justifyContent: 'center',
-    },
-    goalHeaderMetricLabel: {
-        fontSize: 9,
-        fontWeight: '800',
-        color: 'rgba(255,255,255,0.4)',
-        letterSpacing: 0.5,
-        marginBottom: 2,
-    },
-    goalHeaderMetricValue: {
-        fontSize: 14,
-        fontWeight: '800',
-        color: '#fff',
-    },
 });
 type SyncMode = 'none' | 'all' | 'future';
 
@@ -2351,7 +2355,7 @@ export default function TaskList({
     categories,
     selectedDate,
     onDateChange,
-    activeView = 'task',
+    activeView = 'task' as any,
     onViewChange,
     onSettings,
     isPastTasksDisabled,
@@ -3151,6 +3155,13 @@ export default function TaskList({
     const pendingCount = dateFilteredTasks.filter(t => t && t.status === 'Pending').length;
     const inProgressCount = dateFilteredTasks.filter(t => t && t.status === 'In Progress').length;
 
+    // Goal stats for unified landscape layout
+    const rootGoals = React.useMemo(() => goals?.filter(g => !g.parentId) || [], [goals]);
+    const goalHeaderStats = React.useMemo(() => ({
+        goalCount: rootGoals.length,
+        totalHours: '42.0H', // Mirroring the dummy value from GoalManagement for alignment
+    }), [rootGoals.length]);
+
     // Get current date info
     const dayName = DAYS[selectedDate.getDay()].toUpperCase();
     const dayNum = selectedDate.getDate();
@@ -3531,20 +3542,7 @@ export default function TaskList({
         </Animated.View>
     );
 
-    if (activeView === 'goal' && renderCustomContent) {
-        return (
-            <LinearGradient
-                colors={['#000000', '#000000']}
-                style={styles.container}
-            >
-                <View style={styles.safeArea}>
-                    <View style={styles.goalStandaloneContainer}>
-                        {renderCustomContent()}
-                    </View>
-                </View>
-            </LinearGradient>
-        );
-    }
+    // Integration: Goal view is now part of the main layout flow to prevent screen flashes
 
     return (
         <LinearGradient
@@ -3554,9 +3552,8 @@ export default function TaskList({
             <SafeAreaView style={[styles.safeArea, isLandscape && styles.safeAreaLandscape]}>
                 {isLandscape ? (
                     <>
-                        {/* Left Panel - Analytics Dashboard */}
-                        {activeView !== 'goal' && (
-                            <View style={[styles.leftPanel, { width: screenWidth * 0.30 }]}>
+                        {/* Left Panel - Analytics Dashboard (Persistent across Timer/Task/Goal) */}
+                        <View style={[styles.leftPanel, { width: screenWidth * 0.30 }]}>
                             <View style={styles.analyticsCardWrapper}>
                                 <ScrollView showsVerticalScrollIndicator={false} style={styles.leftPanelScroll}>
                                     {/* Toggle + Completion Count Row */}
@@ -3592,13 +3589,15 @@ export default function TaskList({
                                             </Text>
                                         </TouchableOpacity>
 
-                                        <TouchableOpacity
-                                            style={[styles.todayNavBtn, showLive && { backgroundColor: 'rgba(255, 61, 0, 0.08)', borderColor: 'rgba(255, 61, 0, 0.2)' }]}
-                                            onPress={() => setShowLive(!showLive)}
-                                            activeOpacity={0.7}
-                                        >
-                                            <MaterialIcons name="sensors" size={12} color={showLive ? "#FF3D00" : "#FF3D00"} />
-                                        </TouchableOpacity>
+                                        {activeView !== 'goal' && (
+                                            <TouchableOpacity
+                                                style={[styles.todayNavBtn, showLive && { backgroundColor: 'rgba(255, 61, 0, 0.08)', borderColor: 'rgba(255, 61, 0, 0.2)' }]}
+                                                onPress={() => setShowLive(!showLive)}
+                                                activeOpacity={0.7}
+                                            >
+                                                <MaterialIcons name="sensors" size={12} color={showLive ? "#FF3D00" : "#FF3D00"} />
+                                            </TouchableOpacity>
+                                        )}
 
                                         <TouchableOpacity
                                             style={[styles.todayNavBtn, isToday && styles.todayNavBtnActive]}
@@ -3621,16 +3620,24 @@ export default function TaskList({
                                         renderCalendar()
                                     ) : (
                                         <>
-                                            {/* Stats Grid */}
+                                            {/* Stats Grid - Unified for Task/Goal */}
                                             <View style={styles.compactStatsGrid}>
                                                 <View style={styles.compactStatRow}>
                                                     <View style={styles.compactStatItem}>
-                                                        <Text style={styles.compactStatLabel}>PENDING</Text>
-                                                        <Text style={styles.compactStatValue}>{pendingCount}</Text>
+                                                        <Text style={styles.compactStatLabel}>
+                                                            {activeView === 'goal' ? 'TOTAL GOALS' : 'PENDING'}
+                                                        </Text>
+                                                        <Text style={styles.compactStatValue}>
+                                                            {activeView === 'goal' ? goalHeaderStats.goalCount : pendingCount}
+                                                        </Text>
                                                     </View>
                                                     <View style={styles.compactStatItem}>
-                                                        <Text style={styles.compactStatLabel}>IN PROGRESS</Text>
-                                                        <Text style={styles.compactStatValue}>{inProgressCount}</Text>
+                                                        <Text style={styles.compactStatLabel}>
+                                                            {activeView === 'goal' ? 'STRATEGIC HR' : 'IN PROGRESS'}
+                                                        </Text>
+                                                        <Text style={styles.compactStatValue}>
+                                                            {activeView === 'goal' ? goalHeaderStats.totalHours : inProgressCount}
+                                                        </Text>
                                                     </View>
                                                 </View>
                                             </View>
@@ -3640,97 +3647,103 @@ export default function TaskList({
                                                 <View style={styles.filterHeaderRow}>
                                                     <Text style={styles.filterHeaderLabel}>FILTERS</Text>
                                                     <View style={styles.filterHeaderActions}>
-                                                        <TouchableOpacity
-                                                            style={[styles.historyHeaderBtn, showHistoryPanel && styles.historyHeaderBtnActive]}
-                                                            onPress={() => {
-                                                                LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
-                                                                setShowNotesPanel(false);
-                                                                if (!showHistoryPanel) setExpandedTaskId(null);
-                                                                setShowHistoryPanel(!showHistoryPanel);
-                                                            }}
-                                                            activeOpacity={0.7}
-                                                        >
-                                                            <MaterialIcons name="history" size={14} color="#FF3D00" />
-                                                            <Text style={styles.historyHeaderBtnText}>HISTORY</Text>
-                                                            <View style={styles.historyHeaderBadge}>
-                                                                <Text style={styles.historyHeaderBadgeText}>
-                                                                    {(previousSubtasksQuery.trim() || previousSubtasksRange !== 'ALL' || previousSubtasksStageStatus !== 'ALL')
-                                                                        ? `${filteredPreviousIncompleteStages.length}/${previousIncompleteStages.length}`
-                                                                        : `${previousIncompleteStages.length}`}
-                                                                </Text>
-                                                            </View>
-                                                        </TouchableOpacity>
+                                                        {activeView !== 'goal' && (
+                                                            <>
+                                                                <TouchableOpacity
+                                                                    style={[styles.historyHeaderBtn, showHistoryPanel && styles.historyHeaderBtnActive]}
+                                                                    onPress={() => {
+                                                                        LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+                                                                        setShowNotesPanel(false);
+                                                                        if (!showHistoryPanel) setExpandedTaskId(null);
+                                                                        setShowHistoryPanel(!showHistoryPanel);
+                                                                    }}
+                                                                    activeOpacity={0.7}
+                                                                >
+                                                                    <MaterialIcons name="history" size={14} color="#FF3D00" />
+                                                                    <Text style={styles.historyHeaderBtnText}>HISTORY</Text>
+                                                                    <View style={styles.historyHeaderBadge}>
+                                                                        <Text style={styles.historyHeaderBadgeText}>
+                                                                            {(previousSubtasksQuery.trim() || previousSubtasksRange !== 'ALL' || previousSubtasksStageStatus !== 'ALL')
+                                                                                ? `${filteredPreviousIncompleteStages.length}/${previousIncompleteStages.length}`
+                                                                                : `${previousIncompleteStages.length}`}
+                                                                        </Text>
+                                                                    </View>
+                                                                </TouchableOpacity>
 
-                                                        <TouchableOpacity
-                                                            style={[styles.backlogHeaderBtn, showBacklog && styles.backlogHeaderBtnActive]}
-                                                            onPress={() => setShowBacklog(!showBacklog)}
-                                                            activeOpacity={0.7}
-                                                        >
-                                                            <MaterialIcons
-                                                                name={showBacklog ? "event-note" : "event-busy"}
-                                                                size={14}
-                                                                color={showBacklog ? "#4CAF50" : "rgba(255,255,255,0.4)"}
-                                                            />
-                                                            <Text style={[styles.backlogHeaderBtnText, showBacklog && styles.backlogHeaderBtnTextActive]}>
-                                                                BACKLOG
-                                                            </Text>
-                                                        </TouchableOpacity>
+                                                                <TouchableOpacity
+                                                                    style={[styles.backlogHeaderBtn, showBacklog && styles.backlogHeaderBtnActive]}
+                                                                    onPress={() => setShowBacklog(!showBacklog)}
+                                                                    activeOpacity={0.7}
+                                                                >
+                                                                    <MaterialIcons
+                                                                        name={showBacklog ? "event-note" : "event-busy"}
+                                                                        size={14}
+                                                                        color={showBacklog ? "#4CAF50" : "rgba(255,255,255,0.4)"}
+                                                                    />
+                                                                    <Text style={[styles.backlogHeaderBtnText, showBacklog && styles.backlogHeaderBtnTextActive]}>
+                                                                        BACKLOG
+                                                                    </Text>
+                                                                </TouchableOpacity>
+                                                            </>
+                                                        )}
                                                     </View>
                                                 </View>
 
                                                 {/* Category Filter (multi-select) */}
-                                                <View style={styles.expandableFilterContainer}>
-                                                    <TouchableOpacity
-                                                        style={styles.expandableHeader}
-                                                        onPress={() => setIsCategoryExpanded(!isCategoryExpanded)}
-                                                        activeOpacity={0.7}
-                                                    >
-                                                        <View style={styles.expandableHeaderLeft}>
+                                                {activeView !== 'goal' && (
+                                                    <View style={styles.expandableFilterContainer}>
+                                                        <TouchableOpacity
+                                                            style={styles.expandableHeader}
+                                                            onPress={() => setIsCategoryExpanded(!isCategoryExpanded)}
+                                                            activeOpacity={0.7}
+                                                        >
+                                                            <View style={styles.expandableHeaderLeft}>
+                                                                <MaterialIcons
+                                                                    name={filterCategoryIds.length === 0 ? 'category' : (categories.find(c => c.id === filterCategoryIds[0])?.icon || 'category')}
+                                                                    size={16}
+                                                                    color={filterCategoryIds.length === 0 ? 'rgba(255,255,255,0.4)' : (categories.find(c => c.id === filterCategoryIds[0])?.color || '#fff')}
+                                                                />
+                                                                <Text style={styles.expandableHeaderText}>
+                                                                    {filterCategoryIds.length === 0 ? ' Category (All)' : filterCategoryIds.length === 1 ? ` ${categories.find(c => c.id === filterCategoryIds[0])?.name}` : ` ${filterCategoryIds.length} categories`}
+                                                                </Text>
+                                                            </View>
                                                             <MaterialIcons
-                                                                name={filterCategoryIds.length === 0 ? 'category' : (categories.find(c => c.id === filterCategoryIds[0])?.icon || 'category')}
-                                                                size={16}
-                                                                color={filterCategoryIds.length === 0 ? 'rgba(255,255,255,0.4)' : (categories.find(c => c.id === filterCategoryIds[0])?.color || '#fff')}
+                                                                name={isCategoryExpanded ? "expand-less" : "expand-more"}
+                                                                size={20}
+                                                                color="rgba(255,255,255,0.3)"
                                                             />
-                                                            <Text style={styles.expandableHeaderText}>
-                                                                {filterCategoryIds.length === 0 ? ' Category (All)' : filterCategoryIds.length === 1 ? ` ${categories.find(c => c.id === filterCategoryIds[0])?.name}` : ` ${filterCategoryIds.length} categories`}
-                                                            </Text>
-                                                        </View>
-                                                        <MaterialIcons
-                                                            name={isCategoryExpanded ? "expand-less" : "expand-more"}
-                                                            size={20}
-                                                            color="rgba(255,255,255,0.3)"
-                                                        />
-                                                    </TouchableOpacity>
+                                                        </TouchableOpacity>
 
-                                                    {isCategoryExpanded && (
-                                                        <View style={styles.expandedContent}>
-                                                            <TouchableOpacity
-                                                                style={[styles.miniChip, filterCategoryIds.length === 0 && styles.miniChipActive]}
-                                                                onPress={() => setFilterCategoryIds([])}
-                                                            >
-                                                                <Text style={[styles.miniChipText, filterCategoryIds.length === 0 && styles.miniChipTextActive]}>All</Text>
-                                                            </TouchableOpacity>
-                                                            {categories.map(cat => {
-                                                                const isSelected = filterCategoryIds.includes(cat.id);
-                                                                return (
-                                                                    <TouchableOpacity
-                                                                        key={cat.id}
-                                                                        style={[
-                                                                            styles.miniChip,
-                                                                            isSelected && { backgroundColor: `${cat.color}20`, borderColor: cat.color }
-                                                                        ]}
-                                                                        onPress={() => {
-                                                                            setFilterCategoryIds(prev => prev.includes(cat.id) ? prev.filter(id => id !== cat.id) : [...prev, cat.id]);
-                                                                        }}
-                                                                    >
-                                                                        <MaterialIcons name={cat.icon} size={10} color={isSelected ? cat.color : 'rgba(255,255,255,0.4)'} />
-                                                                        <Text style={[styles.miniChipText, isSelected && { color: cat.color }]}> {cat.name}</Text>
-                                                                    </TouchableOpacity>
-                                                                );
-                                                            })}
-                                                        </View>
-                                                    )}
-                                                </View>
+                                                        {isCategoryExpanded && (
+                                                            <View style={styles.expandedContent}>
+                                                                <TouchableOpacity
+                                                                    style={[styles.miniChip, filterCategoryIds.length === 0 && styles.miniChipActive]}
+                                                                    onPress={() => setFilterCategoryIds([])}
+                                                                >
+                                                                    <Text style={[styles.miniChipText, filterCategoryIds.length === 0 && styles.miniChipTextActive]}>All</Text>
+                                                                </TouchableOpacity>
+                                                                {categories.map(cat => {
+                                                                    const isSelected = filterCategoryIds.includes(cat.id);
+                                                                    return (
+                                                                        <TouchableOpacity
+                                                                            key={cat.id}
+                                                                            style={[
+                                                                                styles.miniChip,
+                                                                                isSelected && { backgroundColor: `${cat.color}20`, borderColor: cat.color }
+                                                                            ]}
+                                                                            onPress={() => {
+                                                                                setFilterCategoryIds(prev => prev.includes(cat.id) ? prev.filter(id => id !== cat.id) : [...prev, cat.id]);
+                                                                            }}
+                                                                        >
+                                                                            <MaterialIcons name={cat.icon} size={10} color={isSelected ? cat.color : 'rgba(255,255,255,0.4)'} />
+                                                                            <Text style={[styles.miniChipText, isSelected && { color: cat.color }]}> {cat.name}</Text>
+                                                                        </TouchableOpacity>
+                                                                    );
+                                                                })}
+                                                            </View>
+                                                        )}
+                                                    </View>
+                                                )}
 
                                                 {/* Status Filter */}
                                                 <View style={styles.expandableFilterContainer}>
@@ -3785,17 +3798,19 @@ export default function TaskList({
                                             </TouchableOpacity>
                                         )}
 
-                                        <TouchableOpacity
-                                            style={styles.settingsIconBtn}
-                                            onPress={() => setShowDisabledTasks(!showDisabledTasks)}
-                                            activeOpacity={0.7}
-                                        >
-                                            <MaterialIcons
-                                                name={showDisabledTasks ? 'visibility' : 'visibility-off'}
-                                                size={20}
-                                                color={showDisabledTasks ? '#FF9100' : 'rgba(255,255,255,0.4)'}
-                                            />
-                                        </TouchableOpacity>
+                                        {activeView !== 'goal' && (
+                                            <TouchableOpacity
+                                                style={styles.settingsIconBtn}
+                                                onPress={() => setShowDisabledTasks(!showDisabledTasks)}
+                                                activeOpacity={0.7}
+                                            >
+                                                <MaterialIcons
+                                                    name={showDisabledTasks ? 'visibility' : 'visibility-off'}
+                                                    size={20}
+                                                    color={showDisabledTasks ? '#FF9100' : 'rgba(255,255,255,0.4)'}
+                                                />
+                                            </TouchableOpacity>
+                                        )}
 
                                         <NotesIconButton
                                             active={showNotesPanel}
@@ -3811,215 +3826,220 @@ export default function TaskList({
                                         />
                                     </View>
 
-                                    <TouchableOpacity
-                                        style={styles.detailedReportsBtn}
-                                        onPress={() => {/* TODO: Add reports popup */ }}
-                                    >
-                                        <Text style={styles.detailedReportsText}>DETAILED REPORTS</Text>
-                                        <MaterialIcons name="chevron-right" size={20} color="rgba(255,255,255,0.5)" />
-                                    </TouchableOpacity>
+                                        {activeView !== 'goal' && (
+                                            <TouchableOpacity
+                                                style={styles.detailedReportsBtn}
+                                                onPress={() => {/* TODO: Add reports popup */ }}
+                                            >
+                                                <Text style={styles.detailedReportsText}>DETAILED REPORTS</Text>
+                                                <MaterialIcons name="chevron-right" size={20} color="rgba(255,255,255,0.5)" />
+                                            </TouchableOpacity>
+                                        )}
+                                    </View>
                                 </View>
                             </View>
-                        </View>
-                    )}
-
-                        {/* Right Panel - Task Grid or Custom Content */}
+                        
+                        {/* Right Panel - Dynamic Content */}
                         <View style={styles.rightPanel}>
                             {activeView === 'goal' && renderCustomContent ? (
                                 renderCustomContent()
-                            ) : showHistoryPanel ? (
-                                <View style={styles.expandedTakeoverContainer}>
-                                    {renderHistoryPanel('landscape')}
-                                </View>
-                            ) : isLandscape && expandedTaskId ? (
-                                <View style={styles.expandedTakeoverContainer}>
-                                    {(() => {
-                                        const expandedTask = filteredTasks.find(t => t && t.id === expandedTaskId);
-                                        if (!expandedTask) {
-                                            setExpandedTaskId(null);
-                                            return null;
-                                        }
-                                        return (
-                                            <TaskCard
-                                                task={expandedTask}
-                                                onToggle={() => onToggleTask(filteredTasks.find(t => t.id === expandedTaskId)!)}
-                                                onDelete={() => onDeleteTask(filteredTasks.find(t => t.id === expandedTaskId)!)}
-                                                onEdit={() => onEditTask?.(filteredTasks.find(t => t.id === expandedTaskId)!)}
-                                                isLandscape={true}
-                                                categories={categories}
-                                                dailyStartMinutes={dailyStartMinutes}
-                                                isPastTasksDisabled={isPastTasksDisabled}
-                                                onOpenMenu={() => {
-                                                    const t = filteredTasks.find(tsk => tsk.id === expandedTaskId)!;
-                                                    setSelectedActionTask(t);
-                                                    setActionModalVisible(true);
-                                                }}
-                                                isExpanded={true}
-                                                onExpand={() => setExpandedTaskId(null)}
-                                                onUpdateComment={onUpdateComment}
-                                                onEditComment={onEditComment}
-                                                onDeleteComment={onDeleteComment}
-                                                onUpdateStages={onUpdateStages}
-                                                quickMessages={quickMessages}
-                                                isFullView={true}
-                                                allTasks={tasks}
-                                                leaveDays={leaveDays}
-                                            />
-                                        );
-                                    })()}
-                                </View>
                             ) : (
-                                <>
-                                    <FlatList
-                                        data={(() => {
-                                            const pairs: Task[][] = [];
-                                            for (let i = 0; i < filteredTasks.length; i += 2) {
-                                                pairs.push(filteredTasks.slice(i, i + 2));
-                                            }
-                                            return pairs.length === 0 ? [null] : pairs;
-                                        })()}
-                                        keyExtractor={(_, index) => String(index)}
-                                        renderItem={({ item: pair }) => {
-                                            if (pair === null) {
+                                <View style={{ flex: 1 }}>
+                                    {showHistoryPanel ? (
+                                        <View style={styles.expandedTakeoverContainer}>
+                                            {renderHistoryPanel('landscape')}
+                                        </View>
+                                    ) : isLandscape && expandedTaskId ? (
+                                        <View style={styles.expandedTakeoverContainer}>
+                                            {(() => {
+                                                const expandedTask = filteredTasks.find(t => t && t.id === expandedTaskId);
+                                                if (!expandedTask) {
+                                                    setExpandedTaskId(null);
+                                                    return null;
+                                                }
                                                 return (
-                                                    <View style={styles.cardRow}>
-                                                        {[1, 2].map(i => (
-                                                            <TouchableOpacity
-                                                                key={`p${i}`}
-                                                                style={[styles.taskCard, styles.taskCardLandscape, styles.placeholderCard]}
-                                                                onPress={onAddTask}
-                                                                activeOpacity={0.7}
-                                                            >
-                                                                <View style={styles.placeholderContent}>
-                                                                    <MaterialIcons name="add-task" size={32} color="rgba(255,255,255,0.2)" />
-                                                                    <Text style={styles.placeholderText}>NEW TASK</Text>
-                                                                </View>
-                                                            </TouchableOpacity>
-                                                        ))}
-                                                    </View>
+                                                    <TaskCard
+                                                        task={expandedTask}
+                                                        onToggle={() => onToggleTask(filteredTasks.find(t => t.id === expandedTaskId)!)}
+                                                        onDelete={() => onDeleteTask(filteredTasks.find(t => t.id === expandedTaskId)!)}
+                                                        onEdit={() => onEditTask?.(filteredTasks.find(t => t.id === expandedTaskId)!)}
+                                                        isLandscape={true}
+                                                        categories={categories}
+                                                        dailyStartMinutes={dailyStartMinutes}
+                                                        isPastTasksDisabled={isPastTasksDisabled}
+                                                        onOpenMenu={() => {
+                                                            const t = filteredTasks.find(tsk => tsk.id === expandedTaskId)!;
+                                                            setSelectedActionTask(t);
+                                                            setActionModalVisible(true);
+                                                        }}
+                                                        isExpanded={true}
+                                                        onExpand={() => setExpandedTaskId(null)}
+                                                        onUpdateComment={onUpdateComment}
+                                                        onEditComment={onEditComment}
+                                                        onDeleteComment={onDeleteComment}
+                                                        onUpdateStages={onUpdateStages}
+                                                        quickMessages={quickMessages}
+                                                        isFullView={true}
+                                                        allTasks={tasks}
+                                                        leaveDays={leaveDays}
+                                                    />
                                                 );
-                                            }
-                                            return (
-                                                <View style={styles.cardRow}>
-                                                    {pair.filter(t => t && t.id && t.forDate).map((task) => (
-                                                        <TaskCard
-                                                            key={`${task.id}-${task.forDate}`}
-                                                            task={task}
-                                                            onToggle={() => onToggleTask(task)}
-                                                            onDelete={() => onDeleteTask(task)}
-                                                            onEdit={() => onEditTask?.(task)}
-                                                            isLandscape={true}
-                                                            categories={categories}
-                                                            dailyStartMinutes={dailyStartMinutes}
-                                                            isPastTasksDisabled={isPastTasksDisabled}
-                                                            onOpenMenu={() => {
-                                                                setSelectedActionTask(task);
-                                                                setActionModalVisible(true);
-                                                            }}
-                                                            isExpanded={expandedTaskId === task.id}
-                                                            onExpand={() => {
-                                                                LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
-                                                                setExpandedTaskId(expandedTaskId === task.id ? null : task.id);
-                                                            }}
-                                                            onUpdateComment={onUpdateComment}
-                                                            onEditComment={onEditComment}
-                                                            onDeleteComment={onDeleteComment}
-                                                            onUpdateStages={onUpdateStages}
-                                                            quickMessages={quickMessages}
-                                                            allTasks={tasks}
-                                                            leaveDays={leaveDays}
-                                                        />
-                                                    ))}
-                                                    {pair.length === 1 && <View style={styles.cardPlaceholder} />}
-                                                </View>
-                                            );
-                                        }}
-                                        ItemSeparatorComponent={() => <View style={{ height: 16 }} />}
-                                        style={styles.scrollViewLandscape}
-                                        contentContainerStyle={styles.scrollContentLandscape}
-                                        showsVerticalScrollIndicator={false}
-                                        keyboardShouldPersistTaps="handled"
-                                    />
+                                            })()}
+                                        </View>
+                                    ) : (
+                                        <>
+                                            <FlatList
+                                                data={(() => {
+                                                    const pairs: Task[][] = [];
+                                                    for (let i = 0; i < filteredTasks.length; i += 2) {
+                                                        pairs.push(filteredTasks.slice(i, i + 2));
+                                                    }
+                                                    return pairs.length === 0 ? [null] : pairs;
+                                                })()}
+                                                keyExtractor={(_, index) => String(index)}
+                                                renderItem={({ item: pair }) => {
+                                                    if (pair === null) {
+                                                        return (
+                                                            <View style={styles.cardRow}>
+                                                                {[1, 2].map(i => (
+                                                                    <TouchableOpacity
+                                                                        key={`p${i}`}
+                                                                        style={[styles.taskCard, styles.taskCardLandscape, styles.placeholderCard]}
+                                                                        onPress={onAddTask}
+                                                                        activeOpacity={0.7}
+                                                                    >
+                                                                        <View style={styles.placeholderContent}>
+                                                                            <MaterialIcons name="add-task" size={32} color="rgba(255,255,255,0.2)" />
+                                                                            <Text style={styles.placeholderText}>NEW TASK</Text>
+                                                                        </View>
+                                                                    </TouchableOpacity>
+                                                                ))}
+                                                            </View>
+                                                        );
+                                                    }
+                                                    return (
+                                                        <View style={styles.cardRow}>
+                                                            {pair.filter(t => t && t.id && t.forDate).map((task) => (
+                                                                <TaskCard
+                                                                    key={`${task.id}-${task.forDate}`}
+                                                                    task={task}
+                                                                    onToggle={() => onToggleTask(task)}
+                                                                    onDelete={() => onDeleteTask(task)}
+                                                                    onEdit={() => onEditTask?.(task)}
+                                                                    isLandscape={true}
+                                                                    categories={categories}
+                                                                    dailyStartMinutes={dailyStartMinutes}
+                                                                    isPastTasksDisabled={isPastTasksDisabled}
+                                                                    onOpenMenu={() => {
+                                                                        setSelectedActionTask(task);
+                                                                        setActionModalVisible(true);
+                                                                    }}
+                                                                    isExpanded={expandedTaskId === task.id}
+                                                                    onExpand={() => {
+                                                                        LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+                                                                        setExpandedTaskId(expandedTaskId === task.id ? null : task.id);
+                                                                    }}
+                                                                    onUpdateComment={onUpdateComment}
+                                                                    onEditComment={onEditComment}
+                                                                    onDeleteComment={onDeleteComment}
+                                                                    onUpdateStages={onUpdateStages}
+                                                                    quickMessages={quickMessages}
+                                                                    allTasks={tasks}
+                                                                    leaveDays={leaveDays}
+                                                                />
+                                                            ))}
+                                                            {pair.length === 1 && <View style={styles.cardPlaceholder} />}
+                                                        </View>
+                                                    );
+                                                }}
+                                                ItemSeparatorComponent={() => <View style={{ height: 16 }} />}
+                                                style={styles.scrollViewLandscape}
+                                                contentContainerStyle={styles.scrollContentLandscape}
+                                                showsVerticalScrollIndicator={false}
+                                                keyboardShouldPersistTaps="handled"
+                                            />
 
-                                    <TouchableOpacity style={styles.addButtonLandscape} onPress={onAddTask} activeOpacity={0.8}>
-                                        <MaterialIcons name="add" size={28} color="#000" />
-                                    </TouchableOpacity>
-                                </>
+                                            <TouchableOpacity style={styles.addButtonLandscape} onPress={onAddTask} activeOpacity={0.8}>
+                                                <MaterialIcons name="add" size={28} color="#000" />
+                                            </TouchableOpacity>
+                                        </>
+                                    )}
+                                </View>
                             )}
                         </View>
                     </>
                 ) : (
                     // PORTRAIT LAYOUT
                     <>
-                        {/* Header Card - OUTSIDE FlatList to prevent blinking */}
-                        {activeView !== 'goal' && (
-                            <View style={[styles.headerCardPortrait, { flex: 0, minHeight: 0 }]}>
-                                {/* 1. View Toggle & Completion Count Row */}
-                                {onViewChange && (
-                                    <View key={`task-toggle-row-${orientationNonce}`} style={styles.toggleWithCountRowPortrait}>
-                                        <View style={styles.toggleClusterPortrait}>
-                                            {/* App Logo Branding */}
-                                            <View style={styles.portraitLogoWrapper}>
-                                                <Image
-                                                    source={APP_LOGO}
-                                                    style={styles.portraitLogo}
-                                                    resizeMode="contain"
-                                                />
-                                            </View>
-                                            {renderInfiniteViewToggle(true)}
+                        {/* Header Card - always present but content varies */}
+                        <View style={[styles.headerCardPortrait, { flex: 0, minHeight: 0 }]}>
+                            {/* 1. View Toggle & Completion Count Row */}
+                            {onViewChange && (
+                                <View key={`task-toggle-row-${orientationNonce}`} style={styles.toggleWithCountRowPortrait}>
+                                    <View style={styles.toggleClusterPortrait}>
+                                        {/* App Logo Branding */}
+                                        <View style={styles.portraitLogoWrapper}>
+                                            <Image
+                                                source={APP_LOGO}
+                                                style={styles.portraitLogo}
+                                                resizeMode="contain"
+                                            />
                                         </View>
-                                        {/* Collapse Button only in Row 1 */}
-                                        <View style={styles.headerRightActionsPortrait}>
-                                            <TouchableOpacity
-                                                style={styles.headerCollapseBtnTop}
-                                                onPress={() => {
-                                                    LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
-                                                    setIsPortraitHeaderExpanded(!isPortraitHeaderExpanded);
-                                                }}
-                                                activeOpacity={0.7}
-                                                hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-                                            >
-                                                <MaterialIcons
-                                                    name={isPortraitHeaderExpanded ? "keyboard-arrow-up" : "keyboard-arrow-down"}
-                                                    size={22}
-                                                    color="rgba(255,255,255,0.6)"
-                                                />
-                                            </TouchableOpacity>
-                                        </View>
+                                        {renderInfiniteViewToggle(true)}
                                     </View>
-                                )}
+                                    {/* Collapse Button only in Row 1 */}
+                                    <View style={styles.headerRightActionsPortrait}>
+                                        <TouchableOpacity
+                                            style={styles.headerCollapseBtnTop}
+                                            onPress={() => {
+                                                LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+                                                setIsPortraitHeaderExpanded(!isPortraitHeaderExpanded);
+                                            }}
+                                            activeOpacity={0.7}
+                                            hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                                        >
+                                            <MaterialIcons
+                                                name={isPortraitHeaderExpanded ? "keyboard-arrow-up" : "keyboard-arrow-down"}
+                                                size={22}
+                                                color="rgba(255,255,255,0.6)"
+                                            />
+                                        </TouchableOpacity>
+                                    </View>
+                                </View>
+                            )}
 
-                                {/* 2. Date Controls / Goal Metrics Row */}
-                                <View style={[styles.dateControlRowPortrait, { marginBottom: isPortraitHeaderExpanded ? 8 : 0 }]}>
-                                    <TouchableOpacity
-                                        style={styles.dateLandscapeRow}
-                                        onPress={() => {
-                                            LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
-                                            if (showCalendar) {
-                                                setShowCalendar(false);
-                                                setIsPortraitHeaderExpanded(false);
-                                            } else {
-                                                if (!isPortraitHeaderExpanded) {
-                                                    setViewDate(new Date());
-                                                }
-                                                setShowCalendar(true);
-                                                setIsPortraitHeaderExpanded(true);
+                            {/* 2. Date Controls & Unified Utility Row */}
+                            <View style={[styles.dateControlRowPortrait, { marginBottom: isPortraitHeaderExpanded ? 8 : 0 }]}>
+                                <TouchableOpacity
+                                    style={styles.dateLandscapeRow}
+                                    onPress={() => {
+                                        LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+                                        if (showCalendar) {
+                                            setShowCalendar(false);
+                                            setIsPortraitHeaderExpanded(false);
+                                        } else {
+                                            if (!isPortraitHeaderExpanded) {
+                                                setViewDate(new Date());
                                             }
-                                        }}
-                                        activeOpacity={0.7}
-                                    >
-                                        <MaterialIcons name="calendar-today" size={14} color="#fff" />
-                                        <Text style={styles.dateLandscapeText}>
-                                            {isToday ? `  ${dayName}, ${dayNum} ${monthName}` : `  ${dateLabel} ${monthName}`}
-                                        </Text>
-                                        <MaterialIcons
-                                            name={showCalendar ? "keyboard-arrow-up" : "keyboard-arrow-down"}
-                                            size={16}
-                                            color="rgba(255,255,255,0.5)"
-                                            style={{ marginLeft: 4 }}
-                                        />
-                                    </TouchableOpacity>
+                                            setShowCalendar(true);
+                                            setIsPortraitHeaderExpanded(true);
+                                        }
+                                    }}
+                                    activeOpacity={0.7}
+                                >
+                                    <MaterialIcons name="calendar-today" size={14} color="#fff" />
+                                    <Text style={styles.dateLandscapeText}>
+                                        {isToday ? `  ${dayName}, ${dayNum} ${monthName}` : `  ${dateLabel} ${monthName}`}
+                                    </Text>
+                                    <MaterialIcons
+                                        name={showCalendar ? "keyboard-arrow-up" : "keyboard-arrow-down"}
+                                        size={16}
+                                        color="rgba(255,255,255,0.5)"
+                                        style={{ marginLeft: 4 }}
+                                    />
+                                </TouchableOpacity>
 
+                                {activeView !== 'goal' && (
                                     <TouchableOpacity
                                         style={[styles.todayNavBtn, showLive && { backgroundColor: 'rgba(255, 61, 0, 0.08)', borderColor: 'rgba(255, 61, 0, 0.2)' }]}
                                         onPress={() => setShowLive(!showLive)}
@@ -4043,53 +4063,72 @@ export default function TaskList({
                                             )}
                                         </View>
                                     </TouchableOpacity>
+                                )}
 
+                                <TouchableOpacity
+                                    style={[styles.todayNavBtn, isToday && styles.todayNavBtnActive]}
+                                    onPress={() => {
+                                        const start = getStartOfLogicalDay(new Date(), dailyStartMinutes);
+                                        onDateChange(start);
+                                        setViewDate(start);
+                                    }}
+                                    activeOpacity={0.7}
+                                >
+                                    <MaterialIcons name="today" size={12} color={isToday ? "#4CAF50" : "rgba(255,255,255,0.4)"} />
+                                    <View style={styles.todayLabelBlock}>
+                                        <Text style={[styles.todayNavText, isToday && styles.todayNavTextActive, { marginLeft: 0 }]}>TODAY</Text>
+                                        <Text style={[styles.todayRangeLabel, isToday && styles.todayRangeLabelActive]}>({formatDailyStartRangeCompact(dailyStartMinutes)})</Text>
+                                    </View>
+                                </TouchableOpacity>
+
+                                {/* Notes & Settings icons always visible in Row 2 */}
+                                <NotesIconButton
+                                    active={showNotesPanel}
+                                    hasNote={selectedDateHasNote}
+                                    onPress={() => {
+                                        LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+                                        setShowNotesPanel(!showNotesPanel);
+                                    }}
+                                />
+
+                                {onSettings && (
                                     <TouchableOpacity
-                                        style={[styles.todayNavBtn, isToday && styles.todayNavBtnActive]}
-                                        onPress={() => {
-                                            const start = getStartOfLogicalDay(new Date(), dailyStartMinutes);
-                                            onDateChange(start);
-                                            setViewDate(start);
-                                        }}
+                                        style={styles.headerIconBtnPortrait}
+                                        onPress={onSettings}
                                         activeOpacity={0.7}
                                     >
-                                        <MaterialIcons name="today" size={12} color={isToday ? "#4CAF50" : "rgba(255,255,255,0.4)"} />
-                                        <View style={styles.todayLabelBlock}>
-                                            <Text style={[styles.todayNavText, isToday && styles.todayNavTextActive, { marginLeft: 0 }]}>TODAY</Text>
-                                            <Text style={[styles.todayRangeLabel, isToday && styles.todayRangeLabelActive]}>({formatDailyStartRangeCompact(dailyStartMinutes)})</Text>
-                                        </View>
+                                        <MaterialIcons name="settings" size={16} color="rgba(255,255,255,0.7)" />
                                     </TouchableOpacity>
+                                )}
+                            </View>
 
-                                    {/* Notes & Settings icons always visible in Row 2 */}
-                                    <NotesIconButton
-                                        active={showNotesPanel}
-                                        hasNote={selectedDateHasNote}
-                                        onPress={() => {
-                                            LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
-                                            setShowNotesPanel(!showNotesPanel);
-                                        }}
-                                    />
-
-                                    {onSettings && (
-                                        <TouchableOpacity
-                                            style={styles.headerIconBtnPortrait}
-                                            onPress={onSettings}
-                                            activeOpacity={0.7}
-                                        >
-                                            <MaterialIcons name="settings" size={16} color="rgba(255,255,255,0.7)" />
-                                        </TouchableOpacity>
-                                    )}
-                                </View>
-
-                                {/* 3. Expandable content - only for non-goal view for now */}
-                                {isPortraitHeaderExpanded && (
-                                    <>
-                                        {showCalendar ? (
-                                            <View style={styles.portraitCalendarContainer}>
-                                                {renderCalendar()}
+                            {/* 3. Expandable Portrait Content (Unified Categories, Status, and Metrics) */}
+                            {isPortraitHeaderExpanded && (
+                                <>
+                                    {/* Goal Metrics Section - only in Goal mode or when specifically needed */}
+                                    {activeView === 'goal' && (
+                                        <View style={[styles.compactStatsGrid, { marginBottom: 12, paddingHorizontal: 16 }]}>
+                                            <View style={styles.compactStatRow}>
+                                                <View style={styles.compactStatItem}>
+                                                    <Text style={styles.compactStatLabel}>TOTAL GOALS</Text>
+                                                    <Text style={styles.compactStatValue}>
+                                                        {goals ? goals.filter(g => !g.parentId).length : 0}
+                                                    </Text>
+                                                </View>
+                                                <View style={styles.compactStatItem}>
+                                                    <Text style={styles.compactStatLabel}>STRATEGIC HR</Text>
+                                                    <Text style={styles.compactStatValue}>{goalHeaderStats.totalHours}</Text>
+                                                </View>
                                             </View>
-                                        ) : (
-                                            <>
+                                        </View>
+                                    )}
+                                    {showCalendar ? (
+                                        <View style={styles.portraitCalendarContainer}>
+                                            {renderCalendar()}
+                                        </View>
+                                    ) : (
+                                        <>
+                                            {activeView !== 'goal' && (
                                                 <View style={styles.compactStatsGrid}>
                                                     <View style={styles.compactStatRow}>
                                                         <View style={styles.compactStatItem}>
@@ -4102,44 +4141,50 @@ export default function TaskList({
                                                         </View>
                                                     </View>
                                                 </View>
-                                                <View style={styles.filtersSection}>
-                                                    <View style={styles.filterHeaderRow}>
-                                                        <Text style={styles.filterHeaderLabel}>FILTERS</Text>
-                                                        <View style={styles.filterHeaderActions}>
-                                                            <TouchableOpacity
-                                                                style={[styles.historyHeaderBtn, showHistoryPanel && styles.historyHeaderBtnActive]}
-                                                                onPress={() => {
-                                                                    LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
-                                                                    setShowNotesPanel(false);
-                                                                    if (!showHistoryPanel) setExpandedTaskId(null);
-                                                                    setShowHistoryPanel(!showHistoryPanel);
-                                                                }}
-                                                                activeOpacity={0.7}
-                                                            >
-                                                                <MaterialIcons name="history" size={14} color="#FF3D00" />
-                                                                <Text style={styles.historyHeaderBtnText}>HISTORY</Text>
-                                                                <View style={styles.historyHeaderBadge}>
-                                                                    <Text style={styles.historyHeaderBadgeText}>
-                                                                        {(previousSubtasksQuery.trim() || previousSubtasksRange !== 'ALL' || previousSubtasksStageStatus !== 'ALL')
-                                                                            ? `${filteredPreviousIncompleteStages.length}/${previousIncompleteStages.length}`
-                                                                            : `${previousIncompleteStages.length}`}
-                                                                    </Text>
-                                                                </View>
-                                                            </TouchableOpacity>
-                                                            <TouchableOpacity
-                                                                style={[styles.backlogHeaderBtn, showBacklog && styles.backlogHeaderBtnActive]}
-                                                                onPress={() => setShowBacklog(!showBacklog)}
-                                                                activeOpacity={0.7}
-                                                            >
-                                                                <MaterialIcons
-                                                                    name={showBacklog ? "event-note" : "event-busy"}
-                                                                    size={14}
-                                                                    color={showBacklog ? "#4CAF50" : "rgba(255,255,255,0.4)"}
-                                                                />
-                                                                <Text style={[styles.backlogHeaderBtnText, showBacklog && styles.backlogHeaderBtnTextActive]}>BACKLOG</Text>
-                                                            </TouchableOpacity>
-                                                        </View>
+                                            )}
+                                            <View style={styles.filtersSection}>
+                                                <View style={styles.filterHeaderRow}>
+                                                    <Text style={styles.filterHeaderLabel}>FILTERS</Text>
+                                                    <View style={styles.filterHeaderActions}>
+                                                        {activeView !== 'goal' && (
+                                                            <>
+                                                                <TouchableOpacity
+                                                                    style={[styles.historyHeaderBtn, showHistoryPanel && styles.historyHeaderBtnActive]}
+                                                                    onPress={() => {
+                                                                        LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+                                                                        setShowNotesPanel(false);
+                                                                        if (!showHistoryPanel) setExpandedTaskId(null);
+                                                                        setShowHistoryPanel(!showHistoryPanel);
+                                                                    }}
+                                                                    activeOpacity={0.7}
+                                                                >
+                                                                    <MaterialIcons name="history" size={14} color="#FF3D00" />
+                                                                    <Text style={styles.historyHeaderBtnText}>HISTORY</Text>
+                                                                    <View style={styles.historyHeaderBadge}>
+                                                                        <Text style={styles.historyHeaderBadgeText}>
+                                                                            {(previousSubtasksQuery.trim() || previousSubtasksRange !== 'ALL' || previousSubtasksStageStatus !== 'ALL')
+                                                                                ? `${filteredPreviousIncompleteStages.length}/${previousIncompleteStages.length}`
+                                                                                : `${previousIncompleteStages.length}`}
+                                                                        </Text>
+                                                                    </View>
+                                                                </TouchableOpacity>
+                                                                <TouchableOpacity
+                                                                    style={[styles.backlogHeaderBtn, showBacklog && styles.backlogHeaderBtnActive]}
+                                                                    onPress={() => setShowBacklog(!showBacklog)}
+                                                                    activeOpacity={0.7}
+                                                                >
+                                                                    <MaterialIcons
+                                                                        name={showBacklog ? "event-note" : "event-busy"}
+                                                                        size={14}
+                                                                        color={showBacklog ? "#4CAF50" : "rgba(255,255,255,0.4)"}
+                                                                    />
+                                                                    <Text style={[styles.backlogHeaderBtnText, showBacklog && styles.backlogHeaderBtnTextActive]}>BACKLOG</Text>
+                                                                </TouchableOpacity>
+                                                            </>
+                                                        )}
                                                     </View>
+                                                </View>
+                                                {activeView !== 'goal' && (
                                                     <View style={styles.expandableFilterContainer}>
                                                         <TouchableOpacity style={styles.expandableHeader} onPress={() => setIsCategoryExpanded(!isCategoryExpanded)} activeOpacity={0.7}>
                                                             <View style={styles.expandableHeaderLeft}>
@@ -4175,26 +4220,28 @@ export default function TaskList({
                                                             </View>
                                                         )}
                                                     </View>
-                                                    <View style={styles.expandableFilterContainer}>
-                                                        <TouchableOpacity style={styles.expandableHeader} onPress={() => setIsStatusExpanded(!isStatusExpanded)} activeOpacity={0.7}>
-                                                            <View style={styles.expandableHeaderLeft}>
-                                                                <MaterialIcons name="tune" size={16} color={filterStatus === 'All' ? 'rgba(255,255,255,0.4)' : '#fff'} />
-                                                                <Text style={styles.expandableHeaderText}>{filterStatus === 'All' ? ' Status' : ` ${filterStatus}`}</Text>
-                                                            </View>
-                                                            <MaterialIcons name={isStatusExpanded ? "expand-less" : "expand-more"} size={20} color="rgba(255,255,255,0.3)" />
-                                                        </TouchableOpacity>
-                                                        {isStatusExpanded && (
-                                                            <View style={styles.expandedContent}>
-                                                                {['All', 'Pending', 'In Progress', 'Completed'].map(status => (
-                                                                    <TouchableOpacity key={status} style={[styles.miniChip, filterStatus === status && styles.miniChipActive]} onPress={() => setFilterStatus(status)}>
-                                                                        <Text style={[styles.miniChipText, filterStatus === status && styles.miniChipTextActive]}>{status}</Text>
-                                                                    </TouchableOpacity>
-                                                                ))}
-                                                            </View>
-                                                        )}
-                                                    </View>
+                                                )}
+                                                <View style={styles.expandableFilterContainer}>
+                                                    <TouchableOpacity style={styles.expandableHeader} onPress={() => setIsStatusExpanded(!isStatusExpanded)} activeOpacity={0.7}>
+                                                        <View style={styles.expandableHeaderLeft}>
+                                                            <MaterialIcons name="tune" size={16} color={filterStatus === 'All' ? 'rgba(255,255,255,0.4)' : '#fff'} />
+                                                            <Text style={styles.expandableHeaderText}>{filterStatus === 'All' ? ' Status' : ` ${filterStatus}`}</Text>
+                                                        </View>
+                                                        <MaterialIcons name={isStatusExpanded ? "expand-less" : "expand-more"} size={20} color="rgba(255,255,255,0.3)" />
+                                                    </TouchableOpacity>
+                                                    {isStatusExpanded && (
+                                                        <View style={styles.expandedContent}>
+                                                            {['All', 'Pending', 'In Progress', 'Completed'].map(status => (
+                                                                <TouchableOpacity key={status} style={[styles.miniChip, filterStatus === status && styles.miniChipActive]} onPress={() => setFilterStatus(status)}>
+                                                                    <Text style={[styles.miniChipText, filterStatus === status && styles.miniChipTextActive]}>{status}</Text>
+                                                                </TouchableOpacity>
+                                                            ))}
+                                                        </View>
+                                                    )}
                                                 </View>
-                                                {/* Detailed Reports */}
+                                            </View>
+                                            {/* Detailed Reports */}
+                                            {activeView !== 'goal' && (
                                                 <TouchableOpacity
                                                     style={[styles.detailedReportsBtn, { marginTop: 4 }]}
                                                     onPress={() => {/* TODO */ }}
@@ -4202,12 +4249,12 @@ export default function TaskList({
                                                     <Text style={styles.detailedReportsText}>DETAILED REPORTS</Text>
                                                     <MaterialIcons name="chevron-right" size={20} color="rgba(255,255,255,0.5)" />
                                                 </TouchableOpacity>
-                                            </>
-                                        )}
-                                    </>
-                                )}
-                            </View>
-                        )}
+                                            )}
+                                        </>
+                                    )}
+                                </>
+                            )}
+                        </View>
 
                         {/* Separator */}
                         {activeView !== 'goal' && (
@@ -4220,7 +4267,7 @@ export default function TaskList({
                                 />
                             </View>
                         )}
-                    {activeView === 'goal' && renderCustomContent ? (
+                        {activeView === 'goal' && renderCustomContent ? (
                             <View style={{ flex: 1, marginTop: 15 }}>
                                 {renderCustomContent()}
                             </View>
@@ -4295,7 +4342,7 @@ export default function TaskList({
                         )}
 
                         {/* FAB */}
-                        {!showHistoryPanel && (
+                        {!showHistoryPanel && activeView !== 'goal' && (
                             <TouchableOpacity
                                 style={[styles.addButton, !isLandscape && styles.addButtonPortrait]}
                                 onPress={onAddTask}
@@ -4348,8 +4395,8 @@ export default function TaskList({
                     initialSyncMode={'none'}
                 />
 
-            </SafeAreaView >
-        </LinearGradient >
+            </SafeAreaView>
+        </LinearGradient>
     );
 }
 

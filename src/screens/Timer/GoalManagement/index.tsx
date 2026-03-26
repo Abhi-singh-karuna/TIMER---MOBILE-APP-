@@ -12,6 +12,8 @@ import {
     Platform,
     Animated,
     Easing,
+    useWindowDimensions,
+    SafeAreaView,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { BlurView } from 'expo-blur';
@@ -44,6 +46,7 @@ interface GoalManagementProps {
     onSettings?: () => void;
     onShowNotes?: () => void;
     selectedDate?: Date;
+    hideLeftPanel?: boolean;
 }
 
 export default function GoalManagement({
@@ -61,6 +64,7 @@ export default function GoalManagement({
     onSettings,
     onShowNotes,
     selectedDate,
+    hideLeftPanel,
 }: GoalManagementProps) {
     const insets = useSafeAreaInsets();
     const [expandedGoalIds, setExpandedGoalIds] = useState<string[]>([]);
@@ -69,7 +73,6 @@ export default function GoalManagement({
     const [hiddenGraphIds, setHiddenGraphIds] = useState<string[]>([]);
     const [expandedGraphIds, setExpandedGraphIds] = useState<string[]>([]);
     const [selectedDayData, setSelectedDayData] = useState<{ date: string, segments: any[], title: string } | null>(null);
-    const [isHeaderCompact, setIsHeaderCompact] = useState(false);
     const [containerWidth, setContainerWidth] = useState(0);
     const [deckContainerWidth, setDeckContainerWidth] = useState(0);
     const [isToggleInteracting, setIsToggleInteracting] = useState(false);
@@ -77,7 +80,6 @@ export default function GoalManagement({
     // Notes state
     const [showNotesPanel, setShowNotesPanel] = useState(false);
     const [selectedDateHasNote, setSelectedDateHasNote] = useState(false);
-    const [isPortraitHeaderExpanded, setIsPortraitHeaderExpanded] = useState(false); // Default collapsed
 
     // Get logical date for notes tracking
     const selectedLogical = useMemo(() => {
@@ -256,74 +258,63 @@ export default function GoalManagement({
         checkNote();
     }, [selectedLogical]);
 
-    const renderInfiniteViewToggle = (isPortrait: boolean = false) => {
-        return (
-            <Animated.View
-                style={[
-                    styles.viewToggleContainerCompact,
-                    isToggleInteracting && styles.viewToggleContainerCompactInteracting,
-                    {
-                        transform: [{
-                            scale: toggleInteractionAnim.interpolate({
-                                inputRange: [0, 1],
-                                outputRange: [1, 1.015],
-                            }),
-                        }],
-                    },
-                ]}
-            >
-                {NAV_TABS.map((tab, idx) => {
-                    const isActive = currentActiveView === tab.key;
-                    return (
-                        <TouchableOpacity
-                            key={tab.key}
-                            style={[
-                                styles.viewToggleBtnCompact,
-                                isActive && styles.viewToggleBtnCompactActive
-                            ]}
-                            onPress={() => {
-                                const centeredLoopIndex = (navMiddleCopyIndex * navTabCount) + idx;
-                                setActiveLoopIndex(centeredLoopIndex);
-                                triggerSelectionHaptic();
-                                onViewChange && onViewChange(tab.key);
-                            }}
-                            activeOpacity={0.75}
-                        >
-                            <Animated.View
+    const renderInfiniteViewToggle = (isPortrait: boolean = false) => (
+        <Animated.View
+            style={[
+                styles.viewToggleContainer,
+                isPortrait && styles.viewToggleContainerPortrait,
+                isToggleInteracting && styles.viewToggleContainerInteracting,
+                {
+                    transform: [{
+                        scale: toggleInteractionAnim.interpolate({
+                            inputRange: [0, 1],
+                            outputRange: [1, 1.015],
+                        }),
+                    }],
+                },
+            ]}
+        >
+            {NAV_TABS.map((tab, idx) => {
+                const isActive = currentActiveView === tab.key;
+                return (
+                    <TouchableOpacity
+                        key={tab.key}
+                        style={[
+                            styles.viewToggleBtn,
+                            styles.viewToggleBtnCompact,
+                            isActive && styles.viewToggleBtnActive,
+                        ]}
+                        onPress={() => {
+                            const centeredLoopIndex = (navMiddleCopyIndex * navTabCount) + idx;
+                            setActiveLoopIndex(centeredLoopIndex);
+                            triggerSelectionHaptic();
+                            onViewChange && onViewChange(tab.key);
+                        }}
+                        activeOpacity={0.75}
+                    >
+                        <View style={styles.viewToggleBtnInner}>
+                            <Animated.View style={{ transform: [{ scale: tabIconScale[idx] }] }}>
+                                <MaterialIcons
+                                    name={tab.icon as any}
+                                    size={13}
+                                    color={isActive ? '#000' : 'rgba(255,255,255,0.45)'}
+                                />
+                            </Animated.View>
+                            <Animated.Text
                                 style={[
-                                    styles.viewToggleBtnInner,
-                                    {
-                                        transform: [
-                                            { scale: tabContainerScale[idx] },
-                                            { translateY: tabContainerLift[idx] },
-                                        ],
-                                    },
+                                    styles.viewToggleText,
+                                    isActive && styles.viewToggleTextActive,
+                                    { opacity: tabLabelOpacity[idx] },
                                 ]}
                             >
-                                <Animated.View style={{ transform: [{ scale: tabIconScale[idx] }] }}>
-                                    <MaterialIcons
-                                        name={tab.icon as any}
-                                        size={13}
-                                        color={isActive ? '#000' : 'rgba(255,255,255,0.45)'}
-                                    />
-                                </Animated.View>
-                                <Animated.Text
-                                    style={[
-                                        styles.viewToggleTextCompact,
-                                        isActive && styles.viewToggleTextActiveCompact,
-                                        { opacity: tabLabelOpacity[idx] },
-                                    ]}
-                                    numberOfLines={1}
-                                >
-                                    {tab.label}
-                                </Animated.Text>
-                            </Animated.View>
-                        </TouchableOpacity>
-                    );
-                })}
-            </Animated.View>
-        );
-    };
+                                {tab.label}
+                            </Animated.Text>
+                        </View>
+                    </TouchableOpacity>
+                );
+            })}
+        </Animated.View>
+    );
 
 
 
@@ -368,6 +359,44 @@ export default function GoalManagement({
         } catch {
             return dateStr;
         }
+    };
+
+    /** One popup row per task + time slot; merges duplicate stage lines into chips. */
+    const groupSegmentsForDayPopup = (segments: any[]) => {
+        const map = new Map<
+            string,
+            { segs: any[]; order: number }
+        >();
+        let seq = 0;
+        for (const seg of segments) {
+            const task = String(seg.taskTitle ?? '').trim() || 'Untitled';
+            const sk = seg.startMin ?? -1;
+            const ek = seg.endMin ?? -1;
+            const key = `${task}|${sk}|${ek}`;
+            if (!map.has(key)) {
+                map.set(key, { segs: [], order: seq++ });
+            }
+            map.get(key)!.segs.push(seg);
+        }
+        const entries = [...map.entries()].sort((a, b) => a[1].order - b[1].order);
+        return entries.map(([key, { segs }]) => {
+            const first = segs[0];
+            const totalMinutes = segs.reduce((acc, s) => acc + (s.durationMinutes || 0), 0);
+            const stageLabels: string[] = [];
+            for (const s of segs) {
+                const st = String(s.stageTitle ?? '').trim();
+                if (st && !stageLabels.includes(st)) stageLabels.push(st);
+            }
+            return {
+                key,
+                taskTitle: String(first.taskTitle ?? '').trim() || 'Untitled',
+                timeLabel: formatTimeRange(first.startMin, first.endMin),
+                totalMinutes,
+                stageLabels,
+                status: String(first.status ?? ''),
+                partCount: segs.length,
+            };
+        });
     };
 
     const getGoalActivityData = (goal: Goal, allTasks: Task[]) => {
@@ -534,17 +563,18 @@ export default function GoalManagement({
         const s = status.toLowerCase();
 
         if (s === 'done' || s === 'completed') return '#00E676';
-        if (s === 'process' || s === 'in progress') return '#FFD700';
+        if (s === 'process' || s === 'in progress') return '#FFCA28';
         
-        // Pending/other
-        if (isFuture) return 'rgba(255,255,255,0.1)'; 
-        return '#FF5252'; 
+        // Pending — readable on dark chart (not near-black)
+        if (isFuture) return 'rgba(120, 132, 156, 0.95)';
+        return '#FF6E6E';
     };
 
     const GoalActivityGraph = ({ data, title, goalId }: { data: any[], title?: string, goalId: string }) => {
-        if (data.length === 0) return null;
         const todayStr = new Date().toISOString().split('T')[0];
         const isExpanded = expandedGraphIds.includes(goalId + (title || ''));
+
+        if (data.length === 0) return null;
 
         const toggleGraphExpand = () => {
             LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
@@ -580,23 +610,26 @@ export default function GoalManagement({
             ? [0, 45, 90, 135, 180]
             : [0, 25, 50];
 
+        /** Space below the 0h baseline for x-axis date labels (labels sit entirely under the line). */
+        const GRAPH_X_AXIS_PX = 30;
+
         return (
             <View style={[styles.graphWrapper, { marginBottom: isExpanded ? 24 : 12 }]}>
                 <View style={styles.graphHeaderRow}>
                     <Text style={styles.graphSubLabel}>{title?.toUpperCase()}</Text>
                     
-                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
                         {data.length > 0 && (
                             <Text style={styles.graphLegendText}>
                                 <Text style={{ color: '#00E676' }}>● DONE  </Text>
                                 <Text style={{ color: '#FFD700' }}>● PROCESS  </Text>
-                                <Text style={{ color: 'rgba(255,255,255,0.4)' }}>● PENDING</Text>
+                                <Text style={{ color: 'rgba(140, 152, 176, 0.95)' }}>● PENDING</Text>
                             </Text>
                         )}
                         <TouchableOpacity onPress={toggleGraphExpand} style={styles.expandToggleBtn}>
                             <MaterialIcons 
                                 name={isExpanded ? "unfold-less" : "unfold-more"} 
-                                size={14} 
+                                size={12} 
                                 color="#fff" 
                             />
                             <Text style={styles.expandToggleText}>{isExpanded ? 'CLOSE' : 'EXPAND'}</Text>
@@ -604,10 +637,11 @@ export default function GoalManagement({
                     </View>
                 </View>
 
-                <View style={[styles.mathGraphMain, { height: maxHeight + 35 }]}>
-                    <View style={[styles.yAxisContainer, { height: maxHeight + 25 }]}>
+                <View style={styles.graphChartPanel}>
+                    <View style={[styles.mathGraphMain, { height: maxHeight + GRAPH_X_AXIS_PX + 6 }]}>
+                    <View style={[styles.yAxisContainer, { height: maxHeight + GRAPH_X_AXIS_PX }]}>
                         {yAxisLabelsHr.map((label, idx) => {
-                            const bottom = isExpanded ? (gridLines[4 - idx] + 25) : (gridLines[2 - idx] + 25);
+                            const bottom = isExpanded ? (gridLines[4 - idx] + GRAPH_X_AXIS_PX) : (gridLines[2 - idx] + GRAPH_X_AXIS_PX);
                             return (
                                 <Text 
                                     key={idx} 
@@ -622,72 +656,92 @@ export default function GoalManagement({
                         })}
                     </View>
 
-                    <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.graphScroll}>
-                        <View style={[styles.graphContainer, { height: maxHeight + 30 }]}>
+                    <ScrollView
+                        horizontal
+                        showsHorizontalScrollIndicator={false}
+                        style={styles.graphScroll}
+                    >
+                        <View style={[styles.graphContainer, { height: maxHeight + GRAPH_X_AXIS_PX }]}>
                             {gridLines.map((bottom, idx) => (
                                 <View 
                                     key={idx} 
                                     style={[
                                         styles.gridLine, 
-                                        { bottom: bottom + 25 },
-                                        bottom === 0 && { backgroundColor: 'rgba(255,255,255,0.2)', height: 2 } 
+                                        { bottom: bottom + GRAPH_X_AXIS_PX },
+                                        bottom === 0 && { backgroundColor: 'rgba(255,255,255,0.28)', height: 2 } 
                                     ]} 
                                 />
                             ))}
 
                             {data.map((day, i) => {
                                 const segments = day.segments || [];
-                                const totalMins = segments.reduce((acc: number, s: any) => acc + (s.durationMinutes || 0), 0);
                                 const maxMinutes = topHr * 60;
                                 const scale = maxHeight / maxMinutes;
+                                const isToday = day.date === todayStr;
+                                const dayNum = day.date.split('-')[2];
 
                                 return (
                                     <TouchableOpacity 
                                         key={i} 
-                                        style={[styles.barOuter, { height: maxHeight + 25 }]}
+                                        style={[styles.barOuter, { height: maxHeight + GRAPH_X_AXIS_PX }]}
                                         onPress={() => setSelectedDayData({
                                             date: day.date,
                                             segments: day.segments,
                                             title: title || 'PERFORMANCE LOG'
                                         })}
+                                        activeOpacity={0.85}
                                     >
-                                        <View style={[styles.barContainer, { height: maxHeight, marginBottom: 0 }]}>
-                                            {segments.length > 0 ? (
-                                                [...segments].reverse().map((seg: any, idx: number) => (
-                                                    <View 
-                                                        key={idx}
-                                                        style={[
-                                                            styles.barFill,
-                                                            {
-                                                                height: Math.max(3, seg.durationMinutes * scale),
-                                                                backgroundColor: getSegmentColor(seg.status, day.date),
-                                                                marginBottom: 1,
-                                                                opacity: day.hasTasks ? 1 : 0.1
-                                                            }
-                                                        ]}
-                                                    />
-                                                ))
-                                            ) : (
-                                                <View style={[
-                                                    styles.barFill,
-                                                    {
-                                                        height: 2,
-                                                        backgroundColor: 'rgba(255,255,255,0.03)',
-                                                        borderRadius: 1,
-                                                    }
-                                                ]} />
-                                            )}
-                                        </View>
-                                        <View style={{ height: 25, width: '100%', alignItems: 'center', justifyContent: 'center' }}>
-                                            <Text style={[styles.barDate, day.date === todayStr && styles.barDateToday]}>
-                                                {day.date.split('-')[2]}
-                                            </Text>
+                                        <View style={styles.barTrackColumn}>
+                                            <View
+                                                style={[
+                                                    styles.barContainer,
+                                                    { height: maxHeight },
+                                                    isToday && styles.barContainerToday,
+                                                    isToday && styles.barContainerTodayHighlight,
+                                                ]}
+                                            >
+                                                {segments.length > 0 ? (
+                                                    [...segments].reverse().map((seg: any, idx: number) => (
+                                                        <View 
+                                                            key={idx}
+                                                            style={[
+                                                                styles.barFill,
+                                                                isToday && styles.barFillToday,
+                                                                {
+                                                                    height: Math.max(3, seg.durationMinutes * scale),
+                                                                    backgroundColor: getSegmentColor(seg.status, day.date),
+                                                                    marginBottom: 1,
+                                                                    opacity: day.hasTasks ? 1 : 0.45
+                                                                }
+                                                            ]}
+                                                        />
+                                                    ))
+                                                ) : (
+                                                    <View style={[
+                                                        styles.barFill,
+                                                        {
+                                                            height: 3,
+                                                            backgroundColor: isToday ? 'rgba(0, 229, 255, 0.35)' : 'rgba(255,255,255,0.14)',
+                                                            borderRadius: 1,
+                                                        }
+                                                    ]} />
+                                                )}
+                                            </View>
+                                            <View style={[styles.barDateColumn, { height: GRAPH_X_AXIS_PX }]}>
+                                                <Text
+                                                    style={[styles.barDate, isToday && styles.barDateTodayNum]}
+                                                    numberOfLines={1}
+                                                >
+                                                    {dayNum}
+                                                </Text>
+                                            </View>
                                         </View>
                                     </TouchableOpacity>
                                 );
                             })}
                         </View>
                     </ScrollView>
+                    </View>
                 </View>
             </View>
         );
@@ -778,100 +832,85 @@ export default function GoalManagement({
 
         return (
             <View key={goal.id} style={styles.dashboardCardWrapper}>
-                <BlurView intensity={45} tint="dark" style={styles.dashboardCard}>
-                    <LinearGradient
-                        colors={['rgba(255,255,255,0.1)', 'rgba(255,255,255,0.02)']}
-                        style={styles.cardContent}
-                    >
+                <View style={styles.dashboardCardDepthOuter}>
+                    <BlurView intensity={32} tint="dark" style={styles.dashboardCard}>
+                        <LinearGradient
+                            colors={['rgba(34, 36, 44, 0.98)', 'rgba(22, 24, 30, 0.99)']}
+                            locations={[0, 1]}
+                            start={{ x: 0, y: 0 }}
+                            end={{ x: 0, y: 1 }}
+                            style={styles.cardContent}
+                        >
                         {/* Unified HUD Content */}
-                        <View style={[styles.hudBody, isLandscape && styles.hudBodyLandscape]}>
-
-                            {/* Left Pane: Core Objective */}
-                            <View style={[styles.hudLeft, isLandscape && styles.hudLeftLandscape]}>
-                                <View style={styles.hudHeaderTactical}>
-                                    <View style={styles.goalIconContainer}>
-                                        <LinearGradient
-                                            colors={['#FFFFFF', 'rgba(255,255,255,0.3)']}
-                                            style={styles.iconGradient}
+                        <View style={styles.hudBody}>
+                            <View style={styles.goalCardHeaderMinimal}>
+                                <View style={styles.goalCardHeaderIcon}>
+                                    <MaterialIcons name="track-changes" size={16} color="rgba(255,255,255,0.55)" />
+                                </View>
+                                <View style={styles.goalCardHeaderTextCol}>
+                                    <Text style={styles.goalCardTitleCompact} numberOfLines={1}>
+                                        {displayTitle}
+                                    </Text>
+                                    <Text style={styles.goalCardMetaCompact} numberOfLines={1}>
+                                        {getGoalTypeLabel(goal.type)} · ID {goal.id.slice(-4)} · {associatedTasks.length} linked
+                                    </Text>
+                                </View>
+                                <View style={styles.integratedActions}>
+                                    <TouchableOpacity
+                                        onPress={() => onAddGoal(goal.id, 'task')}
+                                        style={styles.hudActionBtnMinimal}
+                                        activeOpacity={0.75}
+                                    >
+                                        <MaterialIcons name="add" size={18} color={accentColor} />
+                                    </TouchableOpacity>
+                                    <View style={{ position: 'relative' }}>
+                                        <TouchableOpacity
+                                            onPress={() => {
+                                                LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+                                                setMenuGoalId(menuGoalId === goal.id ? null : goal.id);
+                                            }}
+                                            style={styles.hudActionBtnMinimal}
+                                            activeOpacity={0.75}
                                         >
-                                            <MaterialIcons name="track-changes" size={22} color="#000" />
-                                        </LinearGradient>
-                                    </View>
-                                    <View style={styles.titleTextContainer}>
-                                        <View style={styles.badgeRow}>
-                                            <View style={styles.idBadge}>
-                                                <Text style={styles.idBadgeText}>ID-{goal.id.slice(-4)}</Text>
-                                            </View>
-                                            <Text style={styles.typeLabelText}>{getGoalTypeLabel(goal.type).toUpperCase()}</Text>
-                                        </View>
-                                        <Text style={styles.unifiedTitleText}>{displayTitle.toUpperCase()}</Text>
-                                    </View>
-                                    <View style={styles.integratedActions}>
-                                        <TouchableOpacity onPress={() => onAddGoal(goal.id, 'task')} style={styles.hudActionBtnSmall}>
-                                            <MaterialIcons name="add" size={14} color={accentColor} />
+                                            <MaterialIcons name="more-vert" size={18} color="rgba(255,255,255,0.5)" />
                                         </TouchableOpacity>
-                                        <View style={{ position: 'relative' }}>
-                                            <TouchableOpacity
-                                                onPress={() => {
-                                                    LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
-                                                    setMenuGoalId(menuGoalId === goal.id ? null : goal.id);
-                                                }}
-                                                style={styles.hudActionBtnSmall}
-                                            >
-                                                <MaterialIcons name="more-vert" size={14} color="rgba(255,255,255,0.4)" />
-                                            </TouchableOpacity>
 
-                                            {menuGoalId === goal.id && (
-                                                <BlurView intensity={80} tint="dark" style={styles.tacticalTooltip}>
-                                                    <TouchableOpacity
-                                                        style={styles.tooltipItem}
-                                                        onPress={() => {
-                                                            onEditGoal(goal);
-                                                            setMenuGoalId(null);
-                                                        }}
-                                                    >
-                                                        <MaterialIcons name="edit" size={10} color={accentColor} />
-                                                        <Text style={styles.tooltipText}>UPDATE</Text>
-                                                    </TouchableOpacity>
-                                                    <View style={styles.tooltipSeparator} />
-                                                    <TouchableOpacity
-                                                        style={styles.tooltipItem}
-                                                        onPress={() => {
-                                                            onDeleteGoal(goal.id);
-                                                            setMenuGoalId(null);
-                                                        }}
-                                                    >
-                                                        <MaterialIcons name="delete-outline" size={10} color="#FF5252" />
-                                                        <Text style={[styles.tooltipText, { color: '#FF5252' }]}>DELETE</Text>
-                                                    </TouchableOpacity>
-                                                </BlurView>
-                                            )}
-                                        </View>
+                                        {menuGoalId === goal.id && (
+                                            <BlurView intensity={80} tint="dark" style={styles.tacticalTooltip}>
+                                                <TouchableOpacity
+                                                    style={styles.tooltipItem}
+                                                    onPress={() => {
+                                                        onEditGoal(goal);
+                                                        setMenuGoalId(null);
+                                                    }}
+                                                >
+                                                    <MaterialIcons name="edit" size={10} color={accentColor} />
+                                                    <Text style={styles.tooltipText}>UPDATE</Text>
+                                                </TouchableOpacity>
+                                                <View style={styles.tooltipSeparator} />
+                                                <TouchableOpacity
+                                                    style={styles.tooltipItem}
+                                                    onPress={() => {
+                                                        onDeleteGoal(goal.id);
+                                                        setMenuGoalId(null);
+                                                    }}
+                                                >
+                                                    <MaterialIcons name="delete-outline" size={10} color="#FF5252" />
+                                                    <Text style={[styles.tooltipText, { color: '#FF5252' }]}>DELETE</Text>
+                                                </TouchableOpacity>
+                                            </BlurView>
+                                        )}
                                     </View>
                                 </View>
                             </View>
 
-                            {/* Main Tactical Body */}
                             <View style={[styles.hudRightUnified, isLandscape && styles.hudRightLandscapeUnified]}>
-                                <View style={styles.rightHeaderIntegrated}>
-                                    <View style={styles.deploymentHeaderRow}>
-                                        <Text style={styles.rightHeaderTextUnified}>ACTIVITY & DEPLOYMENT</Text>
-                                        <View style={styles.activeStatusPill}>
-                                            <View style={styles.pulseContainer}>
-                                                <View style={[styles.activePulseOuter, { opacity: 0.2 }]} />
-                                                <View style={styles.activePulse} />
-                                            </View>
-                                            <Text style={styles.rightHeaderCountUnified}>{associatedTasks.length} LINKED</Text>
-                                        </View>
-                                    </View>
-                                </View>
-
                                 {associatedTasks.length > 0 ? (
                                     <View style={[styles.activityContent, isLandscape && { flex: 1 }]}>
                                         {!hiddenGraphIds.includes(goal.id) && (
                                             <View style={styles.combinedSystemGraphWrapper}>
                                                 <View style={styles.combinedGraphHeader}>
-                                                    <MaterialIcons name="analytics" size={10} color="rgba(255,255,255,0.4)" />
+                                                    <MaterialIcons name="analytics" size={10} color="rgba(255,255,255,0.55)" />
                                                     <Text style={styles.combinedGraphLabelText}>STRATEGIC SYSTEM PERFORMANCE</Text>
                                                 </View>
                                                 <GoalActivityGraph 
@@ -907,7 +946,7 @@ export default function GoalManagement({
 
                                         {/* Unified Drill-Down Analytics Panel */}
                                         {selectedTaskIdPerGoal[goal.id] && (
-                                            <BlurView intensity={30} tint="dark" style={styles.unifiedAnalyticsPanel}>
+                                            <BlurView intensity={24} tint="dark" style={styles.unifiedAnalyticsPanel}>
                                                 {(() => {
                                                     const selectedTask = associatedTasks.find(t => t.id === selectedTaskIdPerGoal[goal.id]);
                                                     if (!selectedTask) return null;
@@ -1003,8 +1042,9 @@ export default function GoalManagement({
                                 </View>
                             </View>
                         </View>
-                    </LinearGradient>
-                </BlurView>
+                        </LinearGradient>
+                    </BlurView>
+                </View>
             </View>
         );
     };
@@ -1023,118 +1063,183 @@ export default function GoalManagement({
         totalHours: '42.0H', // dummy analytics
     }), [rootGoals.length]);
 
-    // Pad the scroll content so it starts below our absolute header
-    const scrollTopPad = isLandscape ? (insets.top + 100) : (insets.top + 145);
+    // Pad the scroll content so it starts below our absolute header (portrait)
+    // or has appropriate padding in landscape.
+    const scrollTopPad = isLandscape ? 20 : 0;
+    const { width: screenWidth } = useWindowDimensions();
 
     return (
-        <View style={styles.container}>
-            {/* Unified Fixed Header Wrapper */}
-            <View style={styles.premiumHeaderWrapper}>
-                <View style={[styles.statusBarMask, { height: insets.top }]} />
-                <View style={[styles.headerCardPortrait, { marginTop: isLandscape ? 0 : 10, borderRadius: isLandscape ? 0 : 24, backgroundColor: isLandscape ? 'transparent' : 'rgba(10, 10, 12, 0.85)', borderWidth: isLandscape ? 0 : 1 }]}>
-                    {/* 1. View Toggle & Collapse Row */}
-                    <View style={styles.toggleWithCountRowPortrait}>
-                        <View style={styles.toggleClusterPortrait}>
-                            <View style={styles.portraitLogoWrapper}>
-                                <Image source={APP_LOGO} style={styles.portraitLogo} resizeMode="contain" />
+        <View style={[styles.container, isLandscape && styles.landscapeContainer]}>
+            {/* 1. PORTRAIT LAYOUT - NO HEADER (HANDLED BY ORCHESTRATOR) */}
+            
+            {/* 2. LANDSCAPE LAYOUT */}
+            {isLandscape ? (
+                hideLeftPanel ? (
+                    <View style={[styles.rightPanel, { width: '100%', flex: 1 }]}>
+                        <ScrollView
+                            style={styles.scrollView}
+                            contentContainerStyle={[
+                                styles.scrollContent,
+                                { paddingTop: scrollTopPad },
+                                { paddingBottom: 100 },
+                            ]}
+                            showsVerticalScrollIndicator={false}
+                        >
+                            <View style={[styles.dashboardContainer, styles.dashboardContainerLandscape]}>
+                                {goals.filter(g => !g.parentId).map(renderDashboardCard)}
                             </View>
-                            {renderInfiniteViewToggle(true)}
-                        </View>
-                        <View style={styles.headerRightActionsPortrait}>
-                            <TouchableOpacity
-                                style={[styles.headerCollapseBtnTop, { opacity: 0.4 }]}
-                                disabled={true}
-                                onPress={() => {}}
-                                activeOpacity={1}
-                            >
-                                <MaterialIcons
-                                    name="keyboard-arrow-down"
-                                    size={22}
-                                    color="rgba(255,255,255,0.6)"
-                                />
-                            </TouchableOpacity>
-                        </View>
+                            {goals.filter(g => !g.parentId).length === 0 && (
+                                <View style={[styles.dashboardContainer, { paddingHorizontal: 20 }]}>
+                                    {[1, 2].map(i => (
+                                        <TouchableOpacity
+                                            key={`empty-goal-${i}`}
+                                            style={styles.placeholderCard}
+                                            onPress={() => onAddGoal(null, 'goal')}
+                                            activeOpacity={0.7}
+                                        >
+                                            <View style={styles.placeholderContent}>
+                                                <MaterialIcons name="track-changes" size={32} color="rgba(255,255,255,0.2)" />
+                                                <Text style={styles.placeholderText}>NEW GOAL</Text>
+                                            </View>
+                                        </TouchableOpacity>
+                                    ))}
+                                </View>
+                            )}
+                        </ScrollView>
                     </View>
+                ) : (
+                    <SafeAreaView style={[styles.safeArea, styles.safeAreaLandscape]}>
+                        <View style={[styles.leftPanel, { width: screenWidth * 0.30 }]}>
+                            <View style={styles.analyticsCardWrapper}>
+                                <ScrollView showsVerticalScrollIndicator={false} style={styles.leftPanelScroll}>
+                                    {/* App Logo Row - Landscape */}
+                                    <View style={styles.landscapeLogoSection}>
+                                        <Image source={APP_LOGO} style={styles.landscapeLogo} resizeMode="contain" />
+                                        <View style={styles.landscapeLogoDivider} />
+                                        <Text style={styles.landscapeBrandName}>CHRONOSCAPE</Text>
+                                    </View>
 
-                    {/* 2. Metrics & Actions Row */}
-                    <View style={[styles.dateControlRowPortrait, { marginBottom: isPortraitHeaderExpanded ? 8 : 0 }]}>
-                        <View style={styles.goalHeaderMetricCard}>
-                            <Text style={styles.goalHeaderMetricLabel}>GOALS</Text>
-                            <Text style={styles.goalHeaderMetricValue}>
-                                {goals ? goals.filter(g => !g.parentId).length : 0}
-                            </Text>
+                                    {/* View Toggle */}
+                                    <View style={styles.landscapeToggleWrapper}>
+                                        {renderInfiniteViewToggle(false)}
+                                    </View>
+
+                                    {/* Date display (Matching Task Layout) */}
+                                    <View style={styles.dateControlRowLandscape}>
+                                        <View style={styles.dateLandscapeRow}>
+                                            <MaterialIcons name="calendar-today" size={14} color="rgba(255,255,255,0.5)" />
+                                            <Text style={styles.dateLandscapeText}>
+                                                {`  ${new Date().toLocaleDateString('en-US', { weekday: 'short', day: 'numeric', month: 'short' }).toUpperCase()}`}
+                                            </Text>
+                                        </View>
+                                        <View style={[styles.todayNavBtn, styles.todayNavBtnActive]}>
+                                            <MaterialIcons name="today" size={12} color="#4CAF50" />
+                                            <Text style={styles.todayNavTextActive}>  TODAY</Text>
+                                        </View>
+                                    </View>
+
+                                    {/* Metrics Section (Stats Grid Layout from Task) */}
+                                    <View style={styles.compactStatsGrid}>
+                                        <View style={styles.compactStatRow}>
+                                            <View style={styles.compactStatItem}>
+                                                <Text style={styles.compactStatLabel}>TOTAL GOALS</Text>
+                                                <Text style={styles.compactStatValue}>
+                                                    {goals ? goals.filter(g => !g.parentId).length : 0}
+                                                </Text>
+                                            </View>
+                                            <View style={styles.compactStatItem}>
+                                                <Text style={styles.compactStatLabel}>STRATEGIC HR</Text>
+                                                <Text style={styles.compactStatValue}>{goalHeaderStats.totalHours}</Text>
+                                            </View>
+                                        </View>
+                                    </View>
+
+                                </ScrollView>
+
+                                {/* Footer Actions (Bottom of left capsule - Matching Task) */}
+                                <View style={styles.landscapeLeftFooter}>
+                                    <View style={styles.footerIconGroup}>
+                                        <TouchableOpacity onPress={onSettings} activeOpacity={0.7} style={styles.footerActionBtn}>
+                                            <MaterialIcons name="settings" size={20} color="rgba(255,255,255,0.7)" />
+                                        </TouchableOpacity>
+                                        <NotesIconButton
+                                            active={showNotesPanel}
+                                            hasNote={selectedDateHasNote}
+                                            onPress={() => setShowNotesPanel(!showNotesPanel)}
+                                        />
+                                    </View>
+                                </View>
+                            </View>
                         </View>
-                        <View style={styles.goalHeaderMetricCard}>
-                            <Text style={styles.goalHeaderMetricLabel}>DURATION</Text>
-                            <Text style={styles.goalHeaderMetricValue}>
-                                {goals ? goals.reduce((acc, g) => acc + (g.type === 'goal' ? 1 : 0), 0) : 0}H
-                            </Text>
-                        </View>
 
-                        <NotesIconButton
-                            active={showNotesPanel}
-                            hasNote={selectedDateHasNote}
-                            onPress={() => {
-                                LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
-                                setShowNotesPanel(!showNotesPanel);
-                            }}
-                        />
-
-                        {onSettings && (
-                            <TouchableOpacity
-                                style={styles.headerIconBtnPortrait}
-                                onPress={onSettings}
-                                activeOpacity={0.7}
+                        {/* 3. MAIN CONTENT (RIGHT PANEL IN LANDSCAPE - STANDALONE) */}
+                        <View style={styles.rightPanel}>
+                            <ScrollView
+                                style={styles.scrollView}
+                                contentContainerStyle={[
+                                    styles.scrollContent,
+                                    { paddingTop: scrollTopPad },
+                                    { paddingBottom: 100 },
+                                ]}
+                                showsVerticalScrollIndicator={false}
                             >
-                                <MaterialIcons name="settings" size={16} color="rgba(255,255,255,0.7)" />
-                            </TouchableOpacity>
-                        )}
+                                <View style={[styles.dashboardContainer, styles.dashboardContainerLandscape]}>
+                                    {goals.filter(g => !g.parentId).map(renderDashboardCard)}
+                                </View>
+                                {goals.filter(g => !g.parentId).length === 0 && (
+                                    <View style={[styles.dashboardContainer, { paddingHorizontal: 20 }]}>
+                                        {[1, 2].map(i => (
+                                            <TouchableOpacity
+                                                key={`empty-goal-${i}`}
+                                                style={styles.placeholderCard}
+                                                onPress={() => onAddGoal(null, 'goal')}
+                                                activeOpacity={0.7}
+                                            >
+                                                <View style={styles.placeholderContent}>
+                                                    <MaterialIcons name="track-changes" size={32} color="rgba(255,255,255,0.2)" />
+                                                    <Text style={styles.placeholderText}>NEW GOAL</Text>
+                                                </View>
+                                            </TouchableOpacity>
+                                        ))}
+                                    </View>
+                                )}
+                            </ScrollView>
+                        </View>
+                    </SafeAreaView>
+                )
+            ) : (
+                /* 4. PORTRAIT CONTENT (MAIN SCROLL) */
+                <ScrollView
+                    style={styles.scrollView}
+                    contentContainerStyle={[
+                        styles.scrollContent,
+                        { paddingTop: scrollTopPad },
+                        { paddingBottom: 100 },
+                    ]}
+                    showsVerticalScrollIndicator={false}
+                >
+                    <View style={styles.dashboardContainer}>
+                        {goals.filter(g => !g.parentId).map(renderDashboardCard)}
                     </View>
-                </View>
-
-                {/* Horizontal Separator */}
-                <View style={styles.separatorContainer}>
-                    <LinearGradient
-                        colors={['transparent', 'rgba(255,255,255,0.2)', 'transparent']}
-                        start={{ x: 0, y: 0.5 }}
-                        end={{ x: 1, y: 0.5 }}
-                        style={styles.separator}
-                    />
-                </View>
-            </View>
-            <ScrollView
-                style={styles.scrollView}
-                contentContainerStyle={[
-                    styles.scrollContent,
-                    { paddingTop: scrollTopPad },
-                    { paddingBottom: isLandscape ? (Math.max(insets.bottom, 20) + 100) : 100 },
-                ]}
-                showsVerticalScrollIndicator={false}
-            >
-                <View style={[styles.dashboardContainer, isLandscape && styles.dashboardContainerLandscape]}>
-                    {goals.filter(g => !g.parentId).map(renderDashboardCard)}
-                </View>
-                {goals.filter(g => !g.parentId).length === 0 && (
-                    <View style={styles.emptySection}>
-                        <BlurView intensity={20} tint="dark" style={styles.emptyBox}>
-                            <MaterialIcons name="security" size={40} color="rgba(255,255,255,0.2)" />
-                            <Text style={styles.emptyBoxTitle}>SYSTEM OFFLINE</Text>
-                            <Text style={styles.emptyBoxText}>No strategic objectives detected in current neural space.</Text>
-                            <TouchableOpacity
-                                style={styles.rebootBtn}
-                                onPress={() => onAddGoal(null, 'goal')}
-                            >
-                                <LinearGradient
-                                    colors={['#FFFFFF', '#444444']}
-                                    style={styles.rebootBtnGradient}
+                    {goals.filter(g => !g.parentId).length === 0 && (
+                        <View style={[styles.dashboardContainer, { paddingHorizontal: 20 }]}>
+                            {[1, 2].map(i => (
+                                <TouchableOpacity
+                                    key={`empty-goal-${i}`}
+                                    style={styles.placeholderCard}
+                                    onPress={() => onAddGoal(null, 'goal')}
+                                    activeOpacity={0.7}
                                 >
-                                    <Text style={styles.rebootText}>INITIALIZE SYSTEM</Text>
-                                </LinearGradient>
-                            </TouchableOpacity>
-                        </BlurView>
-                    </View>
-                )}
-            </ScrollView>
+                                    <View style={styles.placeholderContent}>
+                                        <MaterialIcons name="track-changes" size={32} color="rgba(255,255,255,0.2)" />
+                                        <Text style={styles.placeholderText}>NEW GOAL</Text>
+                                    </View>
+                                </TouchableOpacity>
+                            ))}
+                        </View>
+                    )}
+                </ScrollView>
+            )}
 
             {/* Notes Panel Overlay */}
             {showNotesPanel && (
@@ -1151,8 +1256,8 @@ export default function GoalManagement({
             <View style={[
                 styles.fabContainer,
                 {
-                    bottom: isLandscape ? (Math.max(insets.bottom, 16) + 12) : 20,
-                    right: isLandscape ? (Math.max(insets.right, 20)) : 20,
+                    bottom: isLandscape ? (Math.max(insets.bottom, 16) + 12) : 24,
+                    right: isLandscape ? (Math.max(insets.right, 20)) : 24,
                 }
             ]}>
                 <TouchableOpacity
@@ -1164,61 +1269,135 @@ export default function GoalManagement({
                 </TouchableOpacity>
             </View>
 
-            {selectedDayData && (
-                <View style={styles.modalOverlay}>
-                    <TouchableOpacity 
-                        style={styles.overlayDismiss} 
-                        activeOpacity={1} 
-                        onPress={() => setSelectedDayData(null)} 
-                    />
-                    <BlurView intensity={90} tint="dark" style={styles.detailPopup}>
-                        <LinearGradient
-                            colors={['rgba(255,255,255,0.1)', 'transparent']}
-                            style={styles.popupGradient}
-                        >
-                            <View style={styles.popupHeader}>
-                                <View>
-                                    <Text style={styles.popupDateText}>{formatDateCompact(selectedDayData.date)}</Text>
-                                    <Text style={styles.popupTitleText}>{selectedDayData.title}</Text>
-                                </View>
-                                <TouchableOpacity 
-                                    onPress={() => setSelectedDayData(null)}
-                                    style={styles.popupCloseBtn}
-                                >
-                                    <MaterialIcons name="close" size={20} color="#fff" />
-                                </TouchableOpacity>
-                            </View>
-
-                            <ScrollView style={styles.popupScroll} showsVerticalScrollIndicator={false}>
-                                {selectedDayData.segments.length > 0 ? (
-                                    selectedDayData.segments.map((seg, idx) => (
-                                        <View key={idx} style={styles.logItem}>
-                                            <View style={[styles.logStatusDot, { backgroundColor: getSegmentColor(seg.status, selectedDayData.date) }]} />
-                                            <View style={styles.logInfo}>
-                                                <Text style={styles.logTaskTitle}>{seg.taskTitle?.toUpperCase()}</Text>
-                                                <Text style={styles.logStageTitle}>{seg.stageTitle} <Text style={styles.logTimeRange}>{formatTimeRange(seg.startMin, seg.endMin)}</Text></Text>
-                                            </View>
-                                            <Text style={styles.logDuration}>{seg.durationMinutes}m</Text>
+            {selectedDayData && (() => {
+                const totalMins = selectedDayData.segments.reduce((acc, s) => acc + (s.durationMinutes || 0), 0);
+                const grouped = groupSegmentsForDayPopup(selectedDayData.segments);
+                const titleShort =
+                    selectedDayData.title.length > 40
+                        ? `${selectedDayData.title.slice(0, 38)}…`
+                        : selectedDayData.title;
+                return (
+                    <View style={styles.modalOverlay}>
+                        <TouchableOpacity
+                            style={styles.overlayDismiss}
+                            activeOpacity={1}
+                            onPress={() => setSelectedDayData(null)}
+                        />
+                        <View style={styles.detailPopup}>
+                            <View style={styles.detailPopupInner}>
+                                <View style={styles.popupHeaderCompact}>
+                                    <View style={styles.popupHeaderTextBlock}>
+                                        <View style={styles.popupDateRow}>
+                                            <MaterialIcons name="event" size={12} color="rgba(0, 229, 255, 0.85)" />
+                                            <Text style={styles.popupDateCompact}>
+                                                {formatDateCompact(selectedDayData.date)}
+                                            </Text>
+                                            {grouped.length > 0 && (
+                                                <View style={styles.popupCountPill}>
+                                                    <Text style={styles.popupCountPillText}>{grouped.length}</Text>
+                                                </View>
+                                            )}
+                                            {selectedDayData.segments.length > grouped.length && grouped.length > 0 && (
+                                                <Text style={styles.popupCountHint}>
+                                                    {selectedDayData.segments.length} parts
+                                                </Text>
+                                            )}
                                         </View>
-                                    ))
-                                ) : (
-                                    <View style={styles.emptyLog}>
-                                        <MaterialIcons name="event-busy" size={24} color="rgba(255,255,255,0.1)" />
-                                        <Text style={styles.emptyLogText}>NO DEPLOYMENT DATA FOR THIS DATE</Text>
+                                        <Text style={styles.popupTitleCompact} numberOfLines={1}>
+                                            {titleShort}
+                                        </Text>
                                     </View>
-                                )}
-                            </ScrollView>
+                                    <TouchableOpacity
+                                        onPress={() => setSelectedDayData(null)}
+                                        style={styles.popupCloseBtnCompact}
+                                        hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                                    >
+                                        <MaterialIcons name="close" size={18} color="rgba(255,255,255,0.7)" />
+                                    </TouchableOpacity>
+                                </View>
 
-                            <View style={styles.popupFooter}>
-                                <Text style={styles.totalLabel}>TOTAL DURATION</Text>
-                                <Text style={styles.totalVal}>
-                                    {Math.floor(selectedDayData.segments.reduce((acc, s) => acc + s.durationMinutes, 0) / 60)}h {selectedDayData.segments.reduce((acc, s) => acc + s.durationMinutes, 0) % 60}m
-                                </Text>
+                                <ScrollView
+                                    style={styles.popupScrollCompact}
+                                    contentContainerStyle={styles.popupScrollContentCompact}
+                                    showsVerticalScrollIndicator={false}
+                                    keyboardShouldPersistTaps="handled"
+                                >
+                                    {grouped.length > 0 ? (
+                                        grouped.map(g => (
+                                            <View key={g.key} style={styles.logGroupCard}>
+                                                <View
+                                                    style={[
+                                                        styles.logRowAccent,
+                                                        {
+                                                            backgroundColor: getSegmentColor(
+                                                                g.status,
+                                                                selectedDayData.date
+                                                            ),
+                                                        },
+                                                    ]}
+                                                />
+                                                <View style={styles.logGroupBody}>
+                                                    <View style={styles.logGroupTopRow}>
+                                                        <Text style={styles.logGroupTaskTitle} numberOfLines={2}>
+                                                            {g.taskTitle}
+                                                        </Text>
+                                                        <Text style={styles.logGroupDuration}>
+                                                            {g.totalMinutes >= 60
+                                                                ? `${Math.floor(g.totalMinutes / 60)}h${g.totalMinutes % 60 ? ` ${g.totalMinutes % 60}m` : ''}`
+                                                                : `${g.totalMinutes}m`}
+                                                        </Text>
+                                                    </View>
+                                                    {g.stageLabels.length === 1 ? (
+                                                        <Text style={styles.logGroupMeta} numberOfLines={2}>
+                                                            {g.stageLabels[0]}
+                                                            {g.timeLabel ? ` · ${g.timeLabel}` : ''}
+                                                        </Text>
+                                                    ) : (
+                                                        <>
+                                                            <Text style={styles.logGroupMeta} numberOfLines={1}>
+                                                                {g.timeLabel}
+                                                                {g.partCount > 1
+                                                                    ? ` · ${g.partCount} parts`
+                                                                    : ''}
+                                                            </Text>
+                                                            {g.stageLabels.length > 0 && (
+                                                                <View style={styles.logStageChipsRow}>
+                                                                    {g.stageLabels.map(st => (
+                                                                        <View key={st} style={styles.logStageChip}>
+                                                                            <Text
+                                                                                style={styles.logStageChipText}
+                                                                                numberOfLines={1}
+                                                                            >
+                                                                                {st}
+                                                                            </Text>
+                                                                        </View>
+                                                                    ))}
+                                                                </View>
+                                                            )}
+                                                        </>
+                                                    )}
+                                                </View>
+                                            </View>
+                                        ))
+                                    ) : (
+                                        <View style={styles.emptyLogCompact}>
+                                            <MaterialIcons name="event-busy" size={20} color="rgba(255,255,255,0.12)" />
+                                            <Text style={styles.emptyLogTextCompact}>No segments this day</Text>
+                                        </View>
+                                    )}
+                                </ScrollView>
+
+                                <View style={styles.popupFooterCompact}>
+                                    <Text style={styles.totalLabelCompact}>Total</Text>
+                                    <Text style={styles.totalValCompact}>
+                                        {Math.floor(totalMins / 60)}h {totalMins % 60}m
+                                    </Text>
+                                </View>
                             </View>
-                        </LinearGradient>
-                    </BlurView>
-                </View>
-            )}
+                        </View>
+                    </View>
+                );
+            })()}
         </View>
     );
 }
@@ -1227,13 +1406,6 @@ const styles = StyleSheet.create({
     container: {
         flex: 1,
         backgroundColor: '#000',
-    },
-    premiumHeaderWrapper: {
-        position: 'absolute',
-        top: 0,
-        left: 0,
-        right: 0,
-        zIndex: 1000,
     },
     statusBarMask: {
         width: '100%',
@@ -1254,7 +1426,7 @@ const styles = StyleSheet.create({
         paddingVertical: 12,
         paddingHorizontal: 14,
         borderRadius: 24,
-        backgroundColor: 'rgba(10, 10, 12, 0.85)',
+        backgroundColor: '#0c0c0f',
         borderWidth: 1,
         borderColor: 'rgba(0, 229, 255, 0.07)',
         shadowColor: '#00E5FF',
@@ -1349,6 +1521,7 @@ const styles = StyleSheet.create({
     separatorContainer: {
         paddingHorizontal: 40,
         marginVertical: 10,
+        backgroundColor: '#000',
     },
     separator: {
         height: 1,
@@ -1389,9 +1562,9 @@ const styles = StyleSheet.create({
         gap: 12,
     },
     fab: {
-        width: 56,
-        height: 56,
-        borderRadius: 28,
+        width: 64,
+        height: 64,
+        borderRadius: 32,
         alignItems: 'center',
         justifyContent: 'center',
         backgroundColor: '#fff',
@@ -1438,6 +1611,13 @@ const styles = StyleSheet.create({
         borderWidth: 1,
         borderColor: 'rgba(255, 255, 255, 0.1)',
         gap: 0,
+    },
+    viewToggleContainerPortrait: {
+        minWidth: 0,
+    },
+    viewToggleContainerInteracting: {
+        borderColor: 'rgba(255, 255, 255, 0.2)',
+        backgroundColor: 'rgba(20, 20, 20, 0.8)',
     },
     viewToggleBtn: {
         flex: 1,
@@ -1559,6 +1739,7 @@ const styles = StyleSheet.create({
     },
     scrollView: {
         flex: 1,
+        zIndex: 0,
     },
     scrollContent: {
         padding: 16,
@@ -1567,7 +1748,7 @@ const styles = StyleSheet.create({
         paddingHorizontal: 20,
     },
     dashboardContainer: {
-        gap: 16,
+        gap: 12,
     },
     dashboardContainerLandscape: {
         flexDirection: 'row',
@@ -1576,81 +1757,67 @@ const styles = StyleSheet.create({
     dashboardCardWrapper: {
         width: '100%',
     },
+    dashboardCardDepthOuter: {
+        borderRadius: 22,
+        ...Platform.select({
+            ios: {
+                shadowColor: '#000',
+                shadowOffset: { width: 0, height: 12 },
+                shadowOpacity: 0.5,
+                shadowRadius: 24,
+            },
+            android: {
+                elevation: 16,
+            },
+            default: {},
+        }),
+    },
     dashboardCard: {
-        borderRadius: 24,
+        borderRadius: 22,
         overflow: 'hidden',
         borderWidth: 1,
-        borderColor: 'rgba(255,255,255,0.08)',
-        elevation: 10,
-        backgroundColor: 'rgba(20,20,20,0.4)',
+        borderColor: 'rgba(255,255,255,0.14)',
+        backgroundColor: 'rgba(24, 26, 32, 0.96)',
     },
     cardContent: {
-        padding: 16,
+        paddingVertical: 12,
+        paddingHorizontal: 12,
     },
     hudBody: {
         flexDirection: 'column',
     },
-    hudBodyLandscape: {
-        flexDirection: 'row',
-        gap: 20,
-    },
-    hudLeft: {
-        flex: 1,
-    },
-    hudLeftLandscape: {
-        flex: 0.45,
-    },
-    hudHeaderTactical: {
-        flexDirection: 'row',
-        alignItems: 'flex-start',
-        marginBottom: 20,
-        gap: 12,
-    },
-    goalIconContainer: {
-        width: 44,
-        height: 44,
-    },
-    iconGradient: {
-        width: '100%',
-        height: '100%',
-        borderRadius: 14,
-        alignItems: 'center',
-        justifyContent: 'center',
-        shadowColor: '#fff',
-        shadowOpacity: 0.4,
-        shadowRadius: 10,
-    },
-    badgeRow: {
+    goalCardHeaderMinimal: {
         flexDirection: 'row',
         alignItems: 'center',
         gap: 8,
-        marginBottom: 4,
+        marginBottom: 8,
+        paddingBottom: 8,
+        borderBottomWidth: StyleSheet.hairlineWidth,
+        borderBottomColor: 'rgba(255,255,255,0.08)',
     },
-    idBadge: {
-        backgroundColor: 'rgba(255,255,255,0.1)',
-        paddingHorizontal: 6,
-        paddingVertical: 2,
-        borderRadius: 4,
-        borderWidth: 1,
-        borderColor: 'rgba(255,255,255,0.25)',
+    goalCardHeaderIcon: {
+        width: 32,
+        height: 32,
+        borderRadius: 8,
+        backgroundColor: 'rgba(255,255,255,0.06)',
+        alignItems: 'center',
+        justifyContent: 'center',
     },
-    idBadgeText: {
-        fontSize: 8,
-        fontWeight: '900',
+    goalCardHeaderTextCol: {
+        flex: 1,
+        minWidth: 0,
+        gap: 2,
+    },
+    goalCardTitleCompact: {
+        fontSize: 15,
+        fontWeight: '800',
         color: '#fff',
-        letterSpacing: 0.5,
+        letterSpacing: 0.2,
     },
-    typeLabelText: {
-        fontSize: 8,
-        fontWeight: '900',
-        color: 'rgba(255,255,255,0.4)',
-        letterSpacing: 1.5,
-    },
-    unifiedTitleText: {
-        fontSize: 20,
-        fontWeight: '900',
-        color: '#fff',
-        letterSpacing: 1.2,
+    goalCardMetaCompact: {
+        fontSize: 10,
+        fontWeight: '600',
+        color: 'rgba(255,255,255,0.42)',
     },
     missionTimeline: {
         backgroundColor: 'rgba(0,0,0,0.3)',
@@ -1706,23 +1873,19 @@ const styles = StyleSheet.create({
         flex: 1,
         borderRadius: 2,
     },
-    titleTextContainer: {
-        flex: 1,
-    },
     integratedActions: {
         flexDirection: 'row',
-        gap: 8,
+        alignItems: 'center',
+        gap: 4,
         marginLeft: 'auto',
     },
-    hudActionBtnSmall: {
+    hudActionBtnMinimal: {
         width: 32,
         height: 32,
-        borderRadius: 10,
-        backgroundColor: 'rgba(255,255,255,0.04)',
+        borderRadius: 8,
         alignItems: 'center',
         justifyContent: 'center',
-        borderWidth: 1,
-        borderColor: 'rgba(255,255,255,0.05)',
+        backgroundColor: 'rgba(255,255,255,0.06)',
     },
     tacticalTooltip: {
         position: 'absolute',
@@ -1759,60 +1922,8 @@ const styles = StyleSheet.create({
         flex: 1,
     },
     hudRightLandscapeUnified: {
-        flex: 0.55,
-        borderLeftWidth: 1,
-        borderLeftColor: 'rgba(255,255,255,0.05)',
-        paddingLeft: 20,
-    },
-    rightHeaderIntegrated: {
-        flexDirection: 'row',
-        justifyContent: 'space-between',
-        alignItems: 'center',
-        marginBottom: 12,
-    },
-    rightHeaderActions: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        gap: 8,
-    },
-    rightHeaderTextUnified: {
-        fontSize: 8,
-        fontWeight: '900',
-        color: 'rgba(255,255,255,0.4)',
-        letterSpacing: 2,
-    },
-    activeStatusPill: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        backgroundColor: 'rgba(255,255,255,0.08)',
-        paddingHorizontal: 8,
-        paddingVertical: 4,
-        borderRadius: 8,
-        gap: 6,
-    },
-    pulseContainer: {
-        width: 10,
-        height: 10,
-        alignItems: 'center',
-        justifyContent: 'center',
-    },
-    activePulseOuter: {
-        position: 'absolute',
-        width: 10,
-        height: 10,
-        borderRadius: 5,
-        backgroundColor: '#fff',
-    },
-    activePulse: {
-        width: 4,
-        height: 4,
-        borderRadius: 2,
-        backgroundColor: '#fff',
-    },
-    rightHeaderCountUnified: {
-        fontSize: 7,
-        fontWeight: '900',
-        color: '#fff',
+        flex: 1,
+        marginTop: 0,
     },
     tasksScrollUnified: {
         flex: 1,
@@ -1824,7 +1935,7 @@ const styles = StyleSheet.create({
         flexDirection: 'row',
     },
     deploymentDeckScroll: {
-        marginBottom: 12,
+        marginBottom: 8,
     },
     deploymentDeckContent: {
         paddingRight: 20,
@@ -1902,12 +2013,12 @@ const styles = StyleSheet.create({
         backgroundColor: '#fff',
     },
     unifiedAnalyticsPanel: {
-        borderRadius: 16,
+        borderRadius: 14,
         overflow: 'hidden',
         borderWidth: 1,
-        borderColor: 'rgba(255,255,255,0.06)',
-        padding: 14,
-        backgroundColor: 'rgba(0,0,0,0.2)',
+        borderColor: 'rgba(255,255,255,0.1)',
+        padding: 12,
+        backgroundColor: '#181b24',
     },
     analyticsHeaderRow: {
         flexDirection: 'row',
@@ -2008,17 +2119,35 @@ const styles = StyleSheet.create({
         justifyContent: 'center',
         overflow: 'hidden',
     },
-    deploymentHeaderRow: {
-        flexDirection: 'row',
+    placeholderCard: {
+        width: '100%',
+        minHeight: 120,
+        backgroundColor: 'rgba(255, 255, 255, 0.02)',
+        borderRadius: 24,
+        borderWidth: 1.5,
+        borderStyle: 'dashed',
+        borderColor: 'rgba(255, 255, 255, 0.08)',
         alignItems: 'center',
-        gap: 8,
+        justifyContent: 'center',
+        padding: 20,
+        marginVertical: 10,
+    },
+    placeholderContent: {
+        alignItems: 'center',
+        gap: 12,
+    },
+    placeholderText: {
+        fontSize: 12,
+        fontWeight: '900',
+        color: 'rgba(255, 255, 255, 0.3)',
+        letterSpacing: 2,
     },
     compactMissionFooter: {
         flexDirection: 'row',
         alignItems: 'center',
         justifyContent: 'space-between',
-        paddingTop: 12,
-        marginTop: 12,
+        paddingTop: 8,
+        marginTop: 8,
         borderTopWidth: 1,
         borderTopColor: 'rgba(255,255,255,0.05)',
     },
@@ -2069,31 +2198,65 @@ const styles = StyleSheet.create({
         letterSpacing: 1,
     },
     activityContent: {
-        marginTop: 10,
+        marginTop: 6,
     },
     combinedSystemGraphWrapper: {
-        marginBottom: 16,
-        backgroundColor: 'rgba(255,255,255,0.01)',
+        marginBottom: 10,
         borderRadius: 12,
-        padding: 8,
+        paddingHorizontal: 10,
+        paddingTop: 8,
+        paddingBottom: 8,
+        overflow: 'hidden',
         borderWidth: 1,
-        borderColor: 'rgba(255,255,255,0.03)',
+        borderColor: 'rgba(255, 255, 255, 0.1)',
+        backgroundColor: '#181b24',
+        position: 'relative',
+        ...Platform.select({
+            ios: {
+                shadowColor: '#000',
+                shadowOffset: { width: 0, height: 6 },
+                shadowOpacity: 0.35,
+                shadowRadius: 12,
+            },
+            android: { elevation: 6 },
+            default: {},
+        }),
     },
     combinedGraphHeader: {
         flexDirection: 'row',
         alignItems: 'center',
         gap: 6,
-        marginBottom: 8,
-        paddingLeft: 4,
+        marginBottom: 4,
+        paddingLeft: 2,
     },
     combinedGraphLabelText: {
         fontSize: 7,
         fontWeight: '900',
-        color: 'rgba(255,255,255,0.3)',
+        color: 'rgba(255,255,255,0.55)',
         letterSpacing: 1.5,
     },
     graphWrapper: {
-        marginBottom: 10,
+        marginBottom: 6,
+    },
+    graphChartPanel: {
+        borderRadius: 10,
+        overflow: 'hidden',
+        paddingHorizontal: 6,
+        paddingVertical: 8,
+        marginTop: 4,
+        borderWidth: 1,
+        borderColor: 'rgba(255, 255, 255, 0.11)',
+        backgroundColor: '#12141a',
+        ...Platform.select({
+            ios: {
+                shadowColor: '#000',
+                shadowOffset: { width: 0, height: 4 },
+                shadowOpacity: 0.4,
+                shadowRadius: 8,
+            },
+            android: { elevation: 4 },
+            default: {},
+        }),
     },
     graphScroll: {
         flex: 1,
@@ -2105,35 +2268,77 @@ const styles = StyleSheet.create({
         paddingHorizontal: 4,
     },
     barOuter: {
-        alignItems: 'center',
+        alignItems: 'stretch',
         width: 16,
+    },
+    barTrackColumn: {
+        flex: 1,
+        width: '100%',
+        flexDirection: 'column',
+        justifyContent: 'flex-end',
+        alignItems: 'center',
     },
     barContainer: {
         width: '100%',
         justifyContent: 'flex-end',
         alignItems: 'center',
-        backgroundColor: 'rgba(255,255,255,0.02)',
-        borderRadius: 2,
+        backgroundColor: '#2a2f3c',
+        borderRadius: 4,
         overflow: 'hidden',
+        borderWidth: 1,
+        borderColor: 'rgba(255,255,255,0.14)',
+    },
+    barContainerToday: {
+        backgroundColor: '#343a4a',
+        borderColor: 'rgba(0, 229, 255, 0.4)',
+    },
+    barContainerTodayHighlight: {
+        borderWidth: 2,
+        borderColor: 'rgba(0, 229, 255, 0.85)',
+        backgroundColor: 'rgba(0, 229, 255, 0.1)',
+        ...Platform.select({
+            ios: {
+                shadowColor: '#00E5FF',
+                shadowOffset: { width: 0, height: 0 },
+                shadowOpacity: 0.45,
+                shadowRadius: 6,
+            },
+            default: {},
+        }),
     },
     barFill: {
         width: '100%',
         borderRadius: 2,
     },
+    barFillToday: {
+        borderTopWidth: StyleSheet.hairlineWidth,
+        borderTopColor: 'rgba(255,255,255,0.35)',
+    },
     barDate: {
         fontSize: 6,
         fontWeight: '900',
-        color: 'rgba(255,255,255,0.2)',
+        color: 'rgba(255,255,255,0.5)',
+        textAlign: 'center',
     },
-    barDateToday: {
-        color: '#fff',
+    barDateColumn: {
+        width: '100%',
+        alignItems: 'center',
+        justifyContent: 'center',
+        paddingTop: 2,
+    },
+    barDateTodayNum: {
+        color: '#00E5FF',
+        fontSize: 7,
+        fontWeight: '900',
+        lineHeight: 10,
+        textAlign: 'center',
     },
     graphSubLabel: {
         fontSize: 7,
         fontWeight: '900',
-        color: 'rgba(255,255,255,0.3)',
+        color: 'rgba(255,255,255,0.62)',
         letterSpacing: 1,
-        marginBottom: 4,
+        marginBottom: 2,
         textTransform: 'uppercase',
     },
     barHrLabel: {
@@ -2165,7 +2370,7 @@ const styles = StyleSheet.create({
         flexDirection: 'row',
         justifyContent: 'space-between',
         alignItems: 'center',
-        marginBottom: 8,
+        marginBottom: 4,
     },
     graphLegendText: {
         fontSize: 7,
@@ -2200,24 +2405,26 @@ const styles = StyleSheet.create({
     yAxisLabel: {
         fontSize: 7,
         fontWeight: '900',
-        color: 'rgba(255,255,255,0.3)',
+        color: 'rgba(255,255,255,0.52)',
     },
     gridLine: {
         position: 'absolute',
         left: 0,
         right: 0,
         height: 1,
-        backgroundColor: 'rgba(255,255,255,0.05)',
-        zIndex: -1,
+        backgroundColor: 'rgba(255,255,255,0.16)',
+        zIndex: 0,
     },
     expandToggleBtn: {
         flexDirection: 'row',
         alignItems: 'center',
-        backgroundColor: 'rgba(255,255,255,0.05)',
-        paddingHorizontal: 6,
+        backgroundColor: 'rgba(255,255,255,0.08)',
+        paddingHorizontal: 5,
         paddingVertical: 2,
         borderRadius: 4,
-        gap: 4,
+        gap: 3,
+        borderWidth: 1,
+        borderColor: 'rgba(255,255,255,0.14)',
     },
     expandToggleText: {
         fontSize: 7,
@@ -2226,125 +2433,204 @@ const styles = StyleSheet.create({
     },
     modalOverlay: {
         ...StyleSheet.absoluteFillObject,
-        backgroundColor: 'rgba(0,0,0,0.6)',
+        backgroundColor: 'rgba(0, 0, 0, 0.72)',
         justifyContent: 'center',
         alignItems: 'center',
-        zIndex: 1000,
+        zIndex: 2500,
+        paddingHorizontal: 20,
     },
     overlayDismiss: {
         ...StyleSheet.absoluteFillObject,
     },
     detailPopup: {
-        width: '92%',
-        maxHeight: '80%',
-        borderRadius: 16,
+        width: '100%',
+        maxWidth: 340,
+        maxHeight: '56%',
+        borderRadius: 14,
         overflow: 'hidden',
         borderWidth: 1,
-        borderColor: 'rgba(255,255,255,0.08)',
+        borderColor: 'rgba(255, 255, 255, 0.12)',
+        backgroundColor: '#12151c',
+        ...Platform.select({
+            ios: {
+                shadowColor: '#000',
+                shadowOffset: { width: 0, height: 12 },
+                shadowOpacity: 0.5,
+                shadowRadius: 24,
+            },
+            android: { elevation: 16 },
+            default: {},
+        }),
     },
-    popupGradient: {
-        padding: 16,
+    detailPopupInner: {
+        paddingHorizontal: 12,
+        paddingTop: 10,
+        paddingBottom: 10,
     },
-    popupHeader: {
+    popupHeaderCompact: {
         flexDirection: 'row',
-        justifyContent: 'space-between',
         alignItems: 'flex-start',
-        marginBottom: 12,
+        justifyContent: 'space-between',
+        gap: 8,
+        marginBottom: 8,
+        paddingBottom: 8,
+        borderBottomWidth: StyleSheet.hairlineWidth,
+        borderBottomColor: 'rgba(255, 255, 255, 0.08)',
     },
-    popupDateText: {
-        fontSize: 9,
-        fontWeight: '900',
-        color: '#FFFFFF',
-        letterSpacing: 1.5,
+    popupHeaderTextBlock: {
+        flex: 1,
+        minWidth: 0,
     },
-    popupTitleText: {
-        fontSize: 14,
-        fontWeight: '900',
-        color: '#fff',
-        marginTop: 2,
+    popupDateRow: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        flexWrap: 'wrap',
+        gap: 6,
+        marginBottom: 3,
     },
-    popupCloseBtn: {
-        width: 32,
-        height: 32,
-        borderRadius: 16,
-        backgroundColor: 'rgba(255,255,255,0.08)',
+    popupDateCompact: {
+        fontSize: 10,
+        fontWeight: '800',
+        color: 'rgba(255, 255, 255, 0.88)',
+        letterSpacing: 0.4,
+    },
+    popupCountPill: {
+        minWidth: 18,
+        height: 18,
+        paddingHorizontal: 5,
+        borderRadius: 6,
+        backgroundColor: 'rgba(255, 255, 255, 0.08)',
         alignItems: 'center',
         justifyContent: 'center',
     },
-    popupScroll: {
-        maxHeight: 450,
+    popupCountPillText: {
+        fontSize: 9,
+        fontWeight: '900',
+        color: 'rgba(255, 255, 255, 0.65)',
     },
-    logItem: {
-        flexDirection: 'row',
+    popupCountHint: {
+        fontSize: 8,
+        fontWeight: '700',
+        color: 'rgba(255, 255, 255, 0.28)',
+        marginLeft: 2,
+    },
+    popupTitleCompact: {
+        fontSize: 11,
+        fontWeight: '700',
+        color: 'rgba(255, 255, 255, 0.45)',
+    },
+    popupCloseBtnCompact: {
+        width: 28,
+        height: 28,
+        borderRadius: 8,
+        backgroundColor: 'rgba(255, 255, 255, 0.06)',
         alignItems: 'center',
-        backgroundColor: 'rgba(255,255,255,0.02)',
+        justifyContent: 'center',
+        marginTop: -2,
+    },
+    popupScrollCompact: {
+        maxHeight: 260,
+    },
+    popupScrollContentCompact: {
+        paddingBottom: 4,
+        gap: 0,
+    },
+    logGroupCard: {
+        flexDirection: 'row',
+        alignItems: 'stretch',
+        backgroundColor: 'rgba(255, 255, 255, 0.035)',
+        borderRadius: 10,
+        marginBottom: 6,
+        overflow: 'hidden',
+        borderWidth: 1,
+        borderColor: 'rgba(255, 255, 255, 0.06)',
+    },
+    logRowAccent: {
+        width: 3,
+    },
+    logGroupBody: {
+        flex: 1,
         paddingVertical: 8,
         paddingHorizontal: 10,
-        borderRadius: 8,
-        marginBottom: 4,
+        paddingRight: 8,
+        minWidth: 0,
     },
-    logStatusDot: {
-        width: 4,
-        height: 4,
-        borderRadius: 2,
-        marginRight: 8,
-    },
-    logInfo: {
-        flex: 1,
-    },
-    logTaskTitle: {
-        fontSize: 7,
-        fontWeight: '900',
-        color: 'rgba(255,255,255,0.35)',
-        letterSpacing: 0.5,
-    },
-    logStageTitle: {
-        fontSize: 11,
-        fontWeight: '600',
-        color: '#fff',
-        marginTop: 1,
-    },
-    logTimeRange: {
-        fontSize: 9,
-        fontWeight: '400',
-        color: 'rgba(255,255,255,0.3)',
-        marginLeft: 4,
-    },
-    logDuration: {
-        fontSize: 11,
-        fontWeight: '900',
-        color: 'rgba(255,255,255,0.8)',
-    },
-    emptyLog: {
-        alignItems: 'center',
-        paddingVertical: 30,
+    logGroupTopRow: {
+        flexDirection: 'row',
+        alignItems: 'flex-start',
+        justifyContent: 'space-between',
         gap: 8,
     },
-    emptyLogText: {
-        fontSize: 9,
-        fontWeight: '900',
-        color: 'rgba(255,255,255,0.15)',
-        letterSpacing: 1,
+    logGroupTaskTitle: {
+        flex: 1,
+        fontSize: 12,
+        fontWeight: '800',
+        color: '#fff',
+        lineHeight: 15,
     },
-    popupFooter: {
-        marginTop: 12,
-        paddingTop: 12,
-        borderTopWidth: 1,
-        borderTopColor: 'rgba(255,255,255,0.08)',
+    logGroupDuration: {
+        fontSize: 11,
+        fontWeight: '900',
+        color: 'rgba(0, 229, 255, 0.9)',
+        marginTop: 1,
+    },
+    logGroupMeta: {
+        fontSize: 9,
+        fontWeight: '600',
+        color: 'rgba(255, 255, 255, 0.4)',
+        marginTop: 4,
+    },
+    logStageChipsRow: {
+        flexDirection: 'row',
+        flexWrap: 'wrap',
+        gap: 4,
+        marginTop: 6,
+    },
+    logStageChip: {
+        maxWidth: '100%',
+        paddingHorizontal: 6,
+        paddingVertical: 3,
+        borderRadius: 5,
+        backgroundColor: 'rgba(255, 255, 255, 0.06)',
+        borderWidth: 1,
+        borderColor: 'rgba(255, 255, 255, 0.08)',
+    },
+    logStageChipText: {
+        fontSize: 8,
+        fontWeight: '800',
+        color: 'rgba(255, 255, 255, 0.72)',
+    },
+    emptyLogCompact: {
+        alignItems: 'center',
+        paddingVertical: 20,
+        gap: 6,
+    },
+    emptyLogTextCompact: {
+        fontSize: 10,
+        fontWeight: '700',
+        color: 'rgba(255, 255, 255, 0.22)',
+    },
+    popupFooterCompact: {
+        marginTop: 8,
+        paddingTop: 8,
+        borderTopWidth: StyleSheet.hairlineWidth,
+        borderTopColor: 'rgba(255, 255, 255, 0.1)',
         flexDirection: 'row',
         justifyContent: 'space-between',
         alignItems: 'center',
     },
-    totalLabel: {
+    totalLabelCompact: {
         fontSize: 9,
-        fontWeight: '900',
-        color: 'rgba(255,255,255,0.3)',
-        letterSpacing: 1,
+        fontWeight: '800',
+        color: 'rgba(255, 255, 255, 0.35)',
+        letterSpacing: 0.8,
+        textTransform: 'uppercase',
     },
-    totalVal: {
-        fontSize: 14,
+    totalValCompact: {
+        fontSize: 13,
         fontWeight: '900',
-        color: '#fff',
+        color: '#00E5FF',
+        fontVariant: ['tabular-nums'],
     },
     inlineGraphSection: {
         marginTop: 12,
@@ -2352,5 +2638,156 @@ const styles = StyleSheet.create({
         borderTopWidth: 1,
         borderTopColor: 'rgba(255,255,255,0.05)',
         marginBottom: 8,
+    },
+    // LANDSCAPE LAYOUT STYLES - MATCHING TASK/TIMER EXACTLY
+    safeArea: {
+        flex: 1,
+    },
+    safeAreaLandscape: {
+        flex: 1,
+        flexDirection: 'row',
+    },
+    landscapeContainer: {
+        flex: 1,
+        flexDirection: 'row',
+    },
+    leftPanel: {
+        paddingHorizontal: 0,
+        paddingVertical: 0,
+    },
+    analyticsCardWrapper: {
+        flex: 1,
+        padding: 15,
+        borderRadius: 24,
+        backgroundColor: 'rgba(10, 10, 10, 0.7)',
+        borderWidth: 1,
+        borderColor: 'rgba(17, 17, 17, 0.08)',
+        justifyContent: 'space-between',
+    },
+    leftPanelScroll: {
+        flex: 1,
+    },
+    rightPanel: {
+        flex: 1,
+    },
+    landscapeLogoSection: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 8,
+        marginBottom: 10,
+        paddingHorizontal: 4,
+    },
+    landscapeLogo: {
+        width: 26,
+        height: 26,
+    },
+    landscapeLogoDivider: {
+        width: 1,
+        height: 16,
+        backgroundColor: 'rgba(255,255,255,0.1)',
+    },
+    landscapeBrandName: {
+        color: 'rgba(255,255,255,0.4)',
+        fontSize: 10,
+        letterSpacing: 2,
+        fontWeight: '600',
+    },
+    landscapeToggleWrapper: {
+        marginBottom: 12,
+    },
+    dateControlRowLandscape: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        marginBottom: 16,
+    },
+    dateLandscapeRow: {
+        flexDirection: 'row',
+        alignItems: 'center',
+    },
+    dateLandscapeText: {
+        fontSize: 12,
+        fontWeight: '500',
+        color: 'rgba(255,255,255,0.5)',
+        lineHeight: 16,
+    },
+    todayNavBtn: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        paddingHorizontal: 8,
+        paddingVertical: 3,
+        borderRadius: 6,
+        backgroundColor: 'rgba(255,255,255,0.04)',
+        borderWidth: 1,
+        borderColor: 'rgba(255,255,255,0.08)',
+    },
+    todayNavBtnActive: {
+        backgroundColor: 'rgba(76, 175, 80, 0.08)',
+        borderColor: 'rgba(76, 175, 80, 0.2)',
+    },
+    todayNavTextActive: {
+        fontSize: 9,
+        fontWeight: '800',
+        color: '#4CAF50',
+        marginLeft: 3,
+        letterSpacing: 0.5,
+    },
+    compactStatsGrid: {
+        marginBottom: 16,
+    },
+    compactStatRow: {
+        flexDirection: 'row',
+        gap: 8,
+    },
+    compactStatItem: {
+        flex: 1,
+        padding: 10,
+        borderRadius: 16,
+        backgroundColor: 'rgba(255, 255, 255, 0.04)',
+        borderWidth: 1,
+        borderColor: 'rgba(255, 255, 255, 0.05)',
+    },
+    compactStatLabel: {
+        fontSize: 8,
+        fontWeight: '700',
+        color: 'rgba(255, 255, 255, 0.4)',
+        letterSpacing: 0.8,
+        marginBottom: 4,
+    },
+    compactStatValue: {
+        fontSize: 14,
+        fontWeight: '700',
+        color: '#fff',
+    },
+    landscapeLeftFooter: {
+        paddingTop: 0,
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+    },
+    footerIconGroup: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 0,
+    },
+    footerActionBtn: {
+        width: 40,
+        height: 40,
+        alignItems: 'center',
+        justifyContent: 'center',
+    },
+    detailedReportsBtn: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        paddingVertical: 12,
+        paddingHorizontal: 4,
+    },
+    detailedReportsText: {
+        fontSize: 10,
+        fontWeight: '600',
+        letterSpacing: 0.5,
+        color: 'rgba(255,255,255,0.5)',
+        lineHeight: 14,
     },
 });

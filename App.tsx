@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { LogBox, AppState, AppStateStatus, LayoutAnimation, UIManager, Platform, Keyboard, TouchableWithoutFeedback, View, Pressable, Dimensions } from 'react-native';
+import { LogBox, AppState, AppStateStatus, LayoutAnimation, UIManager, Platform, Keyboard, TouchableWithoutFeedback, View, Pressable, Dimensions, useWindowDimensions } from 'react-native';
 import * as Notifications from 'expo-notifications';
 import { StatusBar } from 'expo-status-bar';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
@@ -228,6 +228,8 @@ export default function App() {
   const [addGoalModalVisible, setAddGoalModalVisible] = useState(false);
   const [goalToEdit, setGoalToEdit] = useState<Goal | null>(null);
   const [addGoalParentId, setAddGoalParentId] = useState<string | null>(null);
+  const { width: winWidth, height: winHeight } = useWindowDimensions();
+  const isLandscape = winWidth > winHeight;
 
   // Enable LayoutAnimation on Android
   if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
@@ -1895,7 +1897,7 @@ export default function App() {
                 <GoalManagement
                   goals={goals}
                   tasks={tasks}
-                  isLandscape={Dimensions.get('window').width > Dimensions.get('window').height}
+                  isLandscape={isLandscape}
                   onAddGoal={(parentId) => {
                     setAddGoalParentId(parentId);
                     setGoalToEdit(null);
@@ -1913,6 +1915,7 @@ export default function App() {
                   onViewChange={setActiveView}
                   onSettings={() => setCurrentScreen('settings')}
                   selectedDate={selectedDate}
+                  hideLeftPanel={isLandscape}
                 />
               )}
             />
