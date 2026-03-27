@@ -273,6 +273,7 @@ export interface Goal {
   id: string;
   title: string;
   description?: string;
+  color?: string; // Hex color used for goal card tint
   parentId: string | null;
   type: GoalType;
   targetSettings?: GoalTargetSettings;

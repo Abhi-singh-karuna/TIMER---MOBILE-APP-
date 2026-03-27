@@ -14,9 +14,11 @@ import {
     UIManager,
 } from 'react-native';
 import { BlurView } from 'expo-blur';
+import { LinearGradient } from 'expo-linear-gradient';
 import { MaterialIcons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
-import { Goal, GoalType, GoalTargetSettings, Task, Category } from '../../constants/data';
+import Slider from '@react-native-community/slider';
+import { Goal, GoalType, GoalTargetSettings, Task, Category, COLOR_PRESETS } from '../../constants/data';
 import { shouldRecurOnDate } from '../../utils/recurrenceUtils';
 
 if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
@@ -37,6 +39,46 @@ const formatDisplayDate = (dateStr: string) => {
     if (!dateStr) return 'Select Date';
     const date = new Date(dateStr);
     return `${MONTHS[date.getMonth()]} ${date.getDate()}, ${date.getFullYear()}`;
+};
+
+const DEFAULT_GOAL_COLOR = '#00E5FF';
+const hsvToHex = (h: number) => {
+    const hNorm = h / 360;
+    const s = 0.82;
+    const v = 0.95;
+    let r: number, g: number, b: number;
+    const i = Math.floor(hNorm * 6);
+    const f = hNorm * 6 - i;
+    const p = v * (1 - s);
+    const q = v * (1 - s * f);
+    const t = v * (1 - s * (1 - f));
+    switch (i % 6) {
+        case 0: r = v; g = t; b = p; break;
+        case 1: r = q; g = v; b = p; break;
+        case 2: r = p; g = v; b = t; break;
+        case 3: r = p; g = q; b = v; break;
+        case 4: r = t; g = p; b = v; break;
+        default: r = v; g = p; b = q; break;
+    }
+    const toHex = (x: number) => Math.round(x * 255).toString(16).padStart(2, '0');
+    return `#${toHex(r)}${toHex(g)}${toHex(b)}`.toUpperCase();
+};
+
+const hexToHue = (hex?: string) => {
+    if (!hex || hex[0] !== '#') return 0;
+    const r = parseInt(hex.slice(1, 3), 16) / 255;
+    const g = parseInt(hex.slice(3, 5), 16) / 255;
+    const b = parseInt(hex.slice(5, 7), 16) / 255;
+    const max = Math.max(r, g, b);
+    const min = Math.min(r, g, b);
+    const delta = max - min;
+    if (delta === 0) return 0;
+    let h = 0;
+    if (max === r) h = ((g - b) / delta) % 6;
+    else if (max === g) h = (b - r) / delta + 2;
+    else h = (r - g) / delta + 4;
+    h = Math.round(h * 60);
+    return h < 0 ? h + 360 : h;
 };
 
 interface AddGoalModalProps {
@@ -81,6 +123,8 @@ export default function AddGoalModal({
     const [hoursPerDay, setHoursPerDay] = useState('1');
     const [selectedDays, setSelectedDays] = useState<number[]>([1, 2, 3, 4, 5]); // Mon-Fri default
     const [monthlyGoal, setMonthlyGoal] = useState('');
+    const [goalColor, setGoalColor] = useState(DEFAULT_GOAL_COLOR);
+    const [goalColorHue, setGoalColorHue] = useState(hexToHue(DEFAULT_GOAL_COLOR));
 
     // Selection Filters
     const { width: windowWidth, height: windowHeight } = useWindowDimensions();
@@ -125,6 +169,9 @@ export default function AddGoalModal({
                     setSelectedDays(goalToEdit.targetSettings.daysPerWeek || [1, 2, 3, 4, 5]);
                     setMonthlyGoal(goalToEdit.targetSettings.monthlyGoal || '');
                 }
+                const initialColor = goalToEdit.color || DEFAULT_GOAL_COLOR;
+                setGoalColor(initialColor);
+                setGoalColorHue(hexToHue(initialColor));
                 setStartDate(goalToEdit.startDate || goalToEdit.createdAt.split('T')[0]);
                 setEndDate(goalToEdit.endDate || '');
                 setStartViewDate(new Date(goalToEdit.startDate || goalToEdit.createdAt));
@@ -139,6 +186,8 @@ export default function AddGoalModal({
                 setHoursPerDay('1');
                 setSelectedDays([1, 2, 3, 4, 5]);
                 setMonthlyGoal('');
+                setGoalColor(DEFAULT_GOAL_COLOR);
+                setGoalColorHue(hexToHue(DEFAULT_GOAL_COLOR));
                 const today = new Date().toISOString().split('T')[0];
                 setStartDate(today);
                 setEndDate('');
@@ -567,6 +616,7 @@ export default function AddGoalModal({
         const goalData: Partial<Goal> = {
             title: title.trim(),
             description: description.trim(),
+            color: goalColor,
             type,
             parentId,
             taskIds: (isLinkingTask || type === 'task') && selectedTaskId != null ? [selectedTaskId] : undefined,
@@ -624,6 +674,64 @@ export default function AddGoalModal({
                 (stage.syncMode === 'none' && isOriginalDate) ||
                 (!stage.syncMode && isOriginalDate); // Default none-synced to original only
         });
+    };
+
+    const renderGoalColorPicker = () => {
+        const swatches = ['#000000', ...COLOR_PRESETS.slice(0, 6).map(p => p.hex)];
+        return (
+            <View style={styles.inputGroup}>
+                <Text style={styles.inputLabel}>GOAL CARD COLOR</Text>
+                <View style={styles.goalColorPickerCard}>
+                    <View style={styles.goalColorPickerHeaderRow}>
+                        <View style={styles.goalColorPickerTitleRow}>
+                            <MaterialIcons name="palette" size={14} color={goalColor} />
+                            <Text style={styles.goalColorPickerTitle}>PICK TINT</Text>
+                        </View>
+                        <View style={[styles.goalColorPreview, { backgroundColor: goalColor }]} />
+                    </View>
+                    <View style={styles.goalColorSliderTrack}>
+                        <LinearGradient
+                            colors={['#FF0000', '#FFFF00', '#00FF00', '#00FFFF', '#0000FF', '#FF00FF', '#FF0000']}
+                            start={{ x: 0, y: 0.5 }}
+                            end={{ x: 1, y: 0.5 }}
+                            style={styles.goalColorSliderGradient}
+                        />
+                        <Slider
+                            style={styles.goalColorSlider}
+                            minimumValue={0}
+                            maximumValue={360}
+                            step={1}
+                            value={goalColorHue}
+                            onValueChange={(val) => {
+                                setGoalColorHue(val);
+                                setGoalColor(hsvToHex(val));
+                            }}
+                            minimumTrackTintColor="transparent"
+                            maximumTrackTintColor="transparent"
+                            thumbTintColor="#fff"
+                        />
+                    </View>
+                    <View style={styles.goalColorSwatchesRow}>
+                        {swatches.map((hex) => (
+                            <TouchableOpacity
+                                key={hex}
+                                style={[
+                                    styles.goalColorSwatch,
+                                    { backgroundColor: hex },
+                                    hex === '#000000' && styles.goalColorSwatchBlack,
+                                    goalColor.toUpperCase() === hex.toUpperCase() && styles.goalColorSwatchActive,
+                                ]}
+                                onPress={() => {
+                                    setGoalColor(hex);
+                                    setGoalColorHue(hexToHue(hex));
+                                    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                                }}
+                            />
+                        ))}
+                    </View>
+                </View>
+            </View>
+        );
     };
 
     return (
@@ -1061,6 +1169,8 @@ export default function AddGoalModal({
                                                 onChangeText={setDescription}
                                                 multiline
                                             />
+                                            <View style={{ height: 16 }} />
+                                            {renderGoalColorPicker()}
                                         </View>
                                     </View>
 
@@ -1129,6 +1239,8 @@ export default function AddGoalModal({
                                                 onChangeText={setDescription}
                                                 multiline
                                             />
+                                            <View style={{ height: 16 }} />
+                                            {renderGoalColorPicker()}
                                         </View>
                                     )}
 
@@ -1645,6 +1757,71 @@ const styles = StyleSheet.create({
     descriptionInput: {
         height: 80,
         textAlignVertical: 'top',
+    },
+    goalColorPickerCard: {
+        backgroundColor: 'rgba(255,255,255,0.03)',
+        borderRadius: 12,
+        borderWidth: 1,
+        borderColor: 'rgba(255,255,255,0.08)',
+        padding: 10,
+    },
+    goalColorPickerHeaderRow: {
+        flexDirection: 'row',
+        justifyContent: 'space-between',
+        alignItems: 'center',
+        marginBottom: 8,
+    },
+    goalColorPickerTitleRow: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 6,
+    },
+    goalColorPickerTitle: {
+        fontSize: 9,
+        fontWeight: '800',
+        color: 'rgba(255,255,255,0.6)',
+        letterSpacing: 0.7,
+    },
+    goalColorPreview: {
+        width: 18,
+        height: 18,
+        borderRadius: 9,
+        borderWidth: 1,
+        borderColor: 'rgba(255,255,255,0.35)',
+    },
+    goalColorSliderTrack: {
+        height: 22,
+        borderRadius: 10,
+        overflow: 'hidden',
+        justifyContent: 'center',
+        marginBottom: 8,
+    },
+    goalColorSliderGradient: {
+        ...StyleSheet.absoluteFillObject,
+        borderRadius: 10,
+    },
+    goalColorSlider: {
+        width: '100%',
+        height: 22,
+    },
+    goalColorSwatchesRow: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 8,
+    },
+    goalColorSwatch: {
+        width: 16,
+        height: 16,
+        borderRadius: 8,
+        borderWidth: 1,
+        borderColor: 'rgba(255,255,255,0.24)',
+    },
+    goalColorSwatchBlack: {
+        borderColor: 'rgba(255,255,255,0.55)',
+    },
+    goalColorSwatchActive: {
+        borderColor: '#fff',
+        borderWidth: 2,
     },
     saveBtn: {
         backgroundColor: '#FFFFFF',

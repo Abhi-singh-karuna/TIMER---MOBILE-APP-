@@ -74,11 +74,12 @@ export default function GoalManagement({
     const [selectedTaskIdPerGoal, setSelectedTaskIdPerGoal] = useState<Record<string, number | null>>({});
     const [hiddenGraphIds, setHiddenGraphIds] = useState<string[]>([]);
     const [expandedGraphIds, setExpandedGraphIds] = useState<string[]>([]);
+    const [expandedGoalId, setExpandedGoalId] = useState<string | null>(null);
     const [selectedDayData, setSelectedDayData] = useState<{ date: string, segments: any[], title: string } | null>(null);
     const [containerWidth, setContainerWidth] = useState(0);
     const [deckContainerWidth, setDeckContainerWidth] = useState(0);
     const [isToggleInteracting, setIsToggleInteracting] = useState(false);
-    
+
     // Notes state
     const [showNotesPanel, setShowNotesPanel] = useState(false);
     const [selectedDateHasNote, setSelectedDateHasNote] = useState(false);
@@ -90,9 +91,9 @@ export default function GoalManagement({
 
     // Per-tab animated values
     const NAV_TABS = [
-        { key: 'timer' as const, icon: 'timer',     label: 'TIMER' },
-        { key: 'task'  as const, icon: 'check-box', label: 'TASK'  },
-        { key: 'goal'  as const, icon: 'track-changes', label: 'GOAL'  },
+        { key: 'timer' as const, icon: 'timer', label: 'TIMER' },
+        { key: 'task' as const, icon: 'check-box', label: 'TASK' },
+        { key: 'goal' as const, icon: 'track-changes', label: 'GOAL' },
     ];
     const NAV_LOOP_COPIES = 7;
     const navTabCount = NAV_TABS.length;
@@ -151,7 +152,7 @@ export default function GoalManagement({
         toggleScrollRef.current?.scrollTo({ x: targetX, animated });
     };
     const triggerSelectionHaptic = () => {
-        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
+        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => { });
     };
 
     const getTabIndexByView = (view: 'timer' | 'task' | 'goal') => {
@@ -195,7 +196,7 @@ export default function GoalManagement({
         const raw = deckContainerWidth / 2 - gutter / 2;
         return Math.max(120, Math.floor(raw));
     }, [deckContainerWidth]);
-    
+
     useEffect(() => {
         const targetValue = ((activeLoopIndex % navTabCount) + navTabCount) % navTabCount;
 
@@ -362,6 +363,20 @@ export default function GoalManagement({
         }
     };
 
+    const FALLBACK_GOAL_TINT = '#8A9099';
+    const DEEP_BLACK_GOAL_COLOR = '#000000';
+    const hexToRgba = (hex: string, alpha: number) => {
+        if (!hex || !hex.startsWith('#')) return `rgba(255,255,255,${alpha})`;
+        const normalized = hex.length === 4
+            ? `#${hex[1]}${hex[1]}${hex[2]}${hex[2]}${hex[3]}${hex[3]}`
+            : hex;
+        const r = parseInt(normalized.slice(1, 3), 16);
+        const g = parseInt(normalized.slice(3, 5), 16);
+        const b = parseInt(normalized.slice(5, 7), 16);
+        if ([r, g, b].some(Number.isNaN)) return `rgba(255,255,255,${alpha})`;
+        return `rgba(${r}, ${g}, ${b}, ${alpha})`;
+    };
+
     /** One popup row per task + time slot; merges duplicate stage lines into chips. */
     const groupSegmentsForDayPopup = (segments: any[]) => {
         const map = new Map<
@@ -415,7 +430,7 @@ export default function GoalManagement({
             ...children.flatMap(c => c.taskIds || []),
             ...children.flatMap(c => c.taskId ? [c.taskId] : [])
         ]));
-        
+
         const associatedTasks = allTasks.filter(t => taskIds.includes(t.id));
 
         let curr = new Date(start);
@@ -441,8 +456,8 @@ export default function GoalManagement({
                             const dur = s.durationMinutes || 0;
                             const startMin = s.startTimeMinutes || 0;
                             totalMinutes += dur;
-                            (segments as any[]).push({ 
-                                durationMinutes: dur, 
+                            (segments as any[]).push({
+                                durationMinutes: dur,
                                 status: s.status,
                                 taskTitle: task.title,
                                 stageTitle: s.text,
@@ -456,9 +471,9 @@ export default function GoalManagement({
                             }
                         });
                     } else {
-                        totalMinutes += 60; 
-                        (segments as any[]).push({ 
-                            durationMinutes: 60, 
+                        totalMinutes += 60;
+                        (segments as any[]).push({
+                            durationMinutes: 60,
                             status: instance.status === 'Completed' ? 'Done' : (instance.status === 'In Progress' ? 'Process' : 'Pending'),
                             taskTitle: task.title,
                             stageTitle: 'CORE TARGET'
@@ -505,7 +520,7 @@ export default function GoalManagement({
         while (curr <= end && count < 366) {
             const dateStr = curr.toISOString().split('T')[0];
             const instance = expandRecurringTaskForDate(task, dateStr);
-            
+
             let totalMinutes = 0;
             let completedMinutes = 0;
             let status: 'completed' | 'pending' | 'missed' = 'pending';
@@ -518,8 +533,8 @@ export default function GoalManagement({
                         const dur = s.durationMinutes || 0;
                         const startMin = s.startTimeMinutes || 0;
                         totalMinutes += dur;
-                        (segments as any[]).push({ 
-                            durationMinutes: dur, 
+                        (segments as any[]).push({
+                            durationMinutes: dur,
                             status: s.status,
                             taskTitle: task.title,
                             stageTitle: s.text,
@@ -530,8 +545,8 @@ export default function GoalManagement({
                     });
                 } else {
                     totalMinutes = 60;
-                    (segments as any[]).push({ 
-                        durationMinutes: 60, 
+                    (segments as any[]).push({
+                        durationMinutes: 60,
                         status: instance.status === 'Completed' ? 'Done' : (instance.status === 'In Progress' ? 'Process' : 'Pending'),
                         taskTitle: task.title,
                         stageTitle: 'CORE TARGET'
@@ -565,36 +580,37 @@ export default function GoalManagement({
 
         if (s === 'done' || s === 'completed') return '#00E676';
         if (s === 'process' || s === 'in progress') return '#FFCA28';
-        
+
         // Pending — readable on dark chart (not near-black)
         if (isFuture) return 'rgba(120, 132, 156, 0.95)';
         return '#FF6E6E';
     };
 
-    const GoalActivityGraph = ({ data, title, goalId }: { data: any[], title?: string, goalId: string }) => {
+    const GoalActivityGraph = ({ data, title, goalId, minimal, minimalControls, tintColor }: { data: any[], title?: string, goalId: string, minimal?: boolean, minimalControls?: React.ReactNode, tintColor?: string }) => {
         const todayStr = new Date().toISOString().split('T')[0];
         const isExpanded = expandedGraphIds.includes(goalId + (title || ''));
+        const [graphViewportWidth, setGraphViewportWidth] = useState(0);
 
         if (data.length === 0) return null;
 
         const toggleGraphExpand = () => {
             LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
             const key = goalId + (title || '');
-            setExpandedGraphIds(prev => 
+            setExpandedGraphIds(prev =>
                 prev.includes(key) ? prev.filter(k => k !== key) : [...prev, key]
             );
         };
 
-        const maxHeight = isExpanded ? 180 : 50;
-        
+        const maxHeight = isExpanded ? 180 : (minimal ? 42 : 50);
+
         // Calculate dynamic Max Duration for Y-axis scaling
-        const maxDataMins = Math.max(...data.map(day => 
+        const maxDataMins = Math.max(...data.map(day =>
             (day.segments || []).reduce((acc: number, s: any) => acc + (s.durationMinutes || 0), 0)
         ), 0);
         const maxDataHrs = maxDataMins / 60;
 
         // Determine a 'Nice' top hour for the Y-axis
-        let topHr = isExpanded ? 10 : 4; 
+        let topHr = isExpanded ? 10 : 4;
         if (maxDataHrs > 0) {
             if (isExpanded) {
                 topHr = Math.max(4, Math.ceil(maxDataHrs / 2) * 2);
@@ -611,138 +627,617 @@ export default function GoalManagement({
             ? [0, 45, 90, 135, 180]
             : [0, 25, 50];
 
+        // Dynamic width behavior:
+        // - At least 5 bars visible within card width
+        // - At most 20 bars visible within card width
+        // - If data > 20, keep card width stable and allow horizontal scroll
+        const minVisibleBars = 5;
+        const maxVisibleBars = 20;
+        const visibleBars = Math.max(minVisibleBars, Math.min(maxVisibleBars, data.length));
+        const placeholderCount = Math.max(0, minVisibleBars - data.length);
+        const displayData = placeholderCount > 0
+            ? [
+                ...data,
+                ...Array.from({ length: placeholderCount }, (_, idx) => ({
+                    __placeholder: true,
+                    date: `placeholder-${idx}`,
+                    segments: [],
+                    hasTasks: false,
+                })),
+            ]
+            : data;
+        const chartGap = minimal ? 3 : 4;
+        const chartPaddingX = minimal ? 2 : 4;
+        const computedBarWidth = graphViewportWidth > 0
+            ? Math.max(
+                minimal ? 10 : 12,
+                Math.floor((graphViewportWidth - (chartPaddingX * 2) - ((visibleBars - 1) * chartGap)) / visibleBars)
+            )
+            : (minimal ? 13 : 16);
+        const graphContentWidth = (displayData.length * computedBarWidth) + ((Math.max(0, displayData.length - 1)) * chartGap) + (chartPaddingX * 2);
+
         /** Space below the 0h baseline for x-axis date labels (labels sit entirely under the line). */
-        const GRAPH_X_AXIS_PX = 30;
+        const GRAPH_X_AXIS_PX = minimal ? 20 : 30;
 
         return (
-            <View style={[styles.graphWrapper, { marginBottom: isExpanded ? 24 : 12 }]}>
-                <View style={styles.graphHeaderRow}>
-                    <Text style={styles.graphSubLabel}>{title?.toUpperCase()}</Text>
-                    
-                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-                        {data.length > 0 && (
-                            <Text style={styles.graphLegendText}>
-                                <Text style={{ color: '#00E676' }}>● DONE  </Text>
-                                <Text style={{ color: '#FFD700' }}>● PROCESS  </Text>
-                                <Text style={{ color: 'rgba(140, 152, 176, 0.95)' }}>● PENDING</Text>
-                            </Text>
-                        )}
-                        <TouchableOpacity onPress={toggleGraphExpand} style={styles.expandToggleBtn}>
-                            <MaterialIcons 
-                                name={isExpanded ? "unfold-less" : "unfold-more"} 
-                                size={12} 
-                                color="#fff" 
+            <View style={[styles.graphWrapper, { marginBottom: isExpanded ? 24 : (minimal ? 6 : 12) }]}>
+                {!minimal && (
+                    <View style={styles.graphHeaderRow}>
+                        <Text style={styles.graphSubLabel}>{title?.toUpperCase()}</Text>
+
+                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                            {data.length > 0 && (
+                                <Text style={styles.graphLegendText}>
+                                    <Text style={{ color: '#00E676' }}>● DONE  </Text>
+                                    <Text style={{ color: '#FFD700' }}>● PROCESS  </Text>
+                                    <Text style={{ color: 'rgba(140, 152, 176, 0.95)' }}>● PENDING</Text>
+                                </Text>
+                            )}
+                            <TouchableOpacity onPress={toggleGraphExpand} style={styles.expandToggleBtn}>
+                                <MaterialIcons
+                                    name={isExpanded ? "unfold-less" : "unfold-more"}
+                                    size={12}
+                                    color="#fff"
+                                />
+                                <Text style={styles.expandToggleText}>{isExpanded ? 'CLOSE' : 'EXPAND'}</Text>
+                            </TouchableOpacity>
+                        </View>
+                    </View>
+                )}
+                {minimal && (
+                    <View style={styles.graphHeaderRowMinimal}>
+                        <View style={styles.graphHeaderMinimalCenter}>
+                            {minimalControls}
+                        </View>
+                        <TouchableOpacity onPress={toggleGraphExpand} style={styles.expandToggleBtnMinimalRight} hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}>
+                            <MaterialIcons
+                                name={isExpanded ? "unfold-less" : "unfold-more"}
+                                size={10}
+                                color="rgba(255,255,255,0.55)"
                             />
-                            <Text style={styles.expandToggleText}>{isExpanded ? 'CLOSE' : 'EXPAND'}</Text>
                         </TouchableOpacity>
                     </View>
-                </View>
+                )}
 
-                <View style={styles.graphChartPanel}>
-                    <View style={[styles.mathGraphMain, { height: maxHeight + GRAPH_X_AXIS_PX + 6 }]}>
-                    <View style={[styles.yAxisContainer, { height: maxHeight + GRAPH_X_AXIS_PX }]}>
-                        {yAxisLabelsHr.map((label, idx) => {
-                            const bottom = isExpanded ? (gridLines[4 - idx] + GRAPH_X_AXIS_PX) : (gridLines[2 - idx] + GRAPH_X_AXIS_PX);
-                            return (
-                                <Text 
-                                    key={idx} 
-                                    style={[
-                                        styles.yAxisLabel, 
-                                        { position: 'absolute', bottom: bottom - 5, right: 4 }
-                                    ]}
-                                >
-                                    {label}
-                                </Text>
-                            );
-                        })}
-                    </View>
-
-                    <ScrollView
-                        horizontal
-                        showsHorizontalScrollIndicator={false}
-                        style={styles.graphScroll}
-                    >
-                        <View style={[styles.graphContainer, { height: maxHeight + GRAPH_X_AXIS_PX }]}>
-                            {gridLines.map((bottom, idx) => (
-                                <View 
-                                    key={idx} 
-                                    style={[
-                                        styles.gridLine, 
-                                        { bottom: bottom + GRAPH_X_AXIS_PX },
-                                        bottom === 0 && { backgroundColor: 'rgba(255,255,255,0.28)', height: 2 } 
-                                    ]} 
-                                />
-                            ))}
-
-                            {data.map((day, i) => {
-                                const segments = day.segments || [];
-                                const maxMinutes = topHr * 60;
-                                const scale = maxHeight / maxMinutes;
-                                const isToday = day.date === todayStr;
-                                const dayNum = day.date.split('-')[2];
-
+                <View
+                    style={[
+                        styles.graphChartPanel,
+                        minimal && styles.graphChartPanelMinimal,
+                        tintColor && {
+                            backgroundColor: hexToRgba(tintColor, minimal ? 0.12 : 0.1),
+                            borderColor: hexToRgba(tintColor, minimal ? 0.28 : 0.24),
+                        }
+                    ]}
+                >
+                    <View style={[styles.mathGraphMain, minimal && styles.mathGraphMainMinimal, { height: maxHeight + GRAPH_X_AXIS_PX + 6 }]}>
+                        <View style={[styles.yAxisContainer, minimal && styles.yAxisContainerMinimal, { height: maxHeight + GRAPH_X_AXIS_PX }]}>
+                            {yAxisLabelsHr.map((label, idx) => {
+                                const bottom = isExpanded ? (gridLines[4 - idx] + GRAPH_X_AXIS_PX) : (gridLines[2 - idx] + GRAPH_X_AXIS_PX);
                                 return (
-                                    <TouchableOpacity 
-                                        key={i} 
-                                        style={[styles.barOuter, { height: maxHeight + GRAPH_X_AXIS_PX }]}
-                                        onPress={() => setSelectedDayData({
-                                            date: day.date,
-                                            segments: day.segments,
-                                            title: title || 'PERFORMANCE LOG'
-                                        })}
-                                        activeOpacity={0.85}
+                                    <Text
+                                        key={idx}
+                                        style={[
+                                            styles.yAxisLabel,
+                                            { position: 'absolute', bottom: bottom - 5, right: 4 }
+                                        ]}
                                     >
-                                        <View style={styles.barTrackColumn}>
-                                            <View
-                                                style={[
-                                                    styles.barContainer,
-                                                    { height: maxHeight },
-                                                    isToday && styles.barContainerToday,
-                                                    isToday && styles.barContainerTodayHighlight,
-                                                ]}
-                                            >
-                                                {segments.length > 0 ? (
-                                                    [...segments].reverse().map((seg: any, idx: number) => (
-                                                        <View 
-                                                            key={idx}
-                                                            style={[
-                                                                styles.barFill,
-                                                                isToday && styles.barFillToday,
-                                                                {
-                                                                    height: Math.max(3, seg.durationMinutes * scale),
-                                                                    backgroundColor: getSegmentColor(seg.status, day.date),
-                                                                    marginBottom: 1,
-                                                                    opacity: day.hasTasks ? 1 : 0.45
-                                                                }
-                                                            ]}
-                                                        />
-                                                    ))
-                                                ) : (
-                                                    <View style={[
-                                                        styles.barFill,
-                                                        {
-                                                            height: 3,
-                                                            backgroundColor: isToday ? 'rgba(0, 229, 255, 0.35)' : 'rgba(255,255,255,0.14)',
-                                                            borderRadius: 1,
-                                                        }
-                                                    ]} />
-                                                )}
-                                            </View>
-                                            <View style={[styles.barDateColumn, { height: GRAPH_X_AXIS_PX }]}>
-                                                <Text
-                                                    style={[styles.barDate, isToday && styles.barDateTodayNum]}
-                                                    numberOfLines={1}
-                                                >
-                                                    {dayNum}
-                                                </Text>
-                                            </View>
-                                        </View>
-                                    </TouchableOpacity>
+                                        {label}
+                                    </Text>
                                 );
                             })}
                         </View>
-                    </ScrollView>
+
+                        <ScrollView
+                            horizontal
+                            showsHorizontalScrollIndicator={false}
+                            style={styles.graphScroll}
+                            onLayout={(e) => setGraphViewportWidth(e.nativeEvent.layout.width)}
+                        >
+                            <View
+                                style={[
+                                    styles.graphContainer,
+                                    minimal && styles.graphContainerMinimal,
+                                    {
+                                        height: maxHeight + GRAPH_X_AXIS_PX,
+                                        width: Math.max(graphViewportWidth || 0, graphContentWidth),
+                                        gap: chartGap,
+                                        paddingHorizontal: chartPaddingX,
+                                    },
+                                ]}
+                            >
+                                {gridLines.map((bottom, idx) => (
+                                    <View
+                                        key={idx}
+                                        style={[
+                                            styles.gridLine,
+                                            { bottom: bottom + GRAPH_X_AXIS_PX },
+                                            bottom === 0 && { backgroundColor: 'rgba(255,255,255,0.28)', height: 2 }
+                                        ]}
+                                    />
+                                ))}
+
+                                {displayData.map((day: any, i) => {
+                                    const isPlaceholder = !!day.__placeholder;
+                                    const segments = day.segments || [];
+                                    const maxMinutes = topHr * 60;
+                                    const scale = maxHeight / maxMinutes;
+                                    const isToday = !isPlaceholder && day.date === todayStr;
+                                    const dayNum = isPlaceholder ? '' : day.date.split('-')[2];
+
+                                    return (
+                                        <TouchableOpacity
+                                            key={isPlaceholder ? `ph-${i}` : `${day.date}-${i}`}
+                                            style={[styles.barOuter, minimal && styles.barOuterMinimal, { height: maxHeight + GRAPH_X_AXIS_PX, width: computedBarWidth }]}
+                                            onPress={() => {
+                                                if (isPlaceholder) return;
+                                                setSelectedDayData({
+                                                    date: day.date,
+                                                    segments: day.segments,
+                                                    title: title || 'PERFORMANCE LOG'
+                                                });
+                                            }}
+                                            activeOpacity={isPlaceholder ? 1 : 0.85}
+                                        >
+                                            <View style={styles.barTrackColumn}>
+                                                <View
+                                                    style={[
+                                                        styles.barContainer,
+                                                        { height: maxHeight },
+                                                        isToday && styles.barContainerToday,
+                                                        isToday && styles.barContainerTodayHighlight,
+                                                    ]}
+                                                >
+                                                    {segments.length > 0 ? (
+                                                        [...segments].reverse().map((seg: any, idx: number) => (
+                                                            <View
+                                                                key={idx}
+                                                                style={[
+                                                                    styles.barFill,
+                                                                    isToday && styles.barFillToday,
+                                                                    {
+                                                                        height: Math.max(3, seg.durationMinutes * scale),
+                                                                        backgroundColor: getSegmentColor(seg.status, day.date),
+                                                                        marginBottom: 1,
+                                                                        opacity: day.hasTasks ? 1 : 0.45
+                                                                    }
+                                                                ]}
+                                                            />
+                                                        ))
+                                                    ) : (
+                                                        <View style={[
+                                                            styles.barFill,
+                                                            {
+                                                                height: 3,
+                                                                backgroundColor: isToday ? 'rgba(0, 229, 255, 0.35)' : 'rgba(255,255,255,0.14)',
+                                                                borderRadius: 1,
+                                                            }
+                                                        ]} />
+                                                    )}
+                                                </View>
+                                                <View style={[styles.barDateColumn, { height: GRAPH_X_AXIS_PX }]}>
+                                                    <Text
+                                                        style={[styles.barDate, isToday && styles.barDateTodayNum]}
+                                                        numberOfLines={1}
+                                                    >
+                                                        {dayNum}
+                                                    </Text>
+                                                </View>
+                                            </View>
+                                        </TouchableOpacity>
+                                    );
+                                })}
+                            </View>
+                        </ScrollView>
                     </View>
+                </View>
+            </View>
+        );
+    };
+
+    const GoalMonthlyAnalytics = ({ data, goal }: { data: any[], goal: Goal }) => {
+        const [selectedDay, setSelectedDay] = useState<number | null>(null);
+        const [viewDate, setViewDate] = useState(new Date());
+
+        const today = new Date();
+        const viewMonth = viewDate.getMonth();
+        const viewYear = viewDate.getFullYear();
+
+        const monthNames = ["JAN", "FEB", "MAR", "APR", "MAY", "JUN", "JUL", "AUG", "SEP", "OCT", "NOV", "DEC"];
+        const monthLabel = monthNames[viewMonth];
+
+        // Available months extraction
+        const availableMonths = useMemo(() => {
+            const monthsMap = new Map();
+            const now = new Date();
+
+            // Collect months from data
+            data.forEach(d => {
+                const date = new Date(d.date);
+                const key = `${date.getFullYear()}-${date.getMonth()}`;
+                if (!monthsMap.has(key)) {
+                    monthsMap.set(key, {
+                        month: date.getMonth(),
+                        year: date.getFullYear(),
+                        label: monthNames[date.getMonth()],
+                        hasData: d.durationHrs > 0
+                    });
+                } else if (d.durationHrs > 0) {
+                    monthsMap.get(key).hasData = true;
+                }
+            });
+
+            // Ensure current month is always present
+            const currentKey = `${now.getFullYear()}-${now.getMonth()}`;
+            if (!monthsMap.has(currentKey)) {
+                monthsMap.set(currentKey, {
+                    month: now.getMonth(),
+                    year: now.getFullYear(),
+                    label: monthNames[now.getMonth()],
+                    hasData: false
+                });
+            }
+
+            // Sort ascending: JAN -> DEC
+            return Array.from(monthsMap.values()).sort((a, b) => a.year - b.year || a.month - b.month);
+        }, [data]);
+
+        // Filter data for view month
+        const monthData = useMemo(() => data.filter(d => {
+            const dDate = new Date(d.date);
+            return dDate.getMonth() === viewMonth && dDate.getFullYear() === viewYear;
+        }), [data, viewMonth, viewYear]);
+
+        const totalMinutes = monthData.reduce((acc, d) =>
+            acc + (d.segments || []).reduce((sAcc: number, s: any) => sAcc + (s.durationMinutes || 0), 0), 0
+        );
+        const totalHours = (totalMinutes / 60).toFixed(1);
+        const activeDays = monthData.filter(d => d.durationHrs > 0).length;
+        const avgPerDay = activeDays > 0 ? (parseFloat(totalHours) / activeDays).toFixed(1) : '0.0';
+
+        // Calendar Grid Logic
+        const firstDayOfMonth = new Date(viewYear, viewMonth, 1).getDay();
+        const daysInMonth = new Date(viewYear, viewMonth + 1, 0).getDate();
+
+        const calendarDays = [];
+        for (let i = 0; i < firstDayOfMonth; i++) calendarDays.push(null);
+        for (let i = 1; i <= daysInMonth; i++) calendarDays.push(i);
+
+        const handleDayPress = (day: number) => {
+            const dateStr = `${viewYear}-${(viewMonth + 1).toString().padStart(2, '0')}-${day.toString().padStart(2, '0')}`;
+            const dayInfo = monthData.find(d => d.date === dateStr);
+            if (dayInfo && dayInfo.durationHrs > 0) {
+                LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+                setSelectedDay(day);
+                triggerSelectionHaptic();
+            }
+        };
+        const formatTime = (totalMinutes: number) => {
+            const hours = Math.floor(totalMinutes / 60) % 24;
+            const mins = totalMinutes % 60;
+            const ampm = hours >= 12 ? 'PM' : 'AM';
+            const displayHours = hours % 12 || 12;
+            return `${displayHours}:${mins.toString().padStart(2, '0')} ${ampm}`;
+        };
+
+        const renderDayDetail = () => {
+            if (selectedDay === null) return null;
+
+            const dateStr = `${viewYear}-${(viewMonth + 1).toString().padStart(2, '0')}-${selectedDay.toString().padStart(2, '0')}`;
+            const dayInfo = monthData.find(d => d.date === dateStr);
+            if (!dayInfo) return null;
+
+            const displayDate = `${selectedDay} ${monthLabel} ${viewYear}`;
+            const segments = dayInfo.segments || [];
+
+            return (
+                <BlurView intensity={94} tint="dark" style={[StyleSheet.absoluteFill, styles.dayDetailOverlay]}>
+                    <View style={styles.dayDetailContent}>
+                        <View style={styles.dayDetailLeft}>
+                            <View style={styles.detailTitleRow}>
+                                <MaterialIcons name="event-note" size={12} color="#00E5FF" />
+                                <Text style={styles.detailHeaderText}>DAY ANALYTICS</Text>
+                            </View>
+
+                            <View style={styles.detailSection}>
+                                <Text style={styles.detailLabelMini}>DATE SELECTED</Text>
+                                <Text style={styles.detailDateValue}>{displayDate}</Text>
+                            </View>
+
+                            <View style={styles.detailSection}>
+                                <Text style={styles.detailLabelMini}>DAY DURATION</Text>
+                                <Text style={styles.detailDurationValue}>
+                                    {dayInfo.durationHrs.toFixed(1)}
+                                    <Text style={styles.detailDurationUnit}>h</Text>
+                                </Text>
+                            </View>
+
+                            <View style={styles.detailSection}>
+                                <Text style={styles.detailLabelMini}>STATUS</Text>
+                                <Text style={styles.detailStatusText}>IN PROGRESS</Text>
+                            </View>
+                        </View>
+
+                        <View style={styles.detailVerticalSeparator} />
+
+                        <View style={styles.dayDetailRight}>
+                            <View style={styles.detailListHeader}>
+                                <Text style={styles.detailListTitle}>SUBTASK DETAILS</Text>
+                                <TouchableOpacity
+                                    onPress={() => {
+                                        LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+                                        setSelectedDay(null);
+                                    }}
+                                    style={styles.detailCloseBtn}
+                                >
+                                    <MaterialIcons name="close" size={14} color="rgba(255,255,255,0.5)" />
+                                </TouchableOpacity>
+                            </View>
+
+                            <ScrollView
+                                style={styles.minimalSubtaskList}
+                                showsVerticalScrollIndicator={false}
+                                contentContainerStyle={{ paddingBottom: 20 }}
+                                nestedScrollEnabled={true}
+                            >
+                                {(() => {
+                                    const taskGroupsMap = segments.reduce((acc: any, seg: any) => {
+                                        const key = seg.taskId || seg.taskTitle || 'unlinked';
+                                        if (!acc[key]) {
+                                            acc[key] = {
+                                                title: seg.taskTitle || 'Untitled Mission',
+                                                totalMinutes: 0,
+                                                segments: []
+                                            };
+                                        }
+                                        acc[key].segments.push(seg);
+                                        acc[key].totalMinutes += (seg.durationMinutes || 0);
+                                        return acc;
+                                    }, {});
+                                    const taskGroups = Object.values(taskGroupsMap);
+
+                                    return taskGroups.map((group: any, gIdx: number) => (
+                                        <View key={gIdx} style={styles.taskGroupContainer}>
+                                            <View style={styles.taskGroupHeader}>
+                                                <MaterialIcons name="folder-special" size={10} color="#00E5FF" />
+                                                <Text style={styles.taskGroupName} numberOfLines={1}>
+                                                    {group.title.toUpperCase()}
+                                                </Text>
+                                                <Text style={styles.taskGroupTotalTime}>
+                                                    {(group.totalMinutes / 60).toFixed(1)}h
+                                                </Text>
+                                            </View>
+
+                                            <View style={styles.taskGroupTree}>
+                                                {group.segments.map((seg: any, sIdx: number) => {
+                                                    const isDone = seg.status === 'Done';
+                                                    const statusColor = isDone ? '#00E676' : '#FFCA28';
+                                                    const startTimeStr = seg.startMin !== undefined ? formatTime(seg.startMin) : '--:--';
+                                                    const endTimeStr = (seg.startMin !== undefined && seg.durationMinutes !== undefined)
+                                                        ? formatTime(seg.startMin + seg.durationMinutes)
+                                                        : '--:--';
+                                                    const isLast = sIdx === group.segments.length - 1;
+
+                                                    return (
+                                                        <View key={sIdx} style={styles.treeNodeRow}>
+                                                            <View style={styles.treeConnectorContainer}>
+                                                                <View style={[styles.treeVerticalLine, isLast && { bottom: '50%' }]} />
+                                                                <View style={styles.treeHorizontalLine} />
+                                                            </View>
+                                                            <View style={styles.treeContentBody}>
+                                                                <View style={styles.treeNodeMainRow}>
+                                                                    <View style={[styles.treeStatusDot, { backgroundColor: statusColor }]} />
+                                                                    <Text style={styles.treeNodeName} numberOfLines={1}>
+                                                                        {(seg.stageTitle || 'SEGMENT').toUpperCase()}
+                                                                    </Text>
+                                                                    <Text style={styles.treeNodeDuration}>
+                                                                        {(seg.durationMinutes / 60).toFixed(1)}h
+                                                                    </Text>
+                                                                </View>
+                                                                <View style={styles.treeNodeSubRow}>
+                                                                    <Text style={styles.treeNodeTime}>
+                                                                        {startTimeStr} — {endTimeStr}
+                                                                    </Text>
+                                                                    <Text style={[styles.treeNodeStatusText, { color: statusColor }]}>
+                                                                        {isDone ? 'DONE' : 'ACTIVE'}
+                                                                    </Text>
+                                                                </View>
+                                                            </View>
+                                                        </View>
+                                                    );
+                                                })}
+                                            </View>
+                                        </View>
+                                    ));
+                                })()}
+                                {segments.length === 0 && (
+                                    <Text style={styles.emptyDetailText}>NO ACTIVE TELEMETRY</Text>
+                                )}
+                            </ScrollView>
+                        </View>
+                    </View>
+                </BlurView>
+            );
+        };
+
+        return (
+            <View style={styles.monthlyAnalyticsContainer}>
+                {/* Left Side: Stats */}
+                <View style={styles.analyticsStatsSide}>
+                    <View style={styles.analyticsTitleRow}>
+                        <MaterialIcons name="insert-chart" size={14} color="#00E5FF" />
+                        <Text style={styles.analyticsTitleText}>ANALYTICS</Text>
+                    </View>
+
+                    <View style={styles.statLargeGroup}>
+                        <Text style={styles.statLabelMini}>TOTAL TIME</Text>
+                        <Text style={styles.statValueLarge}>{totalHours}<Text style={styles.statUnit}>h</Text></Text>
+                    </View>
+
+                    <View style={styles.statSmallRow}>
+                        <View style={styles.statSmallItem}>
+                            <Text style={styles.statLabelMini}>{monthLabel} ACTIVITY</Text>
+                            <Text style={styles.statValueMed}>{totalHours}h</Text>
+                        </View>
+                        <View style={styles.statSmallItem}>
+                            <Text style={styles.statLabelMini}>AVG/DAY</Text>
+                            <Text style={styles.statValueMed}>{avgPerDay}h</Text>
+                        </View>
+                    </View>
+
+                    <View style={styles.analyticsLegendBottom}>
+                        <View style={styles.legendItemMini}><View style={[styles.legendDot, { backgroundColor: '#00E676' }]} /><Text style={styles.legendTextMini}>SNC: {activeDays}</Text></View>
+                        <View style={styles.legendItemMini}><View style={[styles.legendDot, { backgroundColor: '#FFD700' }]} /><Text style={styles.legendTextMini}>FUT: 0</Text></View>
+                        <View style={styles.legendItemMini}><View style={[styles.legendDot, { backgroundColor: '#00E5FF' }]} /><Text style={styles.legendTextMini}>LOC: ACTIVE</Text></View>
+                    </View>
+                </View>
+
+                {/* Right Side: Calendar */}
+                <View style={styles.analyticsCalendarSide}>
+                    <View style={styles.calendarMonthHeader}>
+                        <ScrollView
+                            horizontal
+                            showsHorizontalScrollIndicator={false}
+                            contentContainerStyle={styles.monthScrollContent}
+                            decelerationRate="fast"
+                            style={{ flex: 1 }}
+                            nestedScrollEnabled={true}
+                        >
+                            {availableMonths.map((m, idx) => {
+                                const isActive = m.month === viewMonth && m.year === viewYear;
+                                return (
+                                    <TouchableOpacity
+                                        key={`${m.year}-${m.month}`}
+                                        onPress={() => {
+                                            LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+                                            setViewDate(new Date(m.year, m.month, 1));
+                                            setSelectedDay(null);
+                                            triggerSelectionHaptic();
+                                        }}
+                                        style={[styles.monthBubble, isActive && styles.monthBubbleActive]}
+                                    >
+                                        <Text style={[styles.monthBubbleText, isActive && styles.monthBubbleTextActive]}>
+                                            {m.label}
+                                        </Text>
+                                        {m.hasData && !isActive && <View style={styles.monthDataDot} />}
+                                    </TouchableOpacity>
+                                );
+                            })}
+                        </ScrollView>
+                    </View>
+
+                    <View style={styles.calendarGrid}>
+                        {['S', 'M', 'T', 'W', 'T', 'F', 'S'].map((d, i) => (
+                            <Text key={i} style={styles.calendarDayHeader}>{d}</Text>
+                        ))}
+                        {calendarDays.map((day, i) => {
+                            if (!day) return <View key={`empty-${i}`} style={styles.calendarDayCell} />;
+
+                            const dateStr = `${viewYear}-${(viewMonth + 1).toString().padStart(2, '0')}-${day.toString().padStart(2, '0')}`;
+                            const todayStr = today.toISOString().split('T')[0];
+                            const dayInfo = monthData.find(d => d.date === dateStr);
+                            const hasActivity = dayInfo && dayInfo.durationHrs > 0;
+                            const isToday = day === today.getDate() && viewMonth === today.getMonth() && viewYear === today.getFullYear();
+                            const isSelected = selectedDay === day;
+                            const isPast = dateStr < todayStr;
+
+                            // Determine mission status color coding
+                            let statusColorStyle = null;
+                            let hasStatus = false;
+
+                            if (dayInfo && dayInfo.hasTasks) {
+                                hasStatus = true;
+                                if (dayInfo.status === 'completed') {
+                                    statusColorStyle = styles.dayCircleCompleted;
+                                } else if (isPast) {
+                                    statusColorStyle = styles.dayCircleIncomplete;
+                                } else if (hasActivity || isToday) {
+                                    statusColorStyle = styles.dayCircleActive;
+                                }
+                            }
+
+                            return (
+                                <TouchableOpacity
+                                    key={day}
+                                    style={styles.calendarDayCell}
+                                    activeOpacity={hasActivity ? 0.7 : 1}
+                                    onPress={() => day && handleDayPress(day)}
+                                >
+                                    <View style={[
+                                        styles.dayCircle,
+                                        statusColorStyle,
+                                        isToday && styles.dayCircleToday,
+                                        isSelected && styles.dayCircleSelected
+                                    ]}>
+                                        <Text style={[
+                                            styles.calendarDayText,
+                                            hasStatus && styles.calendarDayTextActive,
+                                            isSelected && styles.calendarDayTextSelected
+                                        ]}>{day}</Text>
+                                        {hasActivity && <Text style={styles.dayDurationText}>{dayInfo.durationHrs.toFixed(1)}h</Text>}
+                                    </View>
+                                </TouchableOpacity>
+                            );
+                        })}
+                    </View>
+                </View>
+
+                {renderDayDetail()}
+            </View>
+        );
+    };
+
+    const GoalViewToggle = ({ activeView, onViewChange, minimal }: { activeView: 'chart' | 'analytics', onViewChange: (view: 'chart' | 'analytics') => void, minimal?: boolean }) => (
+        <View style={[styles.graphViewToggleContainer, minimal && styles.graphViewToggleContainerMinimal]}>
+            <TouchableOpacity
+                onPress={() => onViewChange('chart')}
+                style={[styles.graphViewToggleBtn, minimal && styles.graphViewToggleBtnMinimal, activeView === 'chart' && styles.graphViewToggleBtnActive]}
+                activeOpacity={0.7}
+            >
+                <Text style={[styles.graphViewToggleText, minimal && styles.graphViewToggleTextMinimal, activeView === 'chart' && styles.graphViewToggleTextActive]}>CHART</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+                onPress={() => onViewChange('analytics')}
+                style={[styles.graphViewToggleBtn, minimal && styles.graphViewToggleBtnMinimal, activeView === 'analytics' && styles.graphViewToggleBtnActive]}
+                activeOpacity={0.7}
+            >
+                <Text style={[styles.graphViewToggleText, minimal && styles.graphViewToggleTextMinimal, activeView === 'analytics' && styles.graphViewToggleTextActive]}>ANALYTICS</Text>
+            </TouchableOpacity>
+        </View>
+    );
+
+    const GoalGraphController = ({ data, goal, minimal }: { data: any[], goal: Goal, minimal?: boolean }) => {
+        const [activeView, setActiveView] = useState<'chart' | 'analytics'>('chart');
+        const isDeepBlackGoal = (goal.color || '').toUpperCase() === DEEP_BLACK_GOAL_COLOR;
+
+        const handleViewChange = (view: 'chart' | 'analytics') => {
+            if (activeView !== view) {
+                LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+                setActiveView(view);
+                triggerSelectionHaptic();
+            }
+        };
+
+        const chartMinH = minimal ? 80 : 100;
+        const analyticsMinH = minimal ? 152 : 180;
+
+        return (
+            <View style={[styles.graphControllerContainer, minimal && styles.graphControllerContainerMinimal]}>
+                {!minimal && (
+                    <GoalViewToggle activeView={activeView} onViewChange={handleViewChange} />
+                )}
+                <View style={[styles.graphContentArea, { minHeight: activeView === 'chart' ? chartMinH : analyticsMinH }]}>
+                    {activeView === 'chart' ? (
+                        <GoalActivityGraph
+                            data={data}
+                            title="TOTAL TELEMETRY"
+                            goalId={`combined-${goal.id}`}
+                            minimal={minimal}
+                            minimalControls={minimal ? <GoalViewToggle activeView={activeView} onViewChange={handleViewChange} minimal /> : undefined}
+                            tintColor={isDeepBlackGoal ? undefined : (goal.color || FALLBACK_GOAL_TINT)}
+                        />
+                    ) : (
+                        <GoalMonthlyAnalytics data={data} goal={goal} />
+                    )}
                 </View>
             </View>
         );
@@ -752,29 +1247,43 @@ export default function GoalManagement({
         const stages = task.stages || [];
         let displayProgress = 0;
         let statusColor = '#00E676';
+        let doneCount = 0;
+        let activeCount = 0;
+        let leftCount = 0;
 
         if (stages.length > 0) {
-            displayProgress = (stages.filter(s => s.status === 'Done').length / stages.length) * 100;
+            doneCount = stages.filter(s => s.status === 'Done').length;
+            activeCount = stages.filter(s => s.status === 'Process').length;
+            leftCount = Math.max(0, stages.length - doneCount - activeCount);
+            displayProgress = (doneCount / stages.length) * 100;
         } else {
             if (task.status === 'Completed') displayProgress = 100;
             else if (task.status === 'In Progress') displayProgress = 50;
             else displayProgress = 0;
+            doneCount = task.status === 'Completed' ? 1 : 0;
+            activeCount = task.status === 'In Progress' ? 1 : 0;
+            leftCount = task.status === 'Completed' || task.status === 'In Progress' ? 0 : 1;
         }
 
         if (task.status === 'In Progress') statusColor = '#FFB300';
         else if (task.status === 'Completed') statusColor = '#00E676';
         else statusColor = 'rgba(255,255,255,0.2)';
 
+        const totalUnits = Math.max(1, doneCount + activeCount + leftCount);
+        const donePct = (doneCount / totalUnits) * 100;
+        const activePct = (activeCount / totalUnits) * 100;
+        const leftPct = Math.max(0, 100 - donePct - activePct);
+
         return (
-            <TouchableOpacity 
-                key={task.id} 
+            <TouchableOpacity
+                key={task.id}
                 onPress={() => {
                     LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
                     onSelect();
                 }}
                 activeOpacity={0.7}
                 style={[
-                    styles.miniTaskCardHorizontal, 
+                    styles.miniTaskCardHorizontal,
                     { width: taskCardWidth },
                     isSelected && styles.miniTaskCardSelected
                 ]}
@@ -787,12 +1296,26 @@ export default function GoalManagement({
                 </View>
 
                 <View style={styles.miniTaskMidCompact}>
-                    <Text style={styles.miniTaskMetaCompact}>{stages.length} SUBTASKS</Text>
+                    <Text style={styles.miniTaskMetaCompact}>{stages.length > 0 ? `${stages.length} SUBTASKS` : '1 TARGET'}</Text>
+                </View>
+
+                <View style={styles.taskStatusPillsRow}>
+                    <View style={[styles.taskStatusPill, styles.taskStatusPillDone]}>
+                        <Text style={styles.taskStatusPillText}>DONE {doneCount}</Text>
+                    </View>
+                    <View style={[styles.taskStatusPill, styles.taskStatusPillActive]}>
+                        <Text style={styles.taskStatusPillText}>ACTIVE {activeCount}</Text>
+                    </View>
+                    <View style={[styles.taskStatusPill, styles.taskStatusPillLeft]}>
+                        <Text style={styles.taskStatusPillText}>LEFT {leftCount}</Text>
+                    </View>
                 </View>
 
                 <View style={styles.miniTaskFooterCompact}>
-                    <View style={styles.miniProgressBarTrackCompact}>
-                        <View style={[styles.miniProgressBarFillCompact, { width: `${displayProgress}%`, backgroundColor: isSelected ? '#fff' : statusColor }]} />
+                    <View style={[styles.miniProgressBarTrackCompact, styles.miniProgressBarTrackStatus]}>
+                        <View style={[styles.miniProgressSegment, styles.miniProgressSegmentDone, { width: `${donePct}%` }]} />
+                        <View style={[styles.miniProgressSegment, styles.miniProgressSegmentActive, { width: `${activePct}%` }]} />
+                        <View style={[styles.miniProgressSegment, styles.miniProgressSegmentLeft, { width: `${leftPct}%` }]} />
                     </View>
                     <Text style={styles.miniPercentTextCompact}>{Math.round(displayProgress)}%</Text>
                 </View>
@@ -805,6 +1328,7 @@ export default function GoalManagement({
     };
 
     const renderDashboardCard = (goal: Goal) => {
+        const isExpanded = expandedGoalId === goal.id;
         const children = goals.filter(g => g.parentId === goal.id);
         const taskIds = [
             ...(goal.taskIds || []),
@@ -814,7 +1338,7 @@ export default function GoalManagement({
         ];
         const associatedIds = Array.from(new Set(taskIds));
         const associatedTasks = tasks.filter(t => associatedIds.includes(t.id));
-        
+
         let displayProgress = goal.progress;
         if (associatedTasks.length > 0) {
             const allStages = associatedTasks.flatMap(t => t.stages || []);
@@ -827,222 +1351,396 @@ export default function GoalManagement({
         }
 
         const displayTitle = goal.title;
+        const isDeepBlackGoal = (goal.color || '').toUpperCase() === DEEP_BLACK_GOAL_COLOR;
         const accentColor = '#FFFFFF';
         const startLabel = formatDateCompact(goal.startDate || goal.createdAt);
         const endLabel = formatDateCompact(goal.endDate);
+        const taskDoneCount = associatedTasks.filter(t => t.status === 'Completed').length;
+        const totalTaskCount = associatedTasks.length;
+        const activeTaskCount = associatedTasks.filter(t => t.status === 'In Progress').length;
+        const pendingTaskCount = Math.max(0, totalTaskCount - taskDoneCount - activeTaskCount);
+        const todayStr = new Date().toISOString().split('T')[0];
+        const goalStartStr = (goal.startDate || goal.createdAt || '').split('T')[0];
+        const goalEndStr = (goal.endDate || '').split('T')[0];
+        const hasProgress = taskDoneCount > 0 || activeTaskCount > 0 || displayProgress > 0;
+        const isCompleted = totalTaskCount > 0 && taskDoneCount === totalTaskCount;
+        const isUpcoming = !!goalStartStr && goalStartStr > todayStr;
+        const isPastDeadline = !!goalEndStr && goalEndStr < todayStr;
+        const goalStatusLabel =
+            isCompleted
+                ? 'COMPLETED'
+                : isPastDeadline && !isCompleted
+                    ? 'FAILED'
+                    : isUpcoming && !hasProgress
+                        ? 'UPCOMING'
+                        : 'RUNNING';
+        const goalStatusStyle =
+            goalStatusLabel === 'COMPLETED'
+                ? styles.goalStatusPillDone
+                : goalStatusLabel === 'RUNNING'
+                    ? styles.goalStatusPillActive
+                    : goalStatusLabel === 'FAILED'
+                        ? styles.goalStatusPillFailed
+                        : styles.goalStatusPillPending;
+        const goalStatusTextStyle =
+            goalStatusLabel === 'COMPLETED'
+                ? styles.goalStatusTextDone
+                : goalStatusLabel === 'RUNNING'
+                    ? styles.goalStatusTextActive
+                    : goalStatusLabel === 'FAILED'
+                        ? styles.goalStatusTextFailed
+                        : styles.goalStatusTextPending;
 
         return (
             <View key={goal.id} style={styles.dashboardCardWrapper}>
-                <View style={styles.dashboardCardDepthOuter}>
-                    <BlurView intensity={32} tint="dark" style={styles.dashboardCard}>
+                <View style={[styles.goalCardBezel, isLandscape && styles.goalCardBezelLandscape]}>
+                    <View
+                        style={[
+                            styles.goalCardOuterBoundaryHighlight,
+                            isLandscape && styles.goalCardOuterBoundaryHighlightLandscape,
+                        ]}
+                    />
+                    <BlurView
+                        intensity={32}
+                        tint="dark"
+                        style={[
+                            styles.goalCardBlurTrack,
+                            isLandscape && styles.goalCardBlurTrackLandscape,
+                            !isExpanded && styles.dashboardCardCollapsed,
+                            !isExpanded && menuGoalId === goal.id && styles.dashboardCardCollapsedMenuOpen,
+                        ]}
+                    >
+                        <View
+                            style={[
+                                styles.goalCardInteriorShadow,
+                                isLandscape && styles.goalCardInteriorShadowLandscape,
+                            ]}
+                            pointerEvents="none"
+                        />
+                        <View
+                            style={[styles.goalCardTopRim, isLandscape && styles.goalCardTopRimLandscape]}
+                            pointerEvents="none"
+                        />
                         <LinearGradient
-                            colors={['rgba(34, 36, 44, 0.98)', 'rgba(22, 24, 30, 0.99)']}
+                            colors={[
+                                isDeepBlackGoal
+                                    ? '#000000'
+                                    : hexToRgba(goal.color || FALLBACK_GOAL_TINT, goal.color ? 0.22 : 0.1),
+                                isDeepBlackGoal ? '#000000' : '#050608',
+                            ]}
                             locations={[0, 1]}
                             start={{ x: 0, y: 0 }}
                             end={{ x: 0, y: 1 }}
-                            style={styles.cardContent}
+                            style={[
+                                styles.cardContent,
+                                !isExpanded && styles.cardContentCollapsed
+                            ]}
                         >
-                        {/* Unified HUD Content */}
-                        <View style={styles.hudBody}>
-                            <View style={styles.goalCardHeaderMinimal}>
-                                <View style={styles.goalCardHeaderIcon}>
-                                    <MaterialIcons name="track-changes" size={16} color="rgba(255,255,255,0.55)" />
-                                </View>
-                                <View style={styles.goalCardHeaderTextCol}>
-                                    <Text style={styles.goalCardTitleCompact} numberOfLines={1}>
-                                        {displayTitle}
-                                    </Text>
-                                    <Text style={styles.goalCardMetaCompact} numberOfLines={1}>
-                                        {getGoalTypeLabel(goal.type)} · ID {goal.id.slice(-4)} · {associatedTasks.length} linked
-                                    </Text>
-                                </View>
-                                <View style={styles.integratedActions}>
+                            {/* Unified HUD Content */}
+                            <View style={styles.hudBody}>
+                                <View style={styles.goalCardHeaderMinimal}>
                                     <TouchableOpacity
-                                        onPress={() => onAddGoal(goal.id, 'task')}
-                                        style={styles.hudActionBtnMinimal}
-                                        activeOpacity={0.75}
+                                        style={styles.headerTapArea}
+                                        activeOpacity={0.85}
+                                        onPress={() => {
+                                            LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+                                            setExpandedGoalId(prev => (prev === goal.id ? null : goal.id));
+                                            setMenuGoalId(null);
+                                        }}
                                     >
-                                        <MaterialIcons name="add" size={18} color={accentColor} />
+                                        <View style={styles.goalCardHeaderIcon}>
+                                            <MaterialIcons name="track-changes" size={16} color="rgba(255,255,255,0.55)" />
+                                        </View>
+                                        <View style={styles.goalCardHeaderTextCol}>
+                                            <Text style={styles.goalCardTitleCompact} numberOfLines={1}>
+                                                {displayTitle}
+                                            </Text>
+                                            <Text style={styles.goalCardMetaCompact} numberOfLines={1}>
+                                                {getGoalTypeLabel(goal.type)} · ID {goal.id.slice(-4)} · {associatedTasks.length} linked
+                                            </Text>
+                                        </View>
                                     </TouchableOpacity>
-                                    <View style={{ position: 'relative' }}>
+                                    <View style={styles.integratedActions}>
                                         <TouchableOpacity
                                             onPress={() => {
                                                 LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
-                                                setMenuGoalId(menuGoalId === goal.id ? null : goal.id);
+                                                setExpandedGoalId(prev => (prev === goal.id ? null : goal.id));
                                             }}
                                             style={styles.hudActionBtnMinimal}
                                             activeOpacity={0.75}
                                         >
-                                            <MaterialIcons name="more-vert" size={18} color="rgba(255,255,255,0.5)" />
+                                            <MaterialIcons name={isExpanded ? "unfold-less" : "unfold-more"} size={18} color="rgba(255,255,255,0.75)" />
                                         </TouchableOpacity>
+                                        <TouchableOpacity
+                                            onPress={() => onAddGoal(goal.id, 'task')}
+                                            style={styles.hudActionBtnMinimal}
+                                            activeOpacity={0.75}
+                                        >
+                                            <MaterialIcons name="add" size={18} color={accentColor} />
+                                        </TouchableOpacity>
+                                        <View style={{ position: 'relative' }}>
+                                            <TouchableOpacity
+                                                onPress={() => {
+                                                    LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+                                                    setMenuGoalId(menuGoalId === goal.id ? null : goal.id);
+                                                }}
+                                                style={styles.hudActionBtnMinimal}
+                                                activeOpacity={0.75}
+                                            >
+                                                <MaterialIcons name="more-vert" size={18} color="rgba(255,255,255,0.5)" />
+                                            </TouchableOpacity>
 
-                                        {menuGoalId === goal.id && (
-                                            <BlurView intensity={80} tint="dark" style={styles.tacticalTooltip}>
-                                                <TouchableOpacity
-                                                    style={styles.tooltipItem}
-                                                    onPress={() => {
-                                                        onEditGoal(goal);
-                                                        setMenuGoalId(null);
-                                                    }}
-                                                >
-                                                    <MaterialIcons name="edit" size={10} color={accentColor} />
-                                                    <Text style={styles.tooltipText}>UPDATE</Text>
-                                                </TouchableOpacity>
-                                                <View style={styles.tooltipSeparator} />
-                                                <TouchableOpacity
-                                                    style={styles.tooltipItem}
-                                                    onPress={() => {
-                                                        onDeleteGoal(goal.id);
-                                                        setMenuGoalId(null);
-                                                    }}
-                                                >
-                                                    <MaterialIcons name="delete-outline" size={10} color="#FF5252" />
-                                                    <Text style={[styles.tooltipText, { color: '#FF5252' }]}>DELETE</Text>
-                                                </TouchableOpacity>
-                                            </BlurView>
-                                        )}
+                                            {menuGoalId === goal.id && isExpanded && (
+                                                <BlurView intensity={80} tint="dark" style={styles.tacticalTooltip}>
+                                                    <TouchableOpacity
+                                                        style={styles.tooltipItem}
+                                                        onPress={() => {
+                                                            onEditGoal(goal);
+                                                            setMenuGoalId(null);
+                                                        }}
+                                                    >
+                                                        <MaterialIcons name="edit" size={10} color={accentColor} />
+                                                        <Text style={styles.tooltipText}>UPDATE</Text>
+                                                    </TouchableOpacity>
+                                                    <View style={styles.tooltipSeparator} />
+                                                    <TouchableOpacity
+                                                        style={styles.tooltipItem}
+                                                        onPress={() => {
+                                                            onDeleteGoal(goal.id);
+                                                            setMenuGoalId(null);
+                                                        }}
+                                                    >
+                                                        <MaterialIcons name="delete-outline" size={10} color="#FF5252" />
+                                                        <Text style={[styles.tooltipText, { color: '#FF5252' }]}>DELETE</Text>
+                                                    </TouchableOpacity>
+                                                </BlurView>
+                                            )}
+                                        </View>
                                     </View>
                                 </View>
-                            </View>
 
-                            <View style={[styles.hudRightUnified, isLandscape && styles.hudRightLandscapeUnified]}>
-                                {associatedTasks.length > 0 ? (
-                                    <View style={[styles.activityContent, isLandscape && { flex: 1 }]}>
-                                        {!hiddenGraphIds.includes(goal.id) && (
-                                            <View style={styles.combinedSystemGraphWrapper}>
-                                                <View style={styles.combinedGraphHeader}>
-                                                    <MaterialIcons name="analytics" size={10} color="rgba(255,255,255,0.55)" />
-                                                    <Text style={styles.combinedGraphLabelText}>STRATEGIC SYSTEM PERFORMANCE</Text>
-                                                </View>
-                                                <GoalActivityGraph 
-                                                    data={getGoalActivityData(goal, tasks)} 
-                                                    title="TOTAL TELEMETRY" 
-                                                    goalId={`combined-${goal.id}`}
-                                                />
-                                            </View>
-                                        )}
-
-                                        <ScrollView
-                                            horizontal
-                                            style={styles.deploymentDeckScroll}
-                                            contentContainerStyle={styles.deploymentDeckContent}
-                                            showsHorizontalScrollIndicator={false}
-                                            onLayout={(e) => setDeckContainerWidth(e.nativeEvent.layout.width)}
+                                {menuGoalId === goal.id && !isExpanded && (
+                                    <View style={styles.minimizedMenuRow}>
+                                        <TouchableOpacity
+                                            style={styles.minimizedMenuBtn}
+                                            onPress={() => {
+                                                onEditGoal(goal);
+                                                setMenuGoalId(null);
+                                            }}
                                         >
-                                            {associatedTasks.map(task => 
-                                                renderTaskItem(
-                                                    task, 
-                                                    selectedTaskIdPerGoal[goal.id] === task.id,
-                                                    () => {
-                                                        const currentSelected = selectedTaskIdPerGoal[goal.id];
-                                                        setSelectedTaskIdPerGoal(prev => ({
-                                                            ...prev,
-                                                            [goal.id]: currentSelected === task.id ? null : task.id
-                                                        }));
-                                                    },
-                                                    goal
-                                                )
-                                            )}
-                                        </ScrollView>
+                                            <MaterialIcons name="edit" size={12} color="#fff" />
+                                            <Text style={styles.minimizedMenuText}>UPDATE</Text>
+                                        </TouchableOpacity>
+                                        <TouchableOpacity
+                                            style={[styles.minimizedMenuBtn, styles.minimizedMenuBtnDanger]}
+                                            onPress={() => {
+                                                onDeleteGoal(goal.id);
+                                                setMenuGoalId(null);
+                                            }}
+                                        >
+                                            <MaterialIcons name="delete-outline" size={12} color="#FF6E6E" />
+                                            <Text style={[styles.minimizedMenuText, styles.minimizedMenuTextDanger]}>DELETE</Text>
+                                        </TouchableOpacity>
+                                    </View>
+                                )}
 
-                                        {/* Unified Drill-Down Analytics Panel */}
-                                        {selectedTaskIdPerGoal[goal.id] && (
-                                            <BlurView intensity={24} tint="dark" style={styles.unifiedAnalyticsPanel}>
-                                                {(() => {
-                                                    const selectedTask = associatedTasks.find(t => t.id === selectedTaskIdPerGoal[goal.id]);
-                                                    if (!selectedTask) return null;
-                                                    
-                                                    const stages = selectedTask.stages || [];
-                                                    let progress = 0;
-                                                    if (stages.length > 0) progress = (stages.filter(s => s.status === 'Done').length / stages.length) * 100;
-                                                    else progress = selectedTask.status === 'Completed' ? 100 : (selectedTask.status === 'In Progress' ? 50 : 0);
+                                {isExpanded ? (
+                                    <View style={[styles.hudRightUnified, isLandscape && styles.hudRightLandscapeUnified]}>
+                                        {associatedTasks.length > 0 ? (
+                                            <View style={[styles.activityContent, styles.activityContentMinimal, isLandscape && { flex: 1 }]}>
+                                                {!hiddenGraphIds.includes(goal.id) && (
+                                                    <View style={styles.combinedSystemGraphWrapperMinimal}>
+                                                        <GoalGraphController
+                                                            data={getGoalActivityData(goal, tasks)}
+                                                            goal={goal}
+                                                            minimal
+                                                        />
+                                                    </View>
+                                                )}
 
-                                                    return (
-                                                        <>
-                                                            <View style={styles.analyticsHeaderRow}>
-                                                                <Text style={styles.analyticsLabelText}>DEPLOYMENT ANALYTICS</Text>
-                                                                <TouchableOpacity 
-                                                                    onPress={() => {
-                                                                        Alert.alert(
-                                                                            "DECOUPLE OPERATIONAL TARGET",
-                                                                            `Are you sure you want to decouple "${selectedTask.title.toUpperCase()}" from this Strategic Objective?`,
-                                                                            [
-                                                                                { text: "CANCEL", style: "cancel" },
-                                                                                { 
-                                                                                    text: "CONFIRM UNLINK", 
-                                                                                    onPress: () => onUnlinkTask(goal.id, selectedTask.id),
-                                                                                    style: "destructive" 
-                                                                                }
-                                                                            ]
-                                                                        );
-                                                                    }}
-                                                                    style={styles.unlinkActionBtn}
-                                                                >
-                                                                    <MaterialIcons name="link-off" size={10} color="#FF5252" />
-                                                                    <Text style={styles.unlinkActionText}>UNLINK</Text>
-                                                                </TouchableOpacity>
-                                                            </View>
+                                                <ScrollView
+                                                    horizontal
+                                                    style={styles.deploymentDeckScroll}
+                                                    contentContainerStyle={styles.deploymentDeckContent}
+                                                    showsHorizontalScrollIndicator={false}
+                                                    onLayout={(e) => setDeckContainerWidth(e.nativeEvent.layout.width)}
+                                                >
+                                                    {associatedTasks.map(task =>
+                                                        renderTaskItem(
+                                                            task,
+                                                            selectedTaskIdPerGoal[goal.id] === task.id,
+                                                            () => {
+                                                                const currentSelected = selectedTaskIdPerGoal[goal.id];
+                                                                setSelectedTaskIdPerGoal(prev => ({
+                                                                    ...prev,
+                                                                    [goal.id]: currentSelected === task.id ? null : task.id
+                                                                }));
+                                                            },
+                                                            goal
+                                                        )
+                                                    )}
+                                                </ScrollView>
 
-                                                            <View style={styles.microMetricsRow}>
-                                                                <View style={styles.microMetric}>
-                                                                    <Text style={styles.microMetricLabel}>EST. AIRTIME</Text>
-                                                                    <Text style={styles.microMetricVal}>12.4H</Text>
-                                                                </View>
-                                                                <View style={styles.metricDivider} />
-                                                                <View style={styles.microMetric}>
-                                                                    <Text style={styles.microMetricLabel}>STREAK</Text>
-                                                                    <Text style={styles.microMetricVal}>4 DAYS</Text>
-                                                                </View>
-                                                                <View style={styles.metricDivider} />
-                                                                <View style={styles.microMetric}>
-                                                                    <Text style={styles.microMetricLabel}>COMPLETION</Text>
-                                                                    <Text style={styles.microMetricVal}>{Math.round(progress)}%</Text>
-                                                                </View>
-                                                            </View>
+                                                {/* Unified Drill-Down Analytics Panel */}
+                                                {selectedTaskIdPerGoal[goal.id] && (
+                                                    <BlurView intensity={24} tint="dark" style={styles.unifiedAnalyticsPanel}>
+                                                        {(() => {
+                                                            const selectedTask = associatedTasks.find(t => t.id === selectedTaskIdPerGoal[goal.id]);
+                                                            if (!selectedTask) return null;
 
-                                                            <GoalActivityGraph 
-                                                                data={getTaskActivityData(selectedTask, goal.startDate || goal.createdAt, goal.endDate || new Date().toISOString())} 
-                                                                title={`DRILL-DOWN: ${selectedTask.title.toUpperCase()}`}
-                                                                goalId={`${goal.id}-${selectedTask.id}`}
-                                                            />
-                                                        </>
-                                                    );
-                                                })()}
-                                            </BlurView>
+                                                            const stages = selectedTask.stages || [];
+                                                            let progress = 0;
+                                                            if (stages.length > 0) progress = (stages.filter(s => s.status === 'Done').length / stages.length) * 100;
+                                                            else progress = selectedTask.status === 'Completed' ? 100 : (selectedTask.status === 'In Progress' ? 50 : 0);
+
+                                                            return (
+                                                                <>
+                                                                    <View style={styles.analyticsHeaderRow}>
+                                                                        <Text style={styles.analyticsLabelText}>DEPLOYMENT ANALYTICS</Text>
+                                                                        <TouchableOpacity
+                                                                            onPress={() => {
+                                                                                Alert.alert(
+                                                                                    "DECOUPLE OPERATIONAL TARGET",
+                                                                                    `Are you sure you want to decouple "${selectedTask.title.toUpperCase()}" from this Strategic Objective?`,
+                                                                                    [
+                                                                                        { text: "CANCEL", style: "cancel" },
+                                                                                        {
+                                                                                            text: "CONFIRM UNLINK",
+                                                                                            onPress: () => onUnlinkTask(goal.id, selectedTask.id),
+                                                                                            style: "destructive"
+                                                                                        }
+                                                                                    ]
+                                                                                );
+                                                                            }}
+                                                                            style={styles.unlinkActionBtn}
+                                                                        >
+                                                                            <MaterialIcons name="link-off" size={10} color="#FF5252" />
+                                                                            <Text style={styles.unlinkActionText}>UNLINK</Text>
+                                                                        </TouchableOpacity>
+                                                                    </View>
+
+                                                                    <View style={styles.microMetricsRow}>
+                                                                        <View style={styles.microMetric}>
+                                                                            <Text style={styles.microMetricLabel}>EST. AIRTIME</Text>
+                                                                            <Text style={styles.microMetricVal}>12.4H</Text>
+                                                                        </View>
+                                                                        <View style={styles.metricDivider} />
+                                                                        <View style={styles.microMetric}>
+                                                                            <Text style={styles.microMetricLabel}>STREAK</Text>
+                                                                            <Text style={styles.microMetricVal}>4 DAYS</Text>
+                                                                        </View>
+                                                                        <View style={styles.metricDivider} />
+                                                                        <View style={styles.microMetric}>
+                                                                            <Text style={styles.microMetricLabel}>COMPLETION</Text>
+                                                                            <Text style={styles.microMetricVal}>{Math.round(progress)}%</Text>
+                                                                        </View>
+                                                                    </View>
+
+                                                                    <GoalActivityGraph
+                                                                        data={getTaskActivityData(selectedTask, goal.startDate || goal.createdAt, goal.endDate || new Date().toISOString())}
+                                                                        title={`DRILL-DOWN: ${selectedTask.title.toUpperCase()}`}
+                                                                        goalId={`${goal.id}-${selectedTask.id}`}
+                                                                        minimal
+                                                                        tintColor={isDeepBlackGoal ? undefined : (goal.color || FALLBACK_GOAL_TINT)}
+                                                                    />
+                                                                </>
+                                                            );
+                                                        })()}
+                                                    </BlurView>
+                                                )}
+                                            </View>
+                                        ) : (
+                                            <TouchableOpacity
+                                                style={styles.emptyTasksHUDUnified}
+                                                onPress={() => onAddGoal(goal.id, 'task')}
+                                            >
+                                                <MaterialIcons name="link" size={14} color="rgba(255,255,255,0.1)" />
+                                                <Text style={styles.emptyTasksHUDTextUnified}>LINK EXISTING TASKS TO BEGIN</Text>
+                                            </TouchableOpacity>
                                         )}
+
+                                        <View style={styles.goalExpandedFooter}>
+                                            <View style={styles.goalFooterRowPrimary}>
+                                                <View style={styles.goalFooterDateGroup}>
+                                                    <View style={styles.compactPillFooter}>
+                                                        <Text style={styles.compactPillFooterLabel}>STRT</Text>
+                                                        <Text style={styles.compactPillFooterVal}>{startLabel}</Text>
+                                                    </View>
+                                                    <View style={styles.compactPillFooter}>
+                                                        <Text style={styles.compactPillFooterLabel}>DLIN</Text>
+                                                        <Text style={styles.compactPillFooterVal}>{endLabel}</Text>
+                                                    </View>
+                                                </View>
+                                                <View style={styles.goalFooterMetricsGroup}>
+                                                    <View style={[styles.goalStatusPill, styles.goalStatusPillFooter, goalStatusStyle]}>
+                                                        <Text style={[styles.goalStatusText, styles.goalStatusTextFooter, goalStatusTextStyle]}>{goalStatusLabel}</Text>
+                                                    </View>
+                                                    <Text style={styles.goalFooterMetricSep}>·</Text>
+                                                    <View style={styles.goalFooterMetricChip}>
+                                                        <Text style={styles.goalFooterMetricChipLabel}>LNK</Text>
+                                                        <Text style={styles.goalFooterMetricChipValCyan}>{totalTaskCount}</Text>
+                                                    </View>
+                                                    <Text style={styles.goalFooterMetricSep}>·</Text>
+                                                    <View style={styles.goalFooterMetricChip}>
+                                                        <Text style={styles.goalFooterMetricChipLabel}>DN</Text>
+                                                        <Text style={styles.goalFooterMetricChipValGreen}>{taskDoneCount}</Text>
+                                                    </View>
+                                                    <Text style={styles.goalFooterMetricSep}>·</Text>
+                                                    <View style={styles.goalFooterMetricChip}>
+                                                        <Text style={styles.goalFooterMetricChipLabel}>LFT</Text>
+                                                        <Text style={styles.goalFooterMetricChipValSlate}>{pendingTaskCount}</Text>
+                                                    </View>
+                                                </View>
+                                            </View>
+                                            <View style={styles.goalFooterRowProgress}>
+                                                <View style={styles.slimProgressBarTrackWide}>
+                                                    <View style={[styles.slimProgressBarFill, { width: `${displayProgress}%`, backgroundColor: accentColor }]} />
+                                                </View>
+                                                <Text style={styles.goalFooterProgressPct}>{Math.round(displayProgress)}%</Text>
+                                            </View>
+                                        </View>
                                     </View>
                                 ) : (
                                     <TouchableOpacity
-                                        style={styles.emptyTasksHUDUnified}
-                                        onPress={() => onAddGoal(goal.id, 'task')}
+                                        style={styles.minimizedSummaryWrap}
+                                        activeOpacity={0.85}
+                                        onPress={() => {
+                                            LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+                                            setExpandedGoalId(goal.id);
+                                            setMenuGoalId(null);
+                                        }}
                                     >
-                                        <MaterialIcons name="link" size={14} color="rgba(255,255,255,0.1)" />
-                                        <Text style={styles.emptyTasksHUDTextUnified}>LINK EXISTING TASKS TO BEGIN</Text>
+                                        <View style={styles.minimizedSummaryTop}>
+                                            <View style={[styles.minimizedInfoPill, styles.minimizedInfoPillLinked]}>
+                                                <Text style={styles.minimizedInfoLabel}>LINKED</Text>
+                                                <Text style={styles.minimizedInfoValue}>{associatedTasks.length}</Text>
+                                            </View>
+                                            <View style={[styles.minimizedInfoPill, styles.minimizedInfoPillDone]}>
+                                                <Text style={styles.minimizedInfoLabel}>DONE</Text>
+                                                <Text style={[styles.minimizedInfoValue, styles.minimizedInfoValueGreen]}>{taskDoneCount}</Text>
+                                            </View>
+                                            <View style={[styles.minimizedInfoPill, styles.minimizedInfoPillLeft]}>
+                                                <Text style={styles.minimizedInfoLabel}>LEFT</Text>
+                                                <Text style={[styles.minimizedInfoValue, styles.minimizedInfoValueSlate]}>{pendingTaskCount}</Text>
+                                            </View>
+                                        </View>
+                                        <View style={styles.minimizedGoalStatusRow}>
+                                            <View style={[styles.goalStatusPill, goalStatusStyle]}>
+                                                <Text style={[styles.goalStatusText, goalStatusTextStyle]}>
+                                                    {goalStatusLabel}
+                                                </Text>
+                                            </View>
+                                            <Text style={styles.minimizedRangeText}>{startLabel} - {endLabel}</Text>
+                                        </View>
+                                        <View style={styles.minimizedProgressRow}>
+                                            <View style={styles.slimProgressBarTrack}>
+                                                <View style={[styles.slimProgressBarFill, { width: `${displayProgress}%`, backgroundColor: accentColor }]} />
+                                            </View>
+                                            <Text style={styles.compactProgressText}>{Math.round(displayProgress)}% COMPLETE</Text>
+                                        </View>
                                     </TouchableOpacity>
                                 )}
-
-                                {/* Ultra-Compact Strategic Status Bar */}
-                                <View style={styles.compactMissionFooter}>
-                                    <View style={styles.statusPillGroup}>
-                                        <View style={styles.compactPill}>
-                                            <Text style={styles.compactPillLabel}>STRT</Text>
-                                            <Text style={styles.compactPillVal}>{startLabel}</Text>
-                                        </View>
-                                        <View style={styles.compactPill}>
-                                            <Text style={styles.compactPillLabel}>DLIN</Text>
-                                            <Text style={styles.compactPillVal}>{endLabel}</Text>
-                                        </View>
-                                    </View>
-                                    
-                                    <View style={styles.compactProgressSection}>
-                                        <View style={styles.slimProgressBarTrack}>
-                                            <View style={[styles.slimProgressBarFill, { width: `${displayProgress}%`, backgroundColor: accentColor }]} />
-                                        </View>
-                                        <Text style={styles.compactProgressText}>{Math.round(displayProgress)}% COMPLETE</Text>
-                                    </View>
-                                </View>
                             </View>
-                        </View>
                         </LinearGradient>
                     </BlurView>
                 </View>
@@ -1072,7 +1770,7 @@ export default function GoalManagement({
     return (
         <View style={[styles.container, isLandscape && styles.landscapeContainer]}>
             {/* 1. PORTRAIT LAYOUT - NO HEADER (HANDLED BY ORCHESTRATOR) */}
-            
+
             {/* 2. LANDSCAPE LAYOUT */}
             {isLandscape ? (
                 hideLeftPanel ? (
@@ -1289,7 +1987,7 @@ export default function GoalManagement({
                                 <View style={styles.popupHeaderCompact}>
                                     <View style={styles.popupHeaderTextBlock}>
                                         <View style={styles.popupDateRow}>
-                                            <MaterialIcons name="event" size={12} color="rgba(0, 229, 255, 0.85)" />
+                                            <MaterialIcons name="event" size={12} color="rgba(255, 255, 255, 0.75)" />
                                             <Text style={styles.popupDateCompact}>
                                                 {formatDateCompact(selectedDayData.date)}
                                             </Text>
@@ -1324,62 +2022,82 @@ export default function GoalManagement({
                                     keyboardShouldPersistTaps="handled"
                                 >
                                     {grouped.length > 0 ? (
-                                        grouped.map(g => (
-                                            <View key={g.key} style={styles.logGroupCard}>
-                                                <View
-                                                    style={[
-                                                        styles.logRowAccent,
-                                                        {
-                                                            backgroundColor: getSegmentColor(
-                                                                g.status,
-                                                                selectedDayData.date
-                                                            ),
-                                                        },
-                                                    ]}
-                                                />
-                                                <View style={styles.logGroupBody}>
-                                                    <View style={styles.logGroupTopRow}>
-                                                        <Text style={styles.logGroupTaskTitle} numberOfLines={2}>
-                                                            {g.taskTitle}
+                                        (() => {
+                                            const formatClock = (totalMinutes: number) => {
+                                                const h = Math.floor(totalMinutes / 60);
+                                                const m = totalMinutes % 60;
+                                                return `${h}:${m.toString().padStart(2, '0')}`;
+                                            };
+                                            const taskGroupsMap = selectedDayData.segments.reduce((acc: any, seg: any) => {
+                                                const key = seg.taskId || seg.taskTitle || 'unlinked';
+                                                if (!acc[key]) {
+                                                    acc[key] = {
+                                                        title: seg.taskTitle || 'Untitled Mission',
+                                                        totalMinutes: 0,
+                                                        segments: []
+                                                    };
+                                                }
+                                                acc[key].segments.push(seg);
+                                                acc[key].totalMinutes += (seg.durationMinutes || 0);
+                                                return acc;
+                                            }, {});
+                                            const taskGroups = Object.values(taskGroupsMap) as any[];
+
+                                            return taskGroups.map((group: any, gIdx: number) => (
+                                                <View key={`popup-tree-${gIdx}`} style={styles.taskGroupContainer}>
+                                                    <View style={styles.taskGroupHeader}>
+                                                        <MaterialIcons name="folder-special" size={10} color="rgba(255,255,255,0.7)" />
+                                                        <Text style={styles.taskGroupName} numberOfLines={1}>
+                                                            {String(group.title).toUpperCase()}
                                                         </Text>
-                                                        <Text style={styles.logGroupDuration}>
-                                                            {g.totalMinutes >= 60
-                                                                ? `${Math.floor(g.totalMinutes / 60)}h${g.totalMinutes % 60 ? ` ${g.totalMinutes % 60}m` : ''}`
-                                                                : `${g.totalMinutes}m`}
+                                                        <Text style={styles.taskGroupTotalTime}>
+                                                            {(group.totalMinutes / 60).toFixed(1)}h
                                                         </Text>
                                                     </View>
-                                                    {g.stageLabels.length === 1 ? (
-                                                        <Text style={styles.logGroupMeta} numberOfLines={2}>
-                                                            {g.stageLabels[0]}
-                                                            {g.timeLabel ? ` · ${g.timeLabel}` : ''}
-                                                        </Text>
-                                                    ) : (
-                                                        <>
-                                                            <Text style={styles.logGroupMeta} numberOfLines={1}>
-                                                                {g.timeLabel}
-                                                                {g.partCount > 1
-                                                                    ? ` · ${g.partCount} parts`
-                                                                    : ''}
-                                                            </Text>
-                                                            {g.stageLabels.length > 0 && (
-                                                                <View style={styles.logStageChipsRow}>
-                                                                    {g.stageLabels.map(st => (
-                                                                        <View key={st} style={styles.logStageChip}>
-                                                                            <Text
-                                                                                style={styles.logStageChipText}
-                                                                                numberOfLines={1}
-                                                                            >
-                                                                                {st}
+
+                                                    <View style={styles.taskGroupTree}>
+                                                        {group.segments.map((seg: any, sIdx: number) => {
+                                                            const segStatus = String(seg.status || '').toLowerCase();
+                                                            const isDone = segStatus === 'done' || segStatus === 'completed';
+                                                            const statusColor = isDone ? 'rgba(255,255,255,0.95)' : 'rgba(255,255,255,0.58)';
+                                                            const startMin = Number(seg.startMin ?? 0);
+                                                            const duration = Number(seg.durationMinutes ?? 0);
+                                                            const startTimeStr = seg.startMin !== undefined ? formatClock(startMin) : '--:--';
+                                                            const endTimeStr = seg.startMin !== undefined ? formatClock(startMin + duration) : '--:--';
+                                                            const isLast = sIdx === group.segments.length - 1;
+
+                                                            return (
+                                                                <View key={`popup-node-${sIdx}`} style={styles.treeNodeRow}>
+                                                                    <View style={styles.treeConnectorContainer}>
+                                                                        <View style={[styles.treeVerticalLine, isLast && { bottom: '50%' }]} />
+                                                                        <View style={styles.treeHorizontalLine} />
+                                                                    </View>
+                                                                    <View style={styles.treeContentBody}>
+                                                                        <View style={styles.treeNodeMainRow}>
+                                                                            <View style={[styles.treeStatusDot, { backgroundColor: statusColor }]} />
+                                                                            <Text style={styles.treeNodeName} numberOfLines={1}>
+                                                                                {String(seg.stageTitle || 'SEGMENT').toUpperCase()}
+                                                                            </Text>
+                                                                            <Text style={styles.treeNodeDuration}>
+                                                                                {(duration / 60).toFixed(1)}h
                                                                             </Text>
                                                                         </View>
-                                                                    ))}
+                                                                        <View style={styles.treeNodeSubRow}>
+                                                                            <Text style={styles.treeNodeTime}>
+                                                                                {startTimeStr} — {endTimeStr}
+                                                                            </Text>
+                                                                            <Text style={[styles.treeNodeStatusText, { color: statusColor }]}>
+                                                                                {isDone ? 'DONE' : 'ACTIVE'}
+                                                                            </Text>
+                                                                        </View>
+                                                                    </View>
                                                                 </View>
-                                                            )}
-                                                        </>
-                                                    )}
+                                                            );
+                                                        })}
+                                                    </View>
                                                 </View>
-                                            </View>
-                                        ))
+                                            ));
+                                        })()
                                     ) : (
                                         <View style={styles.emptyLogCompact}>
                                             <MaterialIcons name="event-busy" size={20} color="rgba(255,255,255,0.12)" />
@@ -1757,35 +2475,83 @@ const styles = StyleSheet.create({
     },
     dashboardCardWrapper: {
         width: '100%',
+        marginBottom: 4,
     },
-    dashboardCardDepthOuter: {
-        borderRadius: 22,
-        ...Platform.select({
-            ios: {
-                shadowColor: '#000',
-                shadowOffset: { width: 0, height: 12 },
-                shadowOpacity: 0.5,
-                shadowRadius: 24,
-            },
-            android: {
-                elevation: 16,
-            },
-            default: {},
-        }),
-    },
-    dashboardCard: {
-        borderRadius: 22,
-        overflow: 'hidden',
-        borderWidth: 1,
+    /** Matches Task screen `taskCardBezel` — recessed 3D frame on true black */
+    goalCardBezel: {
+        borderRadius: 32,
+        padding: 4,
+        backgroundColor: '#0a0a0a',
         borderColor: 'rgba(255,255,255,0.14)',
-        backgroundColor: 'rgba(24, 26, 32, 0.96)',
+        borderWidth: 1.5,
+        overflow: 'hidden',
+        position: 'relative',
+    },
+    goalCardBezelLandscape: {
+        borderRadius: 24,
+        padding: 3,
+    },
+    goalCardOuterBoundaryHighlight: {
+        ...StyleSheet.absoluteFillObject,
+        borderRadius: 32,
+        borderWidth: 1,
+        borderColor: 'rgba(255,255,255,0.08)',
+    },
+    goalCardOuterBoundaryHighlightLandscape: {
+        borderRadius: 24,
+    },
+    /** Inner face — matches `taskCardTrack` radii */
+    goalCardBlurTrack: {
+        borderRadius: 28,
+        overflow: 'hidden',
+        position: 'relative',
+        backgroundColor: '#000000',
+    },
+    goalCardBlurTrackLandscape: {
+        borderRadius: 20,
+    },
+    goalCardInteriorShadow: {
+        ...StyleSheet.absoluteFillObject,
+        borderBottomWidth: 2,
+        borderRightWidth: 1,
+        borderColor: 'rgba(0,0,0,0.25)',
+        borderRadius: 28,
+    },
+    goalCardInteriorShadowLandscape: {
+        borderRadius: 20,
+    },
+    goalCardTopRim: {
+        ...StyleSheet.absoluteFillObject,
+        borderTopWidth: 1,
+        borderLeftWidth: 0.5,
+        borderColor: 'rgba(255,255,255,0.15)',
+        borderRadius: 28,
+    },
+    goalCardTopRimLandscape: {
+        borderRadius: 20,
+    },
+    dashboardCardCollapsed: {
+        minHeight: 108,
+    },
+    dashboardCardCollapsedMenuOpen: {
+        minHeight: 164,
     },
     cardContent: {
         paddingVertical: 12,
         paddingHorizontal: 12,
     },
+    cardContentCollapsed: {
+        paddingVertical: 10,
+        paddingHorizontal: 10,
+    },
     hudBody: {
         flexDirection: 'column',
+    },
+    goalCardAccentLine: {
+        height: 2,
+        borderRadius: 999,
+        marginBottom: 8,
+        width: '72%',
     },
     goalCardHeaderMinimal: {
         flexDirection: 'row',
@@ -1794,13 +2560,22 @@ const styles = StyleSheet.create({
         marginBottom: 8,
         paddingBottom: 8,
         borderBottomWidth: StyleSheet.hairlineWidth,
-        borderBottomColor: 'rgba(255,255,255,0.08)',
+        borderBottomColor: 'rgba(0, 229, 255, 0.12)',
+    },
+    headerTapArea: {
+        flex: 1,
+        minWidth: 0,
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 8,
     },
     goalCardHeaderIcon: {
         width: 32,
         height: 32,
-        borderRadius: 8,
-        backgroundColor: 'rgba(255,255,255,0.06)',
+        borderRadius: 16,
+        backgroundColor: 'rgba(0, 229, 255, 0.08)',
+        borderWidth: 1,
+        borderColor: 'rgba(0, 229, 255, 0.18)',
         alignItems: 'center',
         justifyContent: 'center',
     },
@@ -1810,13 +2585,13 @@ const styles = StyleSheet.create({
         gap: 2,
     },
     goalCardTitleCompact: {
-        fontSize: 15,
+        fontSize: 14,
         fontWeight: '800',
         color: '#fff',
         letterSpacing: 0.2,
     },
     goalCardMetaCompact: {
-        fontSize: 10,
+        fontSize: 9,
         fontWeight: '600',
         color: 'rgba(255,255,255,0.42)',
     },
@@ -1886,7 +2661,9 @@ const styles = StyleSheet.create({
         borderRadius: 8,
         alignItems: 'center',
         justifyContent: 'center',
-        backgroundColor: 'rgba(255,255,255,0.06)',
+        backgroundColor: 'rgba(255,255,255,0.04)',
+        borderWidth: 1,
+        borderColor: 'rgba(255,255,255,0.12)',
     },
     tacticalTooltip: {
         position: 'absolute',
@@ -1936,31 +2713,45 @@ const styles = StyleSheet.create({
         flexDirection: 'row',
     },
     deploymentDeckScroll: {
-        marginBottom: 8,
+        marginBottom: 6,
     },
     deploymentDeckContent: {
         paddingRight: 20,
-        gap: 10,
+        gap: 8,
     },
     miniTaskCardHorizontal: {
         width: 150,
-        backgroundColor: 'rgba(255,255,255,0.02)',
+        backgroundColor: '#0c0e12',
         borderRadius: 12,
-        padding: 10,
+        padding: 8,
+        paddingLeft: 9,
         borderWidth: 1,
-        borderColor: 'rgba(255,255,255,0.04)',
+        borderColor: 'rgba(0, 229, 255, 0.12)',
+        borderLeftWidth: 3,
+        borderLeftColor: 'rgba(0, 229, 255, 0.45)',
         position: 'relative',
         overflow: 'hidden',
+        ...Platform.select({
+            ios: {
+                shadowColor: '#000',
+                shadowOffset: { width: 0, height: 4 },
+                shadowOpacity: 0.45,
+                shadowRadius: 8,
+            },
+            android: { elevation: 3 },
+            default: {},
+        }),
     },
     miniTaskCardSelected: {
-        borderColor: 'rgba(255,255,255,0.4)',
-        backgroundColor: 'rgba(255,255,255,0.08)',
+        borderColor: 'rgba(0, 229, 255, 0.45)',
+        backgroundColor: 'rgba(0, 229, 255, 0.09)',
+        borderLeftColor: '#00E5FF',
     },
     miniTaskHeaderCompact: {
         flexDirection: 'row',
         alignItems: 'center',
-        gap: 6,
-        marginBottom: 6,
+        gap: 5,
+        marginBottom: 4,
     },
     statusIndicatorSmall: {
         width: 4,
@@ -1975,7 +2766,7 @@ const styles = StyleSheet.create({
         flex: 1,
     },
     miniTaskMidCompact: {
-        marginBottom: 8,
+        marginBottom: 4,
     },
     miniTaskMetaCompact: {
         fontSize: 7,
@@ -1989,16 +2780,66 @@ const styles = StyleSheet.create({
         justifyContent: 'space-between',
         gap: 6,
     },
+    taskStatusPillsRow: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 3,
+        marginBottom: 6,
+    },
+    taskStatusPill: {
+        flex: 1,
+        borderRadius: 4,
+        paddingVertical: 2,
+        paddingHorizontal: 3,
+        borderWidth: 1,
+    },
+    taskStatusPillDone: {
+        backgroundColor: 'rgba(0,230,118,0.14)',
+        borderColor: 'rgba(0,230,118,0.28)',
+    },
+    taskStatusPillActive: {
+        backgroundColor: 'rgba(255,202,40,0.14)',
+        borderColor: 'rgba(255,202,40,0.28)',
+    },
+    taskStatusPillLeft: {
+        backgroundColor: 'rgba(120,132,156,0.16)',
+        borderColor: 'rgba(120,132,156,0.3)',
+    },
+    taskStatusPillText: {
+        fontSize: 5,
+        fontWeight: '900',
+        letterSpacing: 0.35,
+        color: 'rgba(255,255,255,0.9)',
+        textAlign: 'center',
+    },
     miniProgressBarTrackCompact: {
         flex: 1,
         height: 2,
         backgroundColor: 'rgba(255,255,255,0.05)',
         borderRadius: 1,
         overflow: 'hidden',
+        flexDirection: 'row',
+    },
+    miniProgressBarTrackStatus: {
+        height: 3,
+        borderRadius: 2,
+        backgroundColor: 'rgba(255,255,255,0.08)',
     },
     miniProgressBarFillCompact: {
         height: '100%',
         borderRadius: 1,
+    },
+    miniProgressSegment: {
+        height: '100%',
+    },
+    miniProgressSegmentDone: {
+        backgroundColor: '#00E676',
+    },
+    miniProgressSegmentActive: {
+        backgroundColor: '#FFCA28',
+    },
+    miniProgressSegmentLeft: {
+        backgroundColor: 'rgba(120,132,156,0.9)',
     },
     miniPercentTextCompact: {
         fontSize: 7,
@@ -2010,75 +2851,79 @@ const styles = StyleSheet.create({
         bottom: 0,
         left: 0,
         right: 0,
-        height: 2,
-        backgroundColor: '#fff',
+        height: 3,
+        backgroundColor: '#00E5FF',
     },
     unifiedAnalyticsPanel: {
-        borderRadius: 14,
+        borderRadius: 12,
         overflow: 'hidden',
         borderWidth: 1,
-        borderColor: 'rgba(255,255,255,0.1)',
-        padding: 12,
-        backgroundColor: '#181b24',
+        borderColor: 'rgba(0, 229, 255, 0.2)',
+        padding: 8,
+        backgroundColor: '#05070a',
+        borderLeftWidth: 2,
+        borderLeftColor: 'rgba(0, 229, 255, 0.45)',
     },
     analyticsHeaderRow: {
         flexDirection: 'row',
         justifyContent: 'space-between',
         alignItems: 'center',
-        marginBottom: 12,
+        marginBottom: 8,
     },
     analyticsLabelText: {
-        fontSize: 8,
+        fontSize: 7,
         fontWeight: '900',
         color: 'rgba(255,255,255,0.3)',
-        letterSpacing: 1.5,
+        letterSpacing: 1.1,
     },
     unlinkActionBtn: {
         flexDirection: 'row',
         alignItems: 'center',
-        gap: 4,
+        gap: 3,
         backgroundColor: 'rgba(255,82,82,0.05)',
-        paddingHorizontal: 8,
-        paddingVertical: 4,
+        paddingHorizontal: 6,
+        paddingVertical: 3,
         borderRadius: 6,
         borderWidth: 1,
         borderColor: 'rgba(255,82,82,0.1)',
     },
     unlinkActionText: {
-        fontSize: 7,
+        fontSize: 6,
         fontWeight: '900',
         color: '#FF5252',
-        letterSpacing: 1,
+        letterSpacing: 0.8,
     },
 
     microMetricsRow: {
         flexDirection: 'row',
         alignItems: 'center',
         justifyContent: 'space-between',
-        backgroundColor: 'rgba(255,255,255,0.02)',
+        backgroundColor: 'rgba(0, 229, 255, 0.05)',
         borderRadius: 8,
-        padding: 10,
-        marginBottom: 12,
+        padding: 8,
+        marginBottom: 8,
+        borderWidth: 1,
+        borderColor: 'rgba(0, 229, 255, 0.12)',
     },
     microMetric: {
         alignItems: 'center',
         flex: 1,
     },
     microMetricLabel: {
-        fontSize: 6,
+        fontSize: 5,
         fontWeight: '900',
         color: 'rgba(255,255,255,0.2)',
-        letterSpacing: 1,
-        marginBottom: 2,
+        letterSpacing: 0.8,
+        marginBottom: 1,
     },
     microMetricVal: {
-        fontSize: 10,
+        fontSize: 9,
         fontWeight: '900',
         color: '#fff',
     },
     metricDivider: {
         width: 1,
-        height: 12,
+        height: 10,
         backgroundColor: 'rgba(255,255,255,0.05)',
     },
     miniTaskPercent: {
@@ -2095,17 +2940,17 @@ const styles = StyleSheet.create({
         borderRadius: 14,
         borderWidth: 1,
         borderStyle: 'dashed',
-        borderColor: 'rgba(255,255,255,0.1)',
+        borderColor: 'rgba(0, 229, 255, 0.22)',
         alignItems: 'center',
         justifyContent: 'center',
         gap: 8,
         width: '100%',
-        backgroundColor: 'rgba(255,255,255,0.01)',
+        backgroundColor: 'rgba(0, 229, 255, 0.04)',
     },
     emptyTasksHUDTextUnified: {
         fontSize: 8,
         fontWeight: '900',
-        color: 'rgba(255,255,255,0.15)',
+        color: 'rgba(0, 229, 255, 0.35)',
         letterSpacing: 2,
     },
     emptySection: {
@@ -2149,19 +2994,21 @@ const styles = StyleSheet.create({
         justifyContent: 'space-between',
         paddingTop: 8,
         marginTop: 8,
-        borderTopWidth: 1,
-        borderTopColor: 'rgba(255,255,255,0.05)',
+        borderTopWidth: StyleSheet.hairlineWidth,
+        borderTopColor: 'rgba(0, 229, 255, 0.1)',
     },
     statusPillGroup: {
         flexDirection: 'row',
         gap: 8,
     },
     compactPill: {
-        backgroundColor: 'rgba(255,255,255,0.02)',
-        paddingHorizontal: 6,
-        paddingVertical: 4,
-        borderRadius: 4,
+        backgroundColor: 'rgba(255,255,255,0.04)',
+        paddingHorizontal: 8,
+        paddingVertical: 5,
+        borderRadius: 8,
         alignItems: 'center',
+        borderWidth: 1,
+        borderColor: 'rgba(0, 229, 255, 0.15)',
     },
     compactPillLabel: {
         fontSize: 5,
@@ -2177,7 +3024,7 @@ const styles = StyleSheet.create({
     compactProgressSection: {
         flexDirection: 'row',
         alignItems: 'center',
-        gap: 10,
+        gap: 8,
         flex: 1,
         justifyContent: 'flex-end',
     },
@@ -2198,43 +3045,281 @@ const styles = StyleSheet.create({
         color: 'rgba(255,255,255,0.4)',
         letterSpacing: 1,
     },
-    activityContent: {
-        marginTop: 6,
+    minimizedSummaryWrap: {
+        marginTop: 2,
+        gap: 6,
     },
-    combinedSystemGraphWrapper: {
-        marginBottom: 10,
-        borderRadius: 12,
-        paddingHorizontal: 10,
-        paddingTop: 8,
-        paddingBottom: 8,
-        overflow: 'hidden',
-        borderWidth: 1,
-        borderColor: 'rgba(255, 255, 255, 0.1)',
-        backgroundColor: '#181b24',
-        position: 'relative',
-        ...Platform.select({
-            ios: {
-                shadowColor: '#000',
-                shadowOffset: { width: 0, height: 6 },
-                shadowOpacity: 0.35,
-                shadowRadius: 12,
-            },
-            android: { elevation: 6 },
-            default: {},
-        }),
-    },
-    combinedGraphHeader: {
+    minimizedSummaryTop: {
         flexDirection: 'row',
         alignItems: 'center',
         gap: 6,
-        marginBottom: 4,
-        paddingLeft: 2,
     },
-    combinedGraphLabelText: {
+    minimizedInfoPill: {
+        flex: 1,
+        borderRadius: 11,
+        borderWidth: 1,
+        paddingHorizontal: 8,
+        paddingVertical: 6,
+        minWidth: 0,
+    },
+    minimizedInfoPillLinked: {
+        backgroundColor: 'rgba(0, 229, 255, 0.07)',
+        borderColor: 'rgba(0, 229, 255, 0.22)',
+        borderLeftWidth: 2,
+        borderLeftColor: '#00E5FF',
+    },
+    minimizedInfoPillDone: {
+        backgroundColor: 'rgba(0, 230, 118, 0.08)',
+        borderColor: 'rgba(0, 230, 118, 0.22)',
+        borderLeftWidth: 2,
+        borderLeftColor: '#00E676',
+    },
+    minimizedInfoPillLeft: {
+        backgroundColor: 'rgba(144, 164, 194, 0.08)',
+        borderColor: 'rgba(144, 164, 194, 0.2)',
+        borderLeftWidth: 2,
+        borderLeftColor: 'rgba(180, 198, 224, 0.75)',
+    },
+    minimizedInfoValueGreen: {
+        color: '#69F0AE',
+    },
+    minimizedInfoValueSlate: {
+        color: '#CFD8DC',
+    },
+    minimizedInfoLabel: {
         fontSize: 7,
         fontWeight: '900',
+        color: 'rgba(255,255,255,0.35)',
+        letterSpacing: 0.9,
+    },
+    minimizedInfoValue: {
+        fontSize: 9,
+        fontWeight: '900',
+        color: 'rgba(255,255,255,0.92)',
+        marginTop: 2,
+    },
+    minimizedProgressRow: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 10,
+        paddingTop: 2,
+    },
+    minimizedGoalStatusRow: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        gap: 8,
+        marginBottom: 4,
+    },
+    minimizedRangeText: {
+        fontSize: 8,
+        fontWeight: '700',
+        color: 'rgba(255,255,255,0.45)',
+        flexShrink: 1,
+        textAlign: 'right',
+    },
+    goalStatusPill: {
+        borderRadius: 999,
+        paddingHorizontal: 9,
+        paddingVertical: 3,
+        borderWidth: 1,
+    },
+    goalStatusPillDone: {
+        backgroundColor: 'rgba(0,230,118,0.14)',
+        borderColor: 'rgba(0,230,118,0.35)',
+    },
+    goalStatusPillActive: {
+        backgroundColor: 'rgba(255,202,40,0.14)',
+        borderColor: 'rgba(255,202,40,0.35)',
+    },
+    goalStatusPillPending: {
+        backgroundColor: 'rgba(120,132,156,0.16)',
+        borderColor: 'rgba(120,132,156,0.35)',
+    },
+    goalStatusPillFailed: {
+        backgroundColor: 'rgba(255,82,82,0.14)',
+        borderColor: 'rgba(255,82,82,0.35)',
+    },
+    goalStatusText: {
+        fontSize: 7,
+        fontWeight: '900',
+        letterSpacing: 0.9,
+    },
+    goalStatusTextDone: {
+        color: '#00E676',
+    },
+    goalStatusTextActive: {
+        color: '#FFCA28',
+    },
+    goalStatusTextPending: {
+        color: 'rgba(206,214,230,0.9)',
+    },
+    goalStatusTextFailed: {
+        color: '#FF6E6E',
+    },
+    minimizedMenuRow: {
+        flexDirection: 'row',
+        gap: 8,
+        marginBottom: 8,
+    },
+    minimizedMenuBtn: {
+        flex: 1,
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'center',
+        gap: 6,
+        borderRadius: 8,
+        borderWidth: 1,
+        borderColor: 'rgba(255,255,255,0.14)',
+        backgroundColor: 'rgba(255,255,255,0.05)',
+        paddingVertical: 8,
+    },
+    minimizedMenuBtnDanger: {
+        borderColor: 'rgba(255,110,110,0.24)',
+        backgroundColor: 'rgba(255,82,82,0.08)',
+    },
+    minimizedMenuText: {
+        fontSize: 8,
+        fontWeight: '900',
+        letterSpacing: 1,
+        color: 'rgba(255,255,255,0.82)',
+    },
+    minimizedMenuTextDanger: {
+        color: '#FF6E6E',
+    },
+    activityContent: {
+        marginTop: 6,
+    },
+    activityContentMinimal: {
+        marginTop: 2,
+    },
+    combinedSystemGraphWrapperMinimal: {
+        marginBottom: 6,
+        borderRadius: 10,
+        paddingHorizontal: 6,
+        paddingTop: 8,
+        paddingBottom: 6,
+        overflow: 'hidden',
+        borderWidth: 1,
+        borderColor: 'rgba(0, 229, 255, 0.1)',
+        backgroundColor: '#020203',
+        position: 'relative',
+    },
+    goalExpandedFooter: {
+        marginTop: 4,
+        paddingTop: 6,
+        borderTopWidth: StyleSheet.hairlineWidth,
+        borderTopColor: 'rgba(0, 229, 255, 0.1)',
+        gap: 5,
+    },
+    goalFooterRowPrimary: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        flexWrap: 'wrap',
+        rowGap: 6,
+        columnGap: 8,
+    },
+    goalFooterDateGroup: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 5,
+        flexShrink: 0,
+    },
+    compactPillFooter: {
+        backgroundColor: 'rgba(255,255,255,0.035)',
+        paddingHorizontal: 5,
+        paddingVertical: 3,
+        borderRadius: 6,
+        alignItems: 'center',
+        borderWidth: 1,
+        borderColor: 'rgba(0, 229, 255, 0.12)',
+    },
+    compactPillFooterLabel: {
+        fontSize: 4,
+        fontWeight: '900',
+        color: 'rgba(255,255,255,0.28)',
+        letterSpacing: 0.6,
+    },
+    compactPillFooterVal: {
+        fontSize: 7,
+        fontWeight: '900',
+        color: 'rgba(255,255,255,0.88)',
+        marginTop: 1,
+    },
+    goalFooterMetricsGroup: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        flexWrap: 'wrap',
+        gap: 3,
+        flex: 1,
+        justifyContent: 'flex-end',
+        minWidth: 0,
+    },
+    goalStatusPillFooter: {
+        paddingHorizontal: 6,
+        paddingVertical: 2,
+    },
+    goalStatusTextFooter: {
+        fontSize: 6,
+        letterSpacing: 0.5,
+    },
+    goalFooterMetricSep: {
+        fontSize: 8,
+        color: 'rgba(255,255,255,0.18)',
+        fontWeight: '600',
+        marginHorizontal: -1,
+    },
+    goalFooterMetricChip: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 2,
+    },
+    goalFooterMetricChipLabel: {
+        fontSize: 6,
+        fontWeight: '800',
+        color: 'rgba(255,255,255,0.32)',
+        letterSpacing: 0.3,
+    },
+    goalFooterMetricChipValCyan: {
+        fontSize: 9,
+        fontWeight: '900',
+        color: '#00E5FF',
+        fontVariant: ['tabular-nums'],
+    },
+    goalFooterMetricChipValGreen: {
+        fontSize: 9,
+        fontWeight: '900',
+        color: '#69F0AE',
+        fontVariant: ['tabular-nums'],
+    },
+    goalFooterMetricChipValSlate: {
+        fontSize: 9,
+        fontWeight: '900',
+        color: '#B0BEC5',
+        fontVariant: ['tabular-nums'],
+    },
+    goalFooterRowProgress: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 8,
+    },
+    goalFooterProgressPct: {
+        fontSize: 9,
+        fontWeight: '900',
         color: 'rgba(255,255,255,0.55)',
-        letterSpacing: 1.5,
+        letterSpacing: 0.3,
+        fontVariant: ['tabular-nums'],
+        minWidth: 32,
+        textAlign: 'right',
+    },
+    slimProgressBarTrackWide: {
+        flex: 1,
+        height: 2,
+        backgroundColor: 'rgba(255,255,255,0.07)',
+        borderRadius: 1,
+        overflow: 'hidden',
+        minWidth: 0,
     },
     graphWrapper: {
         marginBottom: 6,
@@ -2246,8 +3331,8 @@ const styles = StyleSheet.create({
         paddingVertical: 8,
         marginTop: 4,
         borderWidth: 1,
-        borderColor: 'rgba(255, 255, 255, 0.11)',
-        backgroundColor: '#12141a',
+        borderColor: 'rgba(0, 229, 255, 0.1)',
+        backgroundColor: '#050608',
         ...Platform.select({
             ios: {
                 shadowColor: '#000',
@@ -2259,6 +3344,12 @@ const styles = StyleSheet.create({
             default: {},
         }),
     },
+    graphChartPanelMinimal: {
+        paddingHorizontal: 5,
+        paddingVertical: 5,
+        marginTop: 2,
+        borderRadius: 7,
+    },
     graphScroll: {
         flex: 1,
     },
@@ -2268,9 +3359,16 @@ const styles = StyleSheet.create({
         gap: 4,
         paddingHorizontal: 4,
     },
+    graphContainerMinimal: {
+        gap: 3,
+        paddingHorizontal: 2,
+    },
     barOuter: {
         alignItems: 'stretch',
         width: 16,
+    },
+    barOuterMinimal: {
+        width: 13,
     },
     barTrackColumn: {
         flex: 1,
@@ -2373,6 +3471,28 @@ const styles = StyleSheet.create({
         alignItems: 'center',
         marginBottom: 4,
     },
+    graphHeaderRowMinimal: {
+        flexDirection: 'row',
+        justifyContent: 'center',
+        alignItems: 'center',
+        minHeight: 18,
+        marginBottom: 4,
+        position: 'relative',
+    },
+    graphHeaderMinimalCenter: {
+        alignItems: 'center',
+        justifyContent: 'center',
+    },
+    expandToggleBtnMinimal: {
+        padding: 2,
+        borderRadius: 4,
+    },
+    expandToggleBtnMinimalRight: {
+        position: 'absolute',
+        right: 0,
+        padding: 2,
+        borderRadius: 4,
+    },
     graphLegendText: {
         fontSize: 7,
         fontWeight: '900',
@@ -2396,12 +3516,19 @@ const styles = StyleSheet.create({
         flexDirection: 'row',
         alignItems: 'flex-start',
     },
+    mathGraphMainMinimal: {
+        marginTop: -1,
+    },
     yAxisContainer: {
         width: 25,
         alignItems: 'flex-end',
         paddingRight: 4,
         marginTop: 0,
         position: 'relative',
+    },
+    yAxisContainerMinimal: {
+        width: 20,
+        paddingRight: 2,
     },
     yAxisLabel: {
         fontSize: 7,
@@ -2446,12 +3573,12 @@ const styles = StyleSheet.create({
     detailPopup: {
         width: '100%',
         maxWidth: 340,
-        maxHeight: '56%',
-        borderRadius: 14,
+        maxHeight: '62%',
+        borderRadius: 16,
         overflow: 'hidden',
         borderWidth: 1,
-        borderColor: 'rgba(255, 255, 255, 0.12)',
-        backgroundColor: '#12151c',
+        borderColor: 'rgba(255, 255, 255, 0.18)',
+        backgroundColor: '#0b0b0e',
         ...Platform.select({
             ios: {
                 shadowColor: '#000',
@@ -2464,17 +3591,17 @@ const styles = StyleSheet.create({
         }),
     },
     detailPopupInner: {
-        paddingHorizontal: 12,
-        paddingTop: 10,
-        paddingBottom: 10,
+        paddingHorizontal: 14,
+        paddingTop: 12,
+        paddingBottom: 12,
     },
     popupHeaderCompact: {
         flexDirection: 'row',
         alignItems: 'flex-start',
         justifyContent: 'space-between',
         gap: 8,
-        marginBottom: 8,
-        paddingBottom: 8,
+        marginBottom: 10,
+        paddingBottom: 10,
         borderBottomWidth: StyleSheet.hairlineWidth,
         borderBottomColor: 'rgba(255, 255, 255, 0.08)',
     },
@@ -2490,9 +3617,9 @@ const styles = StyleSheet.create({
         marginBottom: 3,
     },
     popupDateCompact: {
-        fontSize: 10,
+        fontSize: 11,
         fontWeight: '800',
-        color: 'rgba(255, 255, 255, 0.88)',
+        color: 'rgba(255, 255, 255, 0.94)',
         letterSpacing: 0.4,
     },
     popupCountPill: {
@@ -2500,7 +3627,7 @@ const styles = StyleSheet.create({
         height: 18,
         paddingHorizontal: 5,
         borderRadius: 6,
-        backgroundColor: 'rgba(255, 255, 255, 0.08)',
+        backgroundColor: 'rgba(255, 255, 255, 0.12)',
         alignItems: 'center',
         justifyContent: 'center',
     },
@@ -2516,24 +3643,24 @@ const styles = StyleSheet.create({
         marginLeft: 2,
     },
     popupTitleCompact: {
-        fontSize: 11,
+        fontSize: 12,
         fontWeight: '700',
-        color: 'rgba(255, 255, 255, 0.45)',
+        color: 'rgba(255, 255, 255, 0.62)',
     },
     popupCloseBtnCompact: {
         width: 28,
         height: 28,
         borderRadius: 8,
-        backgroundColor: 'rgba(255, 255, 255, 0.06)',
+        backgroundColor: 'rgba(255, 255, 255, 0.1)',
         alignItems: 'center',
         justifyContent: 'center',
         marginTop: -2,
     },
     popupScrollCompact: {
-        maxHeight: 260,
+        maxHeight: 310,
     },
     popupScrollContentCompact: {
-        paddingBottom: 4,
+        paddingBottom: 8,
         gap: 0,
     },
     logGroupCard: {
@@ -2612,10 +3739,10 @@ const styles = StyleSheet.create({
         color: 'rgba(255, 255, 255, 0.22)',
     },
     popupFooterCompact: {
-        marginTop: 8,
-        paddingTop: 8,
+        marginTop: 10,
+        paddingTop: 10,
         borderTopWidth: StyleSheet.hairlineWidth,
-        borderTopColor: 'rgba(255, 255, 255, 0.1)',
+        borderTopColor: 'rgba(255, 255, 255, 0.14)',
         flexDirection: 'row',
         justifyContent: 'space-between',
         alignItems: 'center',
@@ -2630,7 +3757,7 @@ const styles = StyleSheet.create({
     totalValCompact: {
         fontSize: 13,
         fontWeight: '900',
-        color: '#00E5FF',
+        color: 'rgba(255,255,255,0.95)',
         fontVariant: ['tabular-nums'],
     },
     inlineGraphSection: {
@@ -2790,5 +3917,452 @@ const styles = StyleSheet.create({
         letterSpacing: 0.5,
         color: 'rgba(255,255,255,0.5)',
         lineHeight: 14,
+    },
+    // NEW ANALYTICS TOGGLE STYLES
+    graphControllerContainer: {
+        width: '100%',
+    },
+    graphControllerContainerMinimal: {
+        marginBottom: 0,
+    },
+    graphMinimalToolbar: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'flex-end',
+        marginBottom: 3,
+    },
+    graphContentArea: {
+        width: '100%',
+    },
+    graphViewToggleContainer: {
+        flexDirection: 'row',
+        backgroundColor: 'rgba(0, 0, 0, 0.5)',
+        borderRadius: 8,
+        padding: 2,
+        marginBottom: 10,
+        alignSelf: 'flex-start',
+        borderWidth: 1,
+        borderColor: 'rgba(0, 229, 255, 0.12)',
+    },
+    graphViewToggleContainerMinimal: {
+        marginBottom: 0,
+        alignSelf: 'center',
+        padding: 1,
+        borderRadius: 7,
+    },
+    graphViewToggleBtn: {
+        paddingHorizontal: 10,
+        paddingVertical: 4,
+        borderRadius: 6,
+    },
+    graphViewToggleBtnMinimal: {
+        paddingHorizontal: 7,
+        paddingVertical: 2,
+        borderRadius: 5,
+    },
+    graphViewToggleBtnActive: {
+        backgroundColor: 'rgba(255,255,255,0.06)',
+        borderWidth: 1,
+        borderColor: 'rgba(255,255,255,0.1)',
+    },
+    graphViewToggleText: {
+        fontSize: 7,
+        fontWeight: '900',
+        color: 'rgba(255,255,255,0.25)',
+        letterSpacing: 1,
+    },
+    graphViewToggleTextMinimal: {
+        fontSize: 6,
+        letterSpacing: 0.8,
+    },
+    graphViewToggleTextActive: {
+        color: '#00E5FF',
+    },
+    monthlyAnalyticsContainer: {
+        flexDirection: 'row',
+        backgroundColor: '#030305',
+        borderRadius: 12,
+        padding: 12,
+        borderWidth: 1,
+        borderColor: 'rgba(0, 229, 255, 0.12)',
+        minHeight: 180,
+    },
+    analyticsStatsSide: {
+        flex: 1,
+        justifyContent: 'space-between',
+        paddingRight: 12,
+        borderRightWidth: 1,
+        borderRightColor: 'rgba(0, 229, 255, 0.08)',
+    },
+    analyticsTitleRow: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 6,
+        marginBottom: 8,
+    },
+    analyticsTitleText: {
+        fontSize: 9,
+        fontWeight: '900',
+        color: '#00E5FF',
+        letterSpacing: 1.5,
+    },
+    statLargeGroup: {
+        marginBottom: 12,
+    },
+    statLabelMini: {
+        fontSize: 7,
+        fontWeight: '800',
+        color: 'rgba(255,255,255,0.3)',
+        letterSpacing: 1,
+        marginBottom: 2,
+    },
+    statValueLarge: {
+        fontSize: 28,
+        fontWeight: '900',
+        color: '#fff',
+    },
+    statUnit: {
+        fontSize: 12,
+        color: 'rgba(255,255,255,0.4)',
+        fontWeight: '600',
+    },
+    statSmallRow: {
+        flexDirection: 'row',
+        gap: 12,
+        marginBottom: 12,
+    },
+    statSmallItem: {
+        flex: 1,
+    },
+    statValueMed: {
+        fontSize: 14,
+        fontWeight: '800',
+        color: '#fff',
+    },
+    analyticsLegendBottom: {
+        gap: 4,
+    },
+    legendItemMini: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 6,
+    },
+    legendDot: {
+        width: 4,
+        height: 4,
+        borderRadius: 2,
+    },
+    legendTextMini: {
+        fontSize: 8,
+        fontWeight: '700',
+        color: 'rgba(255,255,255,0.45)',
+    },
+    analyticsCalendarSide: {
+        flex: 1.4,
+        paddingLeft: 12,
+    },
+    calendarMonthHeader: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        marginBottom: 10,
+        height: 32,
+        width: '100%',
+    },
+    monthScrollContent: {
+        gap: 6,
+        paddingRight: 20,
+        alignItems: 'center',
+    },
+    monthBubble: {
+        backgroundColor: 'rgba(255,255,255,0.05)',
+        paddingHorizontal: 10,
+        paddingVertical: 4,
+        borderRadius: 12,
+        borderWidth: 1,
+        borderColor: 'rgba(255,255,255,0.05)',
+    },
+    monthBubbleActive: {
+        backgroundColor: '#00E676',
+        borderColor: 'rgba(255,255,255,0.1)',
+    },
+    monthBubbleText: {
+        fontSize: 9,
+        fontWeight: '900',
+        color: 'rgba(255,255,255,0.3)',
+    },
+    monthBubbleTextActive: {
+        color: '#000',
+    },
+    monthDataDot: {
+        width: 3,
+        height: 3,
+        borderRadius: 1.5,
+        backgroundColor: '#00E676',
+        position: 'absolute',
+        top: 4,
+        right: 4,
+    },
+    calendarGrid: {
+        flexDirection: 'row',
+        flexWrap: 'wrap',
+    },
+    calendarDayHeader: {
+        width: '14.28%',
+        textAlign: 'center',
+        fontSize: 8,
+        fontWeight: '800',
+        color: 'rgba(255,255,255,0.2)',
+        marginBottom: 8,
+    },
+    calendarDayCell: {
+        width: '14.28%',
+        height: 32,
+        alignItems: 'center',
+        justifyContent: 'center',
+        marginBottom: 2,
+    },
+    dayCircle: {
+        width: 24,
+        height: 24,
+        borderRadius: 12,
+        alignItems: 'center',
+        justifyContent: 'center',
+    },
+    dayCircleActive: {
+        backgroundColor: '#00E676',
+        borderWidth: 1,
+        borderColor: 'rgba(255,255,255,0.1)',
+    },
+    dayCircleCompleted: {
+        backgroundColor: '#00E676',
+        borderWidth: 1,
+        borderColor: 'rgba(255,255,255,0.1)',
+    },
+    dayCircleIncomplete: {
+        backgroundColor: '#FF5252',
+        borderWidth: 1,
+        borderColor: 'rgba(255,255,255,0.1)',
+    },
+    dayCircleToday: {
+        borderWidth: 1.5,
+        borderColor: '#00E5FF',
+    },
+    dayCircleSelected: {
+        borderWidth: 2,
+        borderColor: '#00E5FF',
+        shadowColor: '#00E5FF',
+        shadowOffset: { width: 0, height: 0 },
+        shadowOpacity: 0.5,
+        shadowRadius: 4,
+    },
+    calendarDayText: {
+        fontSize: 9,
+        fontWeight: '600',
+        color: 'rgba(255,255,255,0.4)',
+    },
+    calendarDayTextActive: {
+        color: '#000',
+        fontWeight: '800',
+    },
+    calendarDayTextSelected: {
+        color: '#00E5FF',
+        fontWeight: '900',
+    },
+    dayDurationText: {
+        position: 'absolute',
+        bottom: -6,
+        fontSize: 6,
+        fontWeight: '700',
+        color: 'rgba(255,255,255,0.4)',
+    },
+    // DETAIL OVERLAY STYLES
+    dayDetailOverlay: {
+        borderRadius: 12,
+        overflow: 'hidden',
+    },
+    dayDetailContent: {
+        flex: 1,
+        flexDirection: 'row',
+        padding: 12,
+    },
+    dayDetailLeft: {
+        flex: 1,
+        justifyContent: 'space-between',
+        paddingRight: 12,
+    },
+    detailTitleRow: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 6,
+        marginBottom: 8,
+    },
+    detailHeaderText: {
+        fontSize: 9,
+        fontWeight: '900',
+        color: '#00E5FF',
+        letterSpacing: 1,
+    },
+    detailSection: {
+        marginBottom: 8,
+    },
+    detailLabelMini: {
+        fontSize: 7,
+        fontWeight: '800',
+        color: 'rgba(255,255,255,0.3)',
+        letterSpacing: 0.5,
+        marginBottom: 2,
+    },
+    detailDateValue: {
+        fontSize: 14,
+        fontWeight: '900',
+        color: '#fff',
+    },
+    detailDurationValue: {
+        fontSize: 24,
+        fontWeight: '900',
+        color: '#fff',
+    },
+    detailDurationUnit: {
+        fontSize: 10,
+        color: 'rgba(255,255,255,0.4)',
+    },
+    detailStatusText: {
+        fontSize: 12,
+        fontWeight: '900',
+        color: '#00E5FF',
+    },
+    detailVerticalSeparator: {
+        width: 1,
+        backgroundColor: 'rgba(0, 229, 255, 0.2)',
+        marginHorizontal: 4,
+    },
+    dayDetailRight: {
+        flex: 1.8,
+        paddingLeft: 12,
+        flexShrink: 1,
+    },
+    detailListHeader: {
+        flexDirection: 'row',
+        justifyContent: 'space-between',
+        alignItems: 'center',
+        marginBottom: 4,
+        paddingBottom: 2,
+        borderBottomWidth: 1,
+        borderBottomColor: 'rgba(255,255,255,0.05)',
+    },
+    detailListTitle: {
+        fontSize: 9,
+        fontWeight: '900',
+        color: '#00E5FF',
+        letterSpacing: 1,
+    },
+    detailCloseBtn: {
+        padding: 4,
+    },
+    taskGroupContainer: {
+        marginBottom: 12,
+    },
+    taskGroupHeader: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 6,
+        marginBottom: 10,
+        backgroundColor: 'rgba(255,255,255,0.06)',
+        borderWidth: 1,
+        borderColor: 'rgba(255,255,255,0.12)',
+        paddingHorizontal: 10,
+        paddingVertical: 7,
+        borderRadius: 8,
+    },
+    taskGroupName: {
+        flex: 1,
+        fontSize: 10,
+        fontWeight: '900',
+        color: 'rgba(255,255,255,0.93)',
+        letterSpacing: 0.4,
+    },
+    taskGroupTotalTime: {
+        fontSize: 10,
+        fontWeight: '900',
+        color: 'rgba(255,255,255,0.95)',
+    },
+    taskGroupTree: {
+        paddingLeft: 4,
+    },
+    treeNodeRow: {
+        flexDirection: 'row',
+        marginBottom: 5,
+    },
+    treeConnectorContainer: {
+        width: 18,
+        alignItems: 'center',
+    },
+    treeVerticalLine: {
+        position: 'absolute',
+        top: 0,
+        bottom: 0,
+        left: 8,
+        width: 1,
+        backgroundColor: 'rgba(255,255,255,0.16)',
+    },
+    treeHorizontalLine: {
+        position: 'absolute',
+        top: 10,
+        left: 8,
+        width: 6,
+        height: 1,
+        backgroundColor: 'rgba(255,255,255,0.16)',
+    },
+    treeContentBody: {
+        flex: 1,
+        paddingBottom: 6,
+    },
+    treeNodeMainRow: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 4,
+    },
+    treeStatusDot: {
+        width: 4,
+        height: 4,
+        borderRadius: 2,
+    },
+    treeNodeName: {
+        flex: 1,
+        fontSize: 9,
+        fontWeight: '800',
+        color: 'rgba(255,255,255,0.9)',
+        letterSpacing: 0.3,
+    },
+    treeNodeDuration: {
+        fontSize: 9,
+        fontWeight: '700',
+        color: 'rgba(255,255,255,0.9)',
+    },
+    treeNodeSubRow: {
+        flexDirection: 'row',
+        justifyContent: 'space-between',
+        paddingLeft: 8,
+    },
+    treeNodeTime: {
+        fontSize: 7,
+        fontWeight: '600',
+        color: 'rgba(255,255,255,0.45)',
+        letterSpacing: 0.1,
+    },
+    treeNodeStatusText: {
+        fontSize: 7,
+        fontWeight: '800',
+        letterSpacing: 0.25,
+    },
+    minimalSubtaskList: {
+        flex: 1,
+        marginTop: 0,
+    },
+    emptyDetailText: {
+        fontSize: 8,
+        color: 'rgba(255,255,255,0.3)',
+        textAlign: 'center',
+        marginTop: 20,
     },
 });

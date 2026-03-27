@@ -1624,6 +1624,7 @@ export default function App() {
     const newGoal: Goal = {
       id: Date.now().toString(),
       title: goalData.title || '',
+      color: goalData.color,
       parentId: goalData.parentId || null,
       type: goalData.type || 'goal',
       targetSettings: goalData.targetSettings,
