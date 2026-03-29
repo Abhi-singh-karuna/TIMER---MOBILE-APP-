@@ -305,7 +305,7 @@ export default function SettingsScreen({
     const renderPortraitMenuCard = (id: 'customization' | 'sound' | 'categories' | 'quickmsg' | 'general' | 'datamgmt' | 'account' | 'about' | 'leave' | 'timeline', icon: keyof typeof MaterialIcons.glyphMap, title: string, desc: string) => (
         <View style={styles.portraitMenuCardBezel}>
             <TouchableOpacity
-                style={[styles.portraitMenuCardTrack, { flexDirection: 'row', alignItems: 'center', padding: 18 }]}
+                style={styles.portraitMenuCardTrack}
                 onPress={() => {
                     if (id === 'timeline') {
                         setActiveSubPage('timeOfDayBackground');
@@ -319,10 +319,24 @@ export default function SettingsScreen({
                     <MaterialIcons name={icon} size={20} color="#FFFFFF" />
                 </View>
                 <View style={styles.portraitMenuTextWrap}>
-                    <Text style={styles.portraitMenuTitle}>{title}</Text>
+                    <View style={(styles as any).portraitMenuTitleRow}>
+                        <Text style={styles.portraitMenuTitle}>{title}</Text>
+                        {id === 'account' && !user && (
+                            <View style={(styles as any).portraitPillNeutral}>
+                                <Text style={(styles as any).portraitPillNeutralText}>SYNC</Text>
+                            </View>
+                        )}
+                        {id === 'datamgmt' && (
+                            <View style={(styles as any).portraitPillWarning}>
+                                <Text style={(styles as any).portraitPillWarningText}>TOOLS</Text>
+                            </View>
+                        )}
+                    </View>
                     <Text style={styles.portraitMenuDesc} numberOfLines={1}>{desc}</Text>
                 </View>
-                <MaterialIcons name="chevron-right" size={20} color="rgba(255,255,255,0.1)" />
+                <View style={(styles as any).portraitMenuChevronWrap}>
+                    <MaterialIcons name="chevron-right" size={20} color="rgba(255,255,255,0.45)" />
+                </View>
             </TouchableOpacity>
         </View>
     );
@@ -335,41 +349,62 @@ export default function SettingsScreen({
         const initials = user?.user?.givenName?.[0] || user?.user?.email?.[0] || 'G';
 
         return (
-            <View style={styles.premiumAccountContainer}>
-                <View style={[styles.avatarGlowWrapper, { marginBottom: 18 }]}>
-                    <View style={[styles.premiumAvatarGlow, { backgroundColor: user ? 'rgba(90, 80, 255, 0.2)' : 'rgba(255, 255, 255, 0.05)' }]} />
-                    {photo ? (
-                        <Image source={{ uri: photo }} style={styles.premiumAvatar} />
-                    ) : (
-                        <View style={[styles.premiumAvatar, { backgroundColor: 'rgba(255,255,255,0.08)', alignItems: 'center', justifyContent: 'center', borderWidth: 0 }]}>
-                            <Text style={[styles.portraitProfileAvatarText, { fontSize: 36, opacity: 0.9 }]}>
-                                {initials}
-                            </Text>
+            <LinearGradient
+                colors={user ? ['rgba(88, 107, 255, 0.22)', 'rgba(15, 16, 26, 0.96)', 'rgba(6, 6, 10, 1)'] : ['rgba(60, 63, 90, 0.32)', 'rgba(15, 16, 26, 0.96)', 'rgba(6, 6, 10, 1)']}
+                start={{ x: 0, y: 0 }}
+                end={{ x: 1, y: 1 }}
+                style={(styles as any).portraitHeroCard}
+            >
+                <View style={(styles as any).portraitHeroTopRow}>
+                    <Text style={(styles as any).portraitHeroEyebrow}>PERSONAL SPACE</Text>
+                    <View style={(styles as any).portraitHeroStatus}>
+                        <View style={[(styles as any).portraitHeroStatusDot, { backgroundColor: user ? '#5BFF9B' : 'rgba(255,255,255,0.25)' }]} />
+                        <Text style={(styles as any).portraitHeroStatusText}>{user ? 'CONNECTED' : 'GUEST'}</Text>
+                    </View>
+                </View>
+                <View style={styles.premiumAccountContainer}>
+                    <View style={[styles.avatarGlowWrapper, { marginBottom: 16 }]}>
+                        <View style={[styles.premiumAvatarGlow, { backgroundColor: user ? 'rgba(90, 80, 255, 0.2)' : 'rgba(255, 255, 255, 0.05)' }]} />
+                        {photo ? (
+                            <Image source={{ uri: photo }} style={styles.premiumAvatar} />
+                        ) : (
+                            <View style={[styles.premiumAvatar, { backgroundColor: 'rgba(255,255,255,0.08)', alignItems: 'center', justifyContent: 'center', borderWidth: 0 }]}>
+                                <Text style={[styles.portraitProfileAvatarText, { fontSize: 36, opacity: 0.9 }]}>
+                                    {initials}
+                                </Text>
+                            </View>
+                        )}
+                    </View>
+
+                    <Text style={styles.premiumTitle}>{name}</Text>
+                    <Text style={[styles.premiumSubtitle, { marginBottom: user ? 14 : 22 }]}>{email}</Text>
+
+                    {user ? (
+                        <View style={styles.proMemberPill}>
+                            <MaterialIcons name="verified" size={14} color="#7A9AFF" />
+                            <Text style={styles.proMemberText}>PRO MEMBER</Text>
                         </View>
+                    ) : (
+                        <TouchableOpacity
+                            style={[styles.premiumLoginButton, { width: '90%', alignSelf: 'center' }]}
+                            onPress={handleHeaderLogin}
+                            activeOpacity={0.8}
+                            disabled={isLoginLoading}
+                        >
+                            {isLoginLoading ? (
+                                <ActivityIndicator size="small" color="#000000" />
+                            ) : (
+                                <>
+                                    <View style={styles.premiumGoogleIconWrap}>
+                                        <AntDesign name="google" size={20} color="#EA4335" />
+                                    </View>
+                                    <Text style={styles.premiumLoginButtonText}>Login with Google</Text>
+                                </>
+                            )}
+                        </TouchableOpacity>
                     )}
                 </View>
-
-                <Text style={styles.premiumTitle}>{name}</Text>
-                <Text style={[styles.premiumSubtitle, { marginBottom: user ? 14 : 28 }]}>{email}</Text>
-
-                {user ? (
-                    <View style={styles.proMemberPill}>
-                        <MaterialIcons name="verified" size={14} color="#7A9AFF" />
-                        <Text style={styles.proMemberText}>PRO MEMBER</Text>
-                    </View>
-                ) : (
-                    <TouchableOpacity 
-                        style={[styles.premiumLoginButton, { width: '85%', alignSelf: 'center' }]} 
-                        onPress={handleHeaderLogin}
-                        activeOpacity={0.8}
-                    >
-                        <View style={styles.premiumGoogleIconWrap}>
-                            <AntDesign name="google" size={20} color="#EA4335" />
-                        </View>
-                        <Text style={styles.premiumLoginButtonText}>Login with Google</Text>
-                    </TouchableOpacity>
-                )}
-            </View>
+            </LinearGradient>
         );
     };
 
@@ -384,20 +419,29 @@ export default function SettingsScreen({
                     {renderProfileHeader()}
 
                     <View style={styles.portraitMenuSection}>
-                        <Text style={styles.portraitSectionLabel}>APPEARANCE</Text>
+                        <View style={(styles as any).portraitSectionHeaderRow}>
+                            <MaterialIcons name="palette" size={14} color="rgba(255,255,255,0.55)" />
+                            <Text style={styles.portraitSectionLabel}>APPEARANCE</Text>
+                        </View>
                         {renderPortraitMenuCard('customization', 'palette', 'Theme', 'Colors, presets and visual style')}
                         {renderPortraitMenuCard('timeline', 'timeline', 'Timeline BG', 'Customize time-of-day slots')}
                     </View>
 
                     <View style={styles.portraitMenuSection}>
-                        <Text style={styles.portraitSectionLabel}>PREFERENCES</Text>
+                        <View style={(styles as any).portraitSectionHeaderRow}>
+                            <MaterialIcons name="tune" size={14} color="rgba(255,255,255,0.55)" />
+                            <Text style={styles.portraitSectionLabel}>PREFERENCES</Text>
+                        </View>
                         {renderPortraitMenuCard('sound', 'volume-up', 'Audio', 'Completion sounds and repetitions')}
                         {renderPortraitMenuCard('categories', 'category', 'Category', 'Manage task and timer categories')}
                         {renderPortraitMenuCard('quickmsg', 'chat', 'Quick Messages', 'Manage reusable task messages')}
                     </View>
 
                     <View style={styles.portraitMenuSection}>
-                        <Text style={styles.portraitSectionLabel}>SYSTEM</Text>
+                        <View style={(styles as any).portraitSectionHeaderRow}>
+                            <MaterialIcons name="settings" size={14} color="rgba(255,255,255,0.55)" />
+                            <Text style={styles.portraitSectionLabel}>SYSTEM</Text>
+                        </View>
                         {renderPortraitMenuCard('general', 'settings', 'General', 'App behavior and restrictions')}
                         {renderPortraitMenuCard('account', 'account-circle', 'Account', 'Profile and synchronization')}
                         {renderPortraitMenuCard('datamgmt', 'storage', 'Data Mgmt', 'Cloud sync, cleanup and export')}
@@ -747,6 +791,17 @@ export default function SettingsScreen({
                                     color="rgba(255,255,255,0.8)"
                                 />
                             </TouchableOpacity>
+                            <Text style={(styles as any).portraitHeaderTitle}>
+                                {activeTab === null ? 'SETTINGS' :
+                                    activeTab === 'customization' ? 'THEME' :
+                                        activeTab === 'sound' ? 'AUDIO' :
+                                            activeTab === 'categories' ? 'CATEGORY' :
+                                                activeTab === 'quickmsg' ? 'QUICK MSG' :
+                                                    activeTab === 'general' ? 'GENERAL' :
+                                                        activeTab === 'datamgmt' ? 'DATA MGMT' :
+                                                            activeTab === 'about' ? 'ABOUT' :
+                                                                activeTab === 'leave' ? 'LEAVE MGMT' : 'SETTINGS'}
+                            </Text>
                             <View style={styles.headerSpacer} />
                         </View>
                     )}
