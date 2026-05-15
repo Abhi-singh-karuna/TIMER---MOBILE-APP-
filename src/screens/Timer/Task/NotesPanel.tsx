@@ -10,6 +10,7 @@ import {
     TouchableOpacity,
     useWindowDimensions,
     View,
+    ViewStyle,
     Keyboard,
     Modal,
     TouchableWithoutFeedback,
@@ -347,19 +348,27 @@ export function NotesIconButton({
     active,
     hasNote,
     onPress,
+    style,
+    innerStyle,
+    iconSize = 20,
+    inactiveIconColor = 'rgba(255,255,255,0.72)',
 }: {
     active: boolean;
     hasNote: boolean;
     onPress: () => void;
+    style?: ViewStyle;
+    innerStyle?: ViewStyle;
+    iconSize?: number;
+    inactiveIconColor?: string;
 }) {
     return (
         <TouchableOpacity
-            style={styles.notesIconBtn}
+            style={[styles.notesIconBtn, style]}
             onPress={onPress}
             activeOpacity={0.75}
         >
-            <View style={[styles.notesIconInner, active && styles.notesIconInnerActive]}>
-                <MaterialIcons name="sticky-note-2" size={20} color={active ? '#4CAF50' : 'rgba(255,255,255,0.72)'} />
+            <View style={[styles.notesIconInner, innerStyle, active && styles.notesIconInnerActive]}>
+                <MaterialIcons name="sticky-note-2" size={iconSize} color={active ? '#4CAF50' : inactiveIconColor} />
                 {hasNote && <View style={[styles.noteDot, active && styles.noteDotActive]} />}
             </View>
         </TouchableOpacity>
