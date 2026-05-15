@@ -1,0 +1,35 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(npx expo *)",
+      "Bash(npx tsc *)",
+      "Bash(expo *)",
+      "Bash(npm install*)",
+      "Bash(npm run *)",
+      "Bash(npm ls *)",
+      "Bash(git status*)",
+      "Bash(git diff*)",
+      "Bash(git log*)",
+      "Bash(git add *)",
+      "Bash(git commit*)",
+      "Bash(git branch*)",
+      "Bash(git stash*)",
+      "Bash(git show*)",
+      "Bash(find . *)",
+      "Bash(grep *)",
+      "Bash(ls *)",
+      "Bash(ls)",
+      "Bash(cat *)",
+      "Bash(head *)",
+      "Bash(tail *)",
+      "Bash(wc *)",
+      "Bash(pod install*)",
+      "Bash(pod update*)",
+      "Bash(node *)",
+      "Bash(watchman *)",
+      "Bash(jq *)",
+      "Bash(echo *)",
+      "Read"
+    ]
+  }
+}
