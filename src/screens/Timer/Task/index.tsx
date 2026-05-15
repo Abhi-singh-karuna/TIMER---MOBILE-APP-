@@ -4272,6 +4272,43 @@ export default function TaskList({
                             <View style={{ flex: 1, marginTop: 15 }}>
                                 {renderCustomContent()}
                             </View>
+                        ) : expandedTaskId && !showHistoryPanel ? (
+                            <View style={styles.expandedTakeoverContainer}>
+                                {(() => {
+                                    const expandedTask = filteredTasks.find(t => t && t.id === expandedTaskId);
+                                    if (!expandedTask) {
+                                        setExpandedTaskId(null);
+                                        return null;
+                                    }
+                                    return (
+                                        <TaskCard
+                                            task={expandedTask}
+                                            onToggle={() => onToggleTask(filteredTasks.find(t => t.id === expandedTaskId)!)}
+                                            onDelete={() => onDeleteTask(filteredTasks.find(t => t.id === expandedTaskId)!)}
+                                            onEdit={() => onEditTask?.(filteredTasks.find(t => t.id === expandedTaskId)!)}
+                                            isLandscape={false}
+                                            categories={categories}
+                                            dailyStartMinutes={dailyStartMinutes}
+                                            isPastTasksDisabled={isPastTasksDisabled}
+                                            onOpenMenu={() => {
+                                                const t = filteredTasks.find(tsk => tsk.id === expandedTaskId)!;
+                                                setSelectedActionTask(t);
+                                                setActionModalVisible(true);
+                                            }}
+                                            isExpanded={true}
+                                            onExpand={() => setExpandedTaskId(null)}
+                                            onUpdateComment={onUpdateComment}
+                                            onEditComment={onEditComment}
+                                            onDeleteComment={onDeleteComment}
+                                            onUpdateStages={onUpdateStages}
+                                            quickMessages={quickMessages}
+                                            isFullView={true}
+                                            allTasks={tasks}
+                                            leaveDays={leaveDays}
+                                        />
+                                    );
+                                })()}
+                            </View>
                         ) : (
                             <FlatList
                                 data={showHistoryPanel ? [] : filteredTasks}
@@ -4297,10 +4334,10 @@ export default function TaskList({
                                                     setSelectedActionTask(task);
                                                     setActionModalVisible(true);
                                                 }}
-                                                isExpanded={expandedTaskId === task.id}
+                                                isExpanded={false}
                                                 onExpand={() => {
                                                     LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
-                                                    setExpandedTaskId(expandedTaskId === task.id ? null : task.id);
+                                                    setExpandedTaskId(task.id);
                                                 }}
                                                 onUpdateComment={onUpdateComment}
                                                 onEditComment={onEditComment}
@@ -4343,7 +4380,7 @@ export default function TaskList({
                         )}
 
                         {/* FAB */}
-                        {!showHistoryPanel && activeView !== 'goal' && (
+                        {!showHistoryPanel && activeView !== 'goal' && !expandedTaskId && (
                             <TouchableOpacity
                                 style={[styles.addButton, { bottom: insets.bottom + 16, right: insets.right + 24 }]}
                                 onPress={onAddTask}
@@ -4593,6 +4630,7 @@ function DraggableStagesList({ stages, onReorder, onSetStageStatus, onDeleteStag
                 showsVerticalScrollIndicator={true}
                 keyboardShouldPersistTaps="handled"
                 contentContainerStyle={{ paddingBottom: 40 }}
+                containerStyle={{ flex: 1 }}
             />
             <StageActionPopup
                 visible={popupVisible}
@@ -5589,7 +5627,7 @@ function TaskCard({
 
                     {activeRightTab === 'stages' ? (
                         /* Stages Section (Portrait) */
-                        <View style={{ flex: 1, paddingHorizontal: 16, overflow: 'hidden' }}>
+                        <View style={{ flex: 1, paddingHorizontal: 16 }}>
                             {/* Stage Input - same as comment input */}
                             <>
                                 <View style={styles.inlineAddComment}>
@@ -5835,6 +5873,7 @@ function TaskCard({
                     styles.taskCardBezel,
                     isLandscape && styles.taskCardBezelLandscape,
                     isLocked && { opacity: 0.5 },
+                    isFullView && !isLandscape && { flex: 1, marginBottom: 0 },
                 ]}
             >
                 <View style={[styles.taskCardOuterBoundaryHighlight, isLandscape && styles.taskCardOuterBoundaryHighlightLandscape]} />
@@ -5847,7 +5886,7 @@ function TaskCard({
                         isExpanded && styles.taskCardExpanded,
                         isFullView && styles.taskCardFullView,
                         (isPast && !isCompleted) && { backgroundColor: 'rgba(255, 82, 82, 0.15)' },
-                        isExpanded && !isLandscape && {
+                        isExpanded && !isLandscape && !isFullView && {
                             height: (() => {
                                 const descLength = task.description?.length || 0;
                                 const estimatedLines = Math.ceil(descLength / 45);
