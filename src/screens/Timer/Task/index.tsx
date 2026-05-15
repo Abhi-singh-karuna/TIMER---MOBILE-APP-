@@ -20,7 +20,7 @@ import {
     Alert,
     FlatList,
 } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
 import { BlurView } from 'expo-blur';
 import { MaterialIcons } from '@expo/vector-icons';
@@ -274,9 +274,9 @@ const styles = StyleSheet.create({
         position: 'absolute',
         right: 16,
         bottom: 16,
-        width: 56,
-        height: 56,
-        borderRadius: 28,
+        width: 60,
+        height: 60,
+        borderRadius: 30,
         backgroundColor: '#FFFFFF',
         alignItems: 'center',
         justifyContent: 'center',
@@ -2379,6 +2379,7 @@ export default function TaskList({
 }: TaskListProps) {
     const { width: screenWidth, height: screenHeight } = useWindowDimensions();
     const isLandscape = screenWidth > screenHeight;
+    const insets = useSafeAreaInsets();
     const [orientationNonce, setOrientationNonce] = useState(0);
 
     useEffect(() => {
@@ -3959,7 +3960,7 @@ export default function TaskList({
                                                 keyboardShouldPersistTaps="handled"
                                             />
 
-                                            <TouchableOpacity style={styles.addButtonLandscape} onPress={onAddTask} activeOpacity={0.8}>
+                                            <TouchableOpacity style={[styles.addButtonLandscape, { bottom: 16, right: 24 }]} onPress={onAddTask} activeOpacity={0.8}>
                                                 <MaterialIcons name="add" size={28} color="#000" />
                                             </TouchableOpacity>
                                         </>
@@ -4344,7 +4345,7 @@ export default function TaskList({
                         {/* FAB */}
                         {!showHistoryPanel && activeView !== 'goal' && (
                             <TouchableOpacity
-                                style={[styles.addButton, !isLandscape && styles.addButtonPortrait]}
+                                style={[styles.addButton, { bottom: insets.bottom + 16, right: insets.right + 24 }]}
                                 onPress={onAddTask}
                                 activeOpacity={0.8}
                             >
