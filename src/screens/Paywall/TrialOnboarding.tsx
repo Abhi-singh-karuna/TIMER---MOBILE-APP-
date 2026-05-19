@@ -12,6 +12,7 @@ import {
   ScrollView,
   StyleSheet,
   Text,
+  useWindowDimensions,
   View,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -68,6 +69,8 @@ export default function TrialOnboarding({ visible, onComplete }: Props) {
   const [trialMode, setTrialMode] = useState(true);
   const [plan, setPlan] = useState<PlanKey>('annual');
   const [paywallVisible, setPaywallVisible] = useState(false);
+  const { width: winW, height: winH } = useWindowDimensions();
+  const isLandscape = winW > winH;
 
   // Animations
   const heroEntry = useRef(new Animated.Value(0)).current;
@@ -190,7 +193,12 @@ export default function TrialOnboarding({ visible, onComplete }: Props) {
   const ctaGlow       = ctaShine.interpolate({ inputRange: [0, 1], outputRange: [0.18, 0.45] });
 
   return (
-    <Modal visible={visible} animationType="fade" statusBarTranslucent>
+    <Modal
+      visible={visible}
+      animationType="fade"
+      statusBarTranslucent
+      supportedOrientations={['portrait', 'landscape', 'landscape-left', 'landscape-right']}
+    >
       <View style={styles.root}>
         {/* Dual-tone background */}
         <LinearGradient
@@ -216,7 +224,7 @@ export default function TrialOnboarding({ visible, onComplete }: Props) {
           </Animated.View>
 
           <ScrollView
-            contentContainerStyle={styles.scroll}
+            contentContainerStyle={[styles.scroll, isLandscape && styles.scrollLandscape]}
             showsVerticalScrollIndicator={false}
             bounces
           >
@@ -548,6 +556,17 @@ const styles = StyleSheet.create({
   scroll: {
     paddingHorizontal: 22,
     paddingTop: 6,
+  },
+  // Landscape: centre and constrain to a comfortable column width. The trial
+  // onboarding is short enough that two columns are not needed — instead we
+  // keep the vertical flow but stop the layout from stretching edge to edge.
+  scrollLandscape: {
+    maxWidth: 620,
+    width: '100%',
+    alignSelf: 'center',
+    paddingHorizontal: 28,
+    paddingTop: 8,
+    paddingBottom: 28,
   },
 
   // ============ HERO ============

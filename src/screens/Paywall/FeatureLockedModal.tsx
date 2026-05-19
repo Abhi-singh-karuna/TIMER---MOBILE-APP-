@@ -10,6 +10,7 @@ import {
   StyleSheet,
   Text,
   TouchableWithoutFeedback,
+  useWindowDimensions,
   View,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -240,6 +241,8 @@ export default function FeatureLockedModal({ visible, feature, onClose, onViewPl
   const { purchase } = useSubscription();
   const [offering, setOffering] = useState<PurchasesOffering | null>(null);
   const [purchasing, setPurchasing] = useState(false);
+  const { width: winW, height: winH } = useWindowDimensions();
+  const isLandscape = winW > winH;
 
   const slide   = useRef(new Animated.Value(0)).current;
   const fade    = useRef(new Animated.Value(0)).current;
@@ -275,7 +278,11 @@ export default function FeatureLockedModal({ visible, feature, onClose, onViewPl
   const monthlyPrice = offering?.monthly?.product.priceString || '$3.99';
   const monthlyEq    = offering?.annual ? `$${(offering.annual.product.price / 12).toFixed(2)}/mo` : '$2.50/mo';
 
-  const translateY  = slide.interpolate({ inputRange: [0, 1], outputRange: [600, 0] });
+  // In landscape we center the sheet (entrance is a soft scale+fade); in
+  // portrait it slides up from the bottom. Same animated values, different
+  // visual mapping.
+  const translateY  = slide.interpolate({ inputRange: [0, 1], outputRange: isLandscape ? [16, 0] : [600, 0] });
+  const scale       = slide.interpolate({ inputRange: [0, 1], outputRange: isLandscape ? [0.96, 1] : [1, 1] });
   const shimmerTx   = shimmer.interpolate({ inputRange: [0, 1], outputRange: [-180, 180] });
 
   const handleDismiss = () => {
@@ -321,8 +328,9 @@ export default function FeatureLockedModal({ visible, feature, onClose, onViewPl
       animationType="none"
       onRequestClose={handleDismiss}
       statusBarTranslucent
+      supportedOrientations={['portrait', 'landscape', 'landscape-left', 'landscape-right']}
     >
-      <View style={styles.root}>
+      <View style={[styles.root, isLandscape && styles.rootLandscape]}>
         <TouchableWithoutFeedback onPress={handleDismiss}>
           <Animated.View style={[StyleSheet.absoluteFillObject, { opacity: fade }]}>
             <BlurView intensity={30} tint="dark" style={StyleSheet.absoluteFill} />
@@ -330,166 +338,201 @@ export default function FeatureLockedModal({ visible, feature, onClose, onViewPl
           </Animated.View>
         </TouchableWithoutFeedback>
 
-        <Animated.View style={[styles.sheet, { transform: [{ translateY }] }]}>
+        <Animated.View
+          style={[
+            styles.sheet,
+            isLandscape && styles.sheetLandscape,
+            { transform: [{ translateY }, { scale }] },
+          ]}
+        >
           {/* Gold top hairline */}
           <View style={styles.topHairline} />
 
-          {/* Drag handle */}
-          <View style={styles.handleRow}>
-            <View style={styles.dragHandle} />
-          </View>
+          {/* Drag handle — portrait only */}
+          {!isLandscape ? (
+            <View style={styles.handleRow}>
+              <View style={styles.dragHandle} />
+            </View>
+          ) : null}
 
-          <ScrollView
-            showsVerticalScrollIndicator={false}
-            contentContainerStyle={styles.scroll}
-            bounces={false}
-          >
-            {/* ============ HEADER ============ */}
-            <View style={styles.headerRow}>
-              <LinearGradient
-                colors={['rgba(255,255,255,0.08)', 'rgba(255,255,255,0.02)']}
-                start={{ x: 0, y: 0 }}
-                end={{ x: 1, y: 1 }}
-                style={styles.iconSquare}
+          {(() => {
+            // Section A: identity + sell (header, body, usage, benefits).
+            const sellSection = (
+              <>
+                <View style={styles.headerRow}>
+                  <LinearGradient
+                    colors={['rgba(255,255,255,0.08)', 'rgba(255,255,255,0.02)']}
+                    start={{ x: 0, y: 0 }}
+                    end={{ x: 1, y: 1 }}
+                    style={styles.iconSquare}
+                  >
+                    <MaterialIcons name={visual.icon} size={22} color="#FFFFFF" />
+                    <View style={styles.iconLockBadge}>
+                      <MaterialIcons name="lock" size={9} color="#000" />
+                    </View>
+                  </LinearGradient>
+                  <View style={styles.headerTextWrap}>
+                    <View style={styles.eyebrowRow}>
+                      <MaterialIcons name="auto-awesome" size={10} color={GOLD} />
+                      <Text style={styles.eyebrow}>PRO FEATURE</Text>
+                    </View>
+                    <Text style={styles.title}>{copy.title}</Text>
+                  </View>
+                </View>
+
+                <Text style={styles.body}>{copy.body}</Text>
+
+                {visual.limitNote ? (
+                  <View style={styles.usageWrap}>
+                    <View style={styles.usageBarTrack}>
+                      <View style={[styles.usageBarFill, { width: `${visual.limitFilled * 100}%` }]} />
+                    </View>
+                    <Text style={styles.usageNote}>{visual.limitNote}</Text>
+                  </View>
+                ) : null}
+
+                <View style={styles.benefitsSection}>
+                  <View style={styles.sectionHeader}>
+                    <View style={styles.sectionHeaderLine} />
+                    <Text style={styles.sectionHeaderText}>WHAT YOU UNLOCK</Text>
+                    <View style={styles.sectionHeaderLine} />
+                  </View>
+
+                  {visual.benefits.map((b) => (
+                    <View key={b.title} style={styles.benefitRow}>
+                      <View style={styles.benefitIconWrap}>
+                        <MaterialIcons name={b.icon} size={16} color={GOLD} />
+                      </View>
+                      <View style={styles.benefitTextWrap}>
+                        <Text style={styles.benefitTitle}>{b.title}</Text>
+                        <Text style={styles.benefitSub}>{b.sub}</Text>
+                      </View>
+                      <MaterialIcons name="check-circle" size={14} color={GOLD} />
+                    </View>
+                  ))}
+                </View>
+              </>
+            );
+
+            // Section B: convert (pricing, CTA, trust, secondary, dismiss).
+            const convertSection = (
+              <>
+                <View style={styles.pricingCard}>
+                  <View style={styles.pricingHeaderRow}>
+                    <Text style={styles.pricingHeaderText}>PRO PLAN</Text>
+                    <View style={styles.bestPill}>
+                      <MaterialIcons name="star" size={9} color="#000" />
+                      <Text style={styles.bestPillText}>BEST VALUE</Text>
+                    </View>
+                  </View>
+                  <View style={styles.pricingMainRow}>
+                    <Text style={styles.pricingAnnual}>{annualPrice}</Text>
+                    <Text style={styles.pricingPer}>/year</Text>
+                  </View>
+                  <View style={styles.pricingSubRow}>
+                    <Text style={styles.pricingMonthlyEq}>≈ {monthlyEq}</Text>
+                    <View style={styles.pricingDot} />
+                    <Text style={styles.pricingMonthly}>or {monthlyPrice}/mo</Text>
+                  </View>
+                </View>
+
+                <Pressable
+                  onPress={handleStartTrial}
+                  disabled={purchasing}
+                  style={({ pressed }) => [
+                    styles.cta,
+                    purchasing && { opacity: 0.6 },
+                    pressed && { transform: [{ scale: 0.985 }] },
+                  ]}
+                >
+                  <Animated.View
+                    style={[styles.ctaShimmer, { transform: [{ translateX: shimmerTx }] }]}
+                    pointerEvents="none"
+                  >
+                    <LinearGradient
+                      colors={['rgba(212,181,126,0)', GOLD_SOFT, 'rgba(212,181,126,0)']}
+                      start={{ x: 0, y: 0.5 }}
+                      end={{ x: 1, y: 0.5 }}
+                      style={StyleSheet.absoluteFill}
+                    />
+                  </Animated.View>
+
+                  {purchasing ? (
+                    <ActivityIndicator color="#000" />
+                  ) : (
+                    <>
+                      <Text style={styles.ctaText}>Start 7-Day Free Trial</Text>
+                      <View style={styles.ctaIcon}>
+                        <MaterialIcons name="arrow-forward" size={14} color={GOLD} />
+                      </View>
+                    </>
+                  )}
+                </Pressable>
+
+                <View style={styles.trustRow}>
+                  <View style={styles.trustItem}>
+                    <MaterialIcons name="block" size={12} color={GOLD} />
+                    <Text style={styles.trustText}>No charge today</Text>
+                  </View>
+                  <View style={styles.trustDivider} />
+                  <View style={styles.trustItem}>
+                    <MaterialIcons name="event-available" size={12} color={GOLD} />
+                    <Text style={styles.trustText}>Cancel anytime</Text>
+                  </View>
+                  <View style={styles.trustDivider} />
+                  <View style={styles.trustItem}>
+                    <MaterialIcons name="lock" size={12} color={GOLD} />
+                    <Text style={styles.trustText}>Secure</Text>
+                  </View>
+                </View>
+
+                <Pressable
+                  onPress={handleViewPlans}
+                  disabled={purchasing}
+                  style={({ pressed }) => [
+                    styles.ctaSecondary,
+                    pressed && { backgroundColor: 'rgba(255,255,255,0.07)' },
+                  ]}
+                >
+                  <Text style={styles.ctaSecondaryText}>Compare all plans</Text>
+                  <MaterialIcons name="chevron-right" size={16} color="rgba(255,255,255,0.55)" />
+                </Pressable>
+
+                <Pressable onPress={handleDismiss} hitSlop={10} style={styles.dismissBtn}>
+                  <Text style={styles.dismissText}>Not now</Text>
+                </Pressable>
+              </>
+            );
+
+            // Landscape: side-by-side columns inside a centered wider card.
+            // Portrait: vertical bottom-sheet (unchanged).
+            if (isLandscape) {
+              return (
+                <ScrollView
+                  showsVerticalScrollIndicator={false}
+                  contentContainerStyle={[styles.scroll, styles.scrollLandscape]}
+                  bounces={false}
+                >
+                  <View style={styles.twoColRow}>
+                    <View style={styles.leftCol}>{sellSection}</View>
+                    <View style={styles.colDivider} />
+                    <View style={styles.rightCol}>{convertSection}</View>
+                  </View>
+                </ScrollView>
+              );
+            }
+
+            return (
+              <ScrollView
+                showsVerticalScrollIndicator={false}
+                contentContainerStyle={styles.scroll}
+                bounces={false}
               >
-                <MaterialIcons name={visual.icon} size={22} color="#FFFFFF" />
-                <View style={styles.iconLockBadge}>
-                  <MaterialIcons name="lock" size={9} color="#000" />
-                </View>
-              </LinearGradient>
-              <View style={styles.headerTextWrap}>
-                <View style={styles.eyebrowRow}>
-                  <MaterialIcons name="auto-awesome" size={10} color={GOLD} />
-                  <Text style={styles.eyebrow}>PRO FEATURE</Text>
-                </View>
-                <Text style={styles.title}>{copy.title}</Text>
-              </View>
-            </View>
-
-            <Text style={styles.body}>{copy.body}</Text>
-
-            {/* ============ USAGE BAR ============ */}
-            {visual.limitNote ? (
-              <View style={styles.usageWrap}>
-                <View style={styles.usageBarTrack}>
-                  <View style={[styles.usageBarFill, { width: `${visual.limitFilled * 100}%` }]} />
-                </View>
-                <Text style={styles.usageNote}>{visual.limitNote}</Text>
-              </View>
-            ) : null}
-
-            {/* ============ BENEFITS LIST ============ */}
-            <View style={styles.benefitsSection}>
-              <View style={styles.sectionHeader}>
-                <View style={styles.sectionHeaderLine} />
-                <Text style={styles.sectionHeaderText}>WHAT YOU UNLOCK</Text>
-                <View style={styles.sectionHeaderLine} />
-              </View>
-
-              {visual.benefits.map((b) => (
-                <View key={b.title} style={styles.benefitRow}>
-                  <View style={styles.benefitIconWrap}>
-                    <MaterialIcons name={b.icon} size={16} color={GOLD} />
-                  </View>
-                  <View style={styles.benefitTextWrap}>
-                    <Text style={styles.benefitTitle}>{b.title}</Text>
-                    <Text style={styles.benefitSub}>{b.sub}</Text>
-                  </View>
-                  <MaterialIcons name="check-circle" size={14} color={GOLD} />
-                </View>
-              ))}
-            </View>
-
-            {/* ============ PRICING ============ */}
-            <View style={styles.pricingCard}>
-              <View style={styles.pricingHeaderRow}>
-                <Text style={styles.pricingHeaderText}>PRO PLAN</Text>
-                <View style={styles.bestPill}>
-                  <MaterialIcons name="star" size={9} color="#000" />
-                  <Text style={styles.bestPillText}>BEST VALUE</Text>
-                </View>
-              </View>
-              <View style={styles.pricingMainRow}>
-                <Text style={styles.pricingAnnual}>{annualPrice}</Text>
-                <Text style={styles.pricingPer}>/year</Text>
-              </View>
-              <View style={styles.pricingSubRow}>
-                <Text style={styles.pricingMonthlyEq}>≈ {monthlyEq}</Text>
-                <View style={styles.pricingDot} />
-                <Text style={styles.pricingMonthly}>or {monthlyPrice}/mo</Text>
-              </View>
-            </View>
-
-            {/* ============ PRIMARY CTA ============ */}
-            <Pressable
-              onPress={handleStartTrial}
-              disabled={purchasing}
-              style={({ pressed }) => [
-                styles.cta,
-                purchasing && { opacity: 0.6 },
-                pressed && { transform: [{ scale: 0.985 }] },
-              ]}
-            >
-              {/* Gold shimmer sweep */}
-              <Animated.View
-                style={[styles.ctaShimmer, { transform: [{ translateX: shimmerTx }] }]}
-                pointerEvents="none"
-              >
-                <LinearGradient
-                  colors={['rgba(212,181,126,0)', GOLD_SOFT, 'rgba(212,181,126,0)']}
-                  start={{ x: 0, y: 0.5 }}
-                  end={{ x: 1, y: 0.5 }}
-                  style={StyleSheet.absoluteFill}
-                />
-              </Animated.View>
-
-              {purchasing ? (
-                <ActivityIndicator color="#000" />
-              ) : (
-                <>
-                  <Text style={styles.ctaText}>Start 7-Day Free Trial</Text>
-                  <View style={styles.ctaIcon}>
-                    <MaterialIcons name="arrow-forward" size={14} color={GOLD} />
-                  </View>
-                </>
-              )}
-            </Pressable>
-
-            {/* ============ TRUST ROW ============ */}
-            <View style={styles.trustRow}>
-              <View style={styles.trustItem}>
-                <MaterialIcons name="block" size={12} color={GOLD} />
-                <Text style={styles.trustText}>No charge today</Text>
-              </View>
-              <View style={styles.trustDivider} />
-              <View style={styles.trustItem}>
-                <MaterialIcons name="event-available" size={12} color={GOLD} />
-                <Text style={styles.trustText}>Cancel anytime</Text>
-              </View>
-              <View style={styles.trustDivider} />
-              <View style={styles.trustItem}>
-                <MaterialIcons name="lock" size={12} color={GOLD} />
-                <Text style={styles.trustText}>Secure</Text>
-              </View>
-            </View>
-
-            {/* ============ SECONDARY ACTIONS ============ */}
-            <Pressable
-              onPress={handleViewPlans}
-              disabled={purchasing}
-              style={({ pressed }) => [
-                styles.ctaSecondary,
-                pressed && { backgroundColor: 'rgba(255,255,255,0.07)' },
-              ]}
-            >
-              <Text style={styles.ctaSecondaryText}>Compare all plans</Text>
-              <MaterialIcons name="chevron-right" size={16} color="rgba(255,255,255,0.55)" />
-            </Pressable>
-
-            <Pressable onPress={handleDismiss} hitSlop={10} style={styles.dismissBtn}>
-              <Text style={styles.dismissText}>Not now</Text>
-            </Pressable>
-          </ScrollView>
+                {sellSection}
+                {convertSection}
+              </ScrollView>
+            );
+          })()}
         </Animated.View>
       </View>
     </Modal>
@@ -500,6 +543,11 @@ export default function FeatureLockedModal({ visible, feature, onClose, onViewPl
 
 const styles = StyleSheet.create({
   root: { flex: 1, justifyContent: 'flex-end' },
+  rootLandscape: {
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: 24,
+  },
   dimLayer: {
     ...StyleSheet.absoluteFillObject,
     backgroundColor: 'rgba(0,0,0,0.55)',
@@ -519,6 +567,19 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: -10 },
     elevation: 26,
   },
+  // Landscape: centered card with all 4 corners rounded and a wider max so
+  // the two-column body has room to breathe on tablets and landscape phones.
+  sheetLandscape: {
+    width: '94%',
+    maxWidth: 820,
+    maxHeight: '94%',
+    borderRadius: 22,
+    borderTopWidth: 1,
+    borderTopLeftRadius: 22,
+    borderTopRightRadius: 22,
+    borderBottomLeftRadius: 22,
+    borderBottomRightRadius: 22,
+  },
   topHairline: {
     position: 'absolute',
     top: 0,
@@ -536,6 +597,23 @@ const styles = StyleSheet.create({
     paddingHorizontal: 22,
     paddingTop: 4,
     paddingBottom: 24,
+  },
+  scrollLandscape: {
+    paddingHorizontal: 26,
+    paddingTop: 22,
+    paddingBottom: 22,
+  },
+  twoColRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 22,
+  },
+  leftCol: { flex: 1.05, minWidth: 0 },
+  rightCol: { flex: 1, minWidth: 0 },
+  colDivider: {
+    width: StyleSheet.hairlineWidth,
+    alignSelf: 'stretch',
+    backgroundColor: 'rgba(255,255,255,0.08)',
   },
 
   // ============ HEADER ============

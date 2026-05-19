@@ -12,6 +12,7 @@ import {
   ScrollView,
   StyleSheet,
   Text,
+  useWindowDimensions,
   View,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -97,6 +98,8 @@ export default function Paywall({ visible, onClose }: Props) {
   const [purchasing, setPurchasing] = useState(false);
   const [restoring, setRestoring] = useState(false);
   const [openFaq, setOpenFaq] = useState<number | null>(null);
+  const { width: winW, height: winH } = useWindowDimensions();
+  const isLandscape = winW > winH;
 
   const shimmer = useRef(new Animated.Value(0)).current;
 
@@ -179,7 +182,13 @@ export default function Paywall({ visible, onClose }: Props) {
   const shimmerTx = shimmer.interpolate({ inputRange: [0, 1], outputRange: [-180, 220] });
 
   return (
-    <Modal visible={visible} animationType="slide" onRequestClose={handleClose} statusBarTranslucent>
+    <Modal
+      visible={visible}
+      animationType="slide"
+      onRequestClose={handleClose}
+      statusBarTranslucent
+      supportedOrientations={['portrait', 'landscape', 'landscape-left', 'landscape-right']}
+    >
       <View style={styles.root}>
         <LinearGradient
           colors={['#0E0E10', '#06070A', '#000000']}
@@ -201,181 +210,241 @@ export default function Paywall({ visible, onClose }: Props) {
             <View style={{ width: 44 }} />
           </View>
 
-          <ScrollView
-            contentContainerStyle={styles.scroll}
-            showsVerticalScrollIndicator={false}
-          >
-            {/* ============ HERO ============ */}
-            <View style={styles.hero}>
-              <View style={styles.proBadge}>
-                <MaterialIcons name="auto-awesome" size={11} color={GOLD} />
-                <Text style={styles.proBadgeText}>CHRONOSCAPE PRO</Text>
-              </View>
-              <Text style={styles.heroTitle}>
-                Master your time.{'\n'}
-                <Text style={styles.heroTitleAccent}>Without limits.</Text>
-              </Text>
-              <Text style={styles.heroSubtitle}>
-                Unlock every Pro feature with a 7-day free trial. No charge until your trial ends.
-              </Text>
-            </View>
+          {(() => {
+            // === Reusable section fragments — same content, different arrangement
+            //     between portrait (single column) and landscape (hero/plans/CTA
+            //     full width at top, benefits + comparison side-by-side below).
 
-            {/* ============ PLAN CARDS ============ */}
-            <View style={styles.planRow}>
-              <PlanCard
-                label="MONTHLY"
-                price={monthlyPkg?.product.priceString || '$3.99'}
-                period="/ month"
-                selected={selected === 'monthly'}
-                onSelect={() => selectPlan('monthly')}
-                sub="Flexible — pay each month"
-              />
-              <PlanCard
-                label="ANNUAL"
-                price={annualPkg?.product.priceString || '$29.99'}
-                period="/ year"
-                selected={selected === 'annual'}
-                onSelect={() => selectPlan('annual')}
-                badge="BEST VALUE"
-                sub={`≈ ${monthlyEq}/mo · Save 37%`}
-              />
-            </View>
-
-            {/* ============ CTA ============ */}
-            <Pressable
-              onPress={handleSubscribe}
-              disabled={purchasing || !selectedPkg}
-              style={({ pressed }) => [
-                styles.cta,
-                (purchasing || !selectedPkg) && { opacity: 0.55 },
-                pressed && { transform: [{ scale: 0.985 }] },
-              ]}
-            >
-              <Animated.View
-                style={[styles.ctaShimmer, { transform: [{ translateX: shimmerTx }] }]}
-                pointerEvents="none"
-              >
-                <LinearGradient
-                  colors={['rgba(212,181,126,0)', GOLD_SOFT, 'rgba(212,181,126,0)']}
-                  start={{ x: 0, y: 0.5 }}
-                  end={{ x: 1, y: 0.5 }}
-                  style={StyleSheet.absoluteFill}
-                />
-              </Animated.View>
-              {purchasing ? (
-                <ActivityIndicator color="#000" />
-              ) : (
-                <>
-                  <Text style={styles.ctaText}>
-                    {isPro ? 'Change Plan' : 'Start 7-Day Free Trial'}
-                  </Text>
-                  <View style={styles.ctaIcon}>
-                    <MaterialIcons name="arrow-forward" size={14} color={GOLD} />
-                  </View>
-                </>
-              )}
-            </Pressable>
-
-            {/* ============ TRUST ROW ============ */}
-            <View style={styles.trustRow}>
-              <View style={styles.trustItem}>
-                <MaterialIcons name="block" size={12} color={GOLD} />
-                <Text style={styles.trustText}>No charge today</Text>
-              </View>
-              <View style={styles.trustDivider} />
-              <View style={styles.trustItem}>
-                <MaterialIcons name="event-available" size={12} color={GOLD} />
-                <Text style={styles.trustText}>Cancel anytime</Text>
-              </View>
-              <View style={styles.trustDivider} />
-              <View style={styles.trustItem}>
-                <MaterialIcons name="lock" size={12} color={GOLD} />
-                <Text style={styles.trustText}>Secure</Text>
-              </View>
-            </View>
-
-            {/* ============ BENEFITS LIST ============ */}
-            <SectionHeader title="WHAT YOU UNLOCK" />
-            <View style={styles.benefitsList}>
-              {BENEFITS.map((b) => (
-                <View key={b.title} style={styles.benefitRow}>
-                  <View style={styles.benefitIconWrap}>
-                    <MaterialIcons name={b.icon} size={16} color={GOLD} />
-                  </View>
-                  <View style={styles.benefitTextWrap}>
-                    <Text style={styles.benefitTitle}>{b.title}</Text>
-                    <Text style={styles.benefitSub}>{b.sub}</Text>
-                  </View>
-                  <MaterialIcons name="check-circle" size={14} color={GOLD} />
+            const heroEl = (
+              <View style={[styles.hero, isLandscape && styles.heroLandscape]}>
+                <View style={styles.proBadge}>
+                  <MaterialIcons name="auto-awesome" size={11} color={GOLD} />
+                  <Text style={styles.proBadgeText}>CHRONOSCAPE PRO</Text>
                 </View>
-              ))}
-            </View>
-
-            {/* ============ COMPARISON TABLE ============ */}
-            <SectionHeader title="FREE VS PRO" />
-            <View style={styles.compareCard}>
-              <View style={styles.compareHeader}>
-                <View style={{ flex: 1.4 }} />
-                <Text style={[styles.compareColHeader, { color: 'rgba(255,255,255,0.55)' }]}>FREE</Text>
-                <Text style={[styles.compareColHeader, { color: GOLD }]}>PRO</Text>
-              </View>
-              {COMPARISON.map((row, i) => (
-                <View
-                  key={row.label}
-                  style={[styles.compareRow, i === COMPARISON.length - 1 && { borderBottomWidth: 0 }]}
-                >
-                  <Text style={styles.compareLabel}>{row.label}</Text>
-                  <Text style={styles.compareFree}>{row.free}</Text>
-                  <Text style={styles.comparePro}>{row.pro}</Text>
-                </View>
-              ))}
-            </View>
-
-            {/* ============ FAQ ============ */}
-            <SectionHeader title="FREQUENTLY ASKED" />
-            <View style={styles.faqList}>
-              {FAQS.map((f, i) => (
-                <Pressable
-                  key={f.q}
-                  onPress={() => toggleFaq(i)}
-                  style={styles.faqItem}
-                >
-                  <View style={styles.faqQuestionRow}>
-                    <Text style={styles.faqQuestion}>{f.q}</Text>
-                    <MaterialIcons
-                      name={openFaq === i ? 'expand-less' : 'expand-more'}
-                      size={20}
-                      color={GOLD}
-                    />
-                  </View>
-                  {openFaq === i ? (
-                    <Text style={styles.faqAnswer}>{f.a}</Text>
-                  ) : null}
-                </Pressable>
-              ))}
-            </View>
-
-            {/* ============ FOOTER LINKS ============ */}
-            <View style={styles.footerLinks}>
-              <Pressable onPress={handleRestore} hitSlop={8} disabled={restoring}>
-                <Text style={styles.footerLink}>
-                  {restoring ? 'Restoring…' : 'Restore Purchases'}
+                <Text style={[styles.heroTitle, isLandscape && styles.heroTitleLandscape]}>
+                  Master your time.{'\n'}
+                  <Text style={styles.heroTitleAccent}>Without limits.</Text>
                 </Text>
-              </Pressable>
-              <View style={styles.footerDot} />
-              <Pressable onPress={openTerms} hitSlop={8}>
-                <Text style={styles.footerLink}>Terms of Use</Text>
-              </Pressable>
-              <View style={styles.footerDot} />
-              <Pressable onPress={openTerms} hitSlop={8}>
-                <Text style={styles.footerLink}>Privacy</Text>
-              </Pressable>
-            </View>
+                <Text style={[styles.heroSubtitle, isLandscape && styles.heroSubtitleLandscape]}>
+                  Unlock every Pro feature with a 7-day free trial. No charge until your trial ends.
+                </Text>
+              </View>
+            );
 
-            <Text style={styles.smallPrint}>
-              Subscriptions auto-renew until cancelled. Manage from your device subscriptions page.
-            </Text>
-          </ScrollView>
+            const plansEl = (
+              <View style={[styles.planRow, isLandscape && styles.planRowLandscape]}>
+                <PlanCard
+                  label="MONTHLY"
+                  price={monthlyPkg?.product.priceString || '$3.99'}
+                  period="/ month"
+                  selected={selected === 'monthly'}
+                  onSelect={() => selectPlan('monthly')}
+                  sub="Flexible — pay each month"
+                />
+                <PlanCard
+                  label="ANNUAL"
+                  price={annualPkg?.product.priceString || '$29.99'}
+                  period="/ year"
+                  selected={selected === 'annual'}
+                  onSelect={() => selectPlan('annual')}
+                  badge="BEST VALUE"
+                  sub={`≈ ${monthlyEq}/mo · Save 37%`}
+                />
+              </View>
+            );
+
+            const ctaEl = (
+              <Pressable
+                onPress={handleSubscribe}
+                disabled={purchasing || !selectedPkg}
+                style={({ pressed }) => [
+                  styles.cta,
+                  isLandscape && styles.ctaLandscape,
+                  (purchasing || !selectedPkg) && { opacity: 0.55 },
+                  pressed && { transform: [{ scale: 0.985 }] },
+                ]}
+              >
+                <Animated.View
+                  style={[styles.ctaShimmer, { transform: [{ translateX: shimmerTx }] }]}
+                  pointerEvents="none"
+                >
+                  <LinearGradient
+                    colors={['rgba(212,181,126,0)', GOLD_SOFT, 'rgba(212,181,126,0)']}
+                    start={{ x: 0, y: 0.5 }}
+                    end={{ x: 1, y: 0.5 }}
+                    style={StyleSheet.absoluteFill}
+                  />
+                </Animated.View>
+                {purchasing ? (
+                  <ActivityIndicator color="#000" />
+                ) : (
+                  <>
+                    <Text style={styles.ctaText}>
+                      {isPro ? 'Change Plan' : 'Start 7-Day Free Trial'}
+                    </Text>
+                    <View style={styles.ctaIcon}>
+                      <MaterialIcons name="arrow-forward" size={14} color={GOLD} />
+                    </View>
+                  </>
+                )}
+              </Pressable>
+            );
+
+            const trustEl = (
+              <View style={styles.trustRow}>
+                <View style={styles.trustItem}>
+                  <MaterialIcons name="block" size={12} color={GOLD} />
+                  <Text style={styles.trustText}>No charge today</Text>
+                </View>
+                <View style={styles.trustDivider} />
+                <View style={styles.trustItem}>
+                  <MaterialIcons name="event-available" size={12} color={GOLD} />
+                  <Text style={styles.trustText}>Cancel anytime</Text>
+                </View>
+                <View style={styles.trustDivider} />
+                <View style={styles.trustItem}>
+                  <MaterialIcons name="lock" size={12} color={GOLD} />
+                  <Text style={styles.trustText}>Secure</Text>
+                </View>
+              </View>
+            );
+
+            const benefitsEl = (
+              <>
+                <SectionHeader title="WHAT YOU UNLOCK" />
+                <View style={styles.benefitsList}>
+                  {BENEFITS.map((b) => (
+                    <View key={b.title} style={styles.benefitRow}>
+                      <View style={styles.benefitIconWrap}>
+                        <MaterialIcons name={b.icon} size={16} color={GOLD} />
+                      </View>
+                      <View style={styles.benefitTextWrap}>
+                        <Text style={styles.benefitTitle}>{b.title}</Text>
+                        <Text style={styles.benefitSub}>{b.sub}</Text>
+                      </View>
+                      <MaterialIcons name="check-circle" size={14} color={GOLD} />
+                    </View>
+                  ))}
+                </View>
+              </>
+            );
+
+            const comparisonEl = (
+              <>
+                <SectionHeader title="FREE VS PRO" />
+                <View style={styles.compareCard}>
+                  <View style={styles.compareHeader}>
+                    <View style={{ flex: 1.4 }} />
+                    <Text style={[styles.compareColHeader, { color: 'rgba(255,255,255,0.55)' }]}>FREE</Text>
+                    <Text style={[styles.compareColHeader, { color: GOLD }]}>PRO</Text>
+                  </View>
+                  {COMPARISON.map((row, i) => (
+                    <View
+                      key={row.label}
+                      style={[styles.compareRow, i === COMPARISON.length - 1 && { borderBottomWidth: 0 }]}
+                    >
+                      <Text style={styles.compareLabel}>{row.label}</Text>
+                      <Text style={styles.compareFree}>{row.free}</Text>
+                      <Text style={styles.comparePro}>{row.pro}</Text>
+                    </View>
+                  ))}
+                </View>
+              </>
+            );
+
+            const faqEl = (
+              <>
+                <SectionHeader title="FREQUENTLY ASKED" />
+                <View style={styles.faqList}>
+                  {FAQS.map((f, i) => (
+                    <Pressable
+                      key={f.q}
+                      onPress={() => toggleFaq(i)}
+                      style={styles.faqItem}
+                    >
+                      <View style={styles.faqQuestionRow}>
+                        <Text style={styles.faqQuestion}>{f.q}</Text>
+                        <MaterialIcons
+                          name={openFaq === i ? 'expand-less' : 'expand-more'}
+                          size={20}
+                          color={GOLD}
+                        />
+                      </View>
+                      {openFaq === i ? (
+                        <Text style={styles.faqAnswer}>{f.a}</Text>
+                      ) : null}
+                    </Pressable>
+                  ))}
+                </View>
+              </>
+            );
+
+            const footerEl = (
+              <>
+                <View style={styles.footerLinks}>
+                  <Pressable onPress={handleRestore} hitSlop={8} disabled={restoring}>
+                    <Text style={styles.footerLink}>
+                      {restoring ? 'Restoring…' : 'Restore Purchases'}
+                    </Text>
+                  </Pressable>
+                  <View style={styles.footerDot} />
+                  <Pressable onPress={openTerms} hitSlop={8}>
+                    <Text style={styles.footerLink}>Terms of Use</Text>
+                  </Pressable>
+                  <View style={styles.footerDot} />
+                  <Pressable onPress={openTerms} hitSlop={8}>
+                    <Text style={styles.footerLink}>Privacy</Text>
+                  </Pressable>
+                </View>
+
+                <Text style={styles.smallPrint}>
+                  Subscriptions auto-renew until cancelled. Manage from your device subscriptions page.
+                </Text>
+              </>
+            );
+
+            if (isLandscape) {
+              return (
+                <ScrollView
+                  contentContainerStyle={[styles.scroll, styles.scrollLandscape]}
+                  showsVerticalScrollIndicator={false}
+                >
+                  {/* Conversion stack — full width, hero centred, plans wide */}
+                  {heroEl}
+                  {plansEl}
+                  {ctaEl}
+                  {trustEl}
+
+                  {/* Proof stack — benefits + comparison side-by-side */}
+                  <View style={styles.proofRow}>
+                    <View style={styles.proofCol}>{benefitsEl}</View>
+                    <View style={styles.proofCol}>{comparisonEl}</View>
+                  </View>
+
+                  {/* FAQ — full width, max width to keep lines readable */}
+                  <View style={styles.faqWrap}>{faqEl}</View>
+
+                  {footerEl}
+                </ScrollView>
+              );
+            }
+
+            return (
+              <ScrollView
+                contentContainerStyle={styles.scroll}
+                showsVerticalScrollIndicator={false}
+              >
+                {heroEl}
+                {plansEl}
+                {ctaEl}
+                {trustEl}
+                {benefitsEl}
+                {comparisonEl}
+                {faqEl}
+                {footerEl}
+              </ScrollView>
+            );
+          })()}
         </SafeAreaView>
       </View>
     </Modal>
@@ -474,6 +543,62 @@ const styles = StyleSheet.create({
     paddingHorizontal: 22,
     paddingBottom: 40,
     paddingTop: 8,
+  },
+  // Landscape: centred page frame. Conversion sections stay full width;
+  // benefits + comparison split into two columns below; FAQ + footer return
+  // to a centered narrow column for readability.
+  scrollLandscape: {
+    maxWidth: 960,
+    width: '100%',
+    alignSelf: 'center',
+    paddingHorizontal: 32,
+    paddingTop: 4,
+    paddingBottom: 36,
+  },
+  // Side-by-side benefits + comparison row.
+  proofRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 28,
+    marginTop: 6,
+  },
+  proofCol: {
+    flex: 1,
+    minWidth: 0,
+  },
+  // FAQ section wrapper — centered narrow column for readable line length.
+  faqWrap: {
+    width: '100%',
+    maxWidth: 720,
+    alignSelf: 'center',
+  },
+  // Hero stays centered in landscape, just trims vertical space.
+  heroLandscape: {
+    paddingTop: 8,
+    paddingBottom: 18,
+  },
+  heroTitleLandscape: {
+    fontSize: 32,
+    lineHeight: 38,
+  },
+  heroSubtitleLandscape: {
+    maxWidth: 540,
+    fontSize: 14,
+    lineHeight: 21,
+  },
+  // Plans get extra horizontal padding so the two cards don't touch the edges
+  // of the wider landscape canvas.
+  planRowLandscape: {
+    maxWidth: 640,
+    width: '100%',
+    alignSelf: 'center',
+    gap: 14,
+  },
+  // CTA capped so it doesn't stretch awkwardly across the wider canvas.
+  ctaLandscape: {
+    maxWidth: 480,
+    width: '100%',
+    alignSelf: 'center',
   },
 
   // ============ HERO ============
