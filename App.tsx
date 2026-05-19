@@ -54,6 +54,10 @@ import {
 } from './src/utils/dailyStartTime';
 import { findOriginalRecurringTask, calculateStreak, getAllRecurringDates } from './src/utils/recurrenceUtils';
 import { checkAndPerformAutoSync, configureGoogleSignIn } from './src/services/GoogleDriveService';
+import { useFeatureGate } from './src/hooks/useFeatureGate';
+import FeatureLockedModal from './src/screens/Paywall/FeatureLockedModal';
+import Paywall from './src/screens/Paywall';
+import { GatedFeature } from './src/constants/subscriptionConfig';
 
 // Helper to normalize date string (imported from recurrenceUtils logic)
 function normalizeDateString(dateStr: string): string {
@@ -195,6 +199,17 @@ export default function App() {
     PlusJakartaSans_800ExtraBold,
     Inter_900Black,
   });
+
+  const featureGate = useFeatureGate();
+  const [lockedFeature, setLockedFeature] = useState<GatedFeature | null>(null);
+  const [paywallVisible, setPaywallVisible] = useState(false);
+
+  const triggerGate = async (feature: GatedFeature) => {
+    const allowed = await featureGate.shouldShowGate(feature);
+    if (!allowed) return;
+    await featureGate.recordGateShown(feature);
+    setLockedFeature(feature);
+  };
 
   const [timers, setTimers] = useState<Timer[]>([]);
   const [addModalVisible, setAddModalVisible] = useState(false);
@@ -474,6 +489,16 @@ export default function App() {
 
   // Handle adding a new task
   const handleAddTask = (taskData: { title: string; description?: string; priority: Task['priority']; categoryId?: string; forDate: string; isBacklog?: boolean; recurrence?: Recurrence }) => {
+    // Enforce the per-day cap against the date the task is actually being created
+    // for. The pre-modal gate uses the calendar's selectedDate, but the modal lets
+    // the user change forDate before saving — so we re-check at the save site.
+    // taskData.forDate is already a logical YYYY-MM-DD string from the modal.
+    const sameDayCount = tasks.filter(t => t.forDate === taskData.forDate).length;
+    if (!featureGate.canAddTask(sameDayCount)) {
+      triggerGate('task');
+      return;
+    }
+
     const now = new Date().toISOString();
     const newTask: Task = {
       id: Date.now(),
@@ -1086,6 +1111,14 @@ export default function App() {
   };
 
   const handleAddTimer = async (name: string, hours: number, minutes: number, seconds: number, date: string, categoryId?: string) => {
+    // Per-day cap, re-checked at the save site (the modal lets the user change
+    // the target date after the pre-modal gate has already passed).
+    const sameDayCount = timers.filter(t => t.forDate === date).length;
+    if (!featureGate.canAddTimer(sameDayCount)) {
+      triggerGate('timer');
+      return;
+    }
+
     const timeStr = `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
     const now = new Date().toISOString();
     const newTimer: Timer = {
@@ -1620,6 +1653,38 @@ export default function App() {
 
   // --- GOAL HANDLERS ---
   const handleAddGoal = async (goalData: Partial<Goal>) => {
+    // Save-side gating, mirroring tasks/timers. The entry-point gate in
+    // GoalManagement's onAddGoal already vets the cap, but the modal can
+    // theoretically be reopened or used in a race, so re-check here.
+    const isRoot = !goalData.parentId;
+    const isTaskLink = goalData.type === 'task' && !!goalData.parentId;
+    if (isRoot) {
+      const rootCount = goals.filter(g => !g.parentId).length;
+      if (!featureGate.canAddGoal(rootCount)) {
+        triggerGate('goal');
+        return;
+      }
+    } else if (isTaskLink) {
+      // Mirror the aggregation used by the entry-point gate and the goal HUD:
+      // own taskIds + own taskId + every child goal's taskIds/taskId, deduped.
+      const parentGoal = goals.find(g => g.id === goalData.parentId);
+      const children = goals.filter(g => g.parentId === goalData.parentId);
+      const linkedIds = new Set<number>([
+        ...(parentGoal?.taskIds || []),
+        ...(parentGoal?.taskId ? [parentGoal.taskId] : []),
+        ...children.flatMap(c => c.taskIds || []),
+        ...children.flatMap(c => c.taskId ? [c.taskId] : []),
+      ]);
+      if (!featureGate.canAddTaskToGoal(linkedIds.size)) {
+        triggerGate('taskInGoal');
+        return;
+      }
+    } else if (!featureGate.isPro) {
+      // Nested goals are Pro-only.
+      triggerGate('goal');
+      return;
+    }
+
     const now = new Date().toISOString();
     const newGoal: Goal = {
       id: Date.now().toString(),
@@ -1744,6 +1809,7 @@ export default function App() {
             timerTextColor={timerTextColor}
             categoryId={activeTimer?.categoryId}
             categories={categories}
+            onTriggerGate={triggerGate}
           />
         );
 
@@ -1820,7 +1886,17 @@ export default function App() {
           return (
             <TaskList
               tasks={tasks}
-              onAddTask={() => setAddTaskModalVisible(true)}
+              onAddTask={() => {
+                // Count ALL tasks (recurring + non-recurring) whose forDate is the
+                // currently viewed day, then gate. tasksPerDay is per-calendar-day.
+                const forDateLogical = getLogicalDate(selectedDate, dailyStartMinutes);
+                const dayCount = tasks.filter(t => t.forDate === forDateLogical).length;
+                if (!featureGate.canAddTask(dayCount)) {
+                  triggerGate('task');
+                  return;
+                }
+                setAddTaskModalVisible(true);
+              }}
               onToggleTask={handleToggleTask}
               onDeleteTask={handleDeleteTask}
               onEditTask={handleEditTask}
@@ -1854,13 +1930,24 @@ export default function App() {
               onLiveViewShown={() => setShouldShowLiveView(false)}
               timerTextColor={timerTextColor}
               sliderButtonColor={sliderButtonColor}
+              onTriggerGate={triggerGate}
             />
           );
         } else if (activeView === 'goal') {
           return (
             <TaskList
               tasks={tasks}
-              onAddTask={() => setAddTaskModalVisible(true)}
+              onAddTask={() => {
+                // Count ALL tasks (recurring + non-recurring) whose forDate is the
+                // currently viewed day, then gate. tasksPerDay is per-calendar-day.
+                const forDateLogical = getLogicalDate(selectedDate, dailyStartMinutes);
+                const dayCount = tasks.filter(t => t.forDate === forDateLogical).length;
+                if (!featureGate.canAddTask(dayCount)) {
+                  triggerGate('task');
+                  return;
+                }
+                setAddTaskModalVisible(true);
+              }}
               onToggleTask={handleToggleTask}
               onDeleteTask={handleDeleteTask}
               onEditTask={handleEditTask}
@@ -1894,12 +1981,41 @@ export default function App() {
               onLiveViewShown={() => setShouldShowLiveView(false)}
               timerTextColor={timerTextColor}
               sliderButtonColor={sliderButtonColor}
+              onTriggerGate={triggerGate}
               renderCustomContent={() => (
                 <GoalManagement
                   goals={goals}
                   tasks={tasks}
                   isLandscape={isLandscape}
-                  onAddGoal={(parentId) => {
+                  onAddGoal={(parentId, type) => {
+                    if (!parentId) {
+                      const rootCount = goals.filter(g => !g.parentId).length;
+                      if (!featureGate.canAddGoal(rootCount)) {
+                        triggerGate('goal');
+                        return;
+                      }
+                    } else if (type === 'task') {
+                      // Linking an existing task to this goal — gate with tasksPerGoal.
+                      // A "linked task" can live on the goal itself OR on a child goal
+                      // of type 'task' (the link UI creates the latter), so we
+                      // mirror the aggregation used to display the linked count.
+                      const parentGoal = goals.find(g => g.id === parentId);
+                      const children = goals.filter(g => g.parentId === parentId);
+                      const linkedIds = new Set<number>([
+                        ...(parentGoal?.taskIds || []),
+                        ...(parentGoal?.taskId ? [parentGoal.taskId] : []),
+                        ...children.flatMap(c => c.taskIds || []),
+                        ...children.flatMap(c => c.taskId ? [c.taskId] : []),
+                      ]);
+                      if (!featureGate.canAddTaskToGoal(linkedIds.size)) {
+                        triggerGate('taskInGoal');
+                        return;
+                      }
+                    } else if (!featureGate.isPro) {
+                      // Free plan does not support nested goals at all
+                      triggerGate('goal');
+                      return;
+                    }
                     setAddGoalParentId(parentId);
                     setGoalToEdit(null);
                     setAddGoalModalVisible(true);
@@ -1930,6 +2046,13 @@ export default function App() {
           <TimerList
             timers={timers}
             onAddTimer={() => {
+              // Per-day cap: count timers whose forDate is the currently viewed day.
+              const forDateLogical = getLogicalDate(selectedDate, dailyStartMinutes);
+              const dayCount = timers.filter(t => t.forDate === forDateLogical).length;
+              if (!featureGate.canAddTimer(dayCount)) {
+                triggerGate('timer');
+                return;
+              }
               setTimerToEdit(null);
               setAddModalVisible(true);
             }}
@@ -2048,6 +2171,19 @@ export default function App() {
               parentId={addGoalParentId}
               tasks={tasks}
               categories={categories}
+              onTriggerGate={triggerGate}
+            />
+
+            <FeatureLockedModal
+              visible={lockedFeature !== null}
+              feature={lockedFeature ?? 'timer'}
+              onClose={() => setLockedFeature(null)}
+              onViewPlans={() => setPaywallVisible(true)}
+            />
+
+            <Paywall
+              visible={paywallVisible}
+              onClose={() => setPaywallVisible(false)}
             />
 
             <StatusBar style="light" />

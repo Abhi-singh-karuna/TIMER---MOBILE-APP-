@@ -22,6 +22,8 @@ import * as Haptics from 'expo-haptics';
 import { activateKeepAwakeAsync, deactivateKeepAwake } from 'expo-keep-awake';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Task, Category, TaskStage, StageStatus, Timer } from '../../../constants/data';
+import { useFeatureGate } from '../../../hooks/useFeatureGate';
+import type { GatedFeature } from '../../../constants/subscriptionConfig';
 import AddSubtaskModal from '../../../components/AddSubtaskModal';
 import ApprovalPopup from './ApprovalPopup';
 import StageActionPopup from './StageActionPopup';
@@ -68,6 +70,8 @@ interface LiveFocusViewProps {
     showDisabledTasks?: boolean;
     /** Toggle disabled tasks visibility in parent. */
     onToggleDisabledTasks?: () => void;
+    /** Open the central FeatureLockedModal for the given gated feature. */
+    onTriggerGate?: (feature: GatedFeature) => void;
 }
 
 type TaskLiveStatus = 'ACTIVE' | 'DONE' | 'PLANNED';
@@ -124,7 +128,9 @@ export default function LiveFocusView({
     sliderButtonColor = '#FFFFFF',
     showDisabledTasks = false,
     onToggleDisabledTasks,
+    onTriggerGate,
 }: LiveFocusViewProps) {
+    const featureGate = useFeatureGate();
     const { width: screenWidth, height: screenHeight } = useWindowDimensions();
     const isLandscape = screenWidth > screenHeight;
     const insets = useSafeAreaInsets();
@@ -265,7 +271,14 @@ export default function LiveFocusView({
     const [timerSeconds, setTimerSeconds] = useState(0);
     const [isTimerRunning, setIsTimerRunning] = useState(false);
     const timerIntervalRef = useRef<NodeJS.Timeout | null>(null);
-    const [fullScreenTimerVisible, setFullScreenTimerVisible] = useState(false);
+    const [fullScreenTimerVisible, setFullScreenTimerVisibleRaw] = useState(false);
+    const setFullScreenTimerVisible = useCallback((visible: boolean) => {
+        if (visible && !featureGate.canExpandLiveDetails()) {
+            onTriggerGate?.('liveDetails');
+            return;
+        }
+        setFullScreenTimerVisibleRaw(visible);
+    }, [featureGate, onTriggerGate]);
 
     // Animate progress panel expand/collapse
     useEffect(() => {
@@ -1910,6 +1923,8 @@ export default function LiveFocusView({
 
     const handleExtendStage = useCallback((taskId: number, stageId: number, minutes: number) => {
         if (!onUpdateStages) return;
+        // Gate check now happens inside FullScreenTimer so the paywall can
+        // be rendered on top of its Modal (nested modal stacking).
         const task = tasks.find(t => t.id === taskId);
         if (!task) return;
 
@@ -3590,6 +3605,10 @@ export default function LiveFocusView({
                                                         <TouchableOpacity
                                                             style={styles.dockStatusBtn}
                                                             onPress={() => {
+                                                                if (!featureGate.canUseLiveSubtaskActions()) {
+                                                                    onTriggerGate?.('liveSubtaskAction');
+                                                                    return;
+                                                                }
                                                                 Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
                                                                 statusButtonRef.current?.measureInWindow((x, y, w, h) => {
                                                                     setStageStatusPopupPosition({ x: x + w / 2, y: y + h });
@@ -4039,6 +4058,10 @@ export default function LiveFocusView({
                                                     <TouchableOpacity
                                                         style={styles.dockStatusBtn}
                                                         onPress={() => {
+                                                            if (!featureGate.canUseLiveSubtaskActions()) {
+                                                                onTriggerGate?.('liveSubtaskAction');
+                                                                return;
+                                                            }
                                                             Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
                                                             statusButtonRef.current?.measureInWindow((x, y, w, h) => {
                                                                 setStageStatusPopupPosition({ x: x + w / 2, y: y + h });
@@ -4182,6 +4205,11 @@ export default function LiveFocusView({
                     if (!onUpdateStages) return;
                     const task = tasks.find(t => t.id === taskId);
                     if (!task) return;
+
+                    if (!featureGate.canAddSubtask((task.stages || []).length)) {
+                        onTriggerGate?.('subtask');
+                        return;
+                    }
 
                     // Generate a stable stage id (avoid collisions within the task)
                     const existingIds = new Set((task.stages || []).map(s => s.id));

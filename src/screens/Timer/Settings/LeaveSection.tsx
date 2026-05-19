@@ -17,6 +17,9 @@ import { MaterialIcons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
 import { styles } from './styles';
 import { LEAVE_DAYS_KEY, LeaveDay } from '../../../constants/data';
+import { useFeatureGate } from '../../../hooks/useFeatureGate';
+import FeatureLockedModal from '../../Paywall/FeatureLockedModal';
+import Paywall from '../../Paywall';
 
 const MONTHS = [
     'January', 'February', 'March', 'April', 'May', 'June',
@@ -309,8 +312,78 @@ export interface LeaveSectionProps {
 }
 
 export default function LeaveSection({ isLandscape }: LeaveSectionProps) {
+    const featureGate = useFeatureGate();
+    const [showLockedModal, setShowLockedModal] = useState(false);
+    const [showPaywall, setShowPaywall] = useState(false);
+
     const [leaveDays, setLeaveDays] = useState<LeaveDay[]>([]);
     const [viewDate, setViewDate] = useState(new Date());
+
+    if (!featureGate.canUseLeave()) {
+        return (
+            <View style={styles.categoriesSection}>
+                <View style={[styles.categoriesHeader, isLandscape && { marginTop: 4, marginBottom: 12 }]}>
+                    <Text style={isLandscape ? [styles.sectionTitleLandscape, { marginBottom: 0 }] : styles.sectionTitle}>
+                        MANAGE LEAVE
+                    </Text>
+                </View>
+
+                <TouchableOpacity
+                    activeOpacity={0.85}
+                    onPress={async () => {
+                        const show = await featureGate.shouldShowGate('leave');
+                        if (show) {
+                            await featureGate.recordGateShown('leave');
+                            setShowLockedModal(true);
+                        } else {
+                            setShowLockedModal(true);
+                        }
+                    }}
+                    style={{
+                        padding: 22,
+                        borderRadius: 18,
+                        borderWidth: 1,
+                        borderColor: 'rgba(0,229,255,0.25)',
+                        backgroundColor: 'rgba(0,229,255,0.05)',
+                        alignItems: 'center',
+                        gap: 10,
+                    }}
+                >
+                    <View style={{
+                        width: 56, height: 56, borderRadius: 28,
+                        backgroundColor: 'rgba(0,229,255,0.1)',
+                        alignItems: 'center', justifyContent: 'center',
+                        borderWidth: 1, borderColor: 'rgba(0,229,255,0.3)',
+                    }}>
+                        <MaterialIcons name="lock" size={22} color="#00E5FF" />
+                    </View>
+                    <Text style={{ fontSize: 14, fontWeight: '800', color: '#FFFFFF', letterSpacing: 0.3 }}>
+                        Leave Tracking — Pro
+                    </Text>
+                    <Text style={{ fontSize: 12, color: 'rgba(255,255,255,0.55)', textAlign: 'center', lineHeight: 18, paddingHorizontal: 14 }}>
+                        Mark non-working days. Pause streak rules and analytics on planned leaves.
+                    </Text>
+                    <View style={{
+                        flexDirection: 'row', alignItems: 'center', gap: 6,
+                        marginTop: 6, paddingHorizontal: 16, paddingVertical: 8,
+                        borderRadius: 10, backgroundColor: '#FFFFFF',
+                    }}>
+                        <Text style={{ fontSize: 11, fontWeight: '900', color: '#000', letterSpacing: 1.2 }}>
+                            UNLOCK WITH PRO
+                        </Text>
+                    </View>
+                </TouchableOpacity>
+
+                <FeatureLockedModal
+                    visible={showLockedModal}
+                    feature="leave"
+                    onClose={() => setShowLockedModal(false)}
+                    onViewPlans={() => setShowPaywall(true)}
+                />
+                <Paywall visible={showPaywall} onClose={() => setShowPaywall(false)} />
+            </View>
+        );
+    }
 
     // Modal State
     const [modalVisible, setModalVisible] = useState(false);

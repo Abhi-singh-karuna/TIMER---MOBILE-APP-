@@ -20,6 +20,10 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { MaterialIcons } from '@expo/vector-icons';
 import { RichEditor, RichToolbar, actions } from 'react-native-pell-rich-editor';
 import DiaryTab from './DiaryTab';
+import { useFeatureGate } from '../../../hooks/useFeatureGate';
+import FeatureLockedModal from '../../Paywall/FeatureLockedModal';
+import Paywall from '../../Paywall';
+import { FREE_LIMITS, GatedFeature } from '../../../constants/subscriptionConfig';
 
 const NOTES_STORAGE_KEY = '@timer_app_day_notes_v2';
 const TEMPLATES_STORAGE_KEY = '@timer_app_diary_templates';
@@ -414,8 +418,17 @@ export default function NotesPanel({ visible, dateKey, onClose, onPresenceChange
     const [templateLabel, setTemplateLabel] = React.useState('');
     const [templateContent, setTemplateContent] = React.useState('');
 
+    // Feature-gate state
+    const featureGate = useFeatureGate();
+    const [lockedFeature, setLockedFeature] = React.useState<GatedFeature | null>(null);
+    const [paywallVisible, setPaywallVisible] = React.useState(false);
+
+    // Diary is gated for free users when FREE_LIMITS.diaryEnabled === false
+    const diaryAccessible = featureGate.isPro || FREE_LIMITS.diaryEnabled;
+
     // Notes & Folders System State
-    const [currentTab, setCurrentTab] = React.useState<'diary' | 'notes'>('diary');
+    // Default tab: if diary isn't accessible (free user, diary disabled), land on 'notes' instead.
+    const [currentTab, setCurrentTab] = React.useState<'diary' | 'notes'>(diaryAccessible ? 'diary' : 'notes');
     const [folders, setFolders] = React.useState<Folder[]>([]);
     const [currentFolderId, setCurrentFolderId] = React.useState<string | null>(null);
     const [currentNoteId, setCurrentNoteId] = React.useState<string | null>(null);
@@ -427,6 +440,31 @@ export default function NotesPanel({ visible, dateKey, onClose, onPresenceChange
     const [newFolderColor, setNewFolderColor] = React.useState(PRESET_FOLDER_COLORS[0]);
     const [newFolderLocked, setNewFolderLocked] = React.useState(false);
     const [newFolderLockCode, setNewFolderLockCode] = React.useState('');
+
+    // Memoized "custom folder count" — Trash + soft-deleted folders never count.
+    const customFolderCount = React.useMemo(
+        () => folders.filter(f => f.id !== TRASH_FOLDER_ID && !f.trashedAt).length,
+        [folders]
+    );
+    const canCreateAnotherFolder = featureGate.canAddFolder(customFolderCount);
+
+    // Notes in the currently open folder (excluding Trash).
+    const notesInCurrentFolder = React.useMemo(() => {
+        if (!currentFolderId || currentFolderId === TRASH_FOLDER_ID) return 0;
+        return generalNotes.filter(n => n.folderId === currentFolderId).length;
+    }, [generalNotes, currentFolderId]);
+    const canCreateAnotherNote = featureGate.canAddNote(notesInCurrentFolder);
+
+    // If user is on the diary tab but no longer has access (e.g. trial ended
+    // mid-session), bounce them to notes and discard the in-flight diary draft
+    // so it never auto-saves while the user is locked out.
+    React.useEffect(() => {
+        if (currentTab === 'diary' && !diaryAccessible) {
+            setCurrentTab('notes');
+            setCurrentFolderId(null);
+            setCurrentNoteId(null);
+        }
+    }, [currentTab, diaryAccessible]);
 
     const [confirmMoveToTrashNoteId, setConfirmMoveToTrashNoteId] = React.useState<string | null>(null);
     const [confirmDeleteForeverNoteId, setConfirmDeleteForeverNoteId] = React.useState<string | null>(null);
@@ -756,7 +794,20 @@ export default function NotesPanel({ visible, dateKey, onClose, onPresenceChange
         if (!newFolderName.trim()) return;
         if (folderToEdit?.id === TRASH_FOLDER_ID) return;
         if (newFolderLocked && !/^\d{4}$/.test(newFolderLockCode.trim())) return;
-        
+
+        // Gate: lock new folder creation if at free limit
+        if (!folderToEdit && !canCreateAnotherFolder) {
+            setIsCreatingFolder(false);
+            setLockedFeature('folder');
+            return;
+        }
+        // Gate: lock the lock-toggle for free users
+        if (newFolderLocked && !featureGate.canUseFolderLock()) {
+            setIsCreatingFolder(false);
+            setLockedFeature('folderLock');
+            return;
+        }
+
         if (folderToEdit) {
             // UPDATE EXISTING
             const updated = folders.map(f => f.id === folderToEdit.id ? {
@@ -796,6 +847,11 @@ export default function NotesPanel({ visible, dateKey, onClose, onPresenceChange
 
     const handleCreateNote = async () => {
         if (!currentFolderId) return;
+        // Gate by note-count inside the current folder (Trash is unmetered)
+        if (currentFolderId !== TRASH_FOLDER_ID && !canCreateAnotherNote) {
+            setLockedFeature('note');
+            return;
+        }
         const newNote: GeneralNote = {
             id: Date.now().toString(),
             folderId: currentFolderId,
@@ -1104,17 +1160,26 @@ export default function NotesPanel({ visible, dateKey, onClose, onPresenceChange
                     <View style={styles.headerContainer}>
                         <View style={styles.headerTop}>
                             <View style={styles.tabToggle}>
-                                <TouchableOpacity 
+                                <TouchableOpacity
                                     onPress={() => {
+                                        if (!diaryAccessible) {
+                                            setLockedFeature('diary');
+                                            return;
+                                        }
                                         setCurrentTab('diary');
                                         setCurrentFolderId(null);
                                         setCurrentNoteId(null);
                                         setIsNotesEditorExpanded(false);
                                         load(dateKey);
                                     }}
-                                    style={[styles.tabBtn, currentTab === 'diary' && styles.tabBtnActive]}
+                                    style={[styles.tabBtn, currentTab === 'diary' && styles.tabBtnActive, !diaryAccessible && { opacity: 0.6 }]}
                                 >
-                                    <Text style={[styles.tabText, currentTab === 'diary' && styles.tabTextActive]}>DIARY</Text>
+                                    <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                                        <Text style={[styles.tabText, currentTab === 'diary' && styles.tabTextActive]}>DIARY</Text>
+                                        {!diaryAccessible && (
+                                            <MaterialIcons name="lock" size={10} color="#00E5FF" style={{ marginLeft: 5 }} />
+                                        )}
+                                    </View>
                                 </TouchableOpacity>
                                 <View style={styles.tabDivider} />
                                 <TouchableOpacity 
@@ -1518,6 +1583,10 @@ export default function NotesPanel({ visible, dateKey, onClose, onPresenceChange
                                         <View style={styles.sectionHeaderRow}>
                                             <Text style={styles.sectionTitle}>FOLDERS</Text>
                                             <TouchableOpacity onPress={() => {
+                                                if (!canCreateAnotherFolder) {
+                                                    setLockedFeature('folder');
+                                                    return;
+                                                }
                                                 setFolderToEdit(null);
                                                 setNewFolderName('');
                                                 setNewFolderEmoji(PRESET_FOLDER_EMOJIS[0]);
@@ -1526,7 +1595,11 @@ export default function NotesPanel({ visible, dateKey, onClose, onPresenceChange
                                                 setNewFolderLockCode('');
                                                 setIsCreatingFolder(true);
                                             }}>
-                                                <MaterialIcons name="create-new-folder" size={20} color="#4CAF50" />
+                                                <MaterialIcons
+                                                    name={canCreateAnotherFolder ? 'create-new-folder' : 'lock'}
+                                                    size={20}
+                                                    color={canCreateAnotherFolder ? '#4CAF50' : '#00E5FF'}
+                                                />
                                             </TouchableOpacity>
                                         </View>
 
@@ -2409,6 +2482,14 @@ export default function NotesPanel({ visible, dateKey, onClose, onPresenceChange
 
                 </View>
             </KeyboardAvoidingView>
+
+            <FeatureLockedModal
+                visible={lockedFeature !== null}
+                feature={lockedFeature ?? 'folder'}
+                onClose={() => setLockedFeature(null)}
+                onViewPlans={() => setPaywallVisible(true)}
+            />
+            <Paywall visible={paywallVisible} onClose={() => setPaywallVisible(false)} />
         </View>
     );
 }

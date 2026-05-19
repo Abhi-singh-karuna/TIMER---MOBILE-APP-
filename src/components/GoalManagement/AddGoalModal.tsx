@@ -20,6 +20,8 @@ import * as Haptics from 'expo-haptics';
 import Slider from '@react-native-community/slider';
 import { Goal, GoalType, GoalTargetSettings, Task, Category, COLOR_PRESETS } from '../../constants/data';
 import { shouldRecurOnDate } from '../../utils/recurrenceUtils';
+import { useFeatureGate } from '../../hooks/useFeatureGate';
+import type { GatedFeature } from '../../constants/subscriptionConfig';
 
 if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
     UIManager.setLayoutAnimationEnabledExperimental(true);
@@ -90,6 +92,7 @@ interface AddGoalModalProps {
     parentId: string | null;
     tasks: Task[];
     categories: Category[];
+    onTriggerGate?: (feature: GatedFeature) => void;
 }
 
 export default function AddGoalModal({
@@ -101,7 +104,9 @@ export default function AddGoalModal({
     parentId,
     tasks,
     categories,
+    onTriggerGate,
 }: AddGoalModalProps) {
+    const featureGate = useFeatureGate();
     const [title, setTitle] = useState('');
     const [description, setDescription] = useState('');
     const [type, setType] = useState<GoalType>('goal');
@@ -611,6 +616,19 @@ export default function AddGoalModal({
             Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
             // Optionally could show a specific error here
             return;
+        }
+
+        // Gate: enforce tasksPerGoal when linking a task to this goal.
+        // Counts existing taskIds on the goal being edited (excluding the one
+        // currently selected, which may be re-saving the same link).
+        const willLinkTask = (isLinkingTask || type === 'task') && selectedTaskId != null;
+        if (willLinkTask) {
+            const existing = (goalToEdit?.taskIds || []).filter(id => id !== selectedTaskId);
+            const resulting = existing.length + 1;
+            if (!featureGate.canAddTaskToGoal(resulting - 1)) {
+                onTriggerGate?.('taskInGoal');
+                return;
+            }
         }
 
         const goalData: Partial<Goal> = {

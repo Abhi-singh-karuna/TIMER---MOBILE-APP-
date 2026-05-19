@@ -17,6 +17,9 @@ import Slider from '@react-native-community/slider';
 import { QuickMessage, COLOR_PRESETS, QUICK_MESSAGES_KEY } from '../../../constants/data';
 import { styles } from './styles';
 import { QuickMessageSectionProps } from './types';
+import { useFeatureGate } from '../../../hooks/useFeatureGate';
+import FeatureLockedModal from '../../Paywall/FeatureLockedModal';
+import Paywall from '../../Paywall';
 
 // Helper to convert hue (0-360) to Hex (Full Saturation/Value)
 const hsvToHex = (h: number) => {
@@ -59,6 +62,9 @@ export default function QuickMessageSection({
     const [selectedMessageColor, setSelectedMessageColor] = useState('#00E5FF');
     const [messageHue, setMessageHue] = useState(190); // Default cyan hue
     const [data, setData] = useState<QuickMessage[]>(quickMessages);
+    const featureGate = useFeatureGate();
+    const [showLockedModal, setShowLockedModal] = useState(false);
+    const [showPaywall, setShowPaywall] = useState(false);
 
     useEffect(() => {
         setData(quickMessages);
@@ -132,7 +138,15 @@ export default function QuickMessageSection({
         setIsAddingMessage(true);
     };
 
-    const startAddMessage = () => {
+    const startAddMessage = async () => {
+        if (!featureGate.canAddMessage(quickMessages.length)) {
+            const show = await featureGate.shouldShowGate('quickMessage');
+            if (show) {
+                await featureGate.recordGateShown('quickMessage');
+                setShowLockedModal(true);
+            }
+            return;
+        }
         setEditingMessage(null);
         setNewMessageText('');
         setSelectedMessageColor('#00E5FF');
@@ -146,7 +160,7 @@ export default function QuickMessageSection({
                 <Text style={isLandscape ? [styles.sectionTitleLandscape, { marginBottom: 0 }] : styles.sectionTitle}>
                     QUICK MESSAGES
                 </Text>
-                <TouchableOpacity style={styles.addCategoryBtn} onPress={startAddMessage}>
+                <TouchableOpacity style={[styles.addCategoryBtn, !featureGate.canAddMessage(quickMessages.length) && { opacity: 0.6 }]} onPress={startAddMessage}>
                     <MaterialIcons name="add" size={20} color="#FFFFFF" /><Text style={styles.addCategoryBtnText}>ADD NEW</Text>
                 </TouchableOpacity>
             </View>
@@ -348,6 +362,14 @@ export default function QuickMessageSection({
                     contentContainerStyle={{ paddingBottom: 40 }}
                 />
             )}
+
+            <FeatureLockedModal
+                visible={showLockedModal}
+                feature="quickMessage"
+                onClose={() => setShowLockedModal(false)}
+                onViewPlans={() => setShowPaywall(true)}
+            />
+            <Paywall visible={showPaywall} onClose={() => setShowPaywall(false)} />
         </View>
     );
 }

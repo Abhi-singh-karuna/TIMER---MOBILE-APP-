@@ -10,6 +10,9 @@ import * as Haptics from 'expo-haptics';
 import { styles } from './styles';
 import { GeneralSectionProps } from './types';
 import DailyStartTimeSection from './DailyStartTimeSection';
+import { useFeatureGate } from '../../../hooks/useFeatureGate';
+import FeatureLockedModal from '../../Paywall/FeatureLockedModal';
+import Paywall from '../../Paywall';
 
 const NOTES_LOCKS_ENABLED_KEY = '@timer_app_notes_locks_enabled_v1';
 const NOTES_LOCKS_REQUIRE_EVERY_TIME_KEY = '@timer_app_notes_locks_require_every_time_v1';
@@ -76,6 +79,17 @@ export default function GeneralSection({
     dailyStartMinutes,
     onDailyStartMinutesChange,
 }: GeneralSectionProps) {
+    const featureGate = useFeatureGate();
+    const [showLockedModal, setShowLockedModal] = React.useState(false);
+    const [showPaywall, setShowPaywall] = React.useState(false);
+    const triggerDailyStartGate = async () => {
+        const show = await featureGate.shouldShowGate('dailyStart');
+        if (show) {
+            await featureGate.recordGateShown('dailyStart');
+            setShowLockedModal(true);
+        }
+    };
+
     const [notesLocksEnabled, setNotesLocksEnabled] = React.useState(true);
     const [notesLocksRequireEveryTime, setNotesLocksRequireEveryTime] = React.useState(false);
     const [notesLocksMaxAttempts, setNotesLocksMaxAttempts] = React.useState(5);
@@ -136,11 +150,38 @@ export default function GeneralSection({
             )}
 
             <View style={styles.behaviorList}>
-                <DailyStartTimeSection
-                    isLandscape={isLandscape}
-                    dailyStartMinutes={dailyStartMinutes}
-                    onDailyStartMinutesChange={onDailyStartMinutesChange}
-                />
+                {featureGate.canUseDailyStart() ? (
+                    <DailyStartTimeSection
+                        isLandscape={isLandscape}
+                        dailyStartMinutes={dailyStartMinutes}
+                        onDailyStartMinutesChange={onDailyStartMinutesChange}
+                    />
+                ) : (
+                    <TouchableOpacity
+                        activeOpacity={0.85}
+                        onPress={triggerDailyStartGate}
+                        style={{
+                            flexDirection: 'row',
+                            alignItems: 'center',
+                            padding: 14,
+                            marginBottom: 10,
+                            borderRadius: 14,
+                            backgroundColor: 'rgba(255,255,255,0.03)',
+                            borderWidth: 1,
+                            borderColor: 'rgba(255,255,255,0.08)',
+                            gap: 12,
+                        }}
+                    >
+                        <View style={styles.iconWell}>
+                            <MaterialIcons name="schedule" size={20} color="rgba(255,255,255,0.4)" />
+                        </View>
+                        <View style={{ flex: 1 }}>
+                            <Text style={styles.settingLabel}>Daily Start Time</Text>
+                            <Text style={styles.settingDescription}>Customise when your logical day begins.</Text>
+                        </View>
+                        <MaterialIcons name="lock" size={16} color="#00E5FF" />
+                    </TouchableOpacity>
+                )}
 
                 <SettingCard
                     label="Notes Folder Locks"
@@ -254,6 +295,14 @@ export default function GeneralSection({
                     isLandscape={isLandscape}
                 />
             </View>
+
+            <FeatureLockedModal
+                visible={showLockedModal}
+                feature="dailyStart"
+                onClose={() => setShowLockedModal(false)}
+                onViewPlans={() => setShowPaywall(true)}
+            />
+            <Paywall visible={showPaywall} onClose={() => setShowPaywall(false)} />
         </View>
     );
 }

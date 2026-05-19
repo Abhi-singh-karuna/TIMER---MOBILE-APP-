@@ -17,6 +17,7 @@ import {
     LayoutAnimation,
 } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
+import TrialBanner from '../../Paywall/TrialBanner';
 import { LinearGradient } from 'expo-linear-gradient';
 import { BlurView } from 'expo-blur';
 import { MaterialIcons } from '@expo/vector-icons';
@@ -833,6 +834,7 @@ export default function TimerList({
             {/* Background Glow Removed for Pure Black Theme */}
 
             <SafeAreaView style={[styles.safeArea, isLandscape && styles.safeAreaLandscape]}>
+                {!isLandscape && <TrialBanner />}
                 {isLandscape ? (
                     // LANDSCAPE LAYOUT - Matching Reference Design
                     <>

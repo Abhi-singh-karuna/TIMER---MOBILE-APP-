@@ -19,6 +19,8 @@ import { activateKeepAwakeAsync, deactivateKeepAwake } from 'expo-keep-awake';
 
 import SlideToComplete from '../../../components/SlideToComplete';
 import { Category } from '../../../constants/data';
+import { useFeatureGate } from '../../../hooks/useFeatureGate';
+import type { GatedFeature } from '../../../constants/subscriptionConfig';
 
 interface ActiveTimerProps {
     timerName: string;
@@ -35,6 +37,7 @@ interface ActiveTimerProps {
     timerTextColor?: string;
     categoryId?: string;
     categories: Category[];
+    onTriggerGate?: (feature: GatedFeature) => void;
 }
 
 export default function ActiveTimer({
@@ -51,8 +54,17 @@ export default function ActiveTimer({
     sliderButtonColor = '#FFFFFF',
     timerTextColor = '#FFFFFF',
     categoryId,
-    categories
+    categories,
+    onTriggerGate,
 }: ActiveTimerProps) {
+    const featureGate = useFeatureGate();
+    const guardedBorrowTime = React.useCallback((seconds: number) => {
+        if (!featureGate.canExtendTimeInProgress()) {
+            onTriggerGate?.('extendTime');
+            return;
+        }
+        onBorrowTime(seconds);
+    }, [featureGate, onTriggerGate, onBorrowTime]);
     const { width, height } = useWindowDimensions();
     const [isLandscape, setIsLandscape] = React.useState(false);
 
@@ -368,7 +380,7 @@ export default function ActiveTimer({
                 <View style={[styles.borrowButtons, isLandscape && styles.borrowButtonsLandscape]}>
                     {[1, 5, 10].map((mins) => (
                         <View key={mins}>
-                            {renderPrecisionPill(() => onBorrowTime(mins * 60), `+${mins}m`, colorTheme)}
+                            {renderPrecisionPill(() => guardedBorrowTime(mins * 60), `+${mins}m`, colorTheme)}
                         </View>
                     ))}
                 </View>

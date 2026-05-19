@@ -13,6 +13,7 @@ import {
     Image,
     ActivityIndicator,
     Alert,
+    StyleSheet,
 } from 'react-native';
 import { ScrollView, GestureHandlerRootView } from 'react-native-gesture-handler';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -29,6 +30,10 @@ import InfoSection from './InfoSection';
 import QuickMessageSection from './QuickMessageSection';
 import DataManagementSection from './DataManagementSection';
 import AccountSection from './AccountSection';
+import SubscriptionSection from './SubscriptionSection';
+import { useFeatureGate } from '../../../hooks/useFeatureGate';
+import FeatureLockedModal from '../../Paywall/FeatureLockedModal';
+import Paywall from '../../Paywall';
 import { getCurrentUser, signInWithGoogle, configureGoogleSignIn } from '../../../services/GoogleDriveService';
 import type { User } from '@react-native-google-signin/google-signin';
 import Constants, { AppOwnership } from 'expo-constants';
@@ -184,6 +189,21 @@ export default function SettingsScreen({
     const [resetKey, setResetKey] = useState(0);
     const [isHidePreview, setIsHidePreview] = useState(false);
     const [activeSubPage, setActiveSubPage] = useState<null | 'timeOfDayBackground'>(null);
+    const featureGate = useFeatureGate();
+    const [lockedFeatureLocal, setLockedFeatureLocal] = useState<'timeSlots' | null>(null);
+    const [paywallLocalVisible, setPaywallLocalVisible] = useState(false);
+
+    const requestTimeline = async () => {
+        if (!featureGate.canUseTimeSlots()) {
+            const show = await featureGate.shouldShowGate('timeSlots');
+            if (show) {
+                await featureGate.recordGateShown('timeSlots');
+                setLockedFeatureLocal('timeSlots');
+            }
+            return;
+        }
+        setActiveSubPage('timeOfDayBackground');
+    };
 
     const wasAutoSelected = useRef(isLandscape);
 
@@ -308,7 +328,7 @@ export default function SettingsScreen({
                 style={styles.portraitMenuCardTrack}
                 onPress={() => {
                     if (id === 'timeline') {
-                        setActiveSubPage('timeOfDayBackground');
+                        requestTimeline();
                     } else {
                         setActiveTab(id);
                     }
@@ -404,6 +424,10 @@ export default function SettingsScreen({
                         </TouchableOpacity>
                     )}
                 </View>
+
+                {/* === MERGED SUBSCRIPTION SECTION === */}
+                <View style={mergedStyles.divider} />
+                <SubscriptionSection embedded />
             </LinearGradient>
         );
     };
@@ -559,7 +583,7 @@ export default function SettingsScreen({
                     ]}
                     onPress={() => {
                         if (id === 'timeline') {
-                            setActiveSubPage('timeOfDayBackground');
+                            requestTimeline();
                             return;
                         }
                         if (id === 'datamgmt') {
@@ -808,6 +832,14 @@ export default function SettingsScreen({
 
                     {isLandscape ? renderLandscapeLayout() : renderPortraitLayout()}
 
+                    <FeatureLockedModal
+                        visible={lockedFeatureLocal !== null}
+                        feature={lockedFeatureLocal ?? 'timeSlots'}
+                        onClose={() => setLockedFeatureLocal(null)}
+                        onViewPlans={() => setPaywallLocalVisible(true)}
+                    />
+                    <Paywall visible={paywallLocalVisible} onClose={() => setPaywallLocalVisible(false)} />
+
                     {/* Confirm clear popup: type "Clear all" to confirm. supportedOrientations so popup opens in landscape too. */}
                     <Modal
                         visible={clearConfirmType !== null}
@@ -837,3 +869,13 @@ export default function SettingsScreen({
         </GestureHandlerRootView>
     );
 }
+
+const mergedStyles = StyleSheet.create({
+    divider: {
+        height: 1,
+        backgroundColor: 'rgba(255,255,255,0.08)',
+        marginTop: 18,
+        marginBottom: 4,
+        marginHorizontal: 2,
+    },
+});

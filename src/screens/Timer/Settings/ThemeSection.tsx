@@ -13,6 +13,9 @@ import { MaterialIcons } from '@expo/vector-icons';
 import Slider from '@react-native-community/slider';
 import { LANDSCAPE_PRESETS, COLOR_PRESETS } from '../../../constants/data';
 import { styles } from './styles';
+import { useFeatureGate } from '../../../hooks/useFeatureGate';
+import FeatureLockedModal from '../../Paywall/FeatureLockedModal';
+import Paywall from '../../Paywall';
 import {
     ThemeSectionProps,
     FILLER_COLOR_KEY,
@@ -93,6 +96,17 @@ export default function ThemeSection({
 }: ThemeSectionFullProps) {
     const scrollRef = useRef<ScrollView>(null);
     const pulseAnim = useRef(new Animated.Value(1)).current;
+    const featureGate = useFeatureGate();
+    const [showLockedModal, setShowLockedModal] = useState(false);
+    const [showPaywall, setShowPaywall] = useState(false);
+
+    const handleProLock = async () => {
+        const show = await featureGate.shouldShowGate('theme');
+        if (show) {
+            await featureGate.recordGateShown('theme');
+            setShowLockedModal(true);
+        }
+    };
 
     // Track slider values independently to avoid jitter during drag
     const [fillerHue, setFillerHue] = useState(0);
@@ -341,6 +355,31 @@ export default function ThemeSection({
 
     return (
         <>
+            {!featureGate.isPro && (
+                <TouchableOpacity
+                    onPress={handleProLock}
+                    activeOpacity={0.8}
+                    style={{
+                        flexDirection: 'row', alignItems: 'center', gap: 10,
+                        paddingVertical: 12, paddingHorizontal: 14, borderRadius: 14,
+                        backgroundColor: 'rgba(0,229,255,0.06)',
+                        borderWidth: 1, borderColor: 'rgba(0,229,255,0.25)',
+                        marginBottom: 16,
+                    }}
+                >
+                    <MaterialIcons name="lock" size={16} color="#00E5FF" />
+                    <View style={{ flex: 1 }}>
+                        <Text style={{ fontSize: 12, fontWeight: '800', color: '#00E5FF', letterSpacing: 0.8 }}>
+                            CUSTOM THEMES — PRO
+                        </Text>
+                        <Text style={{ fontSize: 11, fontWeight: '500', color: 'rgba(255,255,255,0.55)', marginTop: 2 }}>
+                            Tap to unlock all themes and full colour customisation
+                        </Text>
+                    </View>
+                    <MaterialIcons name="chevron-right" size={18} color="rgba(255,255,255,0.4)" />
+                </TouchableOpacity>
+            )}
+
             <Text style={styles.sectionTitle}>LANDSCAPE PREVIEW</Text>
             {renderLandscapePreview()}
             <View style={[styles.sectionDivider, { marginVertical: 16 }]} />
@@ -355,6 +394,14 @@ export default function ThemeSection({
             {renderColorPickerRow('Button Color', 'touch-app', sliderButtonColor, handleSliderButtonColorSelect)}
             <View style={{ height: 8 }} />
             {renderColorPickerRow('Timer Text Color', 'text-fields', timerTextColor, handleTextColorSelect)}
+
+            <FeatureLockedModal
+                visible={showLockedModal}
+                feature="theme"
+                onClose={() => setShowLockedModal(false)}
+                onViewPlans={() => setShowPaywall(true)}
+            />
+            <Paywall visible={showPaywall} onClose={() => setShowPaywall(false)} />
         </>
     );
 }

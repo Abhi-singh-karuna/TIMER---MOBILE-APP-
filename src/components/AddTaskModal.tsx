@@ -18,6 +18,9 @@ import { BlurView } from 'expo-blur';
 import { MaterialIcons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
 import { Category, Task, Recurrence, RecurrenceType, RecurrenceBase } from '../constants/data';
+import { useFeatureGate } from '../hooks/useFeatureGate';
+import FeatureLockedModal from '../screens/Paywall/FeatureLockedModal';
+import Paywall from '../screens/Paywall';
 import { getLogicalDate, DEFAULT_DAILY_START_MINUTES } from '../utils/dailyStartTime';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
@@ -62,6 +65,9 @@ export default function AddTaskModal({
 
     // Recurrence state
     const [isRecurring, setIsRecurring] = useState(false);
+    const featureGate = useFeatureGate();
+    const [recurringLockedVisible, setRecurringLockedVisible] = useState(false);
+    const [recurringPaywallVisible, setRecurringPaywallVisible] = useState(false);
     const [repeatSync, setRepeatSync] = useState(false);
     const [recurrenceType, setRecurrenceType] = useState<RecurrenceType>('daily');
     const [recurrenceStartDate, setRecurrenceStartDate] = useState(getLogicalDate(new Date(), dailyStartMinutes));
@@ -1340,7 +1346,15 @@ export default function AddTaskModal({
                                                                     <Text style={[styles.toggleLabel, !isRecurring && styles.toggleLabelActive]}>Off</Text>
                                                                     <TouchableOpacity
                                                                         style={[styles.backlogToggle, isRecurring && styles.backlogToggleActive]}
-                                                                        onPress={() => {
+                                                                        onPress={async () => {
+                                                                            if (!isRecurring && !featureGate.canUseRecurring()) {
+                                                                                const show = await featureGate.shouldShowGate('recurring');
+                                                                                if (show) {
+                                                                                    await featureGate.recordGateShown('recurring');
+                                                                                    setRecurringLockedVisible(true);
+                                                                                }
+                                                                                return;
+                                                                            }
                                                                             setIsRecurring(!isRecurring);
                                                                             if (!isRecurring) {
                                                                                 setRecurrenceStartDate(selectedDate);
@@ -1352,6 +1366,9 @@ export default function AddTaskModal({
                                                                         <View style={[styles.backlogToggleCircle, isRecurring && styles.backlogToggleCircleActive]} />
                                                                     </TouchableOpacity>
                                                                     <Text style={[styles.toggleLabel, isRecurring && styles.toggleLabelActive]}>On</Text>
+                                                                    {!featureGate.canUseRecurring() && (
+                                                                        <MaterialIcons name="lock" size={14} color="rgba(0,229,255,0.7)" style={{ marginLeft: 4 }} />
+                                                                    )}
                                                                 </View>
                                                             </View>
                                                         </View>
@@ -1590,6 +1607,14 @@ export default function AddTaskModal({
                     </TouchableWithoutFeedback>
                 </View>
             </TouchableWithoutFeedback>
+
+            <FeatureLockedModal
+                visible={recurringLockedVisible}
+                feature="recurring"
+                onClose={() => setRecurringLockedVisible(false)}
+                onViewPlans={() => setRecurringPaywallVisible(true)}
+            />
+            <Paywall visible={recurringPaywallVisible} onClose={() => setRecurringPaywallVisible(false)} />
         </Modal>
     );
 }

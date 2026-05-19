@@ -14,9 +14,12 @@ import * as Haptics from 'expo-haptics';
 import DraggableFlatList, { RenderItemParams } from 'react-native-draggable-flatlist';
 import { LinearGradient } from 'expo-linear-gradient';
 import Slider from '@react-native-community/slider';
-import { Category, CATEGORIES_KEY, COLOR_PRESETS } from '../../../constants/data';
+import { Category, CATEGORIES_KEY, COLOR_PRESETS, DEFAULT_CATEGORIES } from '../../../constants/data';
 import { styles } from './styles';
 import { CategorySectionProps, CATEGORY_ICONS } from './types';
+import { useFeatureGate } from '../../../hooks/useFeatureGate';
+import FeatureLockedModal from '../../Paywall/FeatureLockedModal';
+import Paywall from '../../Paywall';
 
 // Helper to convert hue (0-360) to Hex (Full Saturation/Value)
 const hsvToHex = (h: number) => {
@@ -60,6 +63,14 @@ export default function CategorySection({
     const [categoryHue, setCategoryHue] = useState(0);
     const [selectedCategoryIcon, setSelectedCategoryIcon] = useState<keyof typeof MaterialIcons.glyphMap>('category');
     const [data, setData] = useState<Category[]>(categories);
+    const featureGate = useFeatureGate();
+    const [showLockedModal, setShowLockedModal] = useState(false);
+    const [showPaywall, setShowPaywall] = useState(false);
+
+    // Only user-added categories count toward the free cap. The three
+    // built-in defaults (Work / Exercise / Study) are always available.
+    const defaultIdSet = React.useMemo(() => new Set(DEFAULT_CATEGORIES.map(c => c.id)), []);
+    const customCategoryCount = categories.filter(c => !defaultIdSet.has(c.id)).length;
 
     useEffect(() => {
         setData(categories);
@@ -71,6 +82,16 @@ export default function CategorySection({
         if (editingCategory) {
             updatedCategories = categories.map(cat => cat.id === editingCategory.id ? { ...cat, name: newCategoryName, color: selectedCategoryColor, icon: selectedCategoryIcon } : cat);
         } else {
+            // Re-check the cap at save time — the entry-point gate could be
+            // bypassed if the count changed between opening and saving.
+            if (!featureGate.canAddCategory(customCategoryCount)) {
+                const show = await featureGate.shouldShowGate('category');
+                if (show) {
+                    await featureGate.recordGateShown('category');
+                    setShowLockedModal(true);
+                }
+                return;
+            }
             updatedCategories = [...categories, { id: Date.now().toString(), name: newCategoryName, color: selectedCategoryColor, icon: selectedCategoryIcon, isEnabled: true }];
         }
 
@@ -132,7 +153,15 @@ export default function CategorySection({
         setIsAddingCategory(true);
     };
 
-    const startAddCategory = () => {
+    const startAddCategory = async () => {
+        if (!featureGate.canAddCategory(customCategoryCount)) {
+            const show = await featureGate.shouldShowGate('category');
+            if (show) {
+                await featureGate.recordGateShown('category');
+                setShowLockedModal(true);
+            }
+            return;
+        }
         setEditingCategory(null);
         setNewCategoryName('');
         setSelectedCategoryColor('#FFFFFF');
@@ -147,8 +176,19 @@ export default function CategorySection({
                 <Text style={isLandscape ? [styles.sectionTitleLandscape, { marginBottom: 0 }] : styles.sectionTitle}>
                     MANAGE CATEGORIES
                 </Text>
-                <TouchableOpacity style={styles.addCategoryBtn} onPress={startAddCategory}>
-                    <MaterialIcons name="add" size={20} color="#FFFFFF" /><Text style={styles.addCategoryBtnText}>ADD NEW</Text>
+                <TouchableOpacity
+                    style={[
+                        styles.addCategoryBtn,
+                        !featureGate.canAddCategory(customCategoryCount) && { opacity: 0.6 },
+                    ]}
+                    onPress={startAddCategory}
+                >
+                    <MaterialIcons
+                        name={featureGate.canAddCategory(customCategoryCount) ? 'add' : 'lock'}
+                        size={featureGate.canAddCategory(customCategoryCount) ? 20 : 14}
+                        color="#FFFFFF"
+                    />
+                    <Text style={styles.addCategoryBtnText}>ADD NEW</Text>
                 </TouchableOpacity>
             </View>
             {isAddingCategory ? (
@@ -349,6 +389,14 @@ export default function CategorySection({
                     contentContainerStyle={{ paddingBottom: 40 }}
                 />
             )}
+
+            <FeatureLockedModal
+                visible={showLockedModal}
+                feature="category"
+                onClose={() => setShowLockedModal(false)}
+                onViewPlans={() => setShowPaywall(true)}
+            />
+            <Paywall visible={showPaywall} onClose={() => setShowPaywall(false)} />
         </View>
     );
 }

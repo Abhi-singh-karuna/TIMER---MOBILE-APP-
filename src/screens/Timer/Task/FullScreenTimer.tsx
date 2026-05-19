@@ -14,6 +14,10 @@ import { MaterialIcons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
 import Animated, { Layout, FadeIn, FadeOut } from 'react-native-reanimated';
 import { StageStatus } from '../../../constants/data';
+import { useFeatureGate } from '../../../hooks/useFeatureGate';
+import type { GatedFeature } from '../../../constants/subscriptionConfig';
+import FeatureLockedModal from '../../Paywall/FeatureLockedModal';
+import Paywall from '../../Paywall';
 
 import StageActionPopup from './StageActionPopup';
 
@@ -126,6 +130,11 @@ export default function FullScreenTimer({
     const { width, height } = useWindowDimensions();
     const isLandscape = width > height;
 
+    // Paywall mounted INSIDE this Modal so nested Modal stacking puts it on top.
+    const featureGate = useFeatureGate();
+    const [lockedFeature, setLockedFeature] = useState<GatedFeature | null>(null);
+    const [paywallVisible, setPaywallVisible] = useState(false);
+
     const [focusedStageId, setFocusedStageId] = useState<number | null>(null);
 
     // Initialize/Update active stage based on ID, defaulting to first if no valid selection
@@ -165,9 +174,20 @@ export default function FullScreenTimer({
     const [upcomingExpanded, setUpcomingExpanded] = useState(true);
     const [undoneExpanded, setUndoneExpanded] = useState(true);
 
-    const [statusPopupVisible, setStatusPopupVisible] = useState(false);
+    const [statusPopupVisible, setStatusPopupVisibleRaw] = useState(false);
     const [statusPopupPosition, setStatusPopupPosition] = useState({ x: 0, y: 0 });
     const [statusPopupStage, setStatusPopupStage] = useState<{ taskId: number, stageId: number, currentStatus: StageStatus } | null>(null);
+
+    // Gated setter: opening the subtask-status popup is a Pro feature
+    // when liveSubtaskActionsEnabled is false. Triggers the paywall mounted
+    // inside this Modal so it stacks on top of FullScreenTimer.
+    const setStatusPopupVisible = React.useCallback((visible: boolean) => {
+        if (visible && !featureGate.canUseLiveSubtaskActions()) {
+            setLockedFeature('liveSubtaskAction');
+            return;
+        }
+        setStatusPopupVisibleRaw(visible);
+    }, [featureGate]);
 
     const toggleCompleted = () => {
         Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
@@ -403,6 +423,10 @@ export default function FullScreenTimer({
                                             <View key={`+${mins}`}>
                                                 {renderSmallRoundButton(
                                                     () => {
+                                                        if (!featureGate.canExtendSubtaskDuration()) {
+                                                            setLockedFeature('extendSubtaskDuration');
+                                                            return;
+                                                        }
                                                         Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
                                                         onExtendStage(activeStage.taskId, activeStage.id!, mins);
                                                     },
@@ -724,6 +748,17 @@ export default function FullScreenTimer({
                         if (status === 'Process' && onStartStage) onStartStage(statusPopupStage.taskId, statusPopupStage.stageId);
                         else if (onUpdateStageStatus) onUpdateStageStatus(statusPopupStage.taskId, statusPopupStage.stageId, status);
                     }}
+                />
+
+                <FeatureLockedModal
+                    visible={lockedFeature !== null}
+                    feature={lockedFeature ?? 'extendSubtaskDuration'}
+                    onClose={() => setLockedFeature(null)}
+                    onViewPlans={() => setPaywallVisible(true)}
+                />
+                <Paywall
+                    visible={paywallVisible}
+                    onClose={() => setPaywallVisible(false)}
                 />
             </View>
         </Modal>

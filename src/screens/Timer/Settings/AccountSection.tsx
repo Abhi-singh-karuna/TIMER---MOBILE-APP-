@@ -24,6 +24,10 @@ import {
 import {
     LAST_SYNC_TIMESTAMP_KEY,
 } from '../../../constants/data';
+import { useFeatureGate } from '../../../hooks/useFeatureGate';
+import FeatureLockedModal from '../../Paywall/FeatureLockedModal';
+import Paywall from '../../Paywall';
+import SubscriptionSection from './SubscriptionSection';
 
 interface AccountSectionProps {
     isLandscape: boolean;
@@ -34,6 +38,9 @@ export default function AccountSection({ isLandscape, onBack }: AccountSectionPr
     const [loading, setLoading] = useState(false);
     const [user, setUser] = useState<any>(null);
     const [lastSyncDisplay, setLastSyncDisplay] = useState<string>('Never');
+    const featureGate = useFeatureGate();
+    const [showLockedModal, setShowLockedModal] = useState(false);
+    const [showPaywall, setShowPaywall] = useState(false);
 
     useEffect(() => {
         configureGoogleSignIn();
@@ -52,6 +59,14 @@ export default function AccountSection({ isLandscape, onBack }: AccountSectionPr
     }, []);
 
     const handleSignIn = async () => {
+        if (!featureGate.canUseBackup()) {
+            const show = await featureGate.shouldShowGate('backup');
+            if (show) {
+                await featureGate.recordGateShown('backup');
+                setShowLockedModal(true);
+            }
+            return;
+        }
         if (Constants.appOwnership === AppOwnership.Expo) {
             Alert.alert('Not Supported', 'Cloud Sync requires a native builds.');
             return;
@@ -93,9 +108,16 @@ export default function AccountSection({ isLandscape, onBack }: AccountSectionPr
                                 <View style={localStyles.premiumIconGlow} />
                                 <MaterialIcons name="cloud-off" size={40} color="rgba(255,255,255,0.6)" />
                             </View>
-                            <Text style={localStyles.premiumTitle}>Offline Backup</Text>
+                            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                                <Text style={localStyles.premiumTitle}>Offline Backup</Text>
+                                {!featureGate.isPro && (
+                                    <MaterialIcons name="lock" size={14} color="rgba(255,255,255,0.4)" />
+                                )}
+                            </View>
                             <Text style={localStyles.premiumSubtitle}>
-                                Secure your timers and tasks in the cloud. Login with Google to sync across all your devices seamlessly.
+                                {featureGate.isPro
+                                    ? 'Secure your timers and tasks in the cloud. Login with Google to sync across all your devices seamlessly.'
+                                    : 'Cloud backup is a Pro feature. Upgrade to sync across all your devices.'}
                             </Text>
                             
                             <TouchableOpacity
@@ -237,12 +259,26 @@ export default function AccountSection({ isLandscape, onBack }: AccountSectionPr
                     </Text>
                 )}
                 {renderUserInfo()}
+
+                {/* Subscription card merged inline (matches portrait Personal Space hero) */}
+                <View style={localStyles.subscriptionMergeWrap}>
+                    <SubscriptionSection />
+                </View>
             </View>
+
+            <FeatureLockedModal
+                visible={showLockedModal}
+                feature="backup"
+                onClose={() => setShowLockedModal(false)}
+                onViewPlans={() => setShowPaywall(true)}
+            />
+            <Paywall visible={showPaywall} onClose={() => setShowPaywall(false)} />
         </ScrollView>
     );
 }
 
 const localStyles = RNStyleSheet.create({
+    subscriptionMergeWrap: { marginTop: 18 },
     containerPortrait: { flex: 1, backgroundColor: '#000' },
     containerLandscape: { flex: 1 },
     scrollContentPortrait: { paddingBottom: 40 },

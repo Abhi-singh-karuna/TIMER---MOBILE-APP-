@@ -21,11 +21,14 @@ import {
     FlatList,
 } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
+import TrialBanner from '../../Paywall/TrialBanner';
 import { LinearGradient } from 'expo-linear-gradient';
 import { BlurView } from 'expo-blur';
 import { MaterialIcons } from '@expo/vector-icons';
 import DraggableFlatList, { RenderItemParams } from 'react-native-draggable-flatlist';
 import { Timer, Task, TaskStage, Category, QuickMessage, Goal, StageStatus, LEAVE_DAYS_KEY } from '../../../constants/data';
+import { useFeatureGate } from '../../../hooks/useFeatureGate';
+import type { GatedFeature } from '../../../constants/subscriptionConfig';
 import TaskActionModal from '../../../components/TaskActionModal';
 import LiveFocusView from './LiveFocusView';
 import StageActionPopup from './StageActionPopup';
@@ -2344,6 +2347,8 @@ interface TaskListProps {
     sliderButtonColor?: string;
     /** Custom content to render (e.g., Goal Management) instead of the task grid in certain views. */
     renderCustomContent?: () => React.ReactNode;
+    /** Open the central FeatureLockedModal owned by App.tsx for the given gated feature. */
+    onTriggerGate?: (feature: GatedFeature) => void;
 }
 
 export default function TaskList({
@@ -2376,7 +2381,9 @@ export default function TaskList({
     timerTextColor = '#FFFFFF',
     sliderButtonColor = '#FFFFFF',
     renderCustomContent,
+    onTriggerGate,
 }: TaskListProps) {
+    const featureGate = useFeatureGate();
     const { width: screenWidth, height: screenHeight } = useWindowDimensions();
     const isLandscape = screenWidth > screenHeight;
     const insets = useSafeAreaInsets();
@@ -2473,6 +2480,13 @@ export default function TaskList({
     };
     const [showBacklog, setShowBacklog] = useState(false);
     const [showLive, setShowLive] = useState(initialShowLive);
+    const toggleLive = useCallback(() => {
+        if (!showLive && !featureGate.canUseLiveView()) {
+            onTriggerGate?.('liveView');
+            return;
+        }
+        setShowLive(prev => !prev);
+    }, [showLive, featureGate, onTriggerGate]);
     const [actionModalVisible, setActionModalVisible] = useState(false);
     const [showDisabledTasks, setShowDisabledTasks] = useState(false);
     const [leaveDays, setLeaveDays] = useState<string[]>([]);
@@ -3437,6 +3451,7 @@ export default function TaskList({
                     timerTextColor={timerTextColor}
                     sliderButtonColor={sliderButtonColor}
                     leaveDays={leaveDays}
+                                                        onTriggerGate={onTriggerGate}
                     onClose={() => {
                         setShowLive(false);
                         // If we came from timer view, switch back to timer view
@@ -3551,6 +3566,7 @@ export default function TaskList({
             style={styles.container}
         >
             <SafeAreaView style={[styles.safeArea, isLandscape && styles.safeAreaLandscape]}>
+                {!isLandscape && <TrialBanner />}
                 {isLandscape ? (
                     <>
                         {/* Left Panel - Analytics Dashboard (Persistent across Timer/Task/Goal) */}
@@ -3593,7 +3609,7 @@ export default function TaskList({
                                         {activeView !== 'goal' && (
                                             <TouchableOpacity
                                                 style={[styles.todayNavBtn, showLive && { backgroundColor: 'rgba(255, 61, 0, 0.08)', borderColor: 'rgba(255, 61, 0, 0.2)' }]}
-                                                onPress={() => setShowLive(!showLive)}
+                                                onPress={toggleLive}
                                                 activeOpacity={0.7}
                                             >
                                                 <MaterialIcons name="sensors" size={12} color={showLive ? "#FF3D00" : "#FF3D00"} />
@@ -3883,6 +3899,7 @@ export default function TaskList({
                                                         isFullView={true}
                                                         allTasks={tasks}
                                                         leaveDays={leaveDays}
+                                                        onTriggerGate={onTriggerGate}
                                                     />
                                                 );
                                             })()}
@@ -3947,6 +3964,7 @@ export default function TaskList({
                                                                     quickMessages={quickMessages}
                                                                     allTasks={tasks}
                                                                     leaveDays={leaveDays}
+                                                        onTriggerGate={onTriggerGate}
                                                                 />
                                                             ))}
                                                             {pair.length === 1 && <View style={styles.cardPlaceholder} />}
@@ -4043,7 +4061,7 @@ export default function TaskList({
                                 {activeView !== 'goal' && (
                                     <TouchableOpacity
                                         style={[styles.todayNavBtn, showLive && { backgroundColor: 'rgba(255, 61, 0, 0.08)', borderColor: 'rgba(255, 61, 0, 0.2)' }]}
-                                        onPress={() => setShowLive(!showLive)}
+                                        onPress={toggleLive}
                                         onLongPress={() => setShowDisabledTasks(!showDisabledTasks)}
                                         activeOpacity={0.7}
                                     >
@@ -4305,6 +4323,7 @@ export default function TaskList({
                                             isFullView={true}
                                             allTasks={tasks}
                                             leaveDays={leaveDays}
+                                                        onTriggerGate={onTriggerGate}
                                         />
                                     );
                                 })()}
@@ -4346,6 +4365,7 @@ export default function TaskList({
                                                 quickMessages={quickMessages}
                                                 allTasks={tasks}
                                                 leaveDays={leaveDays}
+                                                        onTriggerGate={onTriggerGate}
                                             />
                                         </View>
                                     );
@@ -4461,6 +4481,7 @@ interface TaskCardProps {
     /** Original tasks array for accessing full recurrence data */
     allTasks?: Task[];
     leaveDays?: string[];
+    onTriggerGate?: (feature: GatedFeature) => void;
 }
 
 // Draggable Stages List Props
@@ -4687,7 +4708,9 @@ function TaskCard({
     quickMessages,
     allTasks,
     leaveDays,
+    onTriggerGate,
 }: TaskCardProps) {
+    const featureGate = useFeatureGate();
     const [commentText, setCommentText] = useState('');
     const [stageText, setStageText] = useState('');
     const [syncMode, setSyncMode] = useState<SyncMode>('none');
@@ -4722,6 +4745,10 @@ function TaskCard({
 
     const handleAddStage = () => {
         if (!stageText.trim()) return;
+        if (!featureGate.canAddSubtask((task.stages || []).length)) {
+            onTriggerGate?.('subtask');
+            return;
+        }
         const nowIso = new Date().toISOString();
 
         // Generate a stable stage id (avoid collisions within the task)
