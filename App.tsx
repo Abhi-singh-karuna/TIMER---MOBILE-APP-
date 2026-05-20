@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { LogBox, AppState, AppStateStatus, LayoutAnimation, UIManager, Platform, Keyboard, TouchableWithoutFeedback, View, Pressable, Dimensions, useWindowDimensions } from 'react-native';
+import { LogBox, AppState, AppStateStatus, LayoutAnimation, UIManager, Platform, Keyboard, TouchableWithoutFeedback, View, Pressable, Dimensions, useWindowDimensions, Linking } from 'react-native';
 import * as Notifications from 'expo-notifications';
 import { StatusBar } from 'expo-status-bar';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
@@ -58,6 +58,7 @@ import { useFeatureGate } from './src/hooks/useFeatureGate';
 import FeatureLockedModal from './src/screens/Paywall/FeatureLockedModal';
 import Paywall from './src/screens/Paywall';
 import { GatedFeature } from './src/constants/subscriptionConfig';
+import { LiveActivity } from './src/native/LiveActivity';
 
 // Helper to normalize date string (imported from recurrenceUtils logic)
 function normalizeDateString(dateStr: string): string {
@@ -1059,6 +1060,84 @@ export default function App() {
     }
   }, [timers, activeTimer, currentScreen]);
 
+  // Custom ProgressViewStyle inside a Live Activity widget doesn't receive
+  // a ticking fractionCompleted (only Apple's default styles do). To get
+  // the circular ring + % label to animate, push a fresh state every
+  // second while a timer is running. iOS coalesces these onto its render
+  // schedule — it's the standard timer-app pattern.
+  useEffect(() => {
+    const running = timers.find(t => t.status === 'Running');
+    if (!running) return;
+
+    let endedForId: number | null = null;
+
+    const id = setInterval(() => {
+      const t = timers.find(tt => tt.id === running.id);
+      if (!t || t.status !== 'Running') return;
+      const remaining = timeToSeconds(t.time);
+      const borrowed = (t.borrowedTimeList ?? []).reduce((a, b) => a + b, 0);
+
+      if (remaining <= 0 && endedForId !== t.id) {
+        endedForId = t.id;
+        // Mark Completed locally so the rest of the app reacts.
+        setTimers(prev => prev.map(tt =>
+          tt.id === t.id
+            ? ({ ...tt, status: 'Completed', time: '00:00:00' } as Timer)
+            : tt
+        ));
+        // Final 100% push, then end the activity after a beat so the
+        // lock-screen / island shows "DONE" briefly before vanishing.
+        (async () => {
+          await LiveActivity.update({
+            remainingSeconds: 0,
+            borrowedSeconds: borrowed,
+            isPaused: false,
+          });
+          await new Promise(r => setTimeout(r, 1500));
+          await LiveActivity.end();
+        })();
+        return;
+      }
+
+      LiveActivity.update({
+        remainingSeconds: remaining,
+        borrowedSeconds: borrowed,
+        isPaused: false,
+      });
+    }, 1000);
+    return () => clearInterval(id);
+  }, [timers]);
+
+  // Deeplink handler — Live Activity extend buttons fire chronoscape://timer/extend?minutes=N
+  useEffect(() => {
+    const handleUrl = (url: string | null) => {
+      if (!url) return;
+      try {
+        const parsed = new URL(url);
+        if (parsed.host === 'timer' && parsed.pathname.startsWith('/extend')) {
+          const mins = parseInt(parsed.searchParams.get('minutes') ?? '0', 10);
+          if (mins > 0) {
+            const running = timers.find(t => t.status === 'Running');
+            if (running) {
+              extendRunningTimerBySeconds(running, mins * 60);
+            }
+          }
+        }
+      } catch {
+        // Malformed URL — ignore.
+      }
+    };
+
+    // Cold-launch case: app was killed when the extend tap happened.
+    Linking.getInitialURL().then(handleUrl);
+    // Warm-launch case: app was in the background.
+    const sub = Linking.addEventListener('url', e => handleUrl(e.url));
+    return () => sub.remove();
+    // Re-bind whenever the list of timers changes so the closure
+    // always sees the latest running timer.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [timers]);
+
   const handleAcknowledgeCompletion = async (timerId: number) => {
     setTimers(prev => {
       const updated = prev.map(t =>
@@ -1232,6 +1311,24 @@ export default function App() {
     setSelectedTimer(null);
   };
 
+  // Build the payload for the iOS Live Activity / Dynamic Island. Pulls the
+  // category metadata so the lock-screen and island UIs can colour + label
+  // themselves. Returns null when the timer is in a state that shouldn't
+  // surface a Live Activity.
+  const liveActivityParamsFor = (t: Timer) => {
+    const cat = categories.find(c => c.id === t.categoryId);
+    return {
+      title: t.title || 'Timer',
+      categoryName: cat?.name ?? 'Uncategorised',
+      categoryColorHex: cat?.color ?? '#FFFFFF',
+      categoryIconName: String(cat?.icon ?? 'timer'),
+      totalSeconds: timeToSeconds(t.total),
+      remainingSeconds: timeToSeconds(t.time),
+      borrowedSeconds: (t.borrowedTimeList ?? []).reduce((a, b) => a + b, 0),
+      isPaused: t.status === 'Paused',
+    };
+  };
+
   // Play/Pause a timer - only one can run at a time
   const handlePlayPause = async (timerToToggle: Timer) => {
     setTimers(prev => {
@@ -1247,6 +1344,12 @@ export default function App() {
       (async () => {
         if (isCurrentlyRunning) {
           await cancelTimerNotification(currentTimer.notificationId);
+          // Pausing → push update to Live Activity so the island freezes the count.
+          await LiveActivity.update({
+            remainingSeconds: timeToSeconds(currentTimer.time),
+            borrowedSeconds: (currentTimer.borrowedTimeList ?? []).reduce((a, b) => a + b, 0),
+            isPaused: true,
+          });
         } else {
           const newNotificationId = await scheduleTimerNotification(
             currentTimer.id,
@@ -1267,6 +1370,22 @@ export default function App() {
             }
             return latest;
           });
+
+          // Going to Running → either resume (was paused) or start fresh.
+          // LiveActivity.start ends any pre-existing activity, so calling it
+          // unconditionally is safe.
+          if (currentTimer.status === 'Paused') {
+            await LiveActivity.update({
+              remainingSeconds: currentSeconds,
+              borrowedSeconds: (currentTimer.borrowedTimeList ?? []).reduce((a, b) => a + b, 0),
+              isPaused: false,
+            });
+          } else {
+            await LiveActivity.start({
+              ...liveActivityParamsFor(currentTimer),
+              isPaused: false,
+            });
+          }
         }
       })();
 
@@ -1395,6 +1514,7 @@ export default function App() {
 
   // Handle cancel from active timer screen
   const handleCancel = async () => {
+    await LiveActivity.end();
     setActiveTimer(null);
     setCurrentScreen('list');
   };
@@ -1406,6 +1526,8 @@ export default function App() {
     if (currentTimer?.notificationId) {
       await cancelTimerNotification(currentTimer.notificationId);
     }
+    // Dismiss the Live Activity from the lock screen / Dynamic Island.
+    await LiveActivity.end();
 
     const now = new Date();
     const time = `${now.getHours().toString().padStart(2, '0')}:${now.getMinutes().toString().padStart(2, '0')}`;
@@ -1563,6 +1685,16 @@ export default function App() {
       }));
       setTimers(updatedTimers);
       await saveTimers(updatedTimers);
+      // Push the new remaining time to the Live Activity so the island
+      // re-anchors its countdown end-date.
+      const refreshed = updatedTimers.find(t => t.id === activeTimer.id);
+      if (refreshed && refreshed.status === 'Running') {
+        await LiveActivity.update({
+          remainingSeconds: timeToSeconds(refreshed.time),
+          borrowedSeconds: (refreshed.borrowedTimeList ?? []).reduce((a, b) => a + b, 0),
+          isPaused: false,
+        });
+      }
     }
   };
 
@@ -1602,6 +1734,50 @@ export default function App() {
 
 
   // Handle borrow time from TimerList popup (when timer completes in-list)
+  // Adds `seconds` to a currently-Running timer (used by the Live Activity
+  // +1m / +5m / +10m extend buttons). Unlike `handleBorrowTimeFromList`
+  // (which RESETS a completed timer), this one ADDS time to the
+  // remaining countdown and immediately re-anchors the Live Activity so
+  // the lock-screen / Dynamic Island countdown jumps to the new end.
+  const extendRunningTimerBySeconds = async (timer: Timer, seconds: number) => {
+    if (timer.status !== 'Running') return;
+
+    let newRemaining = 0;
+    let newBorrowedList: number[] = [];
+    let scheduledId: string | null | undefined;
+
+    // Cancel the existing completion notification then schedule a fresh one.
+    if (timer.notificationId) {
+      await cancelTimerNotification(timer.notificationId);
+    }
+    const currentSeconds = timeToSeconds(timer.time);
+    newRemaining = currentSeconds + seconds;
+    scheduledId = await scheduleTimerNotification(timer.id, newRemaining, timer.title);
+
+    const updated = timers.map(t => {
+      if (t.id !== timer.id) return t;
+      newBorrowedList = [...(t.borrowedTimeList || []), seconds];
+      return {
+        ...t,
+        time: secondsToTime(newRemaining),
+        borrowedTime: (t.borrowedTime || 0) + seconds,
+        borrowedTimeList: newBorrowedList,
+        updatedAt: new Date().toISOString(),
+        notificationId: scheduledId || undefined,
+        remainingSecondsAtStart: newRemaining,
+        startedTimestamp: Date.now(),
+      } as Timer;
+    });
+    setTimers(updated);
+    await saveTimers(updated);
+
+    await LiveActivity.update({
+      remainingSeconds: newRemaining,
+      borrowedSeconds: newBorrowedList.reduce((a, b) => a + b, 0),
+      isPaused: false,
+    });
+  };
+
   const handleBorrowTimeFromList = async (timer: Timer, seconds: number) => {
     const scheduledId = await scheduleTimerNotification(
       timer.id,

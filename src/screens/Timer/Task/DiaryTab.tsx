@@ -1,6 +1,6 @@
 import * as React from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { Keyboard, KeyboardAvoidingView, Modal, Platform, ScrollView, Text, TextInput, TouchableOpacity, TouchableWithoutFeedback, View } from 'react-native';
+import { Keyboard, KeyboardAvoidingView, Modal, Platform, ScrollView, Text, TextInput, TouchableOpacity, TouchableWithoutFeedback, View, useWindowDimensions } from 'react-native';
 import { MaterialIcons, MaterialCommunityIcons } from '@expo/vector-icons';
 import type { StyleProp, ViewStyle } from 'react-native';
 import { RichEditor, RichToolbar, actions } from 'react-native-pell-rich-editor';
@@ -107,6 +107,8 @@ export default function DiaryTab(props: {
         setExpandedAllDays,
         allTemplates,
     } = props;
+
+    const { width } = useWindowDimensions();
 
     const richEditorRef = React.useRef<RichEditor | null>(null);
     const [isExpanded, setIsExpanded] = React.useState(false);
@@ -256,113 +258,84 @@ export default function DiaryTab(props: {
                     keyboardShouldPersistTaps="handled"
                     nestedScrollEnabled={true}
                 >
-                    <RichEditor
-                        ref={(r) => { richEditorRef.current = r; }}
-                        initialContentHTML={draftText}
-                        placeholder="How was your day? Write your thoughts here..."
-                        disabled={mode !== 'edit'}
-                        useContainer={false}
-                        initialHeight={500}
-                        editorStyle={{
-                            backgroundColor: 'transparent',
-                            color: DIARY_DEFAULT_TEXT_COLOR,
-                            placeholderColor: 'rgba(255,255,255,0.2)',
-                            cssText: `
-                                * { font-family: ${'Georgia'}; }
-                                body {
-                                    font-size: ${fontSizePx}px;
-                                    line-height: 1.55;
-                                    padding: 0;
-                                    margin: 0;
-                                    padding-bottom: ${isKeyboardVisible ? '150px' : '16px'};
+                    <View style={{ position: 'relative' }}>
+                        <RichEditor
+                            ref={(r) => { richEditorRef.current = r; }}
+                            initialContentHTML={draftText}
+                            placeholder="How was your day? Write your thoughts here..."
+                            disabled={mode !== 'edit'}
+                            useContainer={false}
+                            initialHeight={500}
+                            editorStyle={{
+                                backgroundColor: 'transparent',
+                                color: DIARY_DEFAULT_TEXT_COLOR,
+                                placeholderColor: 'rgba(255,255,255,0.2)',
+                                cssText: `
+                                    * { font-family: ${'Georgia'}; }
+                                    body {
+                                        font-size: ${fontSizePx}px;
+                                        line-height: 1.55;
+                                        padding: 0;
+                                        margin: 0;
+                                        padding-bottom: ${isKeyboardVisible ? '150px' : '16px'};
+                                    }
+                                `,
+                            }}
+                            editorInitializedCallback={applyAppearance}
+                            onKeyUp={(d: any) => {
+                                const key = typeof d === 'string' ? d : d?.key;
+                                if (key === '@') {
+                                    const now = new Date();
+                                    const dateStr = now.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' });
+                                    const timeStr = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+                                    setMentionOptions([dateStr, timeStr, `${dateStr} ${timeStr}`]);
+                                    setShowMentions(true);
+                                    triggerMentionCoords();
+                                } else {
+                                    if (showMentions) setShowMentions(false);
                                 }
-                            `,
-                        }}
-                        editorInitializedCallback={applyAppearance}
-                        onKeyUp={(d: any) => {
-                            const key = typeof d === 'string' ? d : d?.key;
-                            if (key === '@') {
-                                const now = new Date();
-                                const dateStr = now.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' });
-                                const timeStr = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-                                setMentionOptions([dateStr, timeStr, `${dateStr} ${timeStr}`]);
-                                setShowMentions(true);
-                                triggerMentionCoords();
-                            } else {
-                                if (showMentions) setShowMentions(false);
-                            }
-                        }}
-                        onChange={(html) => {
-                            setDraftText(html);
-                            if (html.endsWith('@') || html.endsWith('@</div>') || html.endsWith('@<br>')) {
-                                const now = new Date();
-                                const dateStr = now.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' });
-                                const timeStr = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-                                setMentionOptions([dateStr, timeStr, `${dateStr} ${timeStr}`]);
-                                setShowMentions(true);
-                                triggerMentionCoords();
-                            }
-                        }}
-                        onMessage={handleEditorMessage}
-                        style={{ minHeight: 500 }}
-                    />
+                            }}
+                            onChange={(html) => {
+                                setDraftText(html);
+                                if (html.endsWith('@') || html.endsWith('@</div>') || html.endsWith('@<br>')) {
+                                    const now = new Date();
+                                    const dateStr = now.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' });
+                                    const timeStr = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+                                    setMentionOptions([dateStr, timeStr, `${dateStr} ${timeStr}`]);
+                                    setShowMentions(true);
+                                    triggerMentionCoords();
+                                }
+                            }}
+                            onMessage={handleEditorMessage}
+                            style={{ minHeight: 500 }}
+                        />
+
+                        {/* Mention Suggestions Popup - Floating above cursor */}
+                        {showMentions && (
+                            <View style={[styles.mentionPopupInline, {
+                                position: 'absolute',
+                                top: Math.max(0, mentionPos.y - 45),
+                                left: Math.min(width - 250, mentionPos.x), // reasonable constraint
+                                bottom: undefined
+                            }]}>
+                                <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+                                    {mentionOptions.map((opt, idx) => (
+                                        <TouchableOpacity 
+                                            key={idx} 
+                                            style={styles.mentionItem}
+                                            onPress={() => {
+                                                richEditorRef.current?.insertText(opt);
+                                                setShowMentions(false);
+                                            }}
+                                        >
+                                            <Text style={styles.mentionItemText}>{opt}</Text>
+                                        </TouchableOpacity>
+                                    ))}
+                                </ScrollView>
+                            </View>
+                        )}
+                    </View>
                 </ScrollView>
-
-                {mode === 'edit' && (
-                    <RichToolbar
-                        editor={richEditorRef}
-                        actions={[
-                            actions.undo,
-                            actions.redo,
-                            actions.setBold,
-                            actions.setItalic,
-                            actions.setUnderline,
-                            actions.heading1,
-                            actions.heading2,
-                            actions.insertBulletsList,
-                            actions.insertOrderedList,
-                            actions.insertLink,
-                        ]}
-                        iconTint="rgba(255,255,255,0.55)"
-                        selectedIconTint="#4CAF50"
-                        selectedButtonStyle={{ backgroundColor: 'rgba(76,175,80,0.14)' }}
-                        iconSize={16}
-                        style={styles.richToolbar}
-                    />
-                )}
-
-                <View style={styles.cardFooter}>
-                    <View style={styles.footerDivider} />
-                    <View style={styles.footerStats}>
-                        <Text style={styles.statsText}>{charCount} CHARACTERS</Text>
-                        <Text style={styles.statsText}>&lt; {readTime} MIN READ</Text>
-                    </View>
-                </View>
-
-                {/* Mention Suggestions Popup - Floating above cursor */}
-                {showMentions && (
-                    <View style={[styles.mentionPopupInline, {
-                        position: 'absolute',
-                        top: Math.max(0, mentionPos.y - 50),
-                        left: Math.min(300, mentionPos.x), // reasonable constraint
-                        bottom: undefined
-                    }]}>
-                        <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-                            {mentionOptions.map((opt, idx) => (
-                                <TouchableOpacity 
-                                    key={idx} 
-                                    style={styles.mentionItem}
-                                    onPress={() => {
-                                        richEditorRef.current?.insertText(opt);
-                                        setShowMentions(false);
-                                    }}
-                                >
-                                    <Text style={styles.mentionItemText}>{opt}</Text>
-                                </TouchableOpacity>
-                            ))}
-                        </ScrollView>
-                    </View>
-                )}
             </View>
 
             {/* Diary templates modal removed */}
@@ -514,86 +487,88 @@ export default function DiaryTab(props: {
                                     keyboardShouldPersistTaps="handled"
                                     nestedScrollEnabled={true}
                                 >
-                                    <RichEditor
-                                        ref={(r) => { richEditorRef.current = r; }}
-                                        key={`diary_${dateKey}`}
-                                        initialContentHTML={draftText}
-                                        placeholder="How was your day? Write your thoughts here..."
-                                        disabled={mode !== 'edit'}
-                                        useContainer={false}
-                                        initialHeight={200}
-                                        editorStyle={{
-                                            backgroundColor: 'transparent',
-                                            color: DIARY_DEFAULT_TEXT_COLOR,
-                                            placeholderColor: 'rgba(255,255,255,0.2)',
-                                            cssText: `
-                                                * { font-family: ${'Georgia'}; }
-                                                body {
-                                                    font-size: ${fontSizePx}px;
-                                                    line-height: 1.65;
-                                                    padding: 0;
-                                                    margin: 0;
-                                                    padding-bottom: 24px;
-                                                    min-height: 90vh;
+                                    <View style={{ position: 'relative', flex: 1 }}>
+                                        <RichEditor
+                                            ref={(r) => { richEditorRef.current = r; }}
+                                            key={`diary_${dateKey}`}
+                                            initialContentHTML={draftText}
+                                            placeholder="How was your day? Write your thoughts here..."
+                                            disabled={mode !== 'edit'}
+                                            useContainer={false}
+                                            initialHeight={200}
+                                            editorStyle={{
+                                                backgroundColor: 'transparent',
+                                                color: DIARY_DEFAULT_TEXT_COLOR,
+                                                placeholderColor: 'rgba(255,255,255,0.2)',
+                                                cssText: `
+                                                    * { font-family: ${'Georgia'}; }
+                                                    body {
+                                                        font-size: ${fontSizePx}px;
+                                                        line-height: 1.65;
+                                                        padding: 0;
+                                                        margin: 0;
+                                                        padding-bottom: 24px;
+                                                        min-height: 90vh;
+                                                    }
+                                                `,
+                                            }}
+                                            editorInitializedCallback={applyAppearance}
+                                            onKeyUp={(d: any) => {
+                                                const key = typeof d === 'string' ? d : d?.key;
+                                                if (key === '@') {
+                                                    const now = new Date();
+                                                    const dateStr = now.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' });
+                                                    const timeStr = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+                                                    setMentionOptions([dateStr, timeStr, `${dateStr} ${timeStr}`]);
+                                                    setShowMentions(true);
+                                                    triggerMentionCoords();
+                                                } else {
+                                                    if (showMentions) setShowMentions(false);
                                                 }
-                                            `,
-                                        }}
-                                        editorInitializedCallback={applyAppearance}
-                                        onKeyUp={(d: any) => {
-                                            const key = typeof d === 'string' ? d : d?.key;
-                                            if (key === '@') {
-                                                const now = new Date();
-                                                const dateStr = now.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' });
-                                                const timeStr = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-                                                setMentionOptions([dateStr, timeStr, `${dateStr} ${timeStr}`]);
-                                                setShowMentions(true);
-                                                triggerMentionCoords();
-                                            } else {
-                                                if (showMentions) setShowMentions(false);
-                                            }
-                                        }}
-                                        onChange={(html) => {
-                                            setDraftText(html);
-                                            if (html.endsWith('@') || html.endsWith('@</div>') || html.endsWith('@<br>')) {
-                                                const now = new Date();
-                                                const dateStr = now.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' });
-                                                const timeStr = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-                                                setMentionOptions([dateStr, timeStr, `${dateStr} ${timeStr}`]);
-                                                setShowMentions(true);
-                                                triggerMentionCoords();
-                                            }
-                                        }}
-                                        onMessage={handleEditorMessage}
-                                        style={{ minHeight: 200 }}
-                                    />
+                                            }}
+                                            onChange={(html) => {
+                                                setDraftText(html);
+                                                if (html.endsWith('@') || html.endsWith('@</div>') || html.endsWith('@<br>')) {
+                                                    const now = new Date();
+                                                    const dateStr = now.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' });
+                                                    const timeStr = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+                                                    setMentionOptions([dateStr, timeStr, `${dateStr} ${timeStr}`]);
+                                                    setShowMentions(true);
+                                                    triggerMentionCoords();
+                                                }
+                                            }}
+                                            onMessage={handleEditorMessage}
+                                            style={{ flex: 1, minHeight: 200 }}
+                                        />
+
+                                        {/* Mention Suggestions Popup for Expanded Editor - Floating above cursor */}
+                                        {showMentions && (
+                                            <View style={[styles.mentionPopup, {
+                                                position: 'absolute',
+                                                top: Math.max(0, mentionPos.y - 45),
+                                                left: Math.min(width - 250, mentionPos.x),
+                                                bottom: undefined
+                                            }]}>
+                                                <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+                                                    {mentionOptions.map((opt, idx) => (
+                                                        <TouchableOpacity 
+                                                            key={idx} 
+                                                            style={styles.mentionItem}
+                                                            onPress={() => {
+                                                                richEditorRef.current?.insertText(opt);
+                                                                setShowMentions(false);
+                                                            }}
+                                                        >
+                                                            <Text style={styles.mentionItemText}>{opt}</Text>
+                                                        </TouchableOpacity>
+                                                    ))}
+                                                </ScrollView>
+                                            </View>
+                                        )}
+                                    </View>
                                 </ScrollView>
                             </KeyboardAvoidingView>
                         </View>
-
-                        {/* Mention Suggestions Popup for Expanded Editor - Floating above cursor */}
-                        {showMentions && (
-                            <View style={[styles.mentionPopup, {
-                                position: 'absolute',
-                                top: Math.max(0, mentionPos.y - 50),
-                                left: Math.min(300, mentionPos.x),
-                                bottom: undefined
-                            }]}>
-                                <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-                                    {mentionOptions.map((opt, idx) => (
-                                        <TouchableOpacity 
-                                            key={idx} 
-                                            style={styles.mentionItem}
-                                            onPress={() => {
-                                                richEditorRef.current?.insertText(opt);
-                                                setShowMentions(false);
-                                            }}
-                                        >
-                                            <Text style={styles.mentionItemText}>{opt}</Text>
-                                        </TouchableOpacity>
-                                    ))}
-                                </ScrollView>
-                            </View>
-                        )}
                     </View>
                 </View>
             </Modal>
