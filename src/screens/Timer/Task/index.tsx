@@ -25,7 +25,7 @@ import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context'
 import { LinearGradient } from 'expo-linear-gradient';
 import { BlurView } from 'expo-blur';
 import { MaterialIcons } from '@expo/vector-icons';
-import DraggableFlatList, { RenderItemParams } from 'react-native-draggable-flatlist';
+import ReorderableList, { reorderItems, useIsActive, useReorderableDrag } from 'react-native-reorderable-list';
 import { Timer, Task, TaskStage, Category, QuickMessage, Goal, StageStatus, LEAVE_DAYS_KEY } from '../../../constants/data';
 import TaskActionModal from '../../../components/TaskActionModal';
 import LiveFocusView from './LiveFocusView';
@@ -4474,6 +4474,93 @@ interface DraggableStagesListProps {
     isRepeatSync?: boolean;
 }
 
+interface StageRowProps {
+    item: TaskStage;
+    index: number;
+    getCircleStyle: (stage: TaskStage, isActive: boolean) => any;
+    onCirclePress: (stage: TaskStage, event: any) => void;
+    onDeleteStage: (stageId: number) => void;
+}
+
+// Single draggable stage row (drag state comes from react-native-reorderable-list hooks)
+const StageRow = React.memo(function StageRow({ item, index, getCircleStyle, onCirclePress, onDeleteStage }: StageRowProps) {
+    const drag = useReorderableDrag();
+    const isActive = useIsActive();
+    const orderNumber = index + 1;
+    const status = item.status || 'Upcoming';
+    const isDone = status === 'Done';
+
+    return (
+        <View style={[styles.portraitStageItem, isActive && styles.stageItemDragging]}>
+            {/* Drag handle: long-press to drag */}
+            <TouchableOpacity
+                style={styles.stageDragHandle}
+                onLongPress={() => {
+                    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
+                    drag();
+                }}
+                delayLongPress={180}
+                activeOpacity={0.7}
+            >
+                <MaterialIcons
+                    name="drag-indicator"
+                    size={16}
+                    color={isActive ? "rgba(0,0,0,0.4)" : "rgba(255,255,255,0.3)"}
+                />
+            </TouchableOpacity>
+
+            {/* Combined Order/Completion Circle */}
+            <TouchableOpacity
+                style={getCircleStyle(item, isActive)}
+                onPress={(event) => onCirclePress(item, event)}
+                disabled={isActive}
+                activeOpacity={0.7}
+            >
+                {item.syncMode && item.syncMode !== 'none' ? (
+                    <MaterialIcons
+                        name={item.syncMode === 'all' ? "sync" : "update"}
+                        size={14}
+                        color={(status === 'Done' || status === 'Undone') ? "#fff" : (item.syncMode === 'all' ? "#2196F3" : "#4CAF50")}
+                    />
+                ) : (
+                    <Text style={[
+                        styles.stageOrderText,
+                        (status === 'Done' || status === 'Undone') && { color: '#fff' },
+                        isActive && styles.stageOrderTextDragging
+                    ]}>
+                        {orderNumber}
+                    </Text>
+                )}
+            </TouchableOpacity>
+
+            {/* Stage Text */}
+            <View style={{ flex: 1, flexDirection: 'row', alignItems: 'center' }}>
+                <Text style={[
+                    styles.portraitStageText,
+                    isDone && styles.stageTextCompleted,
+                    isActive && styles.stageTextDragging
+                ]}>
+                    {item.text}
+                </Text>
+            </View>
+
+            {/* Delete Button */}
+            <TouchableOpacity
+                onPress={() => onDeleteStage(item.id)}
+                style={styles.deleteStageBtn}
+                disabled={isActive}
+                activeOpacity={0.7}
+            >
+                <MaterialIcons
+                    name="delete-outline"
+                    size={16}
+                    color={isActive ? "rgba(0,0,0,0.25)" : "rgba(255,255,255,0.25)"}
+                />
+            </TouchableOpacity>
+        </View>
+    );
+});
+
 // Draggable Stages List Component
 function DraggableStagesList({ stages, onReorder, onSetStageStatus, onDeleteStage, isRecurring, isRepeatSync }: DraggableStagesListProps) {
     const [data, setData] = useState<TaskStage[]>(stages);
@@ -4530,104 +4617,35 @@ function DraggableStagesList({ stages, onReorder, onSetStageStatus, onDeleteStag
     };
 
     const renderItem = useCallback(
-        ({ item, drag, isActive, getIndex }: RenderItemParams<TaskStage>) => {
-            const index = getIndex?.() ?? 0;
-            const orderNumber = index + 1;
-            const status = item.status || 'Upcoming';
-            const isDone = status === 'Done';
-
-            return (
-                <View style={[styles.portraitStageItem, isActive && styles.stageItemDragging]}>
-                    {/* Drag handle: long-press to drag */}
-                    <TouchableOpacity
-                        style={styles.stageDragHandle}
-                        onLongPress={() => {
-                            Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
-                            drag();
-                        }}
-                        delayLongPress={180}
-                        activeOpacity={0.7}
-                    >
-                        <MaterialIcons
-                            name="drag-indicator"
-                            size={16}
-                            color={isActive ? "rgba(0,0,0,0.4)" : "rgba(255,255,255,0.3)"}
-                        />
-                    </TouchableOpacity>
-
-                    {/* Combined Order/Completion Circle */}
-                    <TouchableOpacity
-                        style={getCircleStyle(item, isActive)}
-                        onPress={(event) => handleCirclePress(item, event)}
-                        disabled={isActive}
-                        activeOpacity={0.7}
-                    >
-                        {item.syncMode && item.syncMode !== 'none' ? (
-                            <MaterialIcons
-                                name={item.syncMode === 'all' ? "sync" : "update"}
-                                size={14}
-                                color={(status === 'Done' || status === 'Undone') ? "#fff" : (item.syncMode === 'all' ? "#2196F3" : "#4CAF50")}
-                            />
-                        ) : (
-                            <Text style={[
-                                styles.stageOrderText,
-                                (status === 'Done' || status === 'Undone') && { color: '#fff' },
-                                isActive && styles.stageOrderTextDragging
-                            ]}>
-                                {orderNumber}
-                            </Text>
-                        )}
-                    </TouchableOpacity>
-
-                    {/* Stage Text */}
-                    <View style={{ flex: 1, flexDirection: 'row', alignItems: 'center' }}>
-                        <Text style={[
-                            styles.portraitStageText,
-                            isDone && styles.stageTextCompleted,
-                            isActive && styles.stageTextDragging
-                        ]}>
-                            {item.text}
-                        </Text>
-                    </View>
-
-                    {/* Delete Button */}
-                    <TouchableOpacity
-                        onPress={() => onDeleteStage(item.id)}
-                        style={styles.deleteStageBtn}
-                        disabled={isActive}
-                        activeOpacity={0.7}
-                    >
-                        <MaterialIcons
-                            name="delete-outline"
-                            size={16}
-                            color={isActive ? "rgba(0,0,0,0.25)" : "rgba(255,255,255,0.25)"}
-                        />
-                    </TouchableOpacity>
-                </View>
-            );
-        },
+        ({ item, index }: { item: TaskStage; index: number }) => (
+            <StageRow
+                item={item}
+                index={index}
+                getCircleStyle={getCircleStyle}
+                onCirclePress={handleCirclePress}
+                onDeleteStage={onDeleteStage}
+            />
+        ),
         [onDeleteStage, handleCirclePress, getCircleStyle]
     );
 
     return (
         <>
-            <DraggableFlatList
+            <ReorderableList
                 data={data}
                 keyExtractor={(item) => String(item.id)}
                 renderItem={renderItem}
-                onDragEnd={({ data: next }) => {
+                onReorder={({ from, to }) => {
+                    const next = reorderItems(data, from, to);
                     setData(next);
                     onReorder(next);
                     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
                 }}
-                autoscrollThreshold={80}
-                autoscrollSpeed={90}
-                activationDistance={12}
                 nestedScrollEnabled={true}
                 showsVerticalScrollIndicator={true}
                 keyboardShouldPersistTaps="handled"
                 contentContainerStyle={{ paddingBottom: 40 }}
-                containerStyle={{ flex: 1 }}
+                style={{ flex: 1 }}
             />
             <StageActionPopup
                 visible={popupVisible}
