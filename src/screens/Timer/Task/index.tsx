@@ -4635,6 +4635,8 @@ function DraggableStagesList({ stages, onReorder, onSetStageStatus, onDeleteStag
                 data={data}
                 keyExtractor={(item) => String(item.id)}
                 renderItem={renderItem}
+                shouldUpdateActiveItem
+                cellAnimations={{ opacity: 1 }}
                 onReorder={({ from, to }) => {
                     const next = reorderItems(data, from, to);
                     setData(next);
