@@ -35,6 +35,8 @@ Tracks every commit on this branch. **Add a new row/section for each new commit.
 | 22 | `502c87e` | docs | Single README; 11 old Markdown docs removed |
 | 23 | `b317e65` | docs | Fix hash in branch log |
 | 24 | `769ab31` | docs(readme) | iOS build section rewritten as step-by-step parts |
+| 25 | `261352f` | docs | Log iOS build guide rewrite |
+| 26 | `be6809a` | feat(scripts) | Version bump and iOS cache cleanup scripts, README Parts 6 and 7 |
 
 ## Details
 
@@ -112,6 +114,11 @@ Tracks every commit on this branch. **Add a new row/section for each new commit.
 - README "Building for iOS" is now Part 0 to Part 5 plus a quick reference
 - Verified against the machine: `ios/` was still SDK 54 (needs `prebuild --clean`), no Apple team set in the project, iPhone listed offline, no simulator device created
 - Removed the manual `react-native bundle` / `main.jsbundle` steps: the Xcode project already has the "Bundle React Native code and images" phase, so Release builds bundle JS themselves
+
+### 26. `be6809a` — scripts
+- `scripts/bump-version.js`: `npm run version:build|patch|minor|major` updates `app.json` (version, ios.buildNumber, android.versionCode), `Info.plist` and the Xcode project; `--dry-run` supported. Tested on backed-up copies.
+- `scripts/clean-ios-cache.sh`: `npm run ios:clean` (light) and `npm run ios:clean:deep`; `--dry-run` supported
+- README "Building for iOS": Part 6 (update version) and Part 7 (clear caches after success or failure)
 
 ## Verification status
 - [x] `npx tsc --noEmit` passes
