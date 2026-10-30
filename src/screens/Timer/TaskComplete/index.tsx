@@ -14,7 +14,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
 import { MaterialIcons } from '@expo/vector-icons';
 import * as ScreenOrientation from 'expo-screen-orientation';
-import { useAudioPlayer, AudioModule, createAudioPlayer } from 'expo-audio';
+import { useAudioPlayer, createAudioPlayer, setAudioModeAsync } from 'expo-audio';
 import { Category, SOUND_OPTIONS } from '../../../constants/data';
 
 
@@ -83,7 +83,7 @@ export default function TaskComplete({
         const playSound = async () => {
             try {
                 // Configure audio mode
-                await AudioModule.setAudioModeAsync({
+                await setAudioModeAsync({
                     playsInSilentMode: true,
                     interruptionMode: 'doNotMix',
                 });

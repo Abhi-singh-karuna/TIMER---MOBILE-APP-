@@ -7,7 +7,7 @@ import {
     Animated,
 } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { useAudioPlayer, AudioModule, createAudioPlayer } from 'expo-audio';
+import { useAudioPlayer, createAudioPlayer, setAudioModeAsync } from 'expo-audio';
 import { MaterialIcons } from '@expo/vector-icons';
 import Slider from '@react-native-community/slider';
 import { SOUND_OPTIONS } from '../../../constants/data';
@@ -89,7 +89,7 @@ export default function AudioSection({
             setPlayingSound(soundIndex);
 
             // Configure audio mode (new expo-audio syntax)
-            await AudioModule.setAudioModeAsync({
+            await setAudioModeAsync({
                 playsInSilentMode: true,
                 interruptionMode: 'doNotMix',
             });

@@ -22,7 +22,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { BlurView } from 'expo-blur';
 import { MaterialIcons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
-import { AudioModule, createAudioPlayer } from 'expo-audio';
+import { createAudioPlayer, setAudioModeAsync } from 'expo-audio';
 import { activateKeepAwakeAsync, deactivateKeepAwake } from 'expo-keep-awake';
 import { Timer, Category, SOUND_OPTIONS, Goal } from '../../../constants/data';
 import { getLogicalDate, getStartOfLogicalDay, DEFAULT_DAILY_START_MINUTES, formatDailyStartRangeCompact } from '../../../utils/dailyStartTime';
@@ -316,7 +316,7 @@ export default function TimerList({
                 // Small delay to ensure popup is rendered
                 await new Promise(resolve => setTimeout(resolve, 100));
 
-                await AudioModule.setAudioModeAsync({
+                await setAudioModeAsync({
                     playsInSilentMode: true,
                     interruptionMode: 'doNotMix',
                 });
