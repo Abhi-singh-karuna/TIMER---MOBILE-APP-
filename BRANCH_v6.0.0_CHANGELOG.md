@@ -39,6 +39,8 @@ Tracks every commit on this branch. **Add a new row/section for each new commit.
 | 26 | `be6809a` | feat(scripts) | Version bump and iOS cache cleanup scripts, README Parts 6 and 7 |
 | 27 | `79e7915` | docs | Log scripts in branch log |
 | 28 | `d5c017b` | docs(readme) | README simplified, troubleshooting removed |
+| 29 | `24c2797` | docs | Log README simplification |
+| 30 | `6df906a` | docs(readme) | Note: install the matching iOS platform in Xcode > Settings > Components |
 
 ## Details
 
