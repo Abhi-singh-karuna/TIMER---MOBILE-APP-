@@ -24,6 +24,8 @@ Tracks every commit on this branch. **Add a new row/section for each new commit.
 | 12 | `207d123` | fix(task) | Replace draggable-flatlist with reorderable-list for stage drag |
 | 13 | `37713f5` | docs | Log reorderable-list swap |
 | 14 | `a9a3981` | fix(task) | White dragged stage card restored |
+| 15 | `5d9123c` | docs | Log white drag card fix |
+| 16 | `a942538` | fix(task) | Held stage card shrinks (0.96) instead of growing |
 
 ## Details
 
@@ -74,6 +76,10 @@ Tracks every commit on this branch. **Add a new row/section for each new commit.
 
 ### 14. `a9a3981` — white dragged card
 - Added `shouldUpdateActiveItem` (required by `useIsActive`) and `cellAnimations={{ opacity: 1 }}` on the stage `ReorderableList`
+
+### 16. `a942538` — held card size
+- Library default scales the held card to 1.025x, which got clipped at the list's left/right edges
+- `cellAnimations` now uses a `dragScale` shared value (0.96 while dragging, 1 on release) via `onDragStart`/`onDragEnd` worklets in `Task/index.tsx`
 
 ## Verification status
 - [x] `npx tsc --noEmit` passes
