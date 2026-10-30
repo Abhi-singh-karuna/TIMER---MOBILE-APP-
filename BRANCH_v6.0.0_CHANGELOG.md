@@ -22,6 +22,8 @@ Tracks every commit on this branch. **Add a new row/section for each new commit.
 | 10 | `8488bd5` | fix(task) | Remove LayoutAnimation from stage drag |
 | 11 | `319a576` | docs | Log revert and drag fix |
 | 12 | `207d123` | fix(task) | Replace draggable-flatlist with reorderable-list for stage drag |
+| 13 | `37713f5` | docs | Log reorderable-list swap |
+| 14 | `a9a3981` | fix(task) | White dragged stage card restored |
 
 ## Details
 
@@ -69,6 +71,9 @@ Tracks every commit on this branch. **Add a new row/section for each new commit.
 - `react-native-draggable-flatlist` 4.0.3 → `react-native-reorderable-list` 0.18.2 (exact) in `Task/index.tsx`
 - Row extracted to `StageRow` (uses `useReorderableDrag`, `useIsActive`); markup/styles unchanged
 - Still on the old library: Settings `CategorySection` and `QuickMessageSection` lists
+
+### 14. `a9a3981` — white dragged card
+- Added `shouldUpdateActiveItem` (required by `useIsActive`) and `cellAnimations={{ opacity: 1 }}` on the stage `ReorderableList`
 
 ## Verification status
 - [x] `npx tsc --noEmit` passes
