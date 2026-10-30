@@ -15,13 +15,14 @@ import {
     PanResponder,
     ActivityIndicator,
     LayoutAnimation,
+    ScrollViewInstance,
 } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
 import { BlurView } from 'expo-blur';
 import { MaterialIcons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
-import { AudioModule } from 'expo-audio';
+import { AudioModule, createAudioPlayer } from 'expo-audio';
 import { activateKeepAwakeAsync, deactivateKeepAwake } from 'expo-keep-awake';
 import { Timer, Category, SOUND_OPTIONS, Goal } from '../../../constants/data';
 import { getLogicalDate, getStartOfLogicalDay, DEFAULT_DAILY_START_MINUTES, formatDailyStartRangeCompact } from '../../../utils/dailyStartTime';
@@ -168,7 +169,7 @@ export default function TimerList({
     const fadeAnim = useRef(new Animated.Value(1)).current;
     const [toggleContainerWidth, setToggleContainerWidth] = useState(0);
     const [isToggleInteracting, setIsToggleInteracting] = useState(false);
-    const toggleScrollRef = useRef<ScrollView | null>(null);
+    const toggleScrollRef = useRef<ScrollViewInstance | null>(null);
     const didInitInfiniteToggleRef = useRef(false);
     const currentActiveView = activeView || 'timer';
     const NAV_TABS = [
@@ -331,7 +332,7 @@ export default function TimerList({
 
                     console.log('Playing sound:', soundOption.name);
 
-                    const player = AudioModule.createAudioPlayer(soundSource);
+                    const player = createAudioPlayer(soundSource);
                     player.play();
 
                     const subscription = player.addListener('playbackStatusUpdate', (status: { didJustFinish: boolean }) => {
@@ -2356,7 +2357,7 @@ const styles = StyleSheet.create({
     },
 
     timerCardInteriorShadow: {
-        ...StyleSheet.absoluteFillObject,
+        ...StyleSheet.absoluteFill,
         borderBottomWidth: 2,
         borderRightWidth: 1,
         borderColor: 'rgba(0,0,0,0.25)',
@@ -2368,7 +2369,7 @@ const styles = StyleSheet.create({
     },
 
     timerCardTopRim: {
-        ...StyleSheet.absoluteFillObject,
+        ...StyleSheet.absoluteFill,
         borderTopWidth: 1,
         borderLeftWidth: 0.5,
         borderColor: 'rgba(255,255,255,0.15)',
@@ -2380,7 +2381,7 @@ const styles = StyleSheet.create({
     },
 
     timerCardOuterBoundaryHighlight: {
-        ...StyleSheet.absoluteFillObject,
+        ...StyleSheet.absoluteFill,
         borderRadius: 32,
         borderWidth: 1,
         borderColor: 'rgba(255,255,255,0.08)',
@@ -2613,7 +2614,7 @@ const styles = StyleSheet.create({
     },
 
     cardPlayButtonInteriorShadow: {
-        ...StyleSheet.absoluteFillObject,
+        ...StyleSheet.absoluteFill,
         borderBottomWidth: 2,
         borderRightWidth: 1,
         borderColor: 'rgba(0,0,0,0.25)',
@@ -2621,7 +2622,7 @@ const styles = StyleSheet.create({
     },
 
     cardPlayButtonTopRim: {
-        ...StyleSheet.absoluteFillObject,
+        ...StyleSheet.absoluteFill,
         borderTopWidth: 1,
         borderLeftWidth: 0.5,
         borderColor: 'rgba(255,255,255,0.1)',
@@ -2887,7 +2888,7 @@ const styles = StyleSheet.create({
         alignItems: 'center',
     },
     notesTakeoverOverlay: {
-        ...StyleSheet.absoluteFillObject,
+        ...StyleSheet.absoluteFill,
         zIndex: 999,
         elevation: 999,
     },

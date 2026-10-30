@@ -14,7 +14,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
 import { MaterialIcons } from '@expo/vector-icons';
 import * as ScreenOrientation from 'expo-screen-orientation';
-import { useAudioPlayer, AudioModule } from 'expo-audio';
+import { useAudioPlayer, AudioModule, createAudioPlayer } from 'expo-audio';
 import { Category, SOUND_OPTIONS } from '../../../constants/data';
 
 
@@ -92,7 +92,7 @@ export default function TaskComplete({
                     const soundSource = SOUND_OPTIONS[selectedSound]?.source;
                     if (soundSource === null || soundSource === undefined) return;
 
-                    const player = AudioModule.createAudioPlayer(soundSource);
+                    const player = createAudioPlayer(soundSource);
                     player.play();
 
                     const subscription = player.addListener('playbackStatusUpdate', (status: { didJustFinish: boolean }) => {

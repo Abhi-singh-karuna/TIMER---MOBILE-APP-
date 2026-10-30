@@ -555,7 +555,7 @@ const styles = StyleSheet.create({
         padding: 20,
     },
     dimLayer: {
-        ...StyleSheet.absoluteFillObject,
+        ...StyleSheet.absoluteFill,
         backgroundColor: 'rgba(0,0,0,0.7)',
     },
 

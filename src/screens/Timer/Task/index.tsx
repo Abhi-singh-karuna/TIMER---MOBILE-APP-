@@ -19,6 +19,7 @@ import {
     UIManager,
     Alert,
     FlatList,
+    ScrollViewInstance,
 } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -524,7 +525,7 @@ const styles = StyleSheet.create({
     },
 
     taskCardInteriorShadow: {
-        ...StyleSheet.absoluteFillObject,
+        ...StyleSheet.absoluteFill,
         borderBottomWidth: 2,
         borderRightWidth: 1,
         borderColor: 'rgba(0,0,0,0.25)',
@@ -536,7 +537,7 @@ const styles = StyleSheet.create({
     },
 
     taskCardTopRim: {
-        ...StyleSheet.absoluteFillObject,
+        ...StyleSheet.absoluteFill,
         borderTopWidth: 1,
         borderLeftWidth: 0.5,
         borderColor: 'rgba(255,255,255,0.15)',
@@ -548,7 +549,7 @@ const styles = StyleSheet.create({
     },
 
     taskCardOuterBoundaryHighlight: {
-        ...StyleSheet.absoluteFillObject,
+        ...StyleSheet.absoluteFill,
         borderRadius: 32,
         borderWidth: 1,
         borderColor: 'rgba(255,255,255,0.08)',
@@ -1333,7 +1334,7 @@ const styles = StyleSheet.create({
     },
 
     statusButtonInteriorShadow: {
-        ...StyleSheet.absoluteFillObject,
+        ...StyleSheet.absoluteFill,
         borderTopWidth: 2,
         borderLeftWidth: 1.5,
         borderColor: 'rgba(0,0,0,0.4)',
@@ -1341,7 +1342,7 @@ const styles = StyleSheet.create({
     },
 
     statusButtonTopRim: {
-        ...StyleSheet.absoluteFillObject,
+        ...StyleSheet.absoluteFill,
         borderBottomWidth: 1.5,
         borderRightWidth: 1,
         borderColor: 'rgba(255,255,255,0.25)',
@@ -1791,7 +1792,7 @@ const styles = StyleSheet.create({
         overflow: 'hidden', // Contain child cards
     },
     notesTakeoverOverlay: {
-        ...StyleSheet.absoluteFillObject,
+        ...StyleSheet.absoluteFill,
         zIndex: 999,
         elevation: 999,
     },
@@ -2398,7 +2399,7 @@ export default function TaskList({
     const [viewDate, setViewDate] = useState(new Date());
     const [toggleContainerWidth, setToggleContainerWidth] = useState(0);
     const [isToggleInteracting, setIsToggleInteracting] = useState(false);
-    const toggleScrollRef = useRef<ScrollView | null>(null);
+    const toggleScrollRef = useRef<ScrollViewInstance | null>(null);
     const didInitInfiniteToggleRef = useRef(false);
     const currentActiveView = activeView || 'task';
     const NAV_TABS = [

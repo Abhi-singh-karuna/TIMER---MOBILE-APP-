@@ -269,8 +269,6 @@ export default function QuickMessageSection({
                                                     styles.customSwitch,
                                                     {
                                                         marginRight: 8,
-                                                        scaleX: 0.85,
-                                                        scaleY: 0.85,
                                                         backgroundColor: msg.isEnabled !== false ? `${msg.color}25` : 'rgba(255,255,255,0.06)',
                                                         borderColor: msg.isEnabled !== false ? `${msg.color}40` : 'rgba(255,255,255,0.1)',
                                                         borderWidth: 1.5,

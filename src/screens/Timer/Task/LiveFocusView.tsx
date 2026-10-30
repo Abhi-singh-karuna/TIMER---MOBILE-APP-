@@ -16,6 +16,8 @@ import {
     Modal,
     Alert,
     Animated,
+    ScrollViewInstance,
+    HostInstance,
 } from 'react-native';
 import { MaterialIcons, Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
@@ -143,7 +145,7 @@ export default function LiveFocusView({
     // Prevent accidental "tap" commits: only save layout if a real move/resize occurred.
     const didEditStageRef = useRef(false);
     const lastPinchDistanceRef = useRef(0);
-    const horizontalScrollTimelineRef = useRef<ScrollView>(null);
+    const horizontalScrollTimelineRef = useRef<ScrollViewInstance>(null);
     const timelineScrollXRef = useRef(0);
     const animatedScrollX = useRef(new Animated.Value(0)).current;
     const horizontalScrollLockTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -160,8 +162,8 @@ export default function LiveFocusView({
             isScrollingHorizontally.current = false;
         }, HORIZONTAL_SCROLL_LOCK_MS);
     }, []);
-    const verticalScrollRef = useRef<ScrollView>(null);
-    const verticalScrollLabelsRef = useRef<ScrollView>(null);
+    const verticalScrollRef = useRef<ScrollViewInstance>(null);
+    const verticalScrollLabelsRef = useRef<ScrollViewInstance>(null);
 
     // Zoom state (initial from parent for persistence across unmounts)
     const [minutesPerCell, setMinutesPerCell] = useState(initialZoom ?? 60);
@@ -230,14 +232,14 @@ export default function LiveFocusView({
     // View mode selector popup (opened from progress bar button) — same design as StageActionPopup (positioned, compact)
     const [viewModePopupVisible, setViewModePopupVisible] = useState(false);
     const [viewModePopupPosition, setViewModePopupPosition] = useState({ x: 0, y: 0 });
-    const viewModeButtonRef = useRef<View>(null);
+    const viewModeButtonRef = useRef<HostInstance>(null);
     // Category view: measured height per category section (key = categoryId)
     const [categorySectionHeights, setCategorySectionHeights] = useState<Map<string, number>>(new Map());
     // 1 = open, 0 = closed; drives smooth width animation and button position
     const taskColumnWidthAnim = useRef(new Animated.Value(1)).current;
 
     // Auto-scroll during drag/resize
-    const autoScrollIntervalRef = useRef<NodeJS.Timeout | null>(null);
+    const autoScrollIntervalRef = useRef<ReturnType<typeof setTimeout> | null>(null);
     const isAutoScrollingRef = useRef(false);
     const checkAndUpdateAutoScrollRef = useRef<((pageX: number) => void) | null>(null);
     // Track scroll offset during drag to compensate position calculations
@@ -252,7 +254,7 @@ export default function LiveFocusView({
     // Stage status popup (reuses timer subtask status popup) — when a stage is selected in the dock
     const [stageStatusPopupVisible, setStageStatusPopupVisible] = useState(false);
     const [stageStatusPopupPosition, setStageStatusPopupPosition] = useState({ x: 0, y: 0 });
-    const statusButtonRef = useRef<View>(null);
+    const statusButtonRef = useRef<HostInstance>(null);
 
     // Dock calendar: clickable date line (e.g. 21 JAN) opens small calendar to pick date and switch live view
     const [showDockCalendar, setShowDockCalendar] = useState(false);
@@ -264,7 +266,7 @@ export default function LiveFocusView({
     // Simple timer state (counts up from 00:00:00); shared with dock and full-screen timer
     const [timerSeconds, setTimerSeconds] = useState(0);
     const [isTimerRunning, setIsTimerRunning] = useState(false);
-    const timerIntervalRef = useRef<NodeJS.Timeout | null>(null);
+    const timerIntervalRef = useRef<ReturnType<typeof setTimeout> | null>(null);
     const [fullScreenTimerVisible, setFullScreenTimerVisible] = useState(false);
 
     // Animate progress panel expand/collapse
@@ -1009,7 +1011,7 @@ export default function LiveFocusView({
     };
 
     // Ref callback: apply initialScrollX (from parent) when ScrollView mounts
-    const setTimelineScrollRef = useCallback((ref: ScrollView | null) => {
+    const setTimelineScrollRef = useCallback((ref: ScrollViewInstance | null) => {
         horizontalScrollTimelineRef.current = ref;
         if (ref) {
             const x = initialScrollX ?? 0;

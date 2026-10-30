@@ -270,8 +270,6 @@ export default function CategorySection({
                                                     styles.customSwitch,
                                                     {
                                                         marginRight: 8,
-                                                        scaleX: 0.85,
-                                                        scaleY: 0.85,
                                                         backgroundColor: cat.isEnabled !== false ? `${cat.color}25` : 'rgba(255,255,255,0.06)',
                                                         borderColor: cat.isEnabled !== false ? `${cat.color}40` : 'rgba(255,255,255,0.1)',
                                                         borderWidth: 1.5,

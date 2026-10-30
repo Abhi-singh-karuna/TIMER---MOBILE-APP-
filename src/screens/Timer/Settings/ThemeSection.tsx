@@ -5,6 +5,7 @@ import {
     TouchableOpacity,
     Animated,
     StyleSheet,
+    ScrollViewInstance,
 } from 'react-native';
 import { ScrollView } from 'react-native-gesture-handler';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -73,7 +74,7 @@ const hexToHue = (hex: string) => {
 };
 
 interface ThemeSectionFullProps extends ThemeSectionProps {
-    scrollRef?: React.RefObject<ScrollView>;
+    scrollRef?: React.RefObject<ScrollViewInstance>;
     pulseAnim?: Animated.Value;
 }
 
@@ -91,7 +92,7 @@ export default function ThemeSection({
     onResetToDefaults,
     resetKey,
 }: ThemeSectionFullProps) {
-    const scrollRef = useRef<ScrollView>(null);
+    const scrollRef = useRef<ScrollViewInstance>(null);
     const pulseAnim = useRef(new Animated.Value(1)).current;
 
     // Track slider values independently to avoid jitter during drag
@@ -383,7 +384,7 @@ export function LandscapePreviewComponent({
     isMinimized?: boolean;
     onToggleMinimize?: () => void;
 }) {
-    const scrollRef = useRef<ScrollView>(null);
+    const scrollRef = useRef<ScrollViewInstance>(null);
     const pulseAnim = useRef(new Animated.Value(1)).current;
     const lastScrolledIndex = useRef(activePresetIndex);
     const isProgrammaticScroll = useRef(false);

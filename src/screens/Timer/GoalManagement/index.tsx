@@ -14,6 +14,7 @@ import {
     Easing,
     useWindowDimensions,
     SafeAreaView,
+    ScrollViewInstance,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { BlurView } from 'expo-blur';
@@ -103,7 +104,7 @@ export default function GoalManagement({
     const initialTabIdxRaw = NAV_TABS.findIndex(t => t.key === currentActiveView);
     const initialTabIdx = initialTabIdxRaw >= 0 ? initialTabIdxRaw : 0;
     const initialCenteredLoopIndex = (navMiddleCopyIndex * navTabCount) + initialTabIdx;
-    const toggleScrollRef = useRef<ScrollView | null>(null);
+    const toggleScrollRef = useRef<ScrollViewInstance | null>(null);
     const didInitInfiniteToggleRef = useRef(false);
     const toggleInteractionAnim = useRef(new Animated.Value(0)).current;
     const [activeLoopIndex, setActiveLoopIndex] = useState(initialCenteredLoopIndex);
@@ -2452,7 +2453,7 @@ const styles = StyleSheet.create({
         borderColor: 'rgba(255, 255, 255, 0.3)',
     },
     notesTakeoverOverlay: {
-        ...StyleSheet.absoluteFillObject,
+        ...StyleSheet.absoluteFill,
         zIndex: 2000,
         backgroundColor: '#000',
     },
@@ -2492,7 +2493,7 @@ const styles = StyleSheet.create({
         padding: 3,
     },
     goalCardOuterBoundaryHighlight: {
-        ...StyleSheet.absoluteFillObject,
+        ...StyleSheet.absoluteFill,
         borderRadius: 32,
         borderWidth: 1,
         borderColor: 'rgba(255,255,255,0.08)',
@@ -2511,7 +2512,7 @@ const styles = StyleSheet.create({
         borderRadius: 20,
     },
     goalCardInteriorShadow: {
-        ...StyleSheet.absoluteFillObject,
+        ...StyleSheet.absoluteFill,
         borderBottomWidth: 2,
         borderRightWidth: 1,
         borderColor: 'rgba(0,0,0,0.25)',
@@ -2521,7 +2522,7 @@ const styles = StyleSheet.create({
         borderRadius: 20,
     },
     goalCardTopRim: {
-        ...StyleSheet.absoluteFillObject,
+        ...StyleSheet.absoluteFill,
         borderTopWidth: 1,
         borderLeftWidth: 0.5,
         borderColor: 'rgba(255,255,255,0.15)',
@@ -3560,7 +3561,7 @@ const styles = StyleSheet.create({
         color: 'rgba(255,255,255,0.4)',
     },
     modalOverlay: {
-        ...StyleSheet.absoluteFillObject,
+        ...StyleSheet.absoluteFill,
         backgroundColor: 'rgba(0, 0, 0, 0.72)',
         justifyContent: 'center',
         alignItems: 'center',
@@ -3568,7 +3569,7 @@ const styles = StyleSheet.create({
         paddingHorizontal: 20,
     },
     overlayDismiss: {
-        ...StyleSheet.absoluteFillObject,
+        ...StyleSheet.absoluteFill,
     },
     detailPopup: {
         width: '100%',

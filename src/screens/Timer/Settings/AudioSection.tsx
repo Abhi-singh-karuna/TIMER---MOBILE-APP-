@@ -7,7 +7,7 @@ import {
     Animated,
 } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { useAudioPlayer, AudioModule } from 'expo-audio';
+import { useAudioPlayer, AudioModule, createAudioPlayer } from 'expo-audio';
 import { MaterialIcons } from '@expo/vector-icons';
 import Slider from '@react-native-community/slider';
 import { SOUND_OPTIONS } from '../../../constants/data';
@@ -94,7 +94,7 @@ export default function AudioSection({
                 interruptionMode: 'doNotMix',
             });
 
-            const player = AudioModule.createAudioPlayer(soundOption.source);
+            const player = createAudioPlayer(soundOption.source);
             player.play();
 
             const subscription = player.addListener('playbackStatusUpdate', (status: { didJustFinish: boolean }) => {

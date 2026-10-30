@@ -611,11 +611,11 @@ const styles = StyleSheet.create({
     },
 
     interiorShadow: {
-        ...StyleSheet.absoluteFillObject,
+        ...StyleSheet.absoluteFill,
     },
 
     topRim: {
-        ...StyleSheet.absoluteFillObject,
+        ...StyleSheet.absoluteFill,
         borderTopWidth: 1,
         borderLeftWidth: 0.5,
         borderRightWidth: 0.5,
@@ -623,7 +623,7 @@ const styles = StyleSheet.create({
     },
 
     outerBoundaryHighlight: {
-        ...StyleSheet.absoluteFillObject,
+        ...StyleSheet.absoluteFill,
         borderBottomWidth: 1.5,
         borderRightWidth: 1,
     },

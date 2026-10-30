@@ -1797,7 +1797,7 @@ const styles = StyleSheet.create({
         marginBottom: 8,
     },
     goalColorSliderGradient: {
-        ...StyleSheet.absoluteFillObject,
+        ...StyleSheet.absoluteFill,
         borderRadius: 10,
     },
     goalColorSlider: {

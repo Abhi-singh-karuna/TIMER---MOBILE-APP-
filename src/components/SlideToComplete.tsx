@@ -256,7 +256,7 @@ const styles = StyleSheet.create({
         justifyContent: 'flex-start',
     },
     topRim: {
-        ...StyleSheet.absoluteFillObject,
+        ...StyleSheet.absoluteFill,
         borderTopWidth: 1,
         borderLeftWidth: 0.5,
         borderRightWidth: 0.5,
@@ -264,7 +264,7 @@ const styles = StyleSheet.create({
         borderRadius: 32,
     },
     outerBoundaryHighlight: {
-        ...StyleSheet.absoluteFillObject,
+        ...StyleSheet.absoluteFill,
         borderRadius: 36,
         borderBottomWidth: 1.5,
         borderRightWidth: 1,
@@ -272,7 +272,7 @@ const styles = StyleSheet.create({
         pointerEvents: 'none',
     },
     interiorShadow: {
-        ...StyleSheet.absoluteFillObject,
+        ...StyleSheet.absoluteFill,
         borderRadius: 32,
     },
     interiorShadowHorizontal: {

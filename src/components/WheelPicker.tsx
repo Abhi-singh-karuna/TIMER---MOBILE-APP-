@@ -6,6 +6,7 @@ import {
     StyleSheet,
     NativeSyntheticEvent,
     NativeScrollEvent,
+    ScrollViewInstance,
 } from 'react-native';
 import * as Haptics from 'expo-haptics';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -27,7 +28,7 @@ export function WheelPicker({
     width = 70,
     itemHeight = ITEM_HEIGHT,
 }: WheelPickerProps) {
-    const scrollRef = useRef<ScrollView>(null);
+    const scrollRef = useRef<ScrollViewInstance>(null);
     const lastIndex = useRef(data.indexOf(value) >= 0 ? data.indexOf(value) : -1);
 
     // If itemHeight changes, we might need to adjust styles. 

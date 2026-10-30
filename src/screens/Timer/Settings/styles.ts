@@ -1754,7 +1754,7 @@ export const styles = StyleSheet.create({
         padding: 20,
     },
     restoreDimLayer: {
-        ...StyleSheet.absoluteFillObject,
+        ...StyleSheet.absoluteFill,
         backgroundColor: 'rgba(0,0,0,0.7)',
     },
     restoreModal: {

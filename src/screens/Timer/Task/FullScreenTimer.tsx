@@ -927,17 +927,17 @@ const styles = StyleSheet.create({
         position: 'relative',
     },
     interiorShadow: {
-        ...StyleSheet.absoluteFillObject,
+        ...StyleSheet.absoluteFill,
     },
     topRim: {
-        ...StyleSheet.absoluteFillObject,
+        ...StyleSheet.absoluteFill,
         borderTopWidth: 1,
         borderLeftWidth: 0.5,
         borderRightWidth: 0.5,
         borderColor: 'rgba(255,255,255,0.12)',
     },
     outerBoundaryHighlight: {
-        ...StyleSheet.absoluteFillObject,
+        ...StyleSheet.absoluteFill,
         borderBottomWidth: 1.5,
         borderRightWidth: 1,
     },

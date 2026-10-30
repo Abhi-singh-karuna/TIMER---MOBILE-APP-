@@ -242,7 +242,7 @@ const styles = StyleSheet.create({
     },
 
     radialGlow: {
-        ...StyleSheet.absoluteFillObject,
+        ...StyleSheet.absoluteFill,
         backgroundColor: 'transparent',
     },
 
@@ -295,7 +295,7 @@ const styles = StyleSheet.create({
     },
 
     buttonInnerGlow: {
-        ...StyleSheet.absoluteFillObject,
+        ...StyleSheet.absoluteFill,
         backgroundColor: 'transparent',
     },
 

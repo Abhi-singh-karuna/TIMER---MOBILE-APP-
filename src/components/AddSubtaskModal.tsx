@@ -666,7 +666,7 @@ const styles = StyleSheet.create({
         padding: 18, // 20 * 0.9
     },
     dimLayer: {
-        ...StyleSheet.absoluteFillObject,
+        ...StyleSheet.absoluteFill,
         backgroundColor: 'rgba(0,0,0,0.7)',
     },
     modal: {
