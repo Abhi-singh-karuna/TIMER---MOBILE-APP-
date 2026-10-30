@@ -15,6 +15,8 @@ Tracks every commit on this branch. **Add a new row/section for each new commit.
 | 3 | `20f8b28` | fix | Adapt code to React Native 0.88 / expo-audio 58 APIs |
 | 4 | `06e8afb` | docs | Add this change log |
 | 5 | `9ce1b99` | fix(deps) | Pin gesture-handler to 2.33.1 to fix stage drag stalling |
+| 6 | `15a893d` | docs | Log gesture-handler pin |
+| 7 | `b990392` | fix(audio) | Use exported `setAudioModeAsync` |
 
 ## Details
 
@@ -45,6 +47,9 @@ Tracks every commit on this branch. **Add a new row/section for each new commit.
 - Fix: `react-native-gesture-handler` 3.3.0 → 2.33.1 (`legacy` tag), exact pin
 - `package.json` `expo.install.exclude` keeps `expo install --fix` from reverting it
 - If drag is still rough, next options: replace the library or remove `LayoutAnimation` from the drag callbacks in `Task/index.tsx`
+
+### 7. `b990392` — audio mode
+- `AudioModule.setAudioModeAsync` → exported `setAudioModeAsync` (TaskComplete, TimerList, AudioSection)
 
 ## Verification status
 - [x] `npx tsc --noEmit` passes
