@@ -30,6 +30,9 @@ Tracks every commit on this branch. **Add a new row/section for each new commit.
 | 18 | `eb0c33a` | feat(complete) | Unified completion design (popup + page) |
 | 19 | `15f50ae` | docs | Log completion redesign |
 | 20 | `44f8e35` | feat(complete) | Completion design changed to the session ring (design B) |
+| 21 | `ee03428` | docs | Log completion design B |
+| — | `e98a3f2` | feat | Skills and guides under `.claude/skills` (committed outside this chat) |
+| 22 | `8e359c7` | docs | Single README; 11 old Markdown docs removed |
 
 ## Details
 
@@ -97,6 +100,11 @@ Tracks every commit on this branch. **Add a new row/section for each new commit.
 - Ring (react-native-svg): planned time in category colour, extended time in yellow, focused time in the centre
 - 2x2 grid: Started / Ended / Planned / Extended; extend buttons and the primary button share one row in landscape
 - Landscape = ring left, details right; portrait stacks them; popup uses smaller sizes
+
+### 22. documentation consolidated into one README
+- New `README.md` covers features, setup, architecture, data models, storage keys, iOS build and troubleshooting, checked against the current code (SDK 58, no React Navigation, expo-audio)
+- Removed (still in git history): `APP_DOCUMENTATION`, `APP_FEATURES_AND_FLOW`, `ARCHITECTURE`, `STORAGE_DATA_MODEL`, `TASK_STORAGE_GUIDE`, `LOCAL_STORAGE_GUIDE`, `IOS_BUILD_GUIDE`, `LOCAL_IOS_BUILD_GUIDE`, `IOS_RELEASE_BUILD_GUIDE`, `NAMING_OPTIONS`, `WEBSITE_PLAN_AND_REQUIREMENTS`
+- Kept: `README.md`, `BRANCH_v6.0.0_CHANGELOG.md`, `CLAUDE.md` and `.claude/skills/*` (Claude Code configuration)
 
 ## Verification status
 - [x] `npx tsc --noEmit` passes
