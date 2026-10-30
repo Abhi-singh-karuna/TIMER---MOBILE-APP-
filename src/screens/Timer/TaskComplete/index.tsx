@@ -16,6 +16,7 @@ import { MaterialIcons } from '@expo/vector-icons';
 import * as ScreenOrientation from 'expo-screen-orientation';
 import { useAudioPlayer, createAudioPlayer, setAudioModeAsync } from 'expo-audio';
 import { Category, SOUND_OPTIONS } from '../../../constants/data';
+import CompletionSummary, { parseTimeToSeconds } from '../../../components/CompletionSummary';
 
 
 
@@ -31,6 +32,9 @@ interface TaskCompleteProps {
     soundRepetition: number;
     shouldPlaySound?: boolean;
     category?: Category;
+    title?: string;
+    /** Original timer length ("MM:SS" / "HH:MM:SS"), without extensions */
+    totalTime?: string;
 }
 
 export default function TaskComplete({
@@ -45,6 +49,8 @@ export default function TaskComplete({
     soundRepetition,
     shouldPlaySound = true,
     category,
+    title,
+    totalTime,
 }: TaskCompleteProps) {
     const { width, height } = useWindowDimensions();
     const [isLandscape, setIsLandscape] = React.useState(false);
@@ -155,145 +161,31 @@ export default function TaskComplete({
         };
     }, []);
 
-    const formatISOToTime = (isoString?: string) => {
-        if (!isoString || isoString === '--:--') return '--:--';
-        try {
-            const date = new Date(isoString);
-            if (isNaN(date.getTime())) return isoString;
-            const hours = date.getHours().toString().padStart(2, '0');
-            const minutes = date.getMinutes().toString().padStart(2, '0');
-            return `${hours}:${minutes}`;
-        } catch (e) {
-            return isoString;
-        }
-    };
-
-    const renderDetailCard = (icon: string, label: string, value: string, color: string, isLandscape: boolean = false) => (
-        <View style={[styles.detailCard, isLandscape && styles.detailCardLandscape]}>
-            <View style={[styles.detailIconBox, isLandscape && styles.detailIconBoxLandscape, { backgroundColor: `${color}15` }]}>
-                <MaterialIcons name={icon as any} size={isLandscape ? 20 : 20} color={color} />
-            </View>
-            <View style={isLandscape && styles.detailTextContainerLandscape}>
-                <Text style={[styles.detailLabel, isLandscape && styles.detailLabelLandscape]}>{label}</Text>
-                <Text style={[styles.detailValue, isLandscape && styles.detailValueLandscape]}>{value}</Text>
-            </View>
-        </View>
-    );
-
-    const renderBorrowSection = (isLandscape: boolean) => (
-        <View style={[styles.borrowContainerComplete, isLandscape && styles.borrowContainerCompleteLandscape]}>
-            <Text style={[styles.borrowLabelComplete, isLandscape && styles.borrowLabelCompleteLandscape]}>
-                EXTEND SESSION
-            </Text>
-            <View style={[styles.borrowButtonsComplete, isLandscape && styles.borrowButtonsCompleteLandscape]}>
-                {[1, 5, 10].map((mins) => (
-                    <TouchableOpacity
-                        key={mins}
-                        style={[styles.borrowBtnComplete, isLandscape && styles.borrowBtnCompleteLandscape]}
-                        onPress={() => onBorrowTime(mins * 60)}
-                    >
-                        <Text style={[styles.borrowBtnTextComplete, isLandscape && styles.borrowBtnTextCompleteLandscape]}>
-                            +{mins}m
-                        </Text>
-                    </TouchableOpacity>
-                ))}
-            </View>
-        </View>
-    );
-
-    const renderLandscapeLayout = () => (
-        <View style={styles.landscapeWrapper}>
-            {/* Left Panel: Detailed Summary (Narrow & Vertical) */}
-            <Animated.View style={[styles.leftPanel, { opacity: opacityAnim, transform: [{ scale: scaleAnim }] }]}>
-                <Text style={styles.summaryTitle}>SESSION SUMMARY</Text>
-
-                <View style={styles.detailsGrid}>
-                    {renderDetailCard('play-circle-outline', 'STARTED AT', formatISOToTime(startTime), '#FFFFFF', true)}
-                    {renderDetailCard('check-circle-outline', 'FINISHED AT', completedAt, '#FFFFFF', true)}
-                    {renderDetailCard('add-alarm', 'BORROWED', borrowedTime > 0 ? `${Math.floor(borrowedTime / 60)}m ${borrowedTime % 60}s` : 'NONE', '#FFD740', true)}
-                    {category ? renderDetailCard(category.icon, 'CATEGORY', category.name.toUpperCase(), category.color, true) : renderDetailCard('stars', 'STATUS', 'GOAL REACHED', '#4CAF50', true)}
-                </View>
-            </Animated.View>
-
-            {/* Right Panel: Actions (Spacious) */}
-            <View style={styles.rightPanel}>
-                <View style={styles.headerContainerLandscape}>
-                    <MaterialIcons name="done-all" size={24} color="#FFFFFF" style={styles.headerIconLandscape} />
-                    <Text style={styles.completionLabelLandscape}>TASK SUCCESSFUL</Text>
-                </View>
-
-                {renderBorrowSection(true)}
-
-                <TouchableOpacity style={[styles.mainActionButtonLandscape]} onPress={onDone}>
-                    <MaterialIcons name="home" size={28} color="#000000" />
-                    <Text style={styles.mainActionButtonTextLandscape}>Back to Home</Text>
-                </TouchableOpacity>
-            </View>
-        </View>
-    );
-
-    const renderPortraitLayout = () => (
-        <View style={styles.mainContent}>
-            {/* Success Section */}
-            <View style={styles.successSection}>
-                <View style={styles.successCircleContainer}>
-                    {/* Circle Glow Removed */}
-                    <View style={styles.successCircle}>
-                        <MaterialIcons name="check" size={56} color="#000000" />
-                    </View>
-                </View>
-                <Text style={styles.title}>Task Complete</Text>
-                {category && (
-                    <View style={[styles.categoryBadge, { backgroundColor: `${category.color}15`, borderColor: `${category.color}40` }]}>
-                        <MaterialIcons name={category.icon} size={16} color={category.color} />
-                        <Text style={[styles.categoryBadgeText, { color: category.color }]}>{category.name}</Text>
-                    </View>
-                )}
-                <View style={styles.timeInfoContainer}>
-                    <Text style={styles.subtitle}>STARTED AT {formatISOToTime(startTime)}</Text>
-                    <View style={styles.timeSeparator} />
-                    <Text style={styles.subtitle}>FINISHED AT {completedAt}</Text>
-                </View>
-            </View>
-
-            {/* Action Buttons & Borrow Section */}
-            <View style={styles.portraitActionContainer}>
-                {renderBorrowSection(false)}
-
-                <TouchableOpacity style={[styles.actionButton, styles.doneButton]} onPress={onDone}>
-                    <View style={[styles.buttonIconContainer, styles.doneIconContainer]}>
-                        <MaterialIcons name="done-all" size={28} color="#000000" />
-                    </View>
-                    <View style={styles.buttonTextContainer}>
-                        <Text style={[styles.buttonTitle, styles.doneButtonTitle]}>Done</Text>
-                        <Text style={[styles.buttonSubtitle, styles.doneButtonSubtitle]}>Complete task</Text>
-                    </View>
-                    <MaterialIcons name="chevron-right" size={24} color="rgba(0,0,0,0.3)" />
-                </TouchableOpacity>
-            </View>
-        </View>
-    );
-
     return (
         <LinearGradient
             colors={['#000000', '#000000']}
             locations={[0, 1]}
             style={styles.container}
         >
-            {/* Background Glow Removed for Pure Black Theme */}
-
             <SafeAreaView style={styles.safeArea}>
-                {!isLandscape && (
-                    <View style={styles.header}>
-                        <View style={styles.completionBadge}>
-                            <MaterialIcons name="check-circle" size={16} color="#000000" />
-                            <Text style={styles.completionLabel}>COMPLETED</Text>
-                            <Text style={styles.completionPercent}>100%</Text>
-                        </View>
-                    </View>
-                )}
-
-                {isLandscape ? renderLandscapeLayout() : renderPortraitLayout()}
+                <Animated.View style={{ flex: 1, opacity: opacityAnim, transform: [{ scale: scaleAnim }] }}>
+                    <CompletionSummary
+                        variant="page"
+                        horizontal={isLandscape}
+                        title={title}
+                        accentColor={category?.color}
+                        categoryName={category?.name}
+                        categoryIcon={category?.icon}
+                        startTime={startTime}
+                        endedAt={completedAt}
+                        totalSeconds={parseTimeToSeconds(totalTime)}
+                        extendedSeconds={borrowedTime}
+                        onExtend={onBorrowTime}
+                        onPrimary={onDone}
+                        primaryLabel="Back to Home"
+                        primaryIcon="home"
+                    />
+                </Animated.View>
 
                 <View style={styles.bottomIndicator} />
             </SafeAreaView>

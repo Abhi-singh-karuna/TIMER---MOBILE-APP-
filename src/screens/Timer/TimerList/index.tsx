@@ -19,6 +19,7 @@ import {
 } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
+import CompletionSummary from '../../../components/CompletionSummary';
 import { BlurView } from 'expo-blur';
 import { MaterialIcons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
@@ -1456,154 +1457,38 @@ export default function TimerList({
                 >
                     <BlurView intensity={25} tint="dark" style={StyleSheet.absoluteFill} />
 
-                    {isLandscape ? (
-                        /* LANDSCAPE: Combined compact layout */
-                        <View style={styles.completedPopupCombinedLandscape}>
-                            <LinearGradient
-                                colors={['#000000', '#000000']}
-                                style={styles.completedPopupCombinedGradient}
+                    {completedPopupTimer && (() => {
+                        const popupCategory = categories.find(c => c.id === completedPopupTimer.categoryId);
+                        const now = new Date();
+                        return (
+                            <TouchableOpacity
+                                activeOpacity={1}
+                                style={[styles.completedPopupCard, isLandscape && styles.completedPopupCardLandscape]}
                             >
-                                <View style={styles.completedPopupLandscapeRow}>
-                                    {/* Left Section - Info */}
-                                    <View style={styles.completedPopupCombinedLeft}>
-                                        <View style={styles.completedPopupIconCircleCompact}>
-                                            <MaterialIcons name="check" size={20} color="#4CAF50" />
-                                        </View>
-                                        <Text style={styles.completedPopupTitleLandscapeCompact}>COMPLETED!</Text>
-                                        <Text style={styles.completedPopupTimerNameLandscapeCompact}>
-                                            {completedPopupTimer?.title || 'Timer'}
-                                        </Text>
-
-                                        <View style={styles.completedPopupDetailsContainerCompact}>
-                                            <View style={styles.completedPopupDetailRowCompact}>
-                                                <MaterialIcons name="play-circle-outline" size={12} color="#fff" />
-                                                <Text style={styles.completedPopupDetailLabelCompact}>Started</Text>
-                                                <Text style={styles.completedPopupDetailValueCompact}>
-                                                    {formatISOToTime(completedPopupTimer?.startTime)}
-                                                </Text>
-                                            </View>
-                                            <View style={styles.completedPopupDetailRowCompact}>
-                                                <MaterialIcons name="check-circle-outline" size={12} color="#4CAF50" />
-                                                <Text style={styles.completedPopupDetailLabelCompact}>Ended</Text>
-                                                <Text style={styles.completedPopupDetailValueCompact}>
-                                                    {new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })}
-                                                </Text>
-                                            </View>
-                                            <View style={styles.completedPopupDetailRowCompact}>
-                                                <MaterialIcons name="add-alarm" size={12} color="#FFD740" />
-                                                <Text style={styles.completedPopupDetailLabelCompact}>Extended</Text>
-                                                <Text style={styles.completedPopupDetailValueCompact}>
-                                                    {completedPopupTimer?.borrowedTime
-                                                        ? `${Math.floor((completedPopupTimer.borrowedTime || 0) / 60)}m`
-                                                        : 'None'}
-                                                </Text>
-                                            </View>
-                                        </View>
-                                    </View>
-
-                                    {/* Vertical Divider */}
-                                    <View style={styles.completedPopupDividerVerticalLandscape} />
-
-                                    {/* Right Section - Actions */}
-                                    <View style={styles.completedPopupCombinedRight}>
-                                        <Text style={styles.completedPopupExtendLabelLandscapeCompact}>EXTEND SESSION</Text>
-                                        <View style={styles.completedPopupExtendButtonsLandscapeCompact}>
-                                            {[1, 5, 10].map((mins) => (
-                                                <TouchableOpacity
-                                                    key={mins}
-                                                    style={styles.completedPopupExtendBtnLandscapeCompact}
-                                                    onPress={() => {
-                                                        if (completedPopupTimer && onBorrowTime) {
-                                                            onBorrowTime(completedPopupTimer, mins * 60);
-                                                            setCompletedPopupTimer(null);
-                                                        }
-                                                    }}
-                                                >
-                                                    <Text style={styles.completedPopupExtendBtnTextLandscapeCompact}>+{mins}m</Text>
-                                                </TouchableOpacity>
-                                            ))}
-                                        </View>
-
-                                        <TouchableOpacity
-                                            style={styles.completedPopupCloseBtnRedlandscape}
-                                            onPress={() => setCompletedPopupTimer(null)}
-                                        >
-                                            <Text style={styles.completedPopupCloseBtnTextRedlandscape}>CLOSE</Text>
-                                        </TouchableOpacity>
-                                    </View>
-                                </View>
-                            </LinearGradient>
-                        </View>
-                    ) : (
-                        /* PORTRAIT: Combined compact layout (Vertical) */
-                        <View style={styles.completedPopupCombinedPortrait}>
-                            <LinearGradient
-                                colors={['#000000', '#000000']}
-                                style={styles.completedPopupCombinedGradient}
-                            >
-                                <View style={styles.completedPopupPortraitColumn}>
-                                    {/* Top Section - Info */}
-                                    <View style={styles.completedPopupCombinedTop}>
-                                        <View style={styles.completedPopupIconCircleCompact}>
-                                            <MaterialIcons name="check" size={24} color="#4CAF50" />
-                                        </View>
-                                        <Text style={styles.completedPopupTitleLandscapeCompact}>COMPLETED!</Text>
-                                        <Text style={styles.completedPopupTimerNameLandscapeCompact}>
-                                            {completedPopupTimer?.title || 'Timer'}
-                                        </Text>
-
-                                        <View style={styles.completedPopupDetailsContainerPortraitCompact}>
-                                            <View style={styles.completedPopupDetailRowCompact}>
-                                                <MaterialIcons name="play-circle-outline" size={14} color="#fff" />
-                                                <Text style={styles.completedPopupDetailLabelCompact}>Started</Text>
-                                                <Text style={styles.completedPopupDetailValueCompact}>
-                                                    {formatISOToTime(completedPopupTimer?.startTime)}
-                                                </Text>
-                                            </View>
-                                            <View style={styles.completedPopupDetailRowCompact}>
-                                                <MaterialIcons name="check-circle-outline" size={14} color="#4CAF50" />
-                                                <Text style={styles.completedPopupDetailLabelCompact}>Ended</Text>
-                                                <Text style={styles.completedPopupDetailValueCompact}>
-                                                    {new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })}
-                                                </Text>
-                                            </View>
-                                        </View>
-                                    </View>
-
-                                    {/* Horizontal Divider */}
-                                    <View style={styles.completedPopupDividerHorizontalPortrait} />
-
-                                    {/* Bottom Section - Actions */}
-                                    <View style={styles.completedPopupCombinedBottom}>
-                                        <Text style={styles.completedPopupExtendLabelLandscapeCompact}>EXTEND SESSION</Text>
-                                        <View style={styles.completedPopupExtendButtonsLandscapeCompact}>
-                                            {[1, 5, 10].map((mins) => (
-                                                <TouchableOpacity
-                                                    key={mins}
-                                                    style={styles.completedPopupExtendBtnLandscapeCompact}
-                                                    onPress={() => {
-                                                        if (completedPopupTimer && onBorrowTime) {
-                                                            onBorrowTime(completedPopupTimer, mins * 60);
-                                                            setCompletedPopupTimer(null);
-                                                        }
-                                                    }}
-                                                >
-                                                    <Text style={styles.completedPopupExtendBtnTextLandscapeCompact}>+{mins}m</Text>
-                                                </TouchableOpacity>
-                                            ))}
-                                        </View>
-
-                                        <TouchableOpacity
-                                            style={styles.completedPopupCloseBtnRedlandscape}
-                                            onPress={() => setCompletedPopupTimer(null)}
-                                        >
-                                            <Text style={styles.completedPopupCloseBtnTextRedlandscape}>CLOSE</Text>
-                                        </TouchableOpacity>
-                                    </View>
-                                </View>
-                            </LinearGradient>
-                        </View>
-                    )}
+                                <CompletionSummary
+                                    variant="popup"
+                                    horizontal={isLandscape}
+                                    title={completedPopupTimer.title || 'Timer'}
+                                    accentColor={popupCategory?.color}
+                                    categoryName={popupCategory?.name}
+                                    categoryIcon={popupCategory?.icon}
+                                    startTime={completedPopupTimer.startTime}
+                                    endedAt={`${now.getHours().toString().padStart(2, '0')}:${now.getMinutes().toString().padStart(2, '0')}`}
+                                    totalSeconds={parseTimeToSeconds(completedPopupTimer.total)}
+                                    extendedSeconds={completedPopupTimer.borrowedTime || 0}
+                                    onExtend={(secs) => {
+                                        if (onBorrowTime) {
+                                            onBorrowTime(completedPopupTimer, secs);
+                                            setCompletedPopupTimer(null);
+                                        }
+                                    }}
+                                    onPrimary={() => setCompletedPopupTimer(null)}
+                                    primaryLabel="CLOSE"
+                                    primaryIcon="close"
+                                />
+                            </TouchableOpacity>
+                        );
+                    })()}
                 </TouchableOpacity>
             </Modal>
 
@@ -3293,6 +3178,20 @@ const styles = StyleSheet.create({
     },
 
     // UNIFIED COMPACT COMPLETION POPUP STYLES
+    completedPopupCard: {
+        width: '88%',
+        maxWidth: 380,
+        borderRadius: 28,
+        padding: 22,
+        backgroundColor: '#000000',
+        borderWidth: 1,
+        borderColor: 'rgba(255, 255, 255, 0.2)',
+    },
+    completedPopupCardLandscape: {
+        width: '82%',
+        maxWidth: 680,
+        padding: 20,
+    },
     completedPopupCombinedLandscape: {
         width: '75%',
         maxWidth: 520,

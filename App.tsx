@@ -1812,6 +1812,8 @@ export default function App() {
             shouldPlaySound={shouldPlayCompletionSound}
             onAcknowledgeCompletion={() => activeTimer && handleAcknowledgeCompletion(activeTimer.id)}
             category={activeTimer ? categories.find(c => c.id === activeTimer.categoryId) : undefined}
+            title={activeTimer?.title}
+            totalTime={activeTimer?.total}
           />
         );
 
