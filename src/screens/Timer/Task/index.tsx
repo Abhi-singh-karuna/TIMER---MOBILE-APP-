@@ -4615,11 +4615,7 @@ function DraggableStagesList({ stages, onReorder, onSetStageStatus, onDeleteStag
                 data={data}
                 keyExtractor={(item) => String(item.id)}
                 renderItem={renderItem}
-                onDragBegin={() => {
-                    LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
-                }}
                 onDragEnd={({ data: next }) => {
-                    LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
                     setData(next);
                     onReorder(next);
                     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
