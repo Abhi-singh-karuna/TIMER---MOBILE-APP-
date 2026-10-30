@@ -37,6 +37,8 @@ Tracks every commit on this branch. **Add a new row/section for each new commit.
 | 24 | `769ab31` | docs(readme) | iOS build section rewritten as step-by-step parts |
 | 25 | `261352f` | docs | Log iOS build guide rewrite |
 | 26 | `be6809a` | feat(scripts) | Version bump and iOS cache cleanup scripts, README Parts 6 and 7 |
+| 27 | `79e7915` | docs | Log scripts in branch log |
+| 28 | `d5c017b` | docs(readme) | README simplified, troubleshooting removed |
 
 ## Details
 
@@ -119,6 +121,11 @@ Tracks every commit on this branch. **Add a new row/section for each new commit.
 - `scripts/bump-version.js`: `npm run version:build|patch|minor|major` updates `app.json` (version, ios.buildNumber, android.versionCode), `Info.plist` and the Xcode project; `--dry-run` supported. Tested on backed-up copies.
 - `scripts/clean-ios-cache.sh`: `npm run ios:clean` (light) and `npm run ios:clean:deep`; `--dry-run` supported
 - README "Building for iOS": Part 6 (update version) and Part 7 (clear caches after success or failure)
+
+### 28. `d5c017b` — simpler README
+- README cut from about 500 lines to about 120: removed the troubleshooting table, data-model and storage-key lists, and the extra iOS parts
+- Kept: features, run, iOS build steps, version bump, cache clean, structure, short how-it-works
+- The long version is in git history (`git show 79e7915:README.md`)
 
 ## Verification status
 - [x] `npx tsc --noEmit` passes
