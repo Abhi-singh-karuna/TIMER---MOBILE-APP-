@@ -1,9 +1,12 @@
 import React, { useEffect, useRef } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, Animated, Platform } from 'react-native';
+import Svg, { Circle } from 'react-native-svg';
 import { MaterialIcons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
 
-const DEFAULT_ACCENT = '#4CAF50';
+const DEFAULT_ACCENT = '#4DA3FF';
+const EXTENDED_COLOR = '#FFD740';
+const SUCCESS_COLOR = '#4CAF50';
 const EXTEND_OPTIONS = [1, 5, 10];
 
 // "MM:SS" or "HH:MM:SS" -> seconds
@@ -24,11 +27,12 @@ export const formatClock = (value?: string): string => {
     return `${date.getHours().toString().padStart(2, '0')}:${date.getMinutes().toString().padStart(2, '0')}`;
 };
 
+const pad = (n: number) => n.toString().padStart(2, '0');
+
 const formatDuration = (seconds: number): string => {
     const h = Math.floor(seconds / 3600);
     const m = Math.floor((seconds % 3600) / 60);
     const s = seconds % 60;
-    const pad = (n: number) => n.toString().padStart(2, '0');
     return h > 0 ? `${h}:${pad(m)}:${pad(s)}` : `${pad(m)}:${pad(s)}`;
 };
 
@@ -61,6 +65,9 @@ export interface CompletionSummaryProps {
     primaryIcon: keyof typeof MaterialIcons.glyphMap;
 }
 
+const RING_RADIUS = 42;
+const RING_CIRCUMFERENCE = 2 * Math.PI * RING_RADIUS;
+
 export default function CompletionSummary({
     variant,
     horizontal,
@@ -78,218 +85,220 @@ export default function CompletionSummary({
     primaryIcon,
 }: CompletionSummaryProps) {
     const isPage = variant === 'page';
-    const ringScale = useRef(new Animated.Value(0.6)).current;
+    const ringScale = useRef(new Animated.Value(0.85)).current;
     const ringOpacity = useRef(new Animated.Value(0)).current;
-    const glow = useRef(new Animated.Value(0)).current;
 
     useEffect(() => {
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => { });
         Animated.parallel([
-            Animated.spring(ringScale, { toValue: 1, tension: 40, friction: 6, useNativeDriver: true }),
+            Animated.spring(ringScale, { toValue: 1, tension: 40, friction: 7, useNativeDriver: true }),
             Animated.timing(ringOpacity, { toValue: 1, duration: 350, useNativeDriver: true }),
         ]).start();
-        const loop = Animated.loop(
-            Animated.sequence([
-                Animated.timing(glow, { toValue: 1, duration: 1400, useNativeDriver: true }),
-                Animated.timing(glow, { toValue: 0, duration: 1400, useNativeDriver: true }),
-            ])
-        );
-        loop.start();
-        return () => loop.stop();
     }, []);
 
     const focusedSeconds = totalSeconds + extendedSeconds;
-    const ringSize = isPage ? 96 : 64;
+    const baseFraction = focusedSeconds > 0 ? totalSeconds / focusedSeconds : 1;
+    const extFraction = focusedSeconds > 0 ? extendedSeconds / focusedSeconds : 0;
+    const gap = extendedSeconds > 0 ? 4 : 0;
+    const baseLength = Math.max(RING_CIRCUMFERENCE * baseFraction - gap, 0);
+    const extLength = Math.max(RING_CIRCUMFERENCE * extFraction - gap, 0);
 
-    const summary = (
-        <View style={[styles.summary, horizontal && styles.summaryHorizontal]}>
-            <View style={{ width: ringSize + 24, height: ringSize + 24, alignItems: 'center', justifyContent: 'center' }}>
-                <Animated.View
-                    style={[
-                        styles.glow,
-                        {
-                            width: ringSize + 24,
-                            height: ringSize + 24,
-                            borderRadius: (ringSize + 24) / 2,
-                            backgroundColor: accentColor,
-                            opacity: glow.interpolate({ inputRange: [0, 1], outputRange: [0.06, 0.2] }),
-                        },
-                    ]}
-                />
-                <Animated.View
-                    style={[
-                        styles.ring,
-                        {
-                            width: ringSize,
-                            height: ringSize,
-                            borderRadius: ringSize / 2,
-                            borderColor: accentColor,
-                            backgroundColor: `${accentColor}1A`,
-                            opacity: ringOpacity,
-                            transform: [{ scale: ringScale }],
-                        },
-                    ]}
-                >
-                    <MaterialIcons name="check" size={ringSize * 0.5} color={accentColor} />
-                </Animated.View>
-            </View>
+    // Ring size: page landscape / page portrait / popup landscape / popup portrait
+    const ringSize = isPage ? (horizontal ? 190 : 230) : (horizontal ? 130 : 140);
+    const timeFont = Math.round(ringSize * 0.21);
 
-            <View style={[styles.summaryText, horizontal && styles.summaryTextHorizontal]}>
-                <Text style={[styles.completedLabel, { color: accentColor }, !isPage && styles.completedLabelPopup]}>
-                    COMPLETED
-                </Text>
-                {!!title && (
-                    <Text style={[styles.title, !isPage && styles.titlePopup]} numberOfLines={1}>
-                        {title}
-                    </Text>
-                )}
-
-                <View style={styles.focusRow}>
-                    <Text style={[styles.focusValue, !isPage && styles.focusValuePopup]}>
+    const ring = (
+        <Animated.View style={{ opacity: ringOpacity, transform: [{ scale: ringScale }] }}>
+            <View style={{ width: ringSize, height: ringSize, alignItems: 'center', justifyContent: 'center' }}>
+                <Svg width={ringSize} height={ringSize} viewBox="0 0 100 100">
+                    <Circle
+                        cx={50}
+                        cy={50}
+                        r={RING_RADIUS}
+                        stroke="rgba(255,255,255,0.08)"
+                        strokeWidth={5}
+                        fill="none"
+                    />
+                    <Circle
+                        cx={50}
+                        cy={50}
+                        r={RING_RADIUS}
+                        stroke={accentColor}
+                        strokeWidth={5}
+                        strokeLinecap="round"
+                        fill="none"
+                        strokeDasharray={`${baseLength} ${RING_CIRCUMFERENCE}`}
+                        transform="rotate(-90 50 50)"
+                    />
+                    {extLength > 0 && (
+                        <Circle
+                            cx={50}
+                            cy={50}
+                            r={RING_RADIUS}
+                            stroke={EXTENDED_COLOR}
+                            strokeWidth={5}
+                            strokeLinecap="round"
+                            fill="none"
+                            strokeDasharray={`${extLength} ${RING_CIRCUMFERENCE}`}
+                            strokeDashoffset={-(RING_CIRCUMFERENCE * baseFraction)}
+                            transform="rotate(-90 50 50)"
+                        />
+                    )}
+                </Svg>
+                <View style={styles.ringCenter}>
+                    <Text style={[styles.completedLabel, { fontSize: isPage ? 11 : 9 }]}>COMPLETED</Text>
+                    <Text style={[styles.focusValue, { fontSize: timeFont }]} numberOfLines={1} adjustsFontSizeToFit>
                         {formatDuration(focusedSeconds)}
                     </Text>
-                    <Text style={styles.focusUnit}>focused</Text>
+                    <Text style={styles.eyebrow}>FOCUSED</Text>
                 </View>
+            </View>
+        </Animated.View>
+    );
 
-                {!!categoryName && (
-                    <View style={[styles.categoryChip, { backgroundColor: `${accentColor}15`, borderColor: `${accentColor}40` }]}>
-                        {!!categoryIcon && <MaterialIcons name={categoryIcon} size={13} color={accentColor} />}
-                        <Text style={[styles.categoryChipText, { color: accentColor }]}>{categoryName}</Text>
-                    </View>
-                )}
-
-                {/* Start -> End timeline */}
-                <View style={styles.timeline}>
-                    <Text style={styles.timelineTime}>{formatClock(startTime)}</Text>
-                    <View style={styles.timelineTrack}>
-                        <View style={[styles.timelineDot, { backgroundColor: '#fff' }]} />
-                        <View style={[styles.timelineLine, { backgroundColor: `${accentColor}80` }]} />
-                        <View style={[styles.timelineDot, { backgroundColor: accentColor }]} />
-                    </View>
-                    <Text style={styles.timelineTime}>{endedAt}</Text>
-                </View>
-                <View style={styles.timelineCaptions}>
-                    <Text style={styles.timelineCaption}>Started</Text>
-                    <Text style={[styles.extendedText, extendedSeconds > 0 && { color: '#FFD740' }]}>
-                        Extended {formatExtended(extendedSeconds)}
-                    </Text>
-                    <Text style={styles.timelineCaption}>Ended</Text>
-                </View>
+    const statCell = (label: string, value: string, dotColor?: string, valueColor?: string) => (
+        <View style={styles.statCell}>
+            <Text style={styles.eyebrow}>{label}</Text>
+            <View style={styles.statValueRow}>
+                {!!dotColor && <View style={[styles.dot, { backgroundColor: dotColor }]} />}
+                <Text style={[styles.statValue, !isPage && styles.statValuePopup, !!valueColor && { color: valueColor }]}>
+                    {value}
+                </Text>
             </View>
         </View>
     );
 
-    const actions = (
-        <View style={[styles.actions, horizontal && styles.actionsHorizontal]}>
-            <Text style={styles.extendLabel}>EXTEND SESSION</Text>
-            <View style={styles.extendRow}>
-                {EXTEND_OPTIONS.map((mins) => (
-                    <TouchableOpacity
-                        key={mins}
-                        style={[styles.extendBtn, !isPage && styles.extendBtnPopup]}
-                        activeOpacity={0.7}
-                        onPress={() => onExtend(mins * 60)}
-                    >
-                        <Text style={[styles.extendBtnText, !isPage && styles.extendBtnTextPopup]}>+{mins}m</Text>
-                    </TouchableOpacity>
-                ))}
+    const details = (
+        <View style={styles.details}>
+            <View style={styles.head}>
+                <Text style={[styles.title, !isPage && styles.titlePopup]} numberOfLines={1}>
+                    {title || 'Timer'}
+                </Text>
+                {!!categoryName && (
+                    <View style={[styles.categoryChip, { backgroundColor: `${accentColor}1F`, borderColor: `${accentColor}59` }]}>
+                        {!!categoryIcon && <MaterialIcons name={categoryIcon} size={12} color={accentColor} />}
+                        <Text style={[styles.categoryChipText, { color: accentColor }]}>{categoryName.toUpperCase()}</Text>
+                    </View>
+                )}
             </View>
-            <TouchableOpacity
-                style={[styles.primaryBtn, !isPage && styles.primaryBtnPopup]}
-                activeOpacity={0.85}
-                onPress={onPrimary}
-            >
-                <MaterialIcons name={primaryIcon} size={isPage ? 26 : 20} color="#000" />
-                <Text style={[styles.primaryBtnText, !isPage && styles.primaryBtnTextPopup]}>{primaryLabel}</Text>
-            </TouchableOpacity>
+
+            <View style={styles.stats}>
+                {statCell('STARTED', formatClock(startTime))}
+                {statCell('ENDED', endedAt)}
+                {statCell('PLANNED', formatDuration(totalSeconds), accentColor)}
+                {statCell('EXTENDED', formatExtended(extendedSeconds), EXTENDED_COLOR, extendedSeconds > 0 ? EXTENDED_COLOR : undefined)}
+            </View>
+
+            <View style={[styles.actions, horizontal && styles.actionsHorizontal]}>
+                <View style={[styles.extendRow, horizontal && { flex: 1 }]}>
+                    {EXTEND_OPTIONS.map((mins) => (
+                        <TouchableOpacity
+                            key={mins}
+                            style={[styles.extendBtn, !isPage && styles.extendBtnPopup]}
+                            activeOpacity={0.7}
+                            onPress={() => onExtend(mins * 60)}
+                        >
+                            <Text style={[styles.extendBtnText, !isPage && styles.extendBtnTextPopup]}>+{mins}m</Text>
+                        </TouchableOpacity>
+                    ))}
+                </View>
+                <TouchableOpacity
+                    style={[styles.primaryBtn, !isPage && styles.primaryBtnPopup, horizontal && { flex: 1.25 }]}
+                    activeOpacity={0.85}
+                    onPress={onPrimary}
+                >
+                    <MaterialIcons name={primaryIcon} size={isPage ? 22 : 18} color="#000" />
+                    <Text style={[styles.primaryBtnText, !isPage && styles.primaryBtnTextPopup]} numberOfLines={1}>
+                        {primaryLabel}
+                    </Text>
+                </TouchableOpacity>
+            </View>
         </View>
     );
 
     return (
         <View style={[styles.root, horizontal && styles.rootHorizontal, isPage && styles.rootPage]}>
-            {summary}
-            {horizontal && <View style={styles.divider} />}
-            {actions}
+            <View style={horizontal ? styles.ringColumnHorizontal : styles.ringColumn}>{ring}</View>
+            <View style={horizontal ? styles.detailsColumnHorizontal : styles.detailsColumn}>{details}</View>
         </View>
     );
 }
 
 const styles = StyleSheet.create({
-    root: { gap: 18 },
-    rootHorizontal: { flexDirection: 'row', alignItems: 'center', gap: 24 },
+    root: { gap: 18, alignItems: 'center' },
+    rootHorizontal: { flexDirection: 'row', gap: 28 },
     rootPage: { flex: 1, justifyContent: 'center', paddingHorizontal: 28 },
 
-    summary: { alignItems: 'center', gap: 12 },
-    summaryHorizontal: { flex: 1.15, flexDirection: 'row', alignItems: 'center' },
-    summaryText: { alignItems: 'center', gap: 6 },
-    summaryTextHorizontal: { flex: 1, alignItems: 'flex-start' },
+    ringColumn: { alignItems: 'center' },
+    ringColumnHorizontal: { flexShrink: 0 },
+    detailsColumn: { alignSelf: 'stretch' },
+    detailsColumnHorizontal: { flex: 1 },
 
-    glow: { position: 'absolute' },
-    ring: { alignItems: 'center', justifyContent: 'center', borderWidth: 2.5 },
+    ringCenter: { position: 'absolute', alignItems: 'center', gap: 2, paddingHorizontal: 24 },
+    completedLabel: { color: SUCCESS_COLOR, fontWeight: '800', letterSpacing: 3 },
+    focusValue: { color: '#fff', fontWeight: '900', letterSpacing: -0.5, fontVariant: ['tabular-nums'] },
+    eyebrow: { fontSize: 10, letterSpacing: 2.5, fontWeight: '700', color: 'rgba(255,255,255,0.5)' },
 
-    completedLabel: { fontSize: 13, fontWeight: '800', letterSpacing: 4 },
-    completedLabelPopup: { fontSize: 11, letterSpacing: 3 },
-    title: { fontSize: 20, fontWeight: '700', color: '#fff' },
-    titlePopup: { fontSize: 15 },
-
-    focusRow: { flexDirection: 'row', alignItems: 'baseline', gap: 8 },
-    focusValue: { fontSize: 44, fontWeight: '800', color: '#fff', letterSpacing: 1 },
-    focusValuePopup: { fontSize: 28 },
-    focusUnit: { fontSize: 13, color: 'rgba(255,255,255,0.45)', fontWeight: '600', letterSpacing: 1 },
-
+    details: { gap: 14 },
+    head: { flexDirection: 'row', alignItems: 'center', gap: 10, flexWrap: 'wrap' },
+    title: { fontSize: 22, fontWeight: '800', color: '#fff', flexShrink: 1 },
+    titlePopup: { fontSize: 17 },
     categoryChip: {
         flexDirection: 'row',
         alignItems: 'center',
-        gap: 6,
+        gap: 5,
         paddingHorizontal: 10,
         paddingVertical: 4,
-        borderRadius: 12,
+        borderRadius: 99,
         borderWidth: 1,
     },
-    categoryChipText: { fontSize: 11, fontWeight: '700', letterSpacing: 1 },
+    categoryChipText: { fontSize: 10, fontWeight: '700', letterSpacing: 1.2 },
 
-    timeline: { flexDirection: 'row', alignItems: 'center', gap: 10, alignSelf: 'stretch', marginTop: 4 },
-    timelineTime: { fontSize: 14, fontWeight: '700', color: '#fff' },
-    timelineTrack: { flex: 1, flexDirection: 'row', alignItems: 'center' },
-    timelineLine: { flex: 1, height: 2, borderRadius: 1 },
-    timelineDot: { width: 8, height: 8, borderRadius: 4 },
-    timelineCaptions: { flexDirection: 'row', justifyContent: 'space-between', alignSelf: 'stretch' },
-    timelineCaption: { fontSize: 10, color: 'rgba(255,255,255,0.4)', letterSpacing: 1 },
-    extendedText: { fontSize: 10, color: 'rgba(255,255,255,0.4)', letterSpacing: 1, fontWeight: '700' },
+    stats: {
+        flexDirection: 'row',
+        flexWrap: 'wrap',
+        rowGap: 12,
+        paddingVertical: 12,
+        borderTopWidth: 1,
+        borderBottomWidth: 1,
+        borderColor: 'rgba(255,255,255,0.12)',
+    },
+    statCell: { width: '50%', gap: 3 },
+    statValueRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+    dot: { width: 8, height: 8, borderRadius: 4 },
+    statValue: { fontSize: 18, fontWeight: '700', color: '#fff', fontVariant: ['tabular-nums'] },
+    statValuePopup: { fontSize: 15 },
 
-    divider: { width: 1, alignSelf: 'stretch', backgroundColor: 'rgba(255,255,255,0.1)' },
-
-    actions: { gap: 12, alignSelf: 'stretch' },
-    actionsHorizontal: { flex: 1 },
-    extendLabel: { fontSize: 11, color: 'rgba(255,255,255,0.4)', letterSpacing: 3, fontWeight: '700', textAlign: 'center' },
-    extendRow: { flexDirection: 'row', gap: 10 },
+    actions: { gap: 10 },
+    actionsHorizontal: { flexDirection: 'row', alignItems: 'center' },
+    extendRow: { flexDirection: 'row', gap: 8 },
     extendBtn: {
         flex: 1,
-        height: 54,
+        height: 48,
         alignItems: 'center',
         justifyContent: 'center',
-        borderRadius: 18,
+        borderRadius: 16,
         backgroundColor: 'rgba(255,255,255,0.07)',
         borderWidth: 1,
-        borderColor: 'rgba(255,255,255,0.18)',
+        borderColor: 'rgba(255,255,255,0.2)',
     },
-    extendBtnPopup: { height: 42, borderRadius: 14 },
-    extendBtnText: { fontSize: 18, fontWeight: '700', color: '#fff' },
-    extendBtnTextPopup: { fontSize: 15 },
+    extendBtnPopup: { height: 40, borderRadius: 13 },
+    extendBtnText: { fontSize: 16, fontWeight: '700', color: '#fff' },
+    extendBtnTextPopup: { fontSize: 14 },
 
     primaryBtn: {
         flexDirection: 'row',
         alignItems: 'center',
         justifyContent: 'center',
-        gap: 10,
-        height: 66,
-        borderRadius: 26,
+        gap: 8,
+        height: 48,
+        borderRadius: 18,
         backgroundColor: '#FFFFFF',
         ...Platform.select({
-            ios: { shadowColor: '#FFFFFF', shadowOpacity: 0.35, shadowRadius: 14, shadowOffset: { width: 0, height: 6 } },
+            ios: { shadowColor: '#FFFFFF', shadowOpacity: 0.3, shadowRadius: 12, shadowOffset: { width: 0, height: 5 } },
         }),
     },
-    primaryBtnPopup: { height: 46, borderRadius: 16 },
-    primaryBtnText: { fontSize: 20, fontWeight: '800', color: '#000' },
-    primaryBtnTextPopup: { fontSize: 14, letterSpacing: 2 },
+    primaryBtnPopup: { height: 40, borderRadius: 14 },
+    primaryBtnText: { fontSize: 16, fontWeight: '800', color: '#000' },
+    primaryBtnTextPopup: { fontSize: 13, letterSpacing: 2 },
 });
