@@ -41,6 +41,8 @@ Tracks every commit on this branch. **Add a new row/section for each new commit.
 | 28 | `d5c017b` | docs(readme) | README simplified, troubleshooting removed |
 | 29 | `24c2797` | docs | Log README simplification |
 | 30 | `6df906a` | docs(readme) | Note: install the matching iOS platform in Xcode > Settings > Components |
+| 31 | `c47b94e` | docs | Log iOS platform note |
+| 32 | _this commit_ | docs | Add plan/settings-plan.html and link it in the README |
 
 ## Details
 

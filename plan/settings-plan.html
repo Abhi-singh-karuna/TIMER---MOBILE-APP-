@@ -1,0 +1,381 @@
+<title>Settings Simplification Plan</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+/* Layout: one readable column. Summary first, then the target menu, then a tickable to-do list,
+   then a card per current settings page showing what changes and what it affects. */
+:root {
+  color-scheme: light;
+  --bg: #f6f7f9;
+  --surface: #ffffff;
+  --line: #dfe3ea;
+  --text: #14171c;
+  --mute: #5b6472;
+  --accent: #1f6feb;
+  --accent-soft: #e6f0ff;
+  --keep: #1a7f4b;
+  --keep-soft: #e3f4ea;
+  --change: #b25e09;
+  --change-soft: #fdf0dc;
+  --remove: #b42318;
+  --remove-soft: #fde7e4;
+  --body: 'Plus Jakarta Sans', system-ui, sans-serif;
+  --mono: 'IBM Plex Mono', ui-monospace, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    color-scheme: dark;
+    --bg: #0c0e12; --surface: #151922; --line: #262c38; --text: #eef0f4; --mute: #9aa3b2;
+    --accent: #6aa5ff; --accent-soft: #14233d;
+    --keep: #4cc38a; --keep-soft: #12281d;
+    --change: #f0a54a; --change-soft: #2c200e;
+    --remove: #ff7a6e; --remove-soft: #2f1512;
+  }
+}
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --bg: #0c0e12; --surface: #151922; --line: #262c38; --text: #eef0f4; --mute: #9aa3b2;
+  --accent: #6aa5ff; --accent-soft: #14233d;
+  --keep: #4cc38a; --keep-soft: #12281d;
+  --change: #f0a54a; --change-soft: #2c200e;
+  --remove: #ff7a6e; --remove-soft: #2f1512;
+}
+* { box-sizing: border-box; }
+html, body { background: var(--bg); color: var(--text); margin: 0; }
+body {
+  font-family: var(--body); font-size: 15px; line-height: 1.6;
+  padding-block: 32px 72px;
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+}
+.wrap { max-width: 860px; margin: 0 auto; display: grid; gap: 44px; }
+h1 { font-size: 28px; line-height: 1.2; margin: 0 0 8px; letter-spacing: -.01em; text-wrap: balance; }
+h2 { font-size: 20px; margin: 0 0 6px; letter-spacing: -.005em; }
+h3 { font-size: 16px; margin: 0; }
+p { margin: 0; }
+.lede { color: var(--mute); max-width: 64ch; }
+.sub { color: var(--mute); font-size: 14px; max-width: 66ch; }
+code, .mono { font-family: var(--mono); font-size: 12.5px; background: var(--accent-soft); color: var(--accent); padding: 1px 6px; border-radius: 5px; }
+section { display: grid; gap: 16px; }
+
+.card { background: var(--surface); border: 1px solid var(--line); border-radius: 14px; padding: 18px 20px; }
+.problems { display: grid; gap: 10px; padding: 0; margin: 0; list-style: none; }
+.problems li { display: grid; grid-template-columns: auto 1fr; gap: 12px; align-items: start; }
+.problems b { font-size: 12px; background: var(--remove-soft); color: var(--remove); width: 24px; height: 24px; border-radius: 50%; display: grid; place-items: center; }
+
+/* before -> after */
+.compare { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+.menu { display: grid; gap: 6px; align-content: start; }
+.menu .label { font-size: 12px; letter-spacing: .14em; color: var(--mute); font-weight: 700; margin-bottom: 4px; }
+.menu .group { font-size: 11px; letter-spacing: .16em; color: var(--mute); margin-top: 10px; font-weight: 700; }
+.item { display: flex; justify-content: space-between; gap: 10px; padding: 8px 12px; border: 1px solid var(--line); border-radius: 10px; background: var(--bg); font-weight: 600; font-size: 14px; }
+.item small { font-weight: 500; color: var(--mute); font-size: 12px; text-align: right; }
+.item.new { background: var(--keep-soft); border-color: transparent; }
+.item.merged { background: var(--change-soft); border-color: transparent; }
+
+/* to-do */
+.phase { display: grid; gap: 8px; }
+.phase-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 12px; }
+.phase-head .meta { color: var(--mute); font-size: 13px; }
+.progress { height: 8px; background: var(--line); border-radius: 99px; overflow: hidden; }
+.progress i { display: block; height: 100%; width: 0; background: var(--keep); transition: width .25s; }
+.progress-text { font-size: 13px; color: var(--mute); }
+.todo { display: grid; grid-template-columns: auto 1fr; gap: 12px; padding: 12px 14px; background: var(--surface); border: 1px solid var(--line); border-radius: 12px; cursor: pointer; }
+.todo input { width: 20px; height: 20px; margin-top: 2px; accent-color: var(--keep); cursor: pointer; }
+.todo .t { font-weight: 600; }
+.todo .d { color: var(--mute); font-size: 13.5px; margin-top: 2px; }
+.todo .tags { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+.tag { font-size: 11.5px; font-weight: 600; padding: 2px 9px; border-radius: 99px; background: var(--accent-soft); color: var(--accent); }
+.tag.warn { background: var(--change-soft); color: var(--change); }
+.todo:has(input:checked) { opacity: .6; }
+.todo:has(input:checked) .t { text-decoration: line-through; }
+.todo:focus-within { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+/* page impact */
+.page { display: grid; gap: 12px; }
+.page-head { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; }
+.badge { font-size: 11.5px; font-weight: 700; letter-spacing: .08em; padding: 3px 10px; border-radius: 99px; }
+.badge.keep { background: var(--keep-soft); color: var(--keep); }
+.badge.change { background: var(--change-soft); color: var(--change); }
+.badge.merge { background: var(--change-soft); color: var(--change); }
+.badge.remove { background: var(--remove-soft); color: var(--remove); }
+.rows { display: grid; gap: 8px; }
+.row { display: grid; grid-template-columns: 110px 1fr; gap: 12px; font-size: 14px; }
+.row dt { color: var(--mute); font-weight: 600; font-size: 13px; }
+.row dd { margin: 0; }
+.row ul { margin: 0; padding-left: 18px; }
+.keepbox { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+.keepbox ul { margin: 8px 0 0; padding-left: 18px; color: var(--mute); }
+
+.decisions ol { margin: 8px 0 0; padding-left: 20px; display: grid; gap: 8px; }
+.pill { display: inline-block; font-size: 12px; font-weight: 700; padding: 1px 8px; border-radius: 99px; background: var(--accent-soft); color: var(--accent); }
+
+@media (max-width: 640px) {
+  .compare, .keepbox { grid-template-columns: 1fr; }
+  .row { grid-template-columns: 1fr; gap: 2px; }
+  h1 { font-size: 24px; }
+}
+@media (prefers-reduced-motion: reduce) { .progress i { transition: none; } }
+</style>
+
+<div class="wrap">
+  <header>
+    <h1>Settings simplification plan</h1>
+    <p class="lede">The Settings area has 10 entries, three places to sign in, and different menus in portrait and landscape. This plan cuts it to 7 entries in 4 groups, with the same menu in both orientations. Tick items as you finish them. Your ticks are saved in this browser.</p>
+  </header>
+
+  <!-- 1. What is confusing -->
+  <section aria-labelledby="s1">
+    <h2 id="s1">What is confusing today</h2>
+    <div class="card">
+      <ul class="problems">
+        <li><b>1</b><span><strong>10 entries in one menu.</strong> Theme, Timeline BG, Audio, Category, Quick Messages, Leave Mgmt, General, Account, Data Mgmt and About.</span></li>
+        <li><b>2</b><span><strong>Account and Data Mgmt overlap.</strong> Both have Google sign-in and backup. Sign-in also appears in the profile header at the top, so there are three places.</span></li>
+        <li><b>3</b><span><strong>Portrait and landscape differ.</strong> Portrait groups items under Appearance, Preferences and System. Landscape shows one flat list in another order. Leave Mgmt appears only in landscape.</span></li>
+        <li><b>4</b><span><strong>General is a grab bag.</strong> Daily start time, notes folder locks (with three sub-options and a reset), Disable Past Timers and Disable Past Tasks have little in common.</span></li>
+        <li><b>5</b><span><strong>The code repeats itself.</strong> <code>index.tsx</code> renders every section twice, once for portrait and once for landscape, and the styles file is 2,072 lines. Every change has to be made twice.</span></li>
+      </ul>
+    </div>
+  </section>
+
+  <!-- 2. Target -->
+  <section aria-labelledby="s2">
+    <h2 id="s2">The simpler menu</h2>
+    <p class="sub">Same list in portrait and landscape. Orange items are merged, green items are new names.</p>
+    <div class="compare">
+      <div class="card menu">
+        <div class="label">NOW (10)</div>
+        <div class="group">APPEARANCE</div>
+        <div class="item">Theme</div><div class="item">Timeline BG</div>
+        <div class="group">PREFERENCES</div>
+        <div class="item">Audio</div><div class="item">Category</div><div class="item">Quick Messages</div><div class="item">Leave Mgmt <small>landscape only</small></div>
+        <div class="group">SYSTEM</div>
+        <div class="item">General</div><div class="item">Account</div><div class="item">Data Mgmt</div><div class="item">About</div>
+      </div>
+      <div class="card menu">
+        <div class="label">AFTER (7)</div>
+        <div class="group">LOOK AND SOUND</div>
+        <div class="item merged">Appearance <small>Theme + Timeline BG</small></div>
+        <div class="item">Sound <small>was Audio</small></div>
+        <div class="group">YOUR LISTS</div>
+        <div class="item merged">Lists <small>Category, Quick Messages, Leave days</small></div>
+        <div class="group">RULES</div>
+        <div class="item merged">General <small>Day start, past dates, notes locks</small></div>
+        <div class="group">BACKUP</div>
+        <div class="item new">Backup &amp; Account <small>Account + Data Mgmt</small></div>
+        <div class="group">INFO</div>
+        <div class="item">About <small>shorter</small></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- 3. Progress + todo -->
+  <section aria-labelledby="s3">
+    <h2 id="s3">To-do list</h2>
+    <p class="sub">Do the phases in order. Each phase leaves the app working, so you can stop after any of them.</p>
+    <div class="card" style="display:grid;gap:8px">
+      <div class="progress" aria-hidden="true"><i id="bar"></i></div>
+      <div class="progress-text" id="barText" aria-live="polite">0 of 0 done</div>
+    </div>
+
+    <div class="phase">
+      <div class="phase-head"><h3>Phase 1: One menu for both orientations</h3><span class="meta">Small, low risk. Do this first.</span></div>
+      <label class="todo"><input type="checkbox" id="t1"><div><div class="t">Put the menu in one list in code</div><div class="d">Define each entry once (id, icon, title, description, group) and build both the portrait cards and the landscape sidebar from it.</div><div class="tags"><span class="tag">index.tsx</span><span class="tag">Portrait + Landscape</span></div></div></label>
+      <label class="todo"><input type="checkbox" id="t2"><div><div class="t">Show Leave in portrait too</div><div class="d">It exists in the landscape sidebar only. The single list fixes this on its own.</div><div class="tags"><span class="tag">index.tsx</span><span class="tag">Leave</span></div></div></label>
+      <label class="todo"><input type="checkbox" id="t3"><div><div class="t">Render each section once</div><div class="d">The block that picks the section to show is written twice (portrait and landscape). Replace it with one block that takes <code>isLandscape</code> as a prop.</div><div class="tags"><span class="tag">index.tsx</span><span class="tag warn">Check every section in both orientations</span></div></div></label>
+    </div>
+
+    <div class="phase">
+      <div class="phase-head"><h3>Phase 2: Merge Account and Data Mgmt</h3><span class="meta">Biggest win for confusion.</span></div>
+      <label class="todo"><input type="checkbox" id="t4"><div><div class="t">Create one "Backup &amp; Account" page</div><div class="d">Top: signed-in status with Sign in or Sign out. Then: Back up now, Restore, Auto-backup time. Then: Export. Last, in a red "Danger zone" box: clear timers, clear tasks, wipe all data.</div><div class="tags"><span class="tag">AccountSection</span><span class="tag">DataManagementSection</span><span class="tag warn">Google sign-in needs a dev build to test</span></div></div></label>
+      <label class="todo"><input type="checkbox" id="t5"><div><div class="t">Keep only one sign-in button</div><div class="d">Remove the sign-in from the profile header and from the two pages. The profile header becomes a tap target that opens Backup &amp; Account.</div><div class="tags"><span class="tag">index.tsx</span><span class="tag">GoogleDriveService</span></div></div></label>
+      <label class="todo"><input type="checkbox" id="t6"><div><div class="t">Keep the "clear all" confirmation</div><div class="d">Moving the clear buttons into the Danger zone must keep the type-"clear all" confirm modal as it is.</div><div class="tags"><span class="tag warn">Data safety</span></div></div></label>
+    </div>
+
+    <div class="phase">
+      <div class="phase-head"><h3>Phase 3: Group the small pages</h3><span class="meta">Fewer entries, no new features.</span></div>
+      <label class="todo"><input type="checkbox" id="t7"><div><div class="t">Appearance = Theme + Timeline BG</div><div class="d">One page with two sections. Timeline BG is a full-screen sub-page today, so keep it as a "Customize timeline colors" row that opens it.</div><div class="tags"><span class="tag">ThemeSection</span><span class="tag">TimeOfDayBackgroundScreen</span></div></div></label>
+      <label class="todo"><input type="checkbox" id="t8"><div><div class="t">Lists = Category, Quick Messages, Leave days</div><div class="d">One page with three collapsible blocks, or three tabs at the top. Each block keeps its current list, add and edit behavior.</div><div class="tags"><span class="tag">CategorySection</span><span class="tag">QuickMessageSection</span><span class="tag">LeaveSection</span></div></div></label>
+      <label class="todo"><input type="checkbox" id="t9"><div><div class="t">Rename Audio to Sound</div><div class="d">Text change only. Page content stays.</div><div class="tags"><span class="tag">AudioSection</span></div></div></label>
+    </div>
+
+    <div class="phase">
+      <div class="phase-head"><h3>Phase 4: Tidy General and About</h3><span class="meta">Content cleanup.</span></div>
+      <label class="todo"><input type="checkbox" id="t10"><div><div class="t">Order General by how often it is used</div><div class="d">Daily start time first, then Disable Past Timers and Disable Past Tasks, then Notes folder locks last in its own "Privacy" block.</div><div class="tags"><span class="tag">GeneralSection</span><span class="tag">DailyStartTimeSection</span></div></div></label>
+      <label class="todo"><input type="checkbox" id="t11"><div><div class="t">Shorten About</div><div class="d">Keep app name, version, release and designer. Remove the marketing feature list (Live Landscape Mode, Logical Day, Smart Recurrence, Focus Flow).</div><div class="tags"><span class="tag">InfoSection</span></div></div></label>
+      <label class="todo"><input type="checkbox" id="t12"><div><div class="t">Add one-line help under each setting</div><div class="d">Where a label is not obvious (for example "Logical day"), add one short sentence of explanation.</div><div class="tags"><span class="tag">All sections</span></div></div></label>
+    </div>
+
+    <div class="phase">
+      <div class="phase-head"><h3>Phase 5: Cleanup</h3><span class="meta">After everything works.</span></div>
+      <label class="todo"><input type="checkbox" id="t13"><div><div class="t">Delete unused styles</div><div class="d"><code>styles.ts</code> has 2,072 lines and many belong to the old layouts. Remove the ones nothing uses.</div><div class="tags"><span class="tag">styles.ts</span></div></div></label>
+      <label class="todo"><input type="checkbox" id="t14"><div><div class="t">Run the checks</div><div class="d"><code>npx tsc --noEmit</code>, then open every page in portrait and landscape on a device. Add the change to the branch log.</div><div class="tags"><span class="tag">BRANCH_v6.0.0_CHANGELOG.md</span></div></div></label>
+    </div>
+  </section>
+
+  <!-- 4. Per page -->
+  <section aria-labelledby="s4">
+    <h2 id="s4">What changes on each page</h2>
+    <p class="sub">One card per current Settings page: what it does now, what changes, and what else is affected.</p>
+
+    <article class="card page">
+      <div class="page-head"><h3>Theme</h3><span class="badge merge">MERGED INTO APPEARANCE</span></div>
+      <dl class="rows">
+        <div class="row"><dt>Now</dt><dd>Color presets, filler, slider and text colors, live landscape preview.</dd></div>
+        <div class="row"><dt>Change</dt><dd>Becomes the first block on the Appearance page. Content stays the same.</dd></div>
+        <div class="row"><dt>Affects</dt><dd>Menu entry, page title. The colors still drive the timer screens.</dd></div>
+        <div class="row"><dt>Risk</dt><dd>Low. The landscape preview needs the same width as before.</dd></div>
+      </dl>
+    </article>
+
+    <article class="card page">
+      <div class="page-head"><h3>Timeline BG</h3><span class="badge merge">MERGED INTO APPEARANCE</span></div>
+      <dl class="rows">
+        <div class="row"><dt>Now</dt><dd>Separate full-screen page (1,422 lines) for time-of-day background colors.</dd></div>
+        <div class="row"><dt>Change</dt><dd>Stays a full-screen sub-page, but is opened from a row on the Appearance page.</dd></div>
+        <div class="row"><dt>Affects</dt><dd>Menu entry and the back button behavior (back returns to Appearance).</dd></div>
+        <div class="row"><dt>Risk</dt><dd>Low. Saved slots are unchanged.</dd></div>
+      </dl>
+    </article>
+
+    <article class="card page">
+      <div class="page-head"><h3>Audio</h3><span class="badge change">RENAME TO SOUND</span></div>
+      <dl class="rows">
+        <div class="row"><dt>Now</dt><dd>Completion sound choice and repeat count.</dd></div>
+        <div class="row"><dt>Change</dt><dd>Only the name in the menu and page title.</dd></div>
+        <div class="row"><dt>Affects</dt><dd>Nothing else. The completion screen and timer popup read the same saved values.</dd></div>
+        <div class="row"><dt>Risk</dt><dd>None.</dd></div>
+      </dl>
+    </article>
+
+    <article class="card page">
+      <div class="page-head"><h3>Category</h3><span class="badge merge">MERGED INTO LISTS</span></div>
+      <dl class="rows">
+        <div class="row"><dt>Now</dt><dd>Add, edit, enable or disable and reorder categories (drag list).</dd></div>
+        <div class="row"><dt>Change</dt><dd>Becomes a block on the Lists page. Same behavior.</dd></div>
+        <div class="row"><dt>Affects</dt><dd>Timer, task and completion screens use the category list and colors, so they are unaffected as long as the saved data is unchanged.</dd></div>
+        <div class="row"><dt>Risk</dt><dd>Medium. It uses the older drag library, so moving it into a longer page can make the drag feel different. Switch it to the newer list library when you move it.</dd></div>
+      </dl>
+    </article>
+
+    <article class="card page">
+      <div class="page-head"><h3>Quick Messages</h3><span class="badge merge">MERGED INTO LISTS</span></div>
+      <dl class="rows">
+        <div class="row"><dt>Now</dt><dd>Add, edit and reorder the reusable comment chips.</dd></div>
+        <div class="row"><dt>Change</dt><dd>Becomes a block on the Lists page.</dd></div>
+        <div class="row"><dt>Affects</dt><dd>Task comments use these chips and are unaffected.</dd></div>
+        <div class="row"><dt>Risk</dt><dd>Medium, same drag-library note as Category.</dd></div>
+      </dl>
+    </article>
+
+    <article class="card page">
+      <div class="page-head"><h3>Leave Mgmt</h3><span class="badge merge">MERGED INTO LISTS</span></div>
+      <dl class="rows">
+        <div class="row"><dt>Now</dt><dd>Mark leave or holiday dates with a reason. Landscape sidebar only.</dd></div>
+        <div class="row"><dt>Change</dt><dd>Becomes "Leave days" on the Lists page, and appears in portrait for the first time.</dd></div>
+        <div class="row"><dt>Affects</dt><dd>Recurring tasks skip leave days, so test a recurring task after the move. New in portrait: the page must fit a narrow screen (682 lines, written for landscape first).</dd></div>
+        <div class="row"><dt>Risk</dt><dd>Medium. Portrait layout needs checking.</dd></div>
+      </dl>
+    </article>
+
+    <article class="card page">
+      <div class="page-head"><h3>General</h3><span class="badge change">REORDER AND CLARIFY</span></div>
+      <dl class="rows">
+        <div class="row"><dt>Now</dt><dd>Daily start time, notes folder locks (require code every time, max wrong attempts, reset all locks), Disable Past Timers, Disable Past Tasks.</dd></div>
+        <div class="row"><dt>Change</dt><dd>Reorder into "Day" (start time), "Past dates" (two toggles) and "Privacy" (notes locks). Add a one-line explanation to each.</dd></div>
+        <div class="row"><dt>Affects</dt><dd>No saved data changes. The day start time changes which logical day timers and tasks belong to, so it must keep using the same storage key.</dd></div>
+        <div class="row"><dt>Risk</dt><dd>Low.</dd></div>
+      </dl>
+    </article>
+
+    <article class="card page">
+      <div class="page-head"><h3>Account</h3><span class="badge merge">MERGED INTO BACKUP &amp; ACCOUNT</span></div>
+      <dl class="rows">
+        <div class="row"><dt>Now</dt><dd>Login with Google, sync status, sign out, "Offline Backup" card.</dd></div>
+        <div class="row"><dt>Change</dt><dd>Becomes the top block of the Backup &amp; Account page. Sign-in is the single place to sign in.</dd></div>
+        <div class="row"><dt>Affects</dt><dd>The profile header at the top of Settings, the "SYNC" pill on the menu card, and the landscape default page (it opens on Account today).</dd></div>
+        <div class="row"><dt>Risk</dt><dd>Medium. Google sign-in only works in a development build, not in Expo Go.</dd></div>
+      </dl>
+    </article>
+
+    <article class="card page">
+      <div class="page-head"><h3>Data Mgmt</h3><span class="badge merge">MERGED INTO BACKUP &amp; ACCOUNT</span></div>
+      <dl class="rows">
+        <div class="row"><dt>Now</dt><dd>Cloud sync to Google Drive (sign in, back up, restore, auto-backup time), Export, Local cleanup (clear timers, clear tasks, wipe all).</dd></div>
+        <div class="row"><dt>Change</dt><dd>Below the account block: Back up now, Restore, Auto-backup time, Export. Cleanup moves to a red "Danger zone" at the bottom.</dd></div>
+        <div class="row"><dt>Affects</dt><dd>Auto-sync on app start and resume keeps working because the service does not change. The "clear all" confirmation is reused.</dd></div>
+        <div class="row"><dt>Risk</dt><dd>Medium. This page deletes data, so test Cancel and the typed confirmation after moving it.</dd></div>
+      </dl>
+    </article>
+
+    <article class="card page">
+      <div class="page-head"><h3>About</h3><span class="badge change">SHORTEN</span></div>
+      <dl class="rows">
+        <div class="row"><dt>Now</dt><dd>App name, release, designer and a list of key features.</dd></div>
+        <div class="row"><dt>Change</dt><dd>Keep name, version, designer. Remove the feature list.</dd></div>
+        <div class="row"><dt>Affects</dt><dd>Nothing else.</dd></div>
+        <div class="row"><dt>Risk</dt><dd>None.</dd></div>
+      </dl>
+    </article>
+  </section>
+
+  <!-- 5. What does not change -->
+  <section aria-labelledby="s5">
+    <h2 id="s5">What stays the same</h2>
+    <div class="card keepbox">
+      <div>
+        <h3>Your data</h3>
+        <ul>
+          <li>No storage keys are renamed or removed, so nobody loses settings, timers, tasks or notes.</li>
+          <li>Google Drive backups made before the change still restore.</li>
+        </ul>
+      </div>
+      <div>
+        <h3>Other screens</h3>
+        <ul>
+          <li>Timers, tasks, goals, Live Focus and the completion screens are not touched.</li>
+          <li><code>App.tsx</code> keeps all state. Settings still receives the same props.</li>
+        </ul>
+      </div>
+    </div>
+  </section>
+
+  <!-- 6. Decisions -->
+  <section aria-labelledby="s6" class="decisions">
+    <h2 id="s6">Decide before starting</h2>
+    <div class="card">
+      <ol>
+        <li><span class="pill">Menu</span> Is 7 entries right, or do you want 5 (also merge General into Backup &amp; Account, and About into the profile header)?</li>
+        <li><span class="pill">Lists</span> Three collapsible blocks on one page, or tabs at the top? Collapsible blocks are simpler to build.</li>
+        <li><span class="pill">Notes locks</span> Keep them in General, or move them to the Notes screen where they are used?</li>
+        <li><span class="pill">Timeline BG</span> Keep it as a sub-page, or make it a short block inside Appearance?</li>
+        <li><span class="pill">Order</span> Start with Phase 1 and 2 only, then look at the result before the rest?</li>
+      </ol>
+    </div>
+  </section>
+</div>
+
+<script>
+(function () {
+  var KEY = 'settings-plan-v1';
+  var boxes = Array.prototype.slice.call(document.querySelectorAll('.todo input'));
+  var saved = {};
+  try { saved = JSON.parse(localStorage.getItem(KEY) || '{}'); } catch (e) { saved = {}; }
+  function update() {
+    var done = boxes.filter(function (b) { return b.checked; }).length;
+    document.getElementById('bar').style.width = (boxes.length ? Math.round(done / boxes.length * 100) : 0) + '%';
+    document.getElementById('barText').textContent = done + ' of ' + boxes.length + ' done';
+  }
+  boxes.forEach(function (b) {
+    if (saved[b.id]) b.checked = true;
+    b.addEventListener('change', function () {
+      saved[b.id] = b.checked;
+      try { localStorage.setItem(KEY, JSON.stringify(saved)); } catch (e) {}
+      update();
+    });
+  });
+  update();
+})();
+</script>
