@@ -26,6 +26,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { BlurView } from 'expo-blur';
 import { MaterialIcons } from '@expo/vector-icons';
 import ReorderableList, { reorderItems, useIsActive, useReorderableDrag } from 'react-native-reorderable-list';
+import { useSharedValue, withTiming } from 'react-native-reanimated';
 import { Timer, Task, TaskStage, Category, QuickMessage, Goal, StageStatus, LEAVE_DAYS_KEY } from '../../../constants/data';
 import TaskActionModal from '../../../components/TaskActionModal';
 import LiveFocusView from './LiveFocusView';
@@ -4564,6 +4565,8 @@ const StageRow = React.memo(function StageRow({ item, index, getCircleStyle, onC
 // Draggable Stages List Component
 function DraggableStagesList({ stages, onReorder, onSetStageStatus, onDeleteStage, isRecurring, isRepeatSync }: DraggableStagesListProps) {
     const [data, setData] = useState<TaskStage[]>(stages);
+    // Held card shrinks slightly (instead of the library's default grow) so it never gets clipped at the list edges
+    const dragScale = useSharedValue(1);
     const [popupVisible, setPopupVisible] = useState(false);
     const [popupPosition, setPopupPosition] = useState({ x: 0, y: 0 });
     const [selectedStage, setSelectedStage] = useState<TaskStage | null>(null);
@@ -4636,7 +4639,15 @@ function DraggableStagesList({ stages, onReorder, onSetStageStatus, onDeleteStag
                 keyExtractor={(item) => String(item.id)}
                 renderItem={renderItem}
                 shouldUpdateActiveItem
-                cellAnimations={{ opacity: 1 }}
+                cellAnimations={{ opacity: 1, transform: [{ scale: dragScale }] }}
+                onDragStart={() => {
+                    'worklet';
+                    dragScale.value = withTiming(0.96, { duration: 150 });
+                }}
+                onDragEnd={() => {
+                    'worklet';
+                    dragScale.value = withTiming(1, { duration: 150 });
+                }}
                 onReorder={({ from, to }) => {
                     const next = reorderItems(data, from, to);
                     setData(next);
