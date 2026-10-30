@@ -13,7 +13,8 @@ Tracks every commit on this branch. **Add a new row/section for each new commit.
 | 1 | `3840ea3` | chore(deps) | Upgrade Expo SDK 54 → 58 (package.json, package-lock.json) |
 | 2 | `bfd2ca1` | chore(config) | Migrate app.json and babel.config.js for SDK 58 |
 | 3 | `20f8b28` | fix | Adapt code to React Native 0.88 / expo-audio 58 APIs |
-| 4 | _this commit_ | docs | Add this change log |
+| 4 | `06e8afb` | docs | Add this change log |
+| 5 | `9ce1b99` | fix(deps) | Pin gesture-handler to 2.33.1 to fix stage drag stalling |
 
 ## Details
 
@@ -37,6 +38,13 @@ Tracks every commit on this branch. **Add a new row/section for each new commit.
 - `NodeJS.Timeout` → `ReturnType<typeof setTimeout>` (App.tsx, LiveFocusView)
 - `appState.current?.match(...)` in App.tsx
 - removed invalid `scaleX`/`scaleY` style props (CategorySection, QuickMessageSection) — were already ignored
+
+### 5. `9ce1b99` — stage drag stuck (gesture-handler)
+- Symptom: in the expanded task view, holding and dragging a subtask/stage to change priority was stuck/not smooth
+- Cause (suspected, not yet confirmed on device): gesture-handler 3.x deprecates the builder API used by `react-native-draggable-flatlist` 4.0.3 (last release May 2025)
+- Fix: `react-native-gesture-handler` 3.3.0 → 2.33.1 (`legacy` tag), exact pin
+- `package.json` `expo.install.exclude` keeps `expo install --fix` from reverting it
+- If drag is still rough, next options: replace the library or remove `LayoutAnimation` from the drag callbacks in `Task/index.tsx`
 
 ## Verification status
 - [x] `npx tsc --noEmit` passes
