@@ -28,6 +28,8 @@ Tracks every commit on this branch. **Add a new row/section for each new commit.
 | 16 | `a942538` | fix(task) | Held stage card shrinks (0.96) instead of growing |
 | 17 | `371c0b5` | docs | Log held card size fix |
 | 18 | `eb0c33a` | feat(complete) | Unified completion design (popup + page) |
+| 19 | `15f50ae` | docs | Log completion redesign |
+| 20 | `44f8e35` | feat(complete) | Completion design changed to the session ring (design B) |
 
 ## Details
 
@@ -89,6 +91,12 @@ Tracks every commit on this branch. **Add a new row/section for each new commit.
 - Labels and time format unified (Started / Ended / Extended, 24h HH:MM)
 - `App.tsx` passes `title` and `totalTime` to `TaskComplete`
 - Old popup/page layouts and their now-unused styles were left in the stylesheets (can be cleaned up later)
+
+### 20. `44f8e35` — completion screen, design B (session ring)
+- Replaces the design from #18 after review; same shared `CompletionSummary.tsx`
+- Ring (react-native-svg): planned time in category colour, extended time in yellow, focused time in the centre
+- 2x2 grid: Started / Ended / Planned / Extended; extend buttons and the primary button share one row in landscape
+- Landscape = ring left, details right; portrait stacks them; popup uses smaller sizes
 
 ## Verification status
 - [x] `npx tsc --noEmit` passes
