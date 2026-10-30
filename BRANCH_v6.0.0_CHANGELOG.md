@@ -32,7 +32,7 @@ Tracks every commit on this branch. **Add a new row/section for each new commit.
 | 20 | `44f8e35` | feat(complete) | Completion design changed to the session ring (design B) |
 | 21 | `ee03428` | docs | Log completion design B |
 | — | `e98a3f2` | feat | Skills and guides under `.claude/skills` (committed outside this chat) |
-| 22 | `8e359c7` | docs | Single README; 11 old Markdown docs removed |
+| 22 | `502c87e` | docs | Single README; 11 old Markdown docs removed |
 
 ## Details
 
