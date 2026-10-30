@@ -44,7 +44,9 @@ In Xcode: click the **CHRONOSCAPE** project, open **Signing & Capabilities**, ti
 
 ### 2. Run on your iPhone
 
-Plug in the phone, unlock it, tap **Trust**, and turn on **Settings > Privacy & Security > Developer Mode**. Then:
+Plug in the phone, unlock it, tap **Trust**, and turn on **Settings > Privacy & Security > Developer Mode**.
+
+Xcode must have the iOS platform that matches your phone's iOS version. If the device shows "iOS 26.5 is not installed", open **Xcode > Settings > Components**, find that iOS version, and click **Get** (several GB, one time). Then:
 
 ```bash
 npx expo run:ios --device
