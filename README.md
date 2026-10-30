@@ -105,7 +105,7 @@ Add `-- --dry-run` to preview. Neither command touches your code, `node_modules`
 ```
 App.tsx                  Entry component and the single owner of all state
 scripts/                 bump-version.js, clean-ios-cache.sh
-plan/                    Planning pages (settings-plan.html)
+plan/                    Planning pages (settings-plan.html, goals-plan.html)
 src/
   components/            Shared UI: modals, pickers, CompletionSummary
   constants/data.ts      Data types and defaults (Timer, Task, TaskStage, Goal, Category)
@@ -127,5 +127,6 @@ src/
 ## Plans
 
 - [Settings simplification plan](plan/settings-plan.html): to-do list and per-page impact for simplifying the Settings screens. Open the file in a browser. Online copy: https://claude.ai/artifact/6e334ctR3Phh4QSsoyfppY (private to the owner).
+- [Goals improvement plan](plan/goals-plan.html): findings, design mockups and a phased to-do list for improving goals. Open the file in a browser. Online copy: https://claude.ai/artifact/RRyd4BPca1BkhqUhnWDfv7 (private to the owner).
 
 Instructions for Claude Code are in [CLAUDE.md](CLAUDE.md) and `.claude/skills/`.
