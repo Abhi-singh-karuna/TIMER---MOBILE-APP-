@@ -33,6 +33,8 @@ Tracks every commit on this branch. **Add a new row/section for each new commit.
 | 21 | `ee03428` | docs | Log completion design B |
 | — | `e98a3f2` | feat | Skills and guides under `.claude/skills` (committed outside this chat) |
 | 22 | `502c87e` | docs | Single README; 11 old Markdown docs removed |
+| 23 | `b317e65` | docs | Fix hash in branch log |
+| 24 | `769ab31` | docs(readme) | iOS build section rewritten as step-by-step parts |
 
 ## Details
 
@@ -105,6 +107,11 @@ Tracks every commit on this branch. **Add a new row/section for each new commit.
 - New `README.md` covers features, setup, architecture, data models, storage keys, iOS build and troubleshooting, checked against the current code (SDK 58, no React Navigation, expo-audio)
 - Removed (still in git history): `APP_DOCUMENTATION`, `APP_FEATURES_AND_FLOW`, `ARCHITECTURE`, `STORAGE_DATA_MODEL`, `TASK_STORAGE_GUIDE`, `LOCAL_STORAGE_GUIDE`, `IOS_BUILD_GUIDE`, `LOCAL_IOS_BUILD_GUIDE`, `IOS_RELEASE_BUILD_GUIDE`, `NAMING_OPTIONS`, `WEBSITE_PLAN_AND_REQUIREMENTS`
 - Kept: `README.md`, `BRANCH_v6.0.0_CHANGELOG.md`, `CLAUDE.md` and `.claude/skills/*` (Claude Code configuration)
+
+### 24. `769ab31` — iOS build guide
+- README "Building for iOS" is now Part 0 to Part 5 plus a quick reference
+- Verified against the machine: `ios/` was still SDK 54 (needs `prebuild --clean`), no Apple team set in the project, iPhone listed offline, no simulator device created
+- Removed the manual `react-native bundle` / `main.jsbundle` steps: the Xcode project already has the "Bundle React Native code and images" phase, so Release builds bundle JS themselves
 
 ## Verification status
 - [x] `npx tsc --noEmit` passes
