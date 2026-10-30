@@ -124,6 +124,7 @@ Fonts: **Plus Jakarta Sans** (200 to 800) for text and **Inter Black** for large
 ├── App.tsx                    # Entry component and the single owner of all state
 ├── index.js                   # Registers the app (package.json "main")
 ├── app.json                   # Expo config (bundle id com.abhisheksingh.timerapp)
+├── scripts/                   # bump-version.js (version and build number), clean-ios-cache.sh
 ├── assets/                    # Icons, splash
 └── src/
     ├── components/            # Shared UI: modals, WheelPicker, SlideToComplete, CompletionSummary
@@ -411,7 +412,7 @@ npx expo run:ios --device --configuration Release
 6. Choose **Development** (for AltStore or your own devices) or **TestFlight & App Store** (needs a paid Apple Developer account), then follow the prompts.
 7. Click **Export** and pick a folder. The `.ipa` file is inside it.
 
-Before you archive, bump `version` and the iOS `buildNumber` in `app.json`, run `npx tsc --noEmit`, and replace `assets/icon.png` and `assets/adaptive-icon.png` with real PNG files (they are currently JPGs with a `.png` name, which `expo-doctor` warns about). If you change `app.json` or the icons, run `npx expo prebuild --platform ios --clean` again.
+Before you archive, raise the version with `npm run version:build` (see Part 6), run `npx tsc --noEmit`, and replace `assets/icon.png` and `assets/adaptive-icon.png` with real PNG files (they are currently JPGs with a `.png` name, which `expo-doctor` warns about). If you change `app.json` or the icons, run `npx expo prebuild --platform ios --clean` again.
 
 ### Part 5: Install with AltStore
 
@@ -420,6 +421,75 @@ Before you archive, bump `version` and the iOS `buildNumber` in `app.json`, run 
 3. Open AltStore on the iPhone, tap **+**, and choose the `.ipa`.
 4. A free Apple ID certificate lasts 7 days. AltStore refreshes it automatically while AltServer is running and the phone is on the same network.
 
+### Part 6: Update the version number (instead of editing it in Xcode)
+
+Run one command before you archive. It updates the version and the build number everywhere at once: `app.json`, `ios/CHRONOSCAPE/Info.plist` and the Xcode project. You do not need to touch Xcode or run prebuild again.
+
+| Situation | Command | Example result |
+|---|---|---|
+| Uploading the same version again (new build only) | `npm run version:build` | 1.0.0 (4) to 1.0.0 (5) |
+| Small fix | `npm run version:patch` | 1.0.0 (4) to 1.0.1 (5) |
+| New feature | `npm run version:minor` | 1.0.1 (5) to 1.1.0 (6) |
+| Big release | `npm run version:major` | 1.1.0 (6) to 2.0.0 (7) |
+| Exact version | `node scripts/bump-version.js 2.3.0` | any to 2.3.0, build +1 |
+
+1. Preview first, nothing is written:
+   ```bash
+   npm run version:patch -- --dry-run
+   ```
+2. Run the real command, for example `npm run version:patch`.
+3. Check the result: `git diff app.json`. You should see `version`, `ios.buildNumber` and `android.versionCode` changed.
+4. In Xcode the new numbers appear under **General > Identity** (Version and Build). Then archive as in Part 4.
+
+Rules to remember:
+- The build number must go up every time you upload to TestFlight or the App Store, even when the version stays the same. `version:build` does exactly that.
+- The script is `scripts/bump-version.js`. It only changes numbers.
+- Commit the change afterwards, for example `git commit -am "chore: bump version to 1.0.1 (5)"`.
+
+### Part 7: Clear build caches (after a build succeeds or fails)
+
+Xcode and Metro keep large caches. Clearing them fixes most strange build errors and frees disk space. This never deletes your code, `node_modules`, certificates or Xcode Archives.
+
+**After any build, success or failure (light clean):**
+
+1. Close Xcode (Cmd+Q), and stop Metro with Ctrl+C.
+2. Preview what will be removed:
+   ```bash
+   npm run ios:clean -- --dry-run
+   ```
+3. Clean:
+   ```bash
+   npm run ios:clean
+   ```
+   This removes `ios/build`, this app's Xcode DerivedData folder, and the Metro cache in the temp folder.
+4. Start again with `npx expo start --dev-client --clear`.
+
+**When the build keeps failing for unclear reasons (deep clean):**
+
+1. Close Xcode and stop Metro.
+2. Preview, then clean:
+   ```bash
+   npm run ios:clean:deep -- --dry-run
+   npm run ios:clean:deep
+   ```
+   This also removes all Xcode DerivedData, `ios/Pods` and the CocoaPods cache. It frees several GB.
+3. Reinstall the native pieces:
+   ```bash
+   cd ios && pod install && cd ..
+   ```
+   If that is not enough, regenerate everything with `npx expo prebuild --platform ios --clean` and redo the signing step from Part 1.
+4. Build again with `npx expo run:ios --device`.
+
+**If it still fails**, do the full reset by hand:
+```bash
+rm -rf node_modules
+npm install
+npm run ios:clean:deep
+npx expo prebuild --platform ios --clean
+```
+
+**Old archives (optional, manual):** Xcode keeps every archive in `~/Library/Developer/Xcode/Archives`. They are not deleted by the script because they hold the builds and debug symbols you may need for an upload. To remove old ones, open Xcode > Window > Organizer > Archives, right-click an old archive, and choose **Delete**.
+
 ### Quick reference
 
 | I want to... | Run |
@@ -427,8 +497,11 @@ Before you archive, bump `version` and the iOS `buildNumber` in `app.json`, run 
 | Start coding again | `npx expo start --dev-client --clear` |
 | Rebuild after a native change | `npx expo prebuild --platform ios --clean`, then `npx expo run:ios --device` |
 | Test the final app on my phone | `npx expo run:ios --device --configuration Release` |
-| Make an .ipa | Part 4, Option B |
-| Fix weird build errors | `rm -rf node_modules ios/build ~/Library/Developer/Xcode/DerivedData`, `npm install`, then Part 1 |
+| Raise the build number | `npm run version:build` |
+| Raise the version (patch / minor / major) | `npm run version:patch` / `version:minor` / `version:major` |
+| Make an .ipa | Bump the version (Part 6), then Part 4, Option B |
+| Clean caches after a build | `npm run ios:clean` |
+| Fix weird build errors | `npm run ios:clean:deep`, then `cd ios && pod install` |
 
 ---
 

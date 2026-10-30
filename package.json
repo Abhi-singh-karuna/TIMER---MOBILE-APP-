@@ -6,7 +6,13 @@
     "start": "expo start",
     "android": "expo run:android",
     "ios": "expo run:ios",
-    "web": "expo start --web"
+    "web": "expo start --web",
+    "version:build": "node scripts/bump-version.js build",
+    "version:patch": "node scripts/bump-version.js patch",
+    "version:minor": "node scripts/bump-version.js minor",
+    "version:major": "node scripts/bump-version.js major",
+    "ios:clean": "bash scripts/clean-ios-cache.sh",
+    "ios:clean:deep": "bash scripts/clean-ios-cache.sh --deep"
   },
   "dependencies": {
     "@expo-google-fonts/inter": "^0.4.2",
