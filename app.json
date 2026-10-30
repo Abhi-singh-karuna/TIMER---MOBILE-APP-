@@ -6,12 +6,6 @@
     "orientation": "default",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "dark",
-    "newArchEnabled": true,
-    "splash": {
-      "image": "./assets/splash-icon.png",
-      "resizeMode": "contain",
-      "backgroundColor": "#000000"
-    },
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.abhisheksingh.timerapp",
@@ -27,7 +21,6 @@
         "foregroundImage": "./assets/adaptive-icon.png",
         "backgroundColor": "#000000"
       },
-      "edgeToEdgeEnabled": true,
       "permissions": [
         "SCHEDULE_EXACT_ALARM",
         "POST_NOTIFICATIONS",
@@ -47,6 +40,17 @@
         {
           "iosClientId": "833418074077-o7r6osq6t8h56dcqkeuoau36rf4i8h4k.apps.googleusercontent.com",
           "iosUrlScheme": "com.googleusercontent.apps.833418074077-o7r6osq6t8h56dcqkeuoau36rf4i8h4k"
+        }
+      ],
+      "expo-font",
+      "expo-sharing",
+      "expo-status-bar",
+      [
+        "expo-splash-screen",
+        {
+          "image": "./assets/splash-icon.png",
+          "resizeMode": "contain",
+          "backgroundColor": "#000000"
         }
       ]
     ],
