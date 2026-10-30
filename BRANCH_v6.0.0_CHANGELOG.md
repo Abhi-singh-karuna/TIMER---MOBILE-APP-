@@ -17,6 +17,9 @@ Tracks every commit on this branch. **Add a new row/section for each new commit.
 | 5 | `9ce1b99` | fix(deps) | Pin gesture-handler to 2.33.1 to fix stage drag stalling |
 | 6 | `15a893d` | docs | Log gesture-handler pin |
 | 7 | `b990392` | fix(audio) | Use exported `setAudioModeAsync` |
+| 8 | `90295d5` | docs | Log audio fix |
+| 9 | `4d3cbb2` | revert | Revert gesture-handler 2.33.1 pin (Expo Go crashed on native mismatch) |
+| 10 | `8488bd5` | fix(task) | Remove LayoutAnimation from stage drag |
 
 ## Details
 
@@ -50,6 +53,14 @@ Tracks every commit on this branch. **Add a new row/section for each new commit.
 
 ### 7. `b990392` — audio mode
 - `AudioModule.setAudioModeAsync` → exported `setAudioModeAsync` (TaskComplete, TimerList, AudioSection)
+
+### 9. `4d3cbb2` — revert of the gesture-handler pin
+- Reverts `9ce1b99`. The 2.33.1 JS did not match the native 3.3 built into Expo Go, causing `TypeError: undefined is not a function` at startup
+- gesture-handler is back to 3.3.0 (matches SDK 58 and Expo Go)
+
+### 10. `8488bd5` — smoother stage drag
+- Removed `LayoutAnimation.configureNext` from `onDragBegin` / `onDragEnd` of the stage `DraggableFlatList` in `Task/index.tsx`
+- If drag is still rough on a dev build, next option is replacing `react-native-draggable-flatlist`
 
 ## Verification status
 - [x] `npx tsc --noEmit` passes
