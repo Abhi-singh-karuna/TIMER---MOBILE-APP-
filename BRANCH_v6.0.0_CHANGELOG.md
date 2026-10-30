@@ -20,6 +20,8 @@ Tracks every commit on this branch. **Add a new row/section for each new commit.
 | 8 | `90295d5` | docs | Log audio fix |
 | 9 | `4d3cbb2` | revert | Revert gesture-handler 2.33.1 pin (Expo Go crashed on native mismatch) |
 | 10 | `8488bd5` | fix(task) | Remove LayoutAnimation from stage drag |
+| 11 | `319a576` | docs | Log revert and drag fix |
+| 12 | `207d123` | fix(task) | Replace draggable-flatlist with reorderable-list for stage drag |
 
 ## Details
 
@@ -61,6 +63,12 @@ Tracks every commit on this branch. **Add a new row/section for each new commit.
 ### 10. `8488bd5` — smoother stage drag
 - Removed `LayoutAnimation.configureNext` from `onDragBegin` / `onDragEnd` of the stage `DraggableFlatList` in `Task/index.tsx`
 - If drag is still rough on a dev build, next option is replacing `react-native-draggable-flatlist`
+
+### 12. `207d123` — new drag library for stages
+- Symptoms: drag stuck; warnings `[Reanimated] Dependencies should only be used on the web` and `error during concurrent rendering`
+- `react-native-draggable-flatlist` 4.0.3 → `react-native-reorderable-list` 0.18.2 (exact) in `Task/index.tsx`
+- Row extracted to `StageRow` (uses `useReorderableDrag`, `useIsActive`); markup/styles unchanged
+- Still on the old library: Settings `CategorySection` and `QuickMessageSection` lists
 
 ## Verification status
 - [x] `npx tsc --noEmit` passes
