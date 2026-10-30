@@ -41,7 +41,7 @@
     "react-dom": "19.3.0",
     "react-native": "0.88.1",
     "react-native-draggable-flatlist": "^4.0.3",
-    "react-native-gesture-handler": "2.33.1",
+    "react-native-gesture-handler": "~3.3.0",
     "react-native-linear-gradient": "^2.8.3",
     "react-native-pell-rich-editor": "^1.10.0",
     "react-native-reanimated": "4.7.1",
@@ -58,12 +58,5 @@
     "@react-native/metro-config": "^0.83.1",
     "@types/react": "~19.3.0",
     "typescript": "~6.0.3"
-  },
-  "expo": {
-    "install": {
-      "exclude": [
-        "react-native-gesture-handler"
-      ]
-    }
   }
 }
