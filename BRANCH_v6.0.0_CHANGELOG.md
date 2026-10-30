@@ -26,6 +26,8 @@ Tracks every commit on this branch. **Add a new row/section for each new commit.
 | 14 | `a9a3981` | fix(task) | White dragged stage card restored |
 | 15 | `5d9123c` | docs | Log white drag card fix |
 | 16 | `a942538` | fix(task) | Held stage card shrinks (0.96) instead of growing |
+| 17 | `371c0b5` | docs | Log held card size fix |
+| 18 | `eb0c33a` | feat(complete) | Unified completion design (popup + page) |
 
 ## Details
 
@@ -80,6 +82,13 @@ Tracks every commit on this branch. **Add a new row/section for each new commit.
 ### 16. `a942538` — held card size
 - Library default scales the held card to 1.025x, which got clipped at the list's left/right edges
 - `cellAnimations` now uses a `dragScale` shared value (0.96 while dragging, 1 on release) via `onDragStart`/`onDragEnd` worklets in `Task/index.tsx`
+
+### 18. `eb0c33a` — unified completion design ("Hero ring")
+- New `src/components/CompletionSummary.tsx`, used by `TaskComplete` (page) and the `TimerList` completion popup
+- Shows: category-coloured check ring, COMPLETED, timer title, focused time (original + extended), category chip, Started -> Ended timeline, Extended amount, +1m/+5m/+10m, one white primary button (Back to Home / CLOSE)
+- Labels and time format unified (Started / Ended / Extended, 24h HH:MM)
+- `App.tsx` passes `title` and `totalTime` to `TaskComplete`
+- Old popup/page layouts and their now-unused styles were left in the stylesheets (can be cleaned up later)
 
 ## Verification status
 - [x] `npx tsc --noEmit` passes
