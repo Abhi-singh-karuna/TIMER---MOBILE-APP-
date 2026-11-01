@@ -1,4 +1,4 @@
-import React, { useState, useRef, useCallback, useEffect } from 'react';
+import React, { useState, useRef, useCallback, useEffect, useMemo } from 'react';
 import {
     View,
     Text,
@@ -47,37 +47,70 @@ const HOURS = generateNumbers(23);
 const MINUTES = generateNumbers(59);
 const SECONDS = generateNumbers(59);
 
-// Wheel Picker Component
+// Wheel Picker Component (infinite: the numbers repeat and the list re-centres after each scroll)
+const WHEEL_COPIES = 5;
+const WHEEL_MIDDLE = Math.floor(WHEEL_COPIES / 2);
+
 const WheelPicker = ({ data, value, onChange }: { data: number[]; value: number; onChange: (v: number) => void }) => {
     const scrollRef = useRef<any>(null);
-    const lastIndex = useRef(value);
+    const count = data.length;
+    const total = count * WHEEL_COPIES;
+    const middleStart = count * WHEEL_MIDDLE;
+    // Index in the repeated list that is currently centred in the wheel
+    const currentIndex = useRef(middleStart + Math.max(0, data.indexOf(value)));
+
+    const items = useMemo(
+        () => Array.from({ length: total }, (_, i) => ({ key: i, label: data[i % count] })),
+        [data, count, total]
+    );
 
     useEffect(() => {
         const idx = data.indexOf(value);
-        if (idx >= 0) {
-            // Use a slightly longer timeout to ensure the modal layout is ready
-            const timer = setTimeout(() => {
-                scrollRef.current?.scrollTo({ y: idx * ITEM_HEIGHT, animated: false });
-            }, 100);
-            return () => clearTimeout(timer);
-        }
-    }, [value, data]);
+        if (idx < 0) return;
+        // Already showing this value (the user just scrolled to it): do not jump.
+        if (currentIndex.current % count === idx) return;
+        // Use a slightly longer timeout to ensure the modal layout is ready
+        const timer = setTimeout(() => {
+            const target = middleStart + idx;
+            currentIndex.current = target;
+            scrollRef.current?.scrollTo({ y: target * ITEM_HEIGHT, animated: false });
+        }, 100);
+        return () => clearTimeout(timer);
+    }, [value, data, count, middleStart]);
+
+    // First layout: put the wheel on the starting value in the middle copy.
+    useEffect(() => {
+        const idx = Math.max(0, data.indexOf(value));
+        const timer = setTimeout(() => {
+            const target = middleStart + idx;
+            currentIndex.current = target;
+            scrollRef.current?.scrollTo({ y: target * ITEM_HEIGHT, animated: false });
+        }, 100);
+        return () => clearTimeout(timer);
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, []);
 
     const handleScroll = useCallback((e: NativeSyntheticEvent<NativeScrollEvent>) => {
         const idx = Math.round(e.nativeEvent.contentOffset.y / ITEM_HEIGHT);
-        const clamped = Math.max(0, Math.min(idx, data.length - 1));
-        if (clamped !== lastIndex.current) {
-            lastIndex.current = clamped;
+        const clamped = Math.max(0, Math.min(idx, total - 1));
+        if (clamped !== currentIndex.current) {
+            currentIndex.current = clamped;
             Haptics.selectionAsync();
         }
-    }, [data.length]);
+    }, [total]);
 
     const handleEnd = useCallback((e: NativeSyntheticEvent<NativeScrollEvent>) => {
         const idx = Math.round(e.nativeEvent.contentOffset.y / ITEM_HEIGHT);
-        const clamped = Math.max(0, Math.min(idx, data.length - 1));
-        onChange(data[clamped]);
+        let clamped = Math.max(0, Math.min(idx, total - 1));
+        // Jump back to the middle copy without animation. The numbers look identical, so it is seamless.
+        if (clamped < middleStart || clamped >= middleStart + count) {
+            clamped = middleStart + (clamped % count);
+            scrollRef.current?.scrollTo({ y: clamped * ITEM_HEIGHT, animated: false });
+        }
+        currentIndex.current = clamped;
+        onChange(data[clamped % count]);
         Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    }, [data, onChange]);
+    }, [data, count, total, middleStart, onChange]);
 
     return (
         <View style={pickerStyles.container}>
@@ -89,18 +122,19 @@ const WheelPicker = ({ data, value, onChange }: { data: number[]; value: number;
                 showsVerticalScrollIndicator={false}
                 snapToInterval={ITEM_HEIGHT}
                 decelerationRate={0.92}
-                bounces={true}
+                bounces={false}
                 scrollEventThrottle={16}
                 onScroll={handleScroll}
                 onMomentumScrollEnd={handleEnd}
                 onScrollEndDrag={(e) => { if (e.nativeEvent.velocity?.y === 0) handleEnd(e); }}
                 contentContainerStyle={{ paddingVertical: ITEM_HEIGHT }}
+                contentOffset={{ x: 0, y: (middleStart + Math.max(0, data.indexOf(value))) * ITEM_HEIGHT }}
                 nestedScrollEnabled={true}
                 canCancelContentTouches={false}
             >
-                {data.map((item) => (
-                    <View key={item} style={pickerStyles.item}>
-                        <Text style={pickerStyles.text}>{item.toString().padStart(2, '0')}</Text>
+                {items.map((item) => (
+                    <View key={item.key} style={pickerStyles.item}>
+                        <Text style={pickerStyles.text}>{item.label.toString().padStart(2, '0')}</Text>
                     </View>
                 ))}
             </ScrollView>
