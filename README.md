@@ -6,9 +6,12 @@ Branch history: [BRANCH_v6.0.0_CHANGELOG.md](BRANCH_v6.0.0_CHANGELOG.md)
 
 ## Branches
 
+`main` is the latest branch. Start new work from `main`.
+
 | Date | Branch | Previous name | Status | Notes |
 |---|---|---|---|---|
-| 2026-11-02 | `v6.0.0_ios_stable_old` | `v.6.0.0` | Stable (old design) | Expo SDK 58 upgrade, reorderable stage list, new completion screen, infinite duration wheels. Kept as the stable iOS baseline before the Live Focus redesign. |
+| 2026-11-02 | `main` | | **Latest** | Contains everything from `v6.0.0_ios_stable_old` (merged in PR #12). Use this for new work and builds. |
+| 2026-11-02 | `v6.0.0_ios_stable_old` | `v.6.0.0` | Merged into `main`, kept as a reference | Expo SDK 58 upgrade, reorderable stage list, new completion screen, infinite duration wheels. The stable iOS baseline before the Live Focus redesign. |
 
 ## Features
 
