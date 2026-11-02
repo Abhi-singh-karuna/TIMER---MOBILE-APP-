@@ -1,0 +1,334 @@
+<title>Live Focus Redesign Plan</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+/* Layout: one readable column. How it works today, what hurts, three redesign mockups in the app's black look,
+   a tickable list of ideas, and the decisions needed. Mockups keep a fixed dark app palette in both page themes. */
+:root {
+  color-scheme: light;
+  --bg: #f6f7f9; --surface: #ffffff; --line: #dfe3ea; --text: #14171c; --mute: #5b6472;
+  --accent: #1f6feb; --accent-soft: #e6f0ff;
+  --keep: #1a7f4b; --keep-soft: #e3f4ea;
+  --change: #b25e09; --change-soft: #fdf0dc;
+  --remove: #b42318; --remove-soft: #fde7e4;
+  --body: 'Plus Jakarta Sans', system-ui, sans-serif; --mono: 'IBM Plex Mono', ui-monospace, monospace;
+  --app-bg: #050506; --app-card: #101114; --app-line: rgba(255,255,255,.13); --app-text: #f4f4f5; --app-mute: rgba(244,244,245,.55);
+  --st-done: #4caf50; --st-run: #ffb74d; --st-plan: #8e8e93; --st-miss: #ff5252; --now: #22d3ee;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) { color-scheme: dark; --bg: #0c0e12; --surface: #151922; --line: #262c38; --text: #eef0f4; --mute: #9aa3b2;
+    --accent: #6aa5ff; --accent-soft: #14233d; --keep: #4cc38a; --keep-soft: #12281d; --change: #f0a54a; --change-soft: #2c200e; --remove: #ff7a6e; --remove-soft: #2f1512; }
+}
+:root[data-theme="dark"] { color-scheme: dark; --bg: #0c0e12; --surface: #151922; --line: #262c38; --text: #eef0f4; --mute: #9aa3b2;
+  --accent: #6aa5ff; --accent-soft: #14233d; --keep: #4cc38a; --keep-soft: #12281d; --change: #f0a54a; --change-soft: #2c200e; --remove: #ff7a6e; --remove-soft: #2f1512; }
+* { box-sizing: border-box; }
+html, body { background: var(--bg); color: var(--text); margin: 0; }
+body { font-family: var(--body); font-size: 15px; line-height: 1.6; padding-block: 32px 72px;
+  padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); }
+.wrap { max-width: 900px; margin: 0 auto; display: grid; gap: 44px; }
+h1 { font-size: 28px; line-height: 1.2; margin: 0 0 8px; text-wrap: balance; }
+h2 { font-size: 20px; margin: 0 0 6px; }
+h3 { font-size: 16px; margin: 0; }
+p { margin: 0; }
+.lede { color: var(--mute); max-width: 66ch; }
+.sub { color: var(--mute); font-size: 14px; max-width: 68ch; }
+code { font-family: var(--mono); font-size: 12.5px; background: var(--accent-soft); color: var(--accent); padding: 1px 6px; border-radius: 5px; }
+section { display: grid; gap: 16px; }
+.card { background: var(--surface); border: 1px solid var(--line); border-radius: 14px; padding: 18px 20px; }
+.list { display: grid; gap: 12px; padding: 0; margin: 0; list-style: none; }
+.list li { display: grid; grid-template-columns: auto 1fr; gap: 12px; align-items: start; }
+.sev { font-size: 11px; font-weight: 800; letter-spacing: .06em; padding: 3px 9px; border-radius: 99px; white-space: nowrap; }
+.sev.fact { background: var(--accent-soft); color: var(--accent); }
+.sev.high { background: var(--remove-soft); color: var(--remove); }
+.sev.mid { background: var(--change-soft); color: var(--change); }
+.sev.chk { background: var(--keep-soft); color: var(--keep); }
+.where { display: block; color: var(--mute); font-size: 13px; margin-top: 2px; }
+
+/* mockups: landscape phone screens */
+.mocks { display: grid; gap: 22px; }
+.mock-wrap { display: grid; gap: 8px; }
+.mock-head { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.letter { font-size: 12px; font-weight: 800; letter-spacing: .2em; background: var(--text); color: var(--bg); padding: 3px 9px; border-radius: 6px; }
+.pick { font-size: 12px; font-weight: 700; color: var(--keep); background: var(--keep-soft); padding: 2px 9px; border-radius: 99px; }
+.mock-cap { font-size: 14px; color: var(--mute); max-width: 72ch; }
+.screen { position: relative; width: 100%; aspect-ratio: 2.1 / 1; background: var(--app-bg); color: var(--app-text); border: 1px solid var(--line); border-radius: 22px; overflow: hidden; font-size: clamp(8px, 1.45vw, 12px); container-type: inline-size; }
+.screen * { margin: 0; }
+.abs { position: absolute; }
+.top { left: 0; right: 0; top: 0; height: 11%; display: flex; align-items: center; gap: 1.2em; padding: 0 2.2%; border-bottom: 1px solid var(--app-line); }
+.pill { padding: .35em 1em; border-radius: 99px; background: rgba(255,255,255,.08); font-weight: 700; font-size: .95em; white-space: nowrap; }
+.pill.on { background: #fff; color: #000; }
+.mute { color: var(--app-mute); }
+.ruler { left: 0; right: 0; height: 9%; display: grid; grid-auto-flow: column; grid-auto-columns: 1fr; align-items: end; color: var(--app-mute); font-size: .85em; border-bottom: 1px solid var(--app-line); }
+.ruler span { border-left: 1px solid var(--app-line); padding: 0 .4em; height: 60%; display: flex; align-items: flex-end; }
+.blk { position: absolute; height: 17%; border-radius: .9em; padding: .35em .7em; font-weight: 700; font-size: .95em; background: rgba(255,255,255,.1); border: 1px solid var(--app-line); display: flex; align-items: center; gap: .5em; overflow: hidden; white-space: nowrap; }
+.blk::before { content: ""; position: absolute; left: 0; top: 0; bottom: 0; width: .45em; background: var(--c, var(--st-plan)); }
+.blk.done { --c: var(--st-done); background: rgba(76,175,80,.14); }
+.blk.run { --c: var(--st-run); background: rgba(255,183,77,.2); }
+.blk.plan { --c: var(--st-plan); }
+.blk.miss { --c: var(--st-miss); background: rgba(255,82,82,.12); }
+.blk .fill { position: absolute; left: 0; top: 0; bottom: 0; background: rgba(255,183,77,.28); }
+.blk span { position: relative; }
+.now { position: absolute; top: 0; bottom: 0; width: 2px; background: var(--now); box-shadow: 0 0 12px var(--now); }
+.now b { position: absolute; top: 11%; left: 50%; transform: translateX(-50%); background: var(--now); color: #000; font-size: .8em; padding: .1em .6em; border-radius: 99px; white-space: nowrap; }
+.card-a { border-radius: 1.2em; background: var(--app-card); border: 1px solid var(--app-line); padding: .8em 1em; }
+.big { font-weight: 800; font-size: 1.5em; }
+.chipbar { display: flex; gap: .5em; }
+.chipbar .pill { font-size: .85em; }
+.ring { width: 3.6em; height: 3.6em; border-radius: 50%; background: conic-gradient(var(--st-run) 62%, rgba(255,255,255,.12) 0); display: grid; place-items: center; position: relative; flex: none; }
+.ring::before { content: ""; position: absolute; inset: .45em; border-radius: 50%; background: var(--app-card); }
+.ring b { position: relative; font-size: .9em; }
+.lane { position: absolute; left: 0; font-size: .85em; color: var(--app-mute); padding-left: 2.2%; font-weight: 700; }
+
+/* ideas checklist */
+.progress { height: 8px; background: var(--line); border-radius: 99px; overflow: hidden; }
+.progress i { display: block; height: 100%; width: 0; background: var(--keep); transition: width .25s; }
+.progress-text { font-size: 13px; color: var(--mute); }
+.group-title { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 12px; }
+.group-title span { color: var(--mute); font-size: 13px; }
+.todo { display: grid; grid-template-columns: auto 1fr; gap: 12px; padding: 12px 14px; background: var(--surface); border: 1px solid var(--line); border-radius: 12px; cursor: pointer; }
+.todo input { width: 20px; height: 20px; margin-top: 2px; accent-color: var(--keep); cursor: pointer; }
+.todo .t { font-weight: 600; }
+.todo .d { color: var(--mute); font-size: 13.5px; margin-top: 2px; }
+.tags { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+.tag { font-size: 11.5px; font-weight: 600; padding: 2px 9px; border-radius: 99px; background: var(--accent-soft); color: var(--accent); }
+.tag.fn { background: var(--keep-soft); color: var(--keep); }
+.tag.ui { background: var(--change-soft); color: var(--change); }
+.todo:has(input:checked) { opacity: .6; }
+.todo:has(input:checked) .t { text-decoration: line-through; }
+.todo:focus-within { outline: 2px solid var(--accent); outline-offset: 2px; }
+.tablewrap { overflow-x: auto; }
+table { border-collapse: collapse; width: 100%; font-size: 14px; min-width: 560px; }
+th, td { text-align: left; padding: 10px 12px; border-bottom: 1px solid var(--line); vertical-align: top; }
+th { font-size: 12px; letter-spacing: .08em; color: var(--mute); }
+.decisions ol { margin: 8px 0 0; padding-left: 20px; display: grid; gap: 10px; }
+.chip { display: inline-block; font-size: 12px; font-weight: 700; padding: 1px 8px; border-radius: 99px; background: var(--accent-soft); color: var(--accent); }
+@media (prefers-reduced-motion: reduce) { .progress i { transition: none; } }
+</style>
+
+<div class="wrap">
+  <header>
+    <h1>Live Focus redesign plan</h1>
+    <p class="lede">Live Focus is your day as a horizontal timeline. It is the most distinctive screen in the app, and also the largest and busiest. This page lists what is there today, what makes it hard to use, three redesign directions you can compare, and a checklist of ideas. Tick the ones you want. Ticks are saved in this browser.</p>
+  </header>
+
+  <!-- 1 today -->
+  <section aria-labelledby="s1">
+    <h2 id="s1">How Live Focus works today</h2>
+    <div class="card"><ul class="list">
+      <li><span class="sev fact">TIMELINE</span><span>A horizontal day with a live <strong>NOW</strong> line that moves every quarter second. Pinch to zoom (minutes per cell), scroll sideways, and your zoom and position are remembered.</span></li>
+      <li><span class="sev fact">BLOCKS</span><span>Each subtask is a block you can drag to move and resize. Blocks sit in lanes, and tapping one opens a status popup (Upcoming, In Process, Done, Undone).</span></li>
+      <li><span class="sev fact">3 VIEWS</span><span>Task view (one row per task), Merged view (all subtasks in one row) and Category view (rows grouped by category). The task name column on the left can be hidden.</span></li>
+      <li><span class="sev fact">DOCK</span><span>A bottom bar that expands. It holds the running timer, a date picker, the Now button, the view switcher and a full-screen timer.</span></li>
+      <li><span class="sev fact">POPUPS</span><span>Add subtask, approval, stage status, task subtasks, view mode and calendar are all separate popups. Portrait uses a different dock layout from landscape.</span></li>
+      <li><span class="sev fact">CODE</span><span><code>LiveFocusView.tsx</code> is 6,509 lines, the largest file in the app. Props arrive from <code>Task/index.tsx</code> and <code>App.tsx</code>.</span></li>
+    </ul></div>
+  </section>
+
+  <!-- 2 problems -->
+  <section aria-labelledby="s2">
+    <h2 id="s2">What makes it hard to use</h2>
+    <p class="sub">"Seen" means I saw it in the code. "Check" means I expect it from the code, and you should confirm it on your phone.</p>
+    <div class="card"><ul class="list">
+      <li><span class="sev mid">SEEN</span><span><strong>Too many controls.</strong> Three view modes, a hideable task column, an expanding dock, six popups and a full-screen timer all compete for a small landscape screen.</span></li>
+      <li><span class="sev mid">SEEN</span><span><strong>Auto-scroll to NOW stops once you scroll.</strong> The code tracks "user has scrolled" and then stops following. After that you need the Now button to find the present again.</span></li>
+      <li><span class="sev mid">SEEN</span><span><strong>View names are unclear.</strong> "Merged" and "Task" do not tell you what you will see. There is no preview of the three modes.</span></li>
+      <li><span class="sev mid">SEEN</span><span><strong>Moving and resizing are separate modes.</strong> There is a "resize mode" state, so editing a block is hidden behind a press or a long press. A new user will not discover it.</span></li>
+      <li><span class="sev high">CHECK</span><span><strong>The day is shown, but "what now and next" is not.</strong> You see all hours, so the current stage and the next stage are small blocks among many.</span></li>
+      <li><span class="sev high">CHECK</span><span><strong>Performance.</strong> The NOW line re-renders every 250 ms inside one giant component. On older phones, this can make dragging feel heavy.</span></li>
+      <li><span class="sev high">CHECK</span><span><strong>Status colours and meaning.</strong> Blocks use status colours (grey, orange, green, red), but it is hard to tell a missed block from a not-yet-started one at a glance.</span></li>
+      <li><span class="sev mid">SEEN</span><span><strong>Hard to change.</strong> Everything lives in one file, so even a small design change is risky.</span></li>
+    </ul></div>
+  </section>
+
+  <!-- 3 mockups -->
+  <section aria-labelledby="s3">
+    <h2 id="s3">Three redesign directions</h2>
+    <p class="sub">Drawn in landscape on your black theme with the same status colours (done green, running orange, planned grey, missed red) and a cyan NOW line. They are sketches of layout, not final pixels.</p>
+    <div class="mocks">
+
+      <!-- A -->
+      <div class="mock-wrap">
+        <div class="mock-head"><span class="letter">A</span><h3>Playhead: NOW stays in place</h3><span class="pick">MY PICK</span></div>
+        <div class="screen" aria-label="Design A mockup">
+          <div class="abs top"><span class="pill on">Task</span><span class="pill">Merged</span><span class="pill">Category</span><span class="mute" style="margin-left:auto">FRI 30 OCT</span><span class="pill">1h</span><span class="pill on">30m</span><span class="pill">15m</span></div>
+          <div class="abs ruler" style="top:11%;right:30%"><span>09</span><span>10</span><span>11</span><span>12</span><span>13</span><span>14</span><span>15</span></div>
+          <div class="now" style="left:34%"><b>NOW 12:14</b></div>
+          <div class="lane" style="top:24%">WORK</div><div class="lane" style="top:46%">STUDY</div><div class="lane" style="top:68%">EXERCISE</div>
+          <div class="blk done" style="left:3%;top:28%;width:22%"><span>Plan the day</span></div>
+          <div class="blk run" style="left:27%;top:28%;width:26%"><div class="fill" style="width:45%"></div><span>Write report</span></div>
+          <div class="blk plan" style="left:55%;top:28%;width:14%"><span>Review</span></div>
+          <div class="blk done" style="left:8%;top:50%;width:16%"><span>Read</span></div>
+          <div class="blk plan" style="left:44%;top:50%;width:20%"><span>Course 3</span></div>
+          <div class="blk miss" style="left:3%;top:72%;width:14%"><span>Walk</span></div>
+          <div class="blk plan" style="left:58%;top:72%;width:11%"><span>Gym</span></div>
+          <div class="abs" style="right:1.5%;top:13%;bottom:4%;width:27%;display:grid;gap:.7em;grid-template-rows:auto auto 1fr">
+            <div class="card-a"><div class="mute" style="font-size:.85em;letter-spacing:.14em">NOW</div><div style="display:flex;gap:.8em;align-items:center;margin-top:.4em"><div class="ring"><b>45%</b></div><div><div class="big">Write report</div><div class="mute">32 min left</div></div></div></div>
+            <div class="card-a"><div class="mute" style="font-size:.85em;letter-spacing:.14em">NEXT</div><div style="font-weight:800;margin-top:.3em">Review <span class="mute" style="font-weight:600">at 12:46</span></div></div>
+            <div class="card-a" style="display:flex;align-items:flex-end"><div><div class="mute" style="font-size:.85em;letter-spacing:.14em">TODAY</div><div class="big">4 of 9 done</div></div></div>
+          </div>
+        </div>
+        <p class="mock-cap">The NOW line stays near the left third and the day scrolls under it, like a video playhead. A side panel always shows the current stage with time left, the next stage, and how much of the day is done. Zoom is three buttons (1h, 30m, 15m) instead of pinch only.</p>
+      </div>
+
+      <!-- B -->
+      <div class="mock-wrap">
+        <div class="mock-head"><span class="letter">B</span><h3>Agenda first, timeline as a map</h3></div>
+        <div class="screen" aria-label="Design B mockup">
+          <div class="abs top"><span class="pill on">Now</span><span class="pill">Timeline</span><span class="mute" style="margin-left:auto">FRI 30 OCT</span><span class="pill">Add</span></div>
+          <div class="abs" style="left:2.2%;top:14%;width:44%;bottom:23%">
+            <div class="card-a" style="height:100%;display:grid;align-content:center;gap:.7em;background:linear-gradient(135deg,rgba(255,183,77,.2),rgba(255,183,77,.04))">
+              <div class="mute" style="font-size:.85em;letter-spacing:.14em">IN PROCESS · WORK</div>
+              <div class="big" style="font-size:2em">Write report</div>
+              <div style="display:flex;align-items:center;gap:1em"><div class="ring" style="width:5em;height:5em"><b style="font-size:1.1em">45%</b></div><div><div class="big">32:10</div><div class="mute">left of 1h 00m</div></div></div>
+              <div style="display:flex;gap:.6em"><span class="pill on">Done</span><span class="pill">+10 min</span><span class="pill">Pause</span></div>
+            </div>
+          </div>
+          <div class="abs" style="left:48.5%;top:14%;right:2.2%;bottom:23%;display:grid;grid-template-rows:auto repeat(4,1fr);gap:.6em">
+            <div class="mute" style="font-size:.85em;letter-spacing:.14em">NEXT UP</div>
+            <div class="card-a" style="display:flex;align-items:center;gap:.8em"><span class="mute">12:46</span><b>Review</b><span class="mute" style="margin-left:auto">30 min</span></div>
+            <div class="card-a" style="display:flex;align-items:center;gap:.8em"><span class="mute">13:30</span><b>Lunch</b><span class="mute" style="margin-left:auto">45 min</span></div>
+            <div class="card-a" style="display:flex;align-items:center;gap:.8em"><span class="mute">14:30</span><b>Course 3</b><span class="mute" style="margin-left:auto">1h</span></div>
+            <div class="card-a" style="display:flex;align-items:center;gap:.8em"><span class="mute">17:00</span><b>Gym</b><span class="mute" style="margin-left:auto">45 min</span></div>
+          </div>
+          <div class="abs" style="left:2.2%;right:2.2%;bottom:4%;height:15%;border-radius:1em;background:var(--app-card);border:1px solid var(--app-line)">
+            <div class="abs" style="left:0;right:0;top:0;bottom:0;display:flex;align-items:center;padding:0 1%">
+              <div style="position:relative;height:36%;width:100%;border-radius:99px;background:rgba(255,255,255,.08)">
+                <i style="position:absolute;left:2%;width:12%;top:0;bottom:0;background:var(--st-done);border-radius:99px"></i>
+                <i style="position:absolute;left:18%;width:10%;top:0;bottom:0;background:var(--st-done);border-radius:99px"></i>
+                <i style="position:absolute;left:34%;width:14%;top:0;bottom:0;background:var(--st-run);border-radius:99px"></i>
+                <i style="position:absolute;left:52%;width:7%;top:0;bottom:0;background:var(--st-plan);border-radius:99px"></i>
+                <i style="position:absolute;left:64%;width:12%;top:0;bottom:0;background:var(--st-plan);border-radius:99px"></i>
+                <i style="position:absolute;left:84%;width:9%;top:0;bottom:0;background:var(--st-plan);border-radius:99px"></i>
+              </div>
+            </div>
+            <div class="now" style="left:41%;top:-6%;bottom:-6%"></div>
+          </div>
+        </div>
+        <p class="mock-cap">The default screen is a big card for what you are doing now, plus the next four items. The full timeline moves to a thin map across the bottom (tap it, or the Timeline tab, to open the full editable timeline). Best for staying on task, less for planning the whole day.</p>
+      </div>
+
+      <!-- C -->
+      <div class="mock-wrap">
+        <div class="mock-head"><span class="letter">C</span><h3>Cleaned-up timeline</h3></div>
+        <div class="screen" aria-label="Design C mockup">
+          <div class="abs top"><div class="ring" style="width:2.6em;height:2.6em"><b style="font-size:.7em">4/9</b></div><span class="big" style="font-size:1.1em">Fri 30 Oct</span><span class="pill on" style="margin-left:auto">Task</span><span class="pill">Merged</span><span class="pill">Category</span></div>
+          <div class="abs ruler" style="top:11%;left:12%"><span>09</span><span>10</span><span>11</span><span>12</span><span>13</span><span>14</span><span>15</span><span>16</span></div>
+          <div class="lane" style="top:25%;color:#fff">Plan day</div><div class="lane" style="top:44%;color:#fff">Report</div><div class="lane" style="top:63%;color:#fff">Workout</div>
+          <div class="abs" style="left:0;top:20%;bottom:16%;width:12%;border-right:1px solid var(--app-line)"></div>
+          <div class="now" style="left:47%"><b>12:14</b></div>
+          <div class="blk done" style="left:14%;top:23%;width:20%"><span>Outline</span></div>
+          <div class="blk done" style="left:36%;top:23%;width:9%"><span>Mail</span></div>
+          <div class="blk run" style="left:40%;top:42%;width:24%"><div class="fill" style="width:30%"></div><span>Draft</span></div>
+          <div class="blk plan" style="left:66%;top:42%;width:18%"><span>Edit</span></div>
+          <div class="blk plan" style="left:70%;top:61%;width:14%"><span>Gym</span></div>
+          <div class="abs" style="left:50%;transform:translateX(-50%);bottom:3%;display:flex;gap:.5em;padding:.5em;border-radius:99px;background:rgba(20,20,22,.92);border:1px solid var(--app-line)"><span class="pill">1h</span><span class="pill on">30m</span><span class="pill">15m</span><span class="pill" style="color:var(--now)">Now</span><span class="pill">Add</span><span class="pill">Timer</span></div>
+        </div>
+        <p class="mock-cap">Keeps the timeline you know but simplifies it. A thin top bar with a day progress ring, sticky lane names, softer status colours, and one floating bar for zoom, Now, Add and Timer. The dock and most popups are gone. Smallest change and lowest risk.</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- 4 comparison -->
+  <section aria-labelledby="s4">
+    <h2 id="s4">Compared</h2>
+    <div class="card tablewrap"><table>
+      <thead><tr><th></th><th>A: Playhead</th><th>B: Agenda first</th><th>C: Cleaned-up timeline</th></tr></thead>
+      <tbody>
+        <tr><td><strong>Best for</strong></td><td>Seeing the whole day and staying on the present</td><td>Doing one thing at a time</td><td>Planning and moving blocks</td></tr>
+        <tr><td><strong>What is new</strong></td><td>Fixed NOW, side panel, zoom buttons</td><td>Now card, next list, mini map</td><td>Simpler chrome, floating bar</td></tr>
+        <tr><td><strong>Planning the day</strong></td><td>Good</td><td>Switch to Timeline tab</td><td>Best</td></tr>
+        <tr><td><strong>Fits a small phone</strong></td><td>Tight in portrait, great in landscape</td><td>Great in both</td><td>Same as today</td></tr>
+        <tr><td><strong>Work</strong></td><td>Large</td><td>Large</td><td>Medium</td></tr>
+        <tr><td><strong>Risk</strong></td><td>Medium: the scroll logic changes</td><td>Medium: a new default screen</td><td>Low</td></tr>
+      </tbody>
+    </table></div>
+  </section>
+
+  <!-- 5 ideas -->
+  <section aria-labelledby="s5">
+    <h2 id="s5">Ideas to choose from</h2>
+    <p class="sub">These work with any of the three directions. Tick what you want.</p>
+    <div class="card" style="display:grid;gap:8px"><div class="progress" aria-hidden="true"><i id="bar"></i></div><div class="progress-text" id="barText" aria-live="polite">0 of 0 selected</div></div>
+
+    <div style="display:grid;gap:8px">
+      <div class="group-title"><h3>Make "now" obvious</h3><span>Highest value</span></div>
+      <label class="todo"><input type="checkbox" id="l1"><div><div class="t">Current stage card with time left</div><div class="d">A highlighted card for the running stage, with a countdown and a Done button. Next stage underneath.</div><div class="tags"><span class="tag fn">FUNCTION</span><span class="tag ui">UI</span></div></div></label>
+      <label class="todo"><input type="checkbox" id="l2"><div><div class="t">Always-visible Jump to Now</div><div class="d">One button that returns to the present at any time, and an option to keep the view following NOW.</div><div class="tags"><span class="tag fn">FUNCTION</span></div></div></label>
+      <label class="todo"><input type="checkbox" id="l3"><div><div class="t">Zoom buttons (1h, 30m, 15m)</div><div class="d">Keep pinch, add buttons so zoom is not hidden. Remember the choice as today.</div><div class="tags"><span class="tag fn">FUNCTION</span><span class="tag ui">UI</span></div></div></label>
+      <label class="todo"><input type="checkbox" id="l4"><div><div class="t">Day progress summary</div><div class="d">A ring or bar showing planned versus done time and "4 of 9 done" at the top.</div><div class="tags"><span class="tag ui">UI</span></div></div></label>
+    </div>
+
+    <div style="display:grid;gap:8px">
+      <div class="group-title"><h3>Make editing easy</h3><span>Moving and resizing blocks</span></div>
+      <label class="todo"><input type="checkbox" id="l5"><div><div class="t">Visible handles and snapping</div><div class="d">Show resize handles when a block is selected and snap to 5 or 15 minutes, so editing is discoverable and tidy.</div><div class="tags"><span class="tag fn">FUNCTION</span><span class="tag ui">UI</span></div></div></label>
+      <label class="todo"><input type="checkbox" id="l6"><div><div class="t">Undo after a drag</div><div class="d">A short "Moved. Undo" message after every move or resize.</div><div class="tags"><span class="tag fn">FUNCTION</span></div></div></label>
+      <label class="todo"><input type="checkbox" id="l7"><div><div class="t">Press and hold an empty slot to add</div><div class="d">Creates a subtask at that time, instead of using a separate add button and popup.</div><div class="tags"><span class="tag fn">FUNCTION</span></div></div></label>
+      <label class="todo"><input type="checkbox" id="l8"><div><div class="t">Show overlaps</div><div class="d">Highlight blocks that overlap in the same lane so double bookings are clear.</div><div class="tags"><span class="tag fn">FUNCTION</span><span class="tag ui">UI</span></div></div></label>
+    </div>
+
+    <div style="display:grid;gap:8px">
+      <div class="group-title"><h3>Clearer look</h3><span>Colours, blocks, views</span></div>
+      <label class="todo"><input type="checkbox" id="l9"><div><div class="t">Status as shape, not only colour</div><div class="d">Icons on blocks (check, play, clock, cross) and a clear difference between "missed" and "not started yet". Helps colour-blind users.</div><div class="tags"><span class="tag ui">UI</span></div></div></label>
+      <label class="todo"><input type="checkbox" id="l10"><div><div class="t">Progress fill inside the running block</div><div class="d">The running block fills as time passes, so you see how far through it you are.</div><div class="tags"><span class="tag ui">UI</span></div></div></label>
+      <label class="todo"><input type="checkbox" id="l11"><div><div class="t">Rename and preview the three views</div><div class="d">For example "By task", "All together" and "By category", with a small icon preview in the switcher.</div><div class="tags"><span class="tag ui">UI</span></div></div></label>
+      <label class="todo"><input type="checkbox" id="l12"><div><div class="t">Dim the past and mark leave days</div><div class="d">Earlier hours fade slightly. Leave days show a clear banner and hide recurring tasks that are skipped.</div><div class="tags"><span class="tag ui">UI</span></div></div></label>
+    </div>
+
+    <div style="display:grid;gap:8px">
+      <div class="group-title"><h3>Under the hood</h3><span>So the next change is easier</span></div>
+      <label class="todo"><input type="checkbox" id="l13"><div><div class="t">Split the 6,500-line file</div><div class="d">TimelineGrid, StageBlock, NowLine, Dock, Popups, plus small hooks for zoom and the clock. Do it together with the redesign.</div><div class="tags"><span class="tag">CODE</span></div></div></label>
+      <label class="todo"><input type="checkbox" id="l14"><div><div class="t">Move the NOW line out of the big component</div><div class="d">Only the NOW line re-renders each tick, not the whole screen. Likely to make dragging smoother.</div><div class="tags"><span class="tag">CODE</span><span class="tag fn">FUNCTION</span></div></div></label>
+      <label class="todo"><input type="checkbox" id="l15"><div><div class="t">Fewer popups</div><div class="d">Replace the stage status, approval and view mode popups with one bottom sheet.</div><div class="tags"><span class="tag ui">UI</span><span class="tag">CODE</span></div></div></label>
+      <label class="todo"><input type="checkbox" id="l16"><div><div class="t">Accessibility labels and larger tap targets</div><div class="d">Labels for blocks, buttons and the NOW line, and a minimum tap size of 44 points.</div><div class="tags"><span class="tag ui">UI</span></div></div></label>
+    </div>
+  </section>
+
+  <!-- 6 impact -->
+  <section aria-labelledby="s6">
+    <h2 id="s6">What a redesign touches</h2>
+    <div class="card tablewrap"><table>
+      <thead><tr><th>Area</th><th>Effect</th><th>Risk</th></tr></thead>
+      <tbody>
+        <tr><td><strong>Saved data</strong></td><td>None. Task and stage times (<code>startTimeMinutes</code>, <code>durationMinutes</code>) stay as they are. Zoom, scroll and view mode keep their storage keys.</td><td>Low</td></tr>
+        <tr><td><strong>Task screen</strong></td><td>Opens Live Focus and passes props. Props stay the same unless we add new ones (for example for undo).</td><td>Low</td></tr>
+        <tr><td><strong>Recurring tasks and leave days</strong></td><td>Must keep working. Test a recurring task and a leave day in each view.</td><td>Medium</td></tr>
+        <tr><td><strong>Running timer and full-screen timer</strong></td><td>The dock moves or changes, so the timer entry point must be kept.</td><td>Medium</td></tr>
+        <tr><td><strong>Drag and resize</strong></td><td>Gesture code is the hardest part to move. Test with the newer gesture library on a development build.</td><td>High</td></tr>
+        <tr><td><strong>Timers, Goals, Settings</strong></td><td>Not touched.</td><td>None</td></tr>
+      </tbody>
+    </table></div>
+  </section>
+
+  <!-- 7 decisions -->
+  <section aria-labelledby="s7" class="decisions">
+    <h2 id="s7">Decide before starting</h2>
+    <div class="card"><ol>
+      <li><span class="chip">Direction</span> A (playhead and side panel), B (agenda first) or C (cleaned-up timeline)? C is the safest, A is my pick.</li>
+      <li><span class="chip">Main use</span> Do you open Live Focus mostly to plan the day, or to stay on what you are doing now? Planning favours C, staying on task favours A or B.</li>
+      <li><span class="chip">Views</span> Keep all three views (task, merged, category) or reduce to two?</li>
+      <li><span class="chip">Portrait</span> Should Live Focus be redesigned for portrait too, or stay landscape-first?</li>
+      <li><span class="chip">Ideas</span> Which ideas above do you want? I can group them into phases once you choose.</li>
+    </ol></div>
+  </section>
+</div>
+
+<script>
+(function () {
+  var KEY = 'live-focus-plan-v1';
+  var boxes = Array.prototype.slice.call(document.querySelectorAll('.todo input'));
+  var saved = {};
+  try { saved = JSON.parse(localStorage.getItem(KEY) || '{}'); } catch (e) { saved = {}; }
+  function update() {
+    var done = boxes.filter(function (b) { return b.checked; }).length;
+    document.getElementById('bar').style.width = (boxes.length ? Math.round(done / boxes.length * 100) : 0) + '%';
+    document.getElementById('barText').textContent = done + ' of ' + boxes.length + ' selected';
+  }
+  boxes.forEach(function (b) {
+    if (saved[b.id]) b.checked = true;
+    b.addEventListener('change', function () { saved[b.id] = b.checked; try { localStorage.setItem(KEY, JSON.stringify(saved)); } catch (e) {} update(); });
+  });
+  update();
+})();
+</script>

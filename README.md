@@ -1,78 +1,138 @@
-# Timer App - Professional Mobile Timer
+# Chronoscape
 
-A sleek, high-performance timer application built with React Native and Expo. It features a stunning dynamic UI, micro-second smooth animations, and full orientation support.
+A productivity app for iOS and Android with countdown timers, tasks with subtasks, recurring habits, goals, and a landscape "Live Focus" timeline. Built with React Native, Expo SDK 58 and TypeScript. Data is stored on the device, with optional Google Drive backup.
 
-## 🚀 Getting Started
+Branch history: [BRANCH_v6.0.0_CHANGELOG.md](BRANCH_v6.0.0_CHANGELOG.md)
 
-### Prerequisites
+## Branches
 
-- [Node.js](https://nodejs.org/) (LTS version recommended)
-- [npm](https://www.npmjs.com/) or [yarn](https://yarnpkg.com/)
-- [Expo Go](https://expo.dev/go) app on your iOS or Android device
+| Date | Branch | Previous name | Status | Notes |
+|---|---|---|---|---|
+| 2026-11-02 | `v6.0.0_ios_stable_old` | `v.6.0.0` | Stable (old design) | Expo SDK 58 upgrade, reorderable stage list, new completion screen, infinite duration wheels. Kept as the stable iOS baseline before the Live Focus redesign. |
 
-### Installation
+## Features
 
-1. **Clone the repository**
-   ```bash
-   git clone https://github.com/Abhi-singh-karuna/TIMER---MOBILE-APP-.git
-   cd TIMER---MOBILE-APP-
-   ```
+- **Timers:** multiple timers with categories, background countdown with notifications, extend by +1, +5 or +10 minutes, completion screen and sounds.
+- **Tasks:** priority, status, comments, backlog, subtasks (stages) with drag-to-reorder, recurring tasks (daily, weekly, monthly).
+- **Goals:** hierarchical goals with progress that rolls up to the parent.
+- **Live Focus:** landscape day timeline with a live "now" line and draggable task blocks.
+- **Personalisation:** colour themes, sounds, categories, quick messages, custom day start time.
+- **Backup:** Google Drive backup.
 
-2. **Install dependencies**
-   ```bash
-   npm install
-   ```
+## Run the app
 
-### Running the App
+```bash
+npm install
+npx expo start --clear
+```
 
-1. **Start the Expo server**
-   ```bash
-   npx expo start --clear
-   ```
+Press `i` for the iOS simulator or `a` for Android. Expo Go is fine for quick UI checks. Notifications and Google Sign-In need a development build (see below).
 
-2. **Open the app**
-   - **iOS:** Open the Camera app and scan the QR code from the terminal.
-   - **Android:** Open the Expo Go app and scan the QR code.
-   - **Development:** Press `i` for iOS simulator or `a` for Android emulator (if configured).
+Check types (there are no automated tests):
 
----
+```bash
+npx tsc --noEmit
+```
 
-## ✨ Key Features
+## Build for iOS
 
-### 1. Dynamic Layouts
-- **Portrait Mode:** Clean, card-based interface with daily progress analytics.
-- **Landscape Mode (Pro):** A revolutionary full-screen experience with an immersive progress filler and large, readable digits.
+You need a Mac with Xcode and CocoaPods, and your Apple ID added in **Xcode > Settings > Accounts**. The workspace is `ios/CHRONOSCAPE.xcworkspace`.
 
-### 2. Ultra-Smooth Animation
-- The landscape filler uses a synchronized timing formula matching the timer interval (1000ms) for perfectly continuous, micro-step movement.
+### 1. Prepare (first time, and after changing `app.json`, native packages or icons)
 
-### 3. Deep Customization
-- Independently customize:
-  - **Filler Color**
-  - **Slider & Button Colors**
-  - **Timer Text Color**
-- Personalization is persisted automatically via `AsyncStorage`.
+```bash
+npm install
+npx expo prebuild --platform ios --clean
+open ios/CHRONOSCAPE.xcworkspace
+```
 
-### 4. Smart Orientation
-- The app automatically detects device rotation and transitions layouts smoothly with a cross-fade effect.
+In Xcode: click the **CHRONOSCAPE** project, open **Signing & Capabilities**, tick **Automatically manage signing**, and choose your **Personal Team**. Remove **Push Notifications** if it is listed (free accounts don't support it).
 
----
+### 2. Run on your iPhone
 
-## 🛠️ Tech Stack
+Plug in the phone, unlock it, tap **Trust**, and turn on **Settings > Privacy & Security > Developer Mode**.
 
-- **Framework:** React Native / Expo
-- **Language:** TypeScript
-- **Navigation:** React Navigation
-- **Storage:** @react-native-async-storage/async-storage
-- **Graphics:** Expo Linear Gradient, Material Icons
+Xcode must have the iOS platform that matches your phone's iOS version. If the device shows "iOS 26.5 is not installed", open **Xcode > Settings > Components**, find that iOS version, and click **Get** (several GB, one time). Then:
 
----
+```bash
+npx expo run:ios --device
+```
 
-## 📁 Project Structure
+The first build takes 10 to 20 minutes. If the phone says "Untrusted Developer", go to **Settings > General > VPN & Device Management** and trust your Apple ID. For later sessions, start only the dev server:
 
-- `App.tsx`: Central state and color management.
-- `/src/screens`:
-  - `TimerList.tsx`: Main dashboard & analytics.
-  - `ActiveTimer.tsx`: The heart of the app (Portrait & Landscape layouts).
-  - `SettingsScreen.tsx`: Color customization & live preview.
-- `/src/components`: Reusable UI elements like `SlideToComplete`.
+```bash
+npx expo start --dev-client --clear
+```
+
+### 3. Run on the simulator
+
+Create a device once in **Xcode > Window > Devices and Simulators > Simulators > +**, then:
+
+```bash
+npx expo run:ios
+```
+
+### 4. Make an .ipa (Release build)
+
+1. `npm run version:build` (see "Update the version" below).
+2. `open ios/CHRONOSCAPE.xcworkspace`
+3. Choose **Any iOS Device (arm64)** at the top, then **Product > Archive**.
+4. In the Organizer click **Distribute App**, choose **Development** (AltStore) or **TestFlight & App Store**, and export.
+
+To install a Release build straight onto your phone instead: `npx expo run:ios --device --configuration Release`.
+
+For AltStore: keep AltServer running on your Mac, open AltStore on the phone, tap **+**, and pick the `.ipa`. Free certificates last 7 days and AltStore refreshes them.
+
+### Update the version
+
+```bash
+npm run version:build    # build number +1 (same version, new upload)
+npm run version:patch    # 1.0.0 -> 1.0.1
+npm run version:minor    # 1.0.0 -> 1.1.0
+npm run version:major    # 1.0.0 -> 2.0.0
+```
+
+This updates `app.json`, `Info.plist` and the Xcode project together. Add `-- --dry-run` to preview. The build number must increase on every TestFlight or App Store upload.
+
+### Clean caches (after a build, success or failure)
+
+Close Xcode and stop Metro first.
+
+```bash
+npm run ios:clean          # light: this app's DerivedData, ios/build, Metro cache
+npm run ios:clean:deep     # deep: all DerivedData, ios/Pods, CocoaPods cache
+cd ios && pod install      # only needed after a deep clean
+```
+
+Add `-- --dry-run` to preview. Neither command touches your code, `node_modules`, certificates or Xcode Archives.
+
+## Project structure
+
+```
+App.tsx                  Entry component and the single owner of all state
+scripts/                 bump-version.js, clean-ios-cache.sh
+plan/                    Planning pages (settings-plan.html, goals-plan.html)
+src/
+  components/            Shared UI: modals, pickers, CompletionSummary
+  constants/data.ts      Data types and defaults (Timer, Task, TaskStage, Goal, Category)
+  services/              Google Drive backup
+  utils/                 Storage, background timers, day start time, recurrence
+  screens/Timer/         TimerList, Task, GoalManagement, ActivityTimer,
+                         TaskComplete, Settings
+```
+
+## How it works
+
+- **Screens:** there is no navigation library. `App.tsx` keeps `currentScreen` (`list`, `active`, `complete`, `settings`) and `activeView` (`timer`, `task`, `goal`) and renders the matching screen.
+- **State:** all data lives in `App.tsx` and is passed to screens as props. New state goes there.
+- **Storage:** AsyncStorage. Timers use `@timers`, goals `@goals`, tasks `@timer_app_tasks`. Types are in `src/constants/data.ts`.
+- **Logical day:** the day starts at a set time (default 06:00). Compare dates with `getLogicalDate()` from `src/utils/dailyStartTime.ts`.
+- **Recurring tasks:** stored once, expanded per date at render time by `src/utils/recurrenceUtils.ts`.
+- **Background timers:** a notification is scheduled when a timer starts, and remaining time is recalculated from timestamps when the app returns.
+
+## Plans
+
+- [Settings simplification plan](plan/settings-plan.html): to-do list and per-page impact for simplifying the Settings screens. Open the file in a browser. Online copy: https://claude.ai/artifact/6e334ctR3Phh4QSsoyfppY (private to the owner).
+- [Goals improvement plan](plan/goals-plan.html): findings, design mockups and a phased to-do list for improving goals. Open the file in a browser. Online copy: https://claude.ai/artifact/RRyd4BPca1BkhqUhnWDfv7 (private to the owner).
+
+Instructions for Claude Code are in [CLAUDE.md](CLAUDE.md) and `.claude/skills/`.

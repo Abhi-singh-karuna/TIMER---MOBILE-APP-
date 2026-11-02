@@ -2,6 +2,7 @@ import React, { useState, useRef, useEffect } from 'react';
 import {
     View,
     Text,
+    Image,
     StyleSheet,
     TouchableOpacity,
     ScrollView,
@@ -14,14 +15,22 @@ import {
     PanResponder,
     ActivityIndicator,
     LayoutAnimation,
+    ScrollViewInstance,
 } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
+import CompletionSummary from '../../../components/CompletionSummary';
 import { BlurView } from 'expo-blur';
 import { MaterialIcons } from '@expo/vector-icons';
-import { Audio } from 'expo-av';
+import * as Haptics from 'expo-haptics';
+import { createAudioPlayer, setAudioModeAsync } from 'expo-audio';
 import { activateKeepAwakeAsync, deactivateKeepAwake } from 'expo-keep-awake';
-import { Timer, Category, SOUND_OPTIONS } from '../constants/data';
+import { Timer, Category, SOUND_OPTIONS, Goal } from '../../../constants/data';
+import { getLogicalDate, getStartOfLogicalDay, DEFAULT_DAILY_START_MINUTES, formatDailyStartRangeCompact } from '../../../utils/dailyStartTime';
+import NotesPanel, { NotesIconButton, hasDayNote } from '../Task/NotesPanel';
+
+// App logo - module level to prevent blinking on re-renders
+const APP_LOGO = require('../../../../assets/logo-transparent.png');
 
 // SOUND_OPTIONS moved to constants/data.ts
 
@@ -98,8 +107,12 @@ interface TimerListProps {
     onAcknowledgeCompletion?: (timerId: number) => void;
     selectedSound?: number;
     soundRepetition?: number;
-    enablePastTimers: boolean;
+    isPastTimersDisabled: boolean;
     categories: Category[];
+    activeView?: 'timer' | 'task' | 'goal';
+    onViewChange?: (view: 'timer' | 'task' | 'goal') => void;
+    onRequestLiveView?: () => void;
+    goals: Goal[];
 }
 
 export default function TimerList({
@@ -116,9 +129,14 @@ export default function TimerList({
     soundRepetition = 1,
     selectedDate: propSelectedDate,
     onDateChange,
-    enablePastTimers,
-    categories
-}: TimerListProps & { selectedDate: Date, onDateChange: (date: Date) => void }) {
+    isPastTimersDisabled,
+    dailyStartMinutes = DEFAULT_DAILY_START_MINUTES,
+    categories,
+    activeView = 'timer',
+    onViewChange,
+    onRequestLiveView,
+    goals
+}: TimerListProps & { selectedDate: Date; onDateChange: (date: Date) => void; dailyStartMinutes?: number }) {
     const [filterCategoryId, setFilterCategoryId] = useState<string>('All');
     const [filterStatus, setFilterStatus] = useState<string>('All');
     const [isCategoryExpanded, setIsCategoryExpanded] = useState(false);
@@ -138,16 +156,96 @@ export default function TimerList({
 
     const { width: screenWidth, height: screenHeight } = useWindowDimensions();
     const isLandscape = screenWidth > screenHeight;
+    const insets = useSafeAreaInsets();
+    const isGoalView = activeView === 'goal';
     const [showReportPopup, setShowReportPopup] = useState(false);
+    const [showNotesPanel, setShowNotesPanel] = useState(false);
+    const [selectedDateHasNote, setSelectedDateHasNote] = useState(false);
     const [showCalendar, setShowCalendar] = useState(false);
     const [showFiltersPortrait, setShowFiltersPortrait] = useState(false);
+    const [isPortraitHeaderExpanded, setIsPortraitHeaderExpanded] = useState(false);
     const [viewDate, setViewDate] = useState(new Date());
     const [internalSelectedDate, setInternalSelectedDate] = useState(propSelectedDate);
     const slideAnim = useRef(new Animated.Value(0)).current;
     const fadeAnim = useRef(new Animated.Value(1)).current;
+    const [toggleContainerWidth, setToggleContainerWidth] = useState(0);
+    const [isToggleInteracting, setIsToggleInteracting] = useState(false);
+    const toggleScrollRef = useRef<ScrollViewInstance | null>(null);
+    const didInitInfiniteToggleRef = useRef(false);
+    const currentActiveView = activeView || 'timer';
+    const NAV_TABS = [
+        { key: 'timer' as const, icon: 'timer', label: 'TIMER' },
+        { key: 'task' as const, icon: 'check-box', label: 'TASK' },
+        { key: 'goal' as const, icon: 'track-changes', label: 'GOAL' },
+    ];
+    const NAV_LOOP_COPIES = 7;
+    const navTabCount = NAV_TABS.length;
+    const navMiddleCopyIndex = Math.floor(NAV_LOOP_COPIES / 2);
+    const initialTabIdxRaw = NAV_TABS.findIndex(t => t.key === currentActiveView);
+    const initialTabIdx = initialTabIdxRaw >= 0 ? initialTabIdxRaw : 0;
+    const initialCenteredLoopIndex = (navMiddleCopyIndex * navTabCount) + initialTabIdx;
+    const [activeLoopIndex, setActiveLoopIndex] = useState(initialCenteredLoopIndex);
+    const toggleInteractionAnim = useRef(new Animated.Value(0)).current;
+    const tabIconScale = useRef(
+        NAV_TABS.map((_, idx) => new Animated.Value(idx === initialTabIdx ? 1.14 : 0.94))
+    ).current;
+    const tabLabelOpacity = useRef(
+        NAV_TABS.map((_, idx) => new Animated.Value(idx === initialTabIdx ? 1 : 0.72))
+    ).current;
+    const loopedNavTabs = React.useMemo(
+        () =>
+            Array.from({ length: navTabCount * NAV_LOOP_COPIES }, (_, loopIndex) => {
+                const realIndex = loopIndex % navTabCount;
+                const tab = NAV_TABS[realIndex];
+                return { ...tab, realIndex, loopIndex };
+            }),
+        [navTabCount]
+    );
+    const headerToggleItemWidth = React.useMemo(() => {
+        if (!toggleContainerWidth) return 100;
+        return Math.max(92, Math.floor((toggleContainerWidth - 4) / 2));
+    }, [toggleContainerWidth]);
+    const headerToggleSideInset = React.useMemo(() => {
+        if (!toggleContainerWidth) return 2;
+        return Math.max(2, Math.floor((toggleContainerWidth - headerToggleItemWidth) / 2));
+    }, [toggleContainerWidth, headerToggleItemWidth]);
+
+    const centerToggleLoopIndex = (loopIndex: number, animated: boolean = true) => {
+        if (!toggleContainerWidth) return;
+        const contentWidth = (headerToggleItemWidth * loopedNavTabs.length) + (headerToggleSideInset * 2);
+        const maxOffset = Math.max(0, contentWidth - toggleContainerWidth);
+        const targetX = Math.max(0, Math.min(loopIndex * headerToggleItemWidth, maxOffset));
+        toggleScrollRef.current?.scrollTo({ x: targetX, animated });
+    };
+    const triggerSelectionHaptic = () => {
+        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
+    };
+    const getTabIndexByView = (view: 'timer' | 'task' | 'goal') => {
+        const idx = NAV_TABS.findIndex(t => t.key === view);
+        return idx >= 0 ? idx : 0;
+    };
+    const centerToggleForView = (view: 'timer' | 'task' | 'goal', animated: boolean = true) => {
+        const baseIdx = getTabIndexByView(view);
+        const centeredLoopIndex = (navMiddleCopyIndex * navTabCount) + baseIdx;
+        setActiveLoopIndex(centeredLoopIndex);
+        centerToggleLoopIndex(centeredLoopIndex, animated);
+    };
+    const settleInfiniteToggle = (offsetX: number) => {
+        if (!toggleContainerWidth || headerToggleItemWidth <= 0) return;
+        const nearestLoopIndex = Math.round(offsetX / headerToggleItemWidth);
+        const safeLoopIndex = Math.max(0, Math.min(loopedNavTabs.length - 1, nearestLoopIndex));
+        const baseIdx = ((safeLoopIndex % navTabCount) + navTabCount) % navTabCount;
+        const selectedTab = NAV_TABS[baseIdx];
+        if (selectedTab && selectedTab.key !== currentActiveView && onViewChange) {
+            triggerSelectionHaptic();
+            onViewChange(selectedTab.key);
+        }
+        const centeredLoopIndex = (navMiddleCopyIndex * navTabCount) + baseIdx;
+        setActiveLoopIndex(centeredLoopIndex);
+        centerToggleLoopIndex(centeredLoopIndex, false);
+    };
     const [completedPopupTimer, setCompletedPopupTimer] = useState<Timer | null>(null);
     const prevTimersRef = React.useRef<Timer[]>([]);
-    const soundRef = useRef<Audio.Sound | null>(null);
     const playCountRef = useRef(0);
 
     // Keep screen awake while any timer is running
@@ -164,6 +262,50 @@ export default function TimerList({
         };
     }, [timers]);
 
+    // Reset measured width and loop anchor when orientation changes so onLayout recalculates
+    useEffect(() => {
+        setToggleContainerWidth(0);
+        didInitInfiniteToggleRef.current = false;
+    }, [isLandscape]);
+
+    useEffect(() => {
+        const targetValue = ((activeLoopIndex % navTabCount) + navTabCount) % navTabCount;
+        NAV_TABS.forEach((_, idx) => {
+            const isActive = idx === targetValue;
+            Animated.spring(tabIconScale[idx], {
+                toValue: isActive ? 1.14 : 0.94,
+                useNativeDriver: true,
+                friction: 7,
+                tension: 120,
+            }).start();
+            Animated.timing(tabLabelOpacity[idx], {
+                toValue: isActive ? 1 : 0.72,
+                duration: 180,
+                easing: Easing.out(Easing.cubic),
+                useNativeDriver: false,
+            }).start();
+        });
+    }, [activeLoopIndex, navTabCount]);
+
+    useEffect(() => {
+        if (!toggleContainerWidth) return;
+        if (!didInitInfiniteToggleRef.current) {
+            centerToggleForView(currentActiveView, false);
+            didInitInfiniteToggleRef.current = true;
+            return;
+        }
+        centerToggleForView(currentActiveView, true);
+    }, [toggleContainerWidth, currentActiveView, headerToggleItemWidth, headerToggleSideInset]);
+
+    useEffect(() => {
+        Animated.timing(toggleInteractionAnim, {
+            toValue: isToggleInteracting ? 1 : 0,
+            duration: isToggleInteracting ? 120 : 220,
+            easing: Easing.out(Easing.quad),
+            useNativeDriver: true,
+        }).start();
+    }, [isToggleInteracting]);
+
     // Play completion sound when popup shows
     useEffect(() => {
         if (!completedPopupTimer) return;
@@ -175,34 +317,29 @@ export default function TimerList({
                 // Small delay to ensure popup is rendered
                 await new Promise(resolve => setTimeout(resolve, 100));
 
-                await Audio.setAudioModeAsync({
-                    playsInSilentModeIOS: true,
-                    staysActiveInBackground: false,
-                    shouldDuckAndroid: true,
-                    playThroughEarpieceAndroid: false,
+                await setAudioModeAsync({
+                    playsInSilentMode: true,
+                    interruptionMode: 'doNotMix',
                 });
 
                 const playSoundOnce = async () => {
                     const soundOption = SOUND_OPTIONS[selectedSound];
-                    const soundUri = soundOption?.uri;
+                    const soundSource = soundOption?.source;
 
-                    if (!soundUri) {
-                        console.log('Sound is muted or NO URI found for index:', selectedSound);
+                    if (soundSource === null || soundSource === undefined) {
+                        console.log('Sound is muted or NO SOURCE found for index:', selectedSound);
                         return;
                     }
 
-                    console.log('Playing sound:', soundUri);
+                    console.log('Playing sound:', soundOption.name);
 
-                    const { sound } = await Audio.Sound.createAsync(
-                        { uri: soundUri },
-                        { shouldPlay: true, volume: 1.0 }
-                    );
-                    soundRef.current = sound;
+                    const player = createAudioPlayer(soundSource);
+                    player.play();
 
-                    sound.setOnPlaybackStatusUpdate((status) => {
-                        if (status.isLoaded && status.didJustFinish) {
+                    const subscription = player.addListener('playbackStatusUpdate', (status: { didJustFinish: boolean }) => {
+                        if (status.didJustFinish) {
+                            subscription.remove();
                             playCountRef.current += 1;
-                            sound.unloadAsync();
 
                             if (playCountRef.current < soundRepetition) {
                                 setTimeout(() => playSoundOnce(), 300);
@@ -221,9 +358,7 @@ export default function TimerList({
         playSound();
 
         return () => {
-            if (soundRef.current) {
-                soundRef.current.unloadAsync();
-            }
+            // Player cleanup handled by listeners or garbage collection for one-off plays
         };
     }, [completedPopupTimer, selectedSound, soundRepetition]);
 
@@ -254,18 +389,39 @@ export default function TimerList({
         prevTimersRef.current = [...timers];
     }, [timers, onTimerCompleted, onAcknowledgeCompletion]);
 
-    // Filter timers by selected date
-    const formatDate = (date: Date) => {
-        return `${date.getFullYear()}-${(date.getMonth() + 1).toString().padStart(2, '0')}-${date.getDate().toString().padStart(2, '0')}`;
-    };
+    // Logical date for the selected day (uses daily start time for rollover)
+    const selectedLogical = getLogicalDate(propSelectedDate, dailyStartMinutes);
 
-    const dateFilteredTimers = timers.filter(t => t.forDate === formatDate(propSelectedDate));
+    // Notes badge (per selected logical day)
+    useEffect(() => {
+        let cancelled = false;
+        hasDayNote(selectedLogical).then((v) => {
+            if (!cancelled) setSelectedDateHasNote(v);
+        }).catch(() => { });
+        return () => { cancelled = true; };
+    }, [selectedLogical]);
 
-    const filteredTimers = dateFilteredTimers.filter(t => {
-        const matchesCategory = filterCategoryId === 'All' || t.categoryId === filterCategoryId;
-        const matchesStatus = filterStatus === 'All' || t.status === filterStatus;
-        return matchesCategory && matchesStatus;
-    });
+    const dateFilteredTimers = timers.filter(t => t.forDate === selectedLogical);
+
+    const filteredTimers = dateFilteredTimers
+        .filter(t => {
+            const matchesCategory = filterCategoryId === 'All' || t.categoryId === filterCategoryId;
+            const matchesStatus = filterStatus === 'All' || t.status === filterStatus;
+            return matchesCategory && matchesStatus;
+        })
+        .sort((a, b) => {
+            // 1. Pinned timers first
+            if (a.isPinned && !b.isPinned) return -1;
+            if (!a.isPinned && b.isPinned) return 1;
+
+            // 2. Among pinned, latest pinTimestamp first
+            if (a.isPinned && b.isPinned) {
+                return (b.pinTimestamp || 0) - (a.pinTimestamp || 0);
+            }
+
+            // 3. Normal ordering (not explicitly specified, keep current relative order or sort by ID/time)
+            return 0;
+        });
 
     // Calculate analytics (based on date matches only, or filtered? Let's keep analytics for the whole day)
     const completedCount = dateFilteredTimers.filter(t => t.status === 'Completed').length;
@@ -299,13 +455,9 @@ export default function TimerList({
     const borrowedMinutes = Math.floor((totalBorrowedSeconds % 3600) / 60);
     const borrowedSeconds = totalBorrowedSeconds % 60;
 
-    const isToday = formatDate(propSelectedDate) === formatDate(new Date());
-    const todayObj = new Date();
-    todayObj.setHours(0, 0, 0, 0);
-    const selectedDateObj = new Date(propSelectedDate);
-    selectedDateObj.setHours(0, 0, 0, 0);
-    const isPast = selectedDateObj < todayObj;
-    const isReadOnly = isPast && enablePastTimers;
+    const isToday = selectedLogical === getLogicalDate(new Date(), dailyStartMinutes);
+    const isPast = selectedLogical < getLogicalDate(new Date(), dailyStartMinutes);
+    const isReadOnly = isPast && isPastTimersDisabled;
     const dateLabel = isToday ? 'TODAY' : `on ${dayName} ${dayNum}`;
     // Calendar Helpers
     const getDaysInMonth = (date: Date) => {
@@ -424,21 +576,48 @@ export default function TimerList({
                     }
                 ]}>
                     {calendarDays.map((item, index) => {
+                        const logicalToday = getLogicalDate(new Date(), dailyStartMinutes);
+                        const [ltY, ltM1, ltD] = logicalToday.split('-').map(Number);
                         const isToday = item.currentMonth &&
-                            item.day === new Date().getDate() &&
-                            viewDate.getMonth() === new Date().getMonth() &&
-                            viewDate.getFullYear() === new Date().getFullYear();
+                            item.day === ltD &&
+                            viewDate.getMonth() === ltM1 - 1 &&
+                            viewDate.getFullYear() === ltY;
 
                         const isSelected = item.currentMonth &&
                             item.day === propSelectedDate.getDate() &&
                             viewDate.getMonth() === propSelectedDate.getMonth() &&
                             viewDate.getFullYear() === propSelectedDate.getFullYear();
 
-                        const today = new Date();
-                        today.setHours(0, 0, 0, 0);
-                        const selectedDateObj = new Date(propSelectedDate);
-                        selectedDateObj.setHours(0, 0, 0, 0);
-                        const isPastSelection = isSelected && selectedDateObj < today;
+                        const isPastSelection = isSelected && selectedLogical < getLogicalDate(new Date(), dailyStartMinutes);
+
+                        // Timer count and completion for this date (current month only)
+                        let dayTimerCount = 0;
+                        let dayTimers: Timer[] = [];
+                        let cellLogicalDate = '';
+                        if (item.currentMonth) {
+                            const y = viewDate.getFullYear(), m = viewDate.getMonth(), d = item.day;
+                            const cellDate = new Date(y, m, d, Math.floor(dailyStartMinutes / 60), dailyStartMinutes % 60, 0, 0);
+                            cellLogicalDate = getLogicalDate(cellDate, dailyStartMinutes);
+                            dayTimers = timers.filter(t => t && t.forDate === cellLogicalDate);
+                            dayTimerCount = dayTimers.length;
+                        }
+                        const isPastDate = item.currentMonth && cellLogicalDate !== '' && cellLogicalDate < logicalToday;
+                        const completedCount = dayTimers.filter(t => t.status === 'Completed').length;
+                        // Past day bar color: all done = green, all pending/upcoming = red, mixed = yellow (only when has timers)
+                        const pastDayBarStyle = isPastDate && dayTimerCount > 0
+                            ? (completedCount === dayTimerCount
+                                ? { backgroundColor: 'rgba(76,175,80,0.35)' as const }
+                                : completedCount === 0
+                                    ? { backgroundColor: 'rgba(255,80,80,0.35)' as const }
+                                    : { backgroundColor: 'rgba(255,193,7,0.4)' as const })
+                            : null;
+                        const pastDayTextStyle = isPastDate && dayTimerCount > 0
+                            ? (completedCount === dayTimerCount
+                                ? { color: '#81C784' as const }
+                                : completedCount === 0
+                                    ? { color: '#FF8A80' as const }
+                                    : { color: '#FFD54F' as const })
+                            : null;
 
                         return (
                             <TouchableOpacity
@@ -446,7 +625,8 @@ export default function TimerList({
                                 style={styles.dayCell}
                                 onPress={() => {
                                     if (item.currentMonth) {
-                                        const newSelected = new Date(viewDate.getFullYear(), viewDate.getMonth(), item.day);
+                                        const y = viewDate.getFullYear(), m = viewDate.getMonth(), d = item.day;
+                                        const newSelected = new Date(y, m, d, Math.floor(dailyStartMinutes / 60), dailyStartMinutes % 60, 0, 0);
                                         onDateChange(newSelected);
                                         setInternalSelectedDate(newSelected);
                                     }
@@ -469,6 +649,25 @@ export default function TimerList({
                                         {item.day}
                                     </Text>
                                 </View>
+                                {item.currentMonth && (
+                                    <View style={[
+                                        styles.dayTaskCountBar,
+                                        !isLandscape && styles.dayTaskCountBarPortrait,
+                                        pastDayBarStyle ?? (dayTimerCount > 0
+                                            ? { backgroundColor: 'rgba(255,255,255,0.1)' }
+                                            : { backgroundColor: 'rgba(255,255,255,0.04)' }),
+                                        !pastDayBarStyle && isSelected && (isPastSelection ? { backgroundColor: 'rgba(255,80,80,0.25)' } : { backgroundColor: 'rgba(76,175,80,0.25)' }),
+                                        !pastDayBarStyle && isToday && !isSelected && dayTimerCount > 0 && { backgroundColor: 'rgba(255,255,255,0.15)' }
+                                    ]}>
+                                        <Text style={[
+                                            dayTimerCount > 0 ? styles.dayTaskCount : styles.dayTaskCountZero,
+                                            pastDayTextStyle ?? (isSelected ? (isPastSelection ? { color: '#FF8080' } : { color: '#81C784' }) : undefined),
+                                            !pastDayTextStyle && isToday && !isSelected && dayTimerCount > 0 && { color: 'rgba(255,255,255,0.9)' }
+                                        ]}>
+                                            {dayTimerCount === 0 ? '–' : dayTimerCount}
+                                        </Text>
+                                    </View>
+                                )}
                             </TouchableOpacity>
                         );
                     })}
@@ -570,6 +769,64 @@ export default function TimerList({
         ));
     };
 
+    const renderInfiniteViewToggle = (isPortrait: boolean = false) => (
+        <Animated.View
+            style={[
+                styles.viewToggleContainer,
+                isPortrait && styles.viewToggleContainerPortrait,
+                isToggleInteracting && styles.viewToggleContainerInteracting,
+                {
+                    transform: [{
+                        scale: toggleInteractionAnim.interpolate({
+                            inputRange: [0, 1],
+                            outputRange: [1, 1.015],
+                        }),
+                    }],
+                },
+            ]}
+        >
+            {NAV_TABS.map((tab, idx) => {
+                const isActive = currentActiveView === tab.key;
+                return (
+                    <TouchableOpacity
+                        key={tab.key}
+                        style={[
+                            styles.viewToggleBtn,
+                            styles.viewToggleBtnCompact,
+                            isActive && styles.viewToggleBtnActive,
+                        ]}
+                        onPress={() => {
+                            const centeredLoopIndex = (navMiddleCopyIndex * navTabCount) + idx;
+                            setActiveLoopIndex(centeredLoopIndex);
+                            triggerSelectionHaptic();
+                            onViewChange && onViewChange(tab.key);
+                        }}
+                        activeOpacity={0.75}
+                    >
+                        <Animated.View style={styles.viewToggleBtnInner}>
+                            <Animated.View style={{ transform: [{ scale: tabIconScale[idx] }] }}>
+                                <MaterialIcons
+                                    name={tab.icon as any}
+                                    size={13}
+                                    color={isActive ? '#000' : 'rgba(255,255,255,0.45)'}
+                                />
+                            </Animated.View>
+                            <Animated.Text
+                                style={[
+                                    styles.viewToggleText,
+                                    isActive && styles.viewToggleTextActive,
+                                    { opacity: tabLabelOpacity[idx] },
+                                ]}
+                            >
+                                {tab.label}
+                            </Animated.Text>
+                        </Animated.View>
+                    </TouchableOpacity>
+                );
+            })}
+        </Animated.View>
+    );
+
     return (
         <LinearGradient
             colors={['#000000', '#000000']}
@@ -582,16 +839,24 @@ export default function TimerList({
                     // LANDSCAPE LAYOUT - Matching Reference Design
                     <>
                         {/* Left Panel - Analytics Dashboard */}
-                        <View style={[styles.leftPanel, { width: screenWidth * 0.30 }]}>
+                        {!isGoalView && (
+                            <View style={[styles.leftPanel, { width: screenWidth * 0.30 }]}>
                             {/* Single Analytics Card containing all content */}
                             <View style={styles.analyticsCardWrapper}>
                                 <ScrollView showsVerticalScrollIndicator={false} style={styles.leftPanelScroll}>
-                                    {/* Title Row with Percentage (Only for Today) */}
-                                    {isToday && (
-                                        <View style={styles.titleRowLandscape}>
-                                            <Text style={styles.headerTitleLandscape}>Daily{'\n'}Timers</Text>
-                                            <Text style={styles.percentBadge}>{completedCount}/{totalCount}</Text>
+                                    {/* Toggle + Completion Count Row */}
+                                    {onViewChange && (
+                                        <>
+                                            {/* App Logo Row - Landscape */}
+                                            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 10, paddingHorizontal: 4 }}>
+                                                <Image source={APP_LOGO} style={{ width: 26, height: 26 }} resizeMode="contain" />
+                                                <View style={{ width: 1, height: 16, backgroundColor: 'rgba(255,255,255,0.1)' }} />
+                                                <Text style={{ color: 'rgba(255,255,255,0.4)', fontSize: 10, letterSpacing: 2, fontWeight: '600' }}>CHRONOSCAPE</Text>
+                                            </View>
+                                            <View style={[styles.toggleWithCountRow, isGoalView && styles.toggleWithCountRowGoal]}>
+                                            {renderInfiniteViewToggle(false)}
                                         </View>
+                                        </>
                                     )}
 
                                     {/* Date display with context labeling */}
@@ -607,23 +872,40 @@ export default function TimerList({
                                             activeOpacity={0.7}
                                         >
                                             <MaterialIcons name="calendar-today" size={14} color="#fff" />
-                                            <Text style={[styles.dateLandscapeText, !isToday && { color: '#fff', fontSize: 16 }]}>
+                                            <Text style={styles.dateLandscapeText}>
                                                 {isToday ? `  ${dayName}, ${dayNum} ${monthName}` : `  ${dateLabel} ${monthName}`}
                                             </Text>
+                                        </TouchableOpacity>
+
+                                        <TouchableOpacity
+                                            style={styles.todayNavBtn}
+                                            onPress={() => {
+                                                if (onRequestLiveView) {
+                                                    onRequestLiveView();
+                                                } else if (onViewChange) {
+                                                    onViewChange('task');
+                                                }
+                                            }}
+                                            activeOpacity={0.7}
+                                        >
+                                            <MaterialIcons name="sensors" size={12} color="#FF3D00" />
                                         </TouchableOpacity>
 
                                         {/* Today Navigation Button */}
                                         <TouchableOpacity
                                             style={[styles.todayNavBtn, isToday && styles.todayNavBtnActive]}
                                             onPress={() => {
-                                                const today = new Date();
-                                                onDateChange(today);
-                                                setViewDate(today);
+                                                const start = getStartOfLogicalDay(new Date(), dailyStartMinutes);
+                                                onDateChange(start);
+                                                setViewDate(start);
                                             }}
                                             activeOpacity={0.7}
                                         >
                                             <MaterialIcons name="today" size={12} color={isToday ? "#4CAF50" : "rgba(255,255,255,0.4)"} />
-                                            <Text style={[styles.todayNavText, isToday && styles.todayNavTextActive]}>TODAY</Text>
+                                            <View style={styles.todayLabelBlock}>
+                                                <Text style={[styles.todayNavText, isToday && styles.todayNavTextActive, { marginLeft: 0 }]}>TODAY</Text>
+                                                <Text style={[styles.todayRangeLabel, isToday && styles.todayRangeLabelActive]}>({formatDailyStartRangeCompact(dailyStartMinutes)})</Text>
+                                            </View>
                                         </TouchableOpacity>
                                     </View>
 
@@ -743,15 +1025,27 @@ export default function TimerList({
 
                                 {/* Footer Row: Settings icon & Detailed Reports */}
                                 <View style={styles.leftPanelFooterRow}>
-                                    {onSettings && (
-                                        <TouchableOpacity
-                                            style={styles.settingsIconBtn}
-                                            onPress={onSettings}
-                                            activeOpacity={0.7}
-                                        >
-                                            <MaterialIcons name="settings" size={20} color="rgba(255,255,255,0.7)" />
-                                        </TouchableOpacity>
-                                    )}
+                                    <View style={styles.footerLeftIcons}>
+                                        {onSettings && (
+                                            <TouchableOpacity
+                                                style={styles.settingsIconBtn}
+                                                onPress={onSettings}
+                                                activeOpacity={0.7}
+                                            >
+                                                <MaterialIcons name="settings" size={20} color="rgba(255,255,255,0.7)" />
+                                            </TouchableOpacity>
+                                        )}
+
+                                        <NotesIconButton
+                                            active={showNotesPanel}
+                                            hasNote={selectedDateHasNote}
+                                            onPress={() => {
+                                                LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+                                                setShowReportPopup(false);
+                                                setShowNotesPanel(!showNotesPanel);
+                                            }}
+                                        />
+                                    </View>
 
                                     <TouchableOpacity
                                         style={styles.detailedReportsBtn}
@@ -763,6 +1057,7 @@ export default function TimerList({
                                 </View>
                             </View>
                         </View>
+                    )}
 
                         {/* Right Panel - Timer Grid */}
                         <View style={styles.rightPanel}>
@@ -775,127 +1070,285 @@ export default function TimerList({
                             </ScrollView>
 
                             {/* Add Button */}
-                            <TouchableOpacity style={styles.addButtonLandscape} onPress={onAddTimer} activeOpacity={0.8}>
+                            <TouchableOpacity style={[styles.addButtonLandscape, { bottom: 16, right: 24 }]} onPress={onAddTimer} activeOpacity={0.8}>
                                 <MaterialIcons name="add" size={28} color="#000" />
                             </TouchableOpacity>
                         </View>
                     </>
                 ) : (
-                    // PORTRAIT LAYOUT
-                    <>
-                        <View style={[styles.headerCardPortrait, { flex: 0, minHeight: 0 }]}>
-                            <View style={styles.headerMainRowPortrait}>
+                    // PORTRAIT LAYOUT — key forces full remount on orientation change
+                    <View key={isLandscape ? 'land' : 'port'} style={{ flex: 1 }}>
+                        {!isGoalView && (
+                            <>
+                                <View style={[styles.headerCardPortrait, isGoalView && styles.headerCardPortraitGoal, { flex: 0, minHeight: 0 }]}>
+                            {/* 1. View Toggle & Completion Count Row */}
+                            {onViewChange && (
+                                <View style={[styles.toggleWithCountRowPortrait, isGoalView && styles.toggleWithCountRowPortraitGoal]}>
+                                    <View style={styles.toggleClusterPortrait}>
+                                        {/* App Logo Branding */}
+                                        <View style={styles.portraitLogoWrapper}>
+                                            <Image
+                                                source={APP_LOGO}
+                                                style={styles.portraitLogo}
+                                                resizeMode="contain"
+                                            />
+                                        </View>
+                                        {renderInfiniteViewToggle(true)}
+                                    </View>
+                                    {/* Collapse Button only in Row 1 */}
+                                    {!isGoalView && (
+                                        <View style={styles.headerRightActionsPortrait}>
+                                            <TouchableOpacity
+                                                style={styles.headerCollapseBtnTop}
+                                                onPress={() => {
+                                                    LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+                                                    setIsPortraitHeaderExpanded(!isPortraitHeaderExpanded);
+                                                }}
+                                                activeOpacity={0.7}
+                                                hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                                            >
+                                                <MaterialIcons
+                                                    name={isPortraitHeaderExpanded ? "keyboard-arrow-up" : "keyboard-arrow-down"}
+                                                    size={22}
+                                                    color="rgba(255,255,255,0.6)"
+                                                />
+                                            </TouchableOpacity>
+                                        </View>
+                                    )}
+                                </View>
+                            )}
+
+                            {/* 2. Date Controls Row */}
+                            <View style={[styles.dateControlRowPortrait, { marginBottom: isPortraitHeaderExpanded ? 8 : 0 }]}>
+                                {isGoalView ? (
+                                    <>
+                                        {/* Goal Metrics for Row 2 when in Goal tab */}
+                                        <View style={styles.goalHeaderMetricCard}>
+                                            <Text style={styles.goalHeaderMetricLabel}>GOALS</Text>
+                                            <Text style={styles.goalHeaderMetricValue}>
+                                                {goals.filter((g: Goal) => !g.parentId).length}
+                                            </Text>
+                                        </View>
+                                        <View style={styles.goalHeaderMetricCard}>
+                                            <Text style={styles.goalHeaderMetricLabel}>DURATION</Text>
+                                            <Text style={styles.goalHeaderMetricValue}>
+                                                {goals.reduce((acc: number, g: Goal) => acc + (g.type === 'goal' ? 1 : 0), 0)}H
+                                            </Text>
+                                        </View>
+                                    </>
+                                ) : (
+                                    <>
+                                        <TouchableOpacity
+                                            style={styles.dateLandscapeRow}
+                                            onPress={() => {
+                                                LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+                                                if (showCalendar) {
+                                                    setShowCalendar(false);
+                                                    setIsPortraitHeaderExpanded(false);
+                                                } else {
+                                                    if (!isPortraitHeaderExpanded) {
+                                                        setViewDate(new Date());
+                                                    }
+                                                    setShowCalendar(true);
+                                                    setIsPortraitHeaderExpanded(true);
+                                                }
+                                            }}
+                                            activeOpacity={0.7}
+                                        >
+                                            <MaterialIcons name="calendar-today" size={14} color="#fff" />
+                                            <Text style={styles.dateLandscapeText}>
+                                                {isToday ? `  ${dayName}, ${dayNum} ${monthName}` : `  ${dateLabel} ${monthName}`}
+                                            </Text>
+                                            <MaterialIcons
+                                                name={showCalendar ? "keyboard-arrow-up" : "keyboard-arrow-down"}
+                                                size={16}
+                                                color="rgba(255,255,255,0.3)"
+                                                style={{ marginLeft: 4 }}
+                                            />
+                                        </TouchableOpacity>
+
+                                        <TouchableOpacity
+                                            style={styles.todayNavBtn}
+                                            onPress={() => {
+                                                if (onRequestLiveView) {
+                                                    onRequestLiveView();
+                                                } else if (onViewChange) {
+                                                    onViewChange('task');
+                                                }
+                                            }}
+                                            activeOpacity={0.7}
+                                        >
+                                            <MaterialIcons name="sensors" size={12} color="#FF3D00" />
+                                        </TouchableOpacity>
+
+                                        <TouchableOpacity
+                                            style={[styles.todayNavBtn, isToday && styles.todayNavBtnActive]}
+                                            onPress={() => {
+                                                const start = getStartOfLogicalDay(new Date(), dailyStartMinutes);
+                                                onDateChange(start);
+                                                setViewDate(start);
+                                            }}
+                                            activeOpacity={0.7}
+                                        >
+                                            <MaterialIcons name="today" size={12} color={isToday ? "#4CAF50" : "rgba(255,255,255,0.4)"} />
+                                            <View style={styles.todayLabelBlock}>
+                                                <Text style={[styles.todayNavText, isToday && styles.todayNavTextActive, { marginLeft: 0 }]}>TODAY</Text>
+                                                <Text style={[styles.todayRangeLabel, isToday && styles.todayRangeLabelActive]}>({formatDailyStartRangeCompact(dailyStartMinutes)})</Text>
+                                            </View>
+                                        </TouchableOpacity>
+                                    </>
+                                )}
+
+                                {/* Notes & Settings icons always visible in Row 2 */}
+                                <NotesIconButton
+                                    active={showNotesPanel}
+                                    hasNote={selectedDateHasNote}
+                                    onPress={() => {
+                                        LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+                                        setShowReportPopup(false);
+                                        setShowNotesPanel(!showNotesPanel);
+                                    }}
+                                />
+
                                 {onSettings && (
                                     <TouchableOpacity
-                                        style={styles.headerIconBtnPortrait}
+                                        style={[styles.headerIconBtnPortrait, isGoalView && styles.headerIconBtnPortraitGoal]}
                                         onPress={onSettings}
                                         activeOpacity={0.7}
                                     >
-                                        <MaterialIcons name="settings" size={18} color="rgba(255,255,255,0.7)" />
+                                        <MaterialIcons name="settings" size={16} color="rgba(255,255,255,0.7)" />
                                     </TouchableOpacity>
-                                )}
+                                )}</View>
 
-                                <TouchableOpacity
-                                    style={styles.dateSelectorPillPortrait}
-                                    onPress={() => {
-                                        if (!showCalendar) setViewDate(new Date());
-                                        setShowCalendar(!showCalendar);
-                                    }}
-                                    activeOpacity={0.7}
-                                >
-                                    <View style={styles.datePillLeft}>
-                                        <MaterialIcons name="calendar-today" size={13} color="#fff" />
-                                        <Text style={styles.dateSelectorTextPortrait}> {dayName}, {dayNum} {monthName}</Text>
-                                    </View>
-                                    <MaterialIcons
-                                        name={showCalendar ? "keyboard-arrow-up" : "keyboard-arrow-down"}
-                                        size={16}
-                                        color="rgba(255,255,255,0.3)"
-                                    />
-                                </TouchableOpacity>
+                            {/* 3. Calendar or Stats/Filters (Collapsible) */}
+                            {isPortraitHeaderExpanded && (
+                                <>
+                                    {showCalendar ? (
+                                        <View style={styles.portraitCalendarContainer}>
+                                            {renderCalendar()}
+                                        </View>
+                                    ) : (
+                                        <>
+                                            {/* Stats Grid */}
+                                            <View style={styles.compactStatsGrid}>
+                                                <View style={styles.compactStatRow}>
+                                                    <View style={styles.compactStatItem}>
+                                                        <Text style={styles.compactStatLabel}>TOTAL DURATION</Text>
+                                                        <Text style={styles.compactStatValue}>
+                                                            {String(totalHours).padStart(2, '0')}h {String(totalMinutes).padStart(2, '0')}m
+                                                        </Text>
+                                                    </View>
+                                                    <View style={styles.compactStatItem}>
+                                                        <Text style={styles.compactStatLabel}>REMAINING {isToday ? 'TODAY' : ''}</Text>
+                                                        <Text style={styles.compactStatValue}>
+                                                            {String(remainingHours).padStart(2, '0')}:{String(remainingMinutes).padStart(2, '0')}:{String(remainingSeconds).padStart(2, '0')}
+                                                        </Text>
+                                                    </View>
+                                                </View>
+                                            </View>
 
-                                <TouchableOpacity
-                                    style={[styles.todayBtnPortrait, isToday && styles.todayBtnActivePortrait]}
-                                    onPress={() => {
-                                        const today = new Date();
-                                        onDateChange(today);
-                                        setViewDate(today);
-                                    }}
-                                    activeOpacity={0.7}
-                                >
-                                    <MaterialIcons name="today" size={12} color={isToday ? "#4CAF50" : "rgba(255,255,255,0.4)"} />
-                                    <Text style={[styles.todayBtnTextPortrait, isToday && styles.todayBtnTextActivePortrait]}>TODAY</Text>
-                                </TouchableOpacity>
+                                            {/* Expandable Filters */}
+                                            <View style={styles.filtersSection}>
+                                                <Text style={styles.filterHeaderLabel}>FILTERS</Text>
 
-                                <TouchableOpacity
-                                    style={[
-                                        styles.headerIconBtnPortrait,
-                                        { marginLeft: 6 },
-                                        showFiltersPortrait && styles.headerIconBtnActivePortrait,
-                                        (filterCategoryId !== 'All' || filterStatus !== 'All') && { borderColor: 'rgba(255,255,255,0.3)' }
-                                    ]}
-                                    onPress={() => {
-                                        LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
-                                        setShowFiltersPortrait(!showFiltersPortrait);
-                                    }}
-                                    activeOpacity={0.7}
-                                >
-                                    <MaterialIcons
-                                        name="filter-alt"
-                                        size={18}
-                                        color={showFiltersPortrait ? "#fff" : (filterCategoryId !== 'All' || filterStatus !== 'All' ? "#fff" : "rgba(255,255,255,0.7)")}
-                                    />
-                                </TouchableOpacity>
-                            </View>
+                                                {/* Category Filter */}
+                                                <View style={styles.expandableFilterContainer}>
+                                                    <TouchableOpacity
+                                                        style={styles.expandableHeader}
+                                                        onPress={() => setIsCategoryExpanded(!isCategoryExpanded)}
+                                                        activeOpacity={0.7}
+                                                    >
+                                                        <View style={styles.expandableHeaderLeft}>
+                                                            <MaterialIcons
+                                                                name={filterCategoryId === 'All' ? 'category' : (categories.find(c => c.id === filterCategoryId)?.icon || 'category')}
+                                                                size={16}
+                                                                color={filterCategoryId === 'All' ? 'rgba(255,255,255,0.4)' : (categories.find(c => c.id === filterCategoryId)?.color || '#fff')}
+                                                            />
+                                                            <Text style={styles.expandableHeaderText}>
+                                                                {filterCategoryId === 'All' ? ' Category' : ` ${categories.find(c => c.id === filterCategoryId)?.name}`}
+                                                            </Text>
+                                                        </View>
+                                                        <MaterialIcons
+                                                            name={isCategoryExpanded ? "expand-less" : "expand-more"}
+                                                            size={20}
+                                                            color="rgba(255,255,255,0.3)"
+                                                        />
+                                                    </TouchableOpacity>
 
-                            {showFiltersPortrait && (
-                                <View style={styles.portraitFiltersContainer}>
-                                    <ScrollView
-                                        horizontal
-                                        showsHorizontalScrollIndicator={false}
-                                        contentContainerStyle={styles.portraitFiltersScroll}
-                                        style={{ flexGrow: 0 }}
-                                    >
-                                        <TouchableOpacity
-                                            style={[styles.miniChip, filterCategoryId === 'All' && styles.miniChipActive]}
-                                            onPress={() => setFilterCategoryId('All')}
-                                        >
-                                            <Text style={[styles.miniChipText, filterCategoryId === 'All' && styles.miniChipTextActive]}>All Cal</Text>
-                                        </TouchableOpacity>
-                                        {categories.map(cat => (
+                                                    {isCategoryExpanded && (
+                                                        <View style={styles.expandedContent}>
+                                                            <TouchableOpacity
+                                                                style={[styles.miniChip, filterCategoryId === 'All' && styles.miniChipActive]}
+                                                                onPress={() => setFilterCategoryId('All')}
+                                                            >
+                                                                <Text style={[styles.miniChipText, filterCategoryId === 'All' && styles.miniChipTextActive]}>All</Text>
+                                                            </TouchableOpacity>
+                                                            {categories.map(cat => (
+                                                                <TouchableOpacity
+                                                                    key={cat.id}
+                                                                    style={[
+                                                                        styles.miniChip,
+                                                                        filterCategoryId === cat.id && { backgroundColor: `${cat.color}20`, borderColor: cat.color }
+                                                                    ]}
+                                                                    onPress={() => setFilterCategoryId(cat.id)}
+                                                                >
+                                                                    <MaterialIcons name={cat.icon} size={10} color={filterCategoryId === cat.id ? cat.color : 'rgba(255,255,255,0.4)'} />
+                                                                    <Text style={[styles.miniChipText, filterCategoryId === cat.id && { color: cat.color }]}> {cat.name}</Text>
+                                                                </TouchableOpacity>
+                                                            ))}
+                                                        </View>
+                                                    )}
+                                                </View>
+
+                                                {/* Status Filter */}
+                                                <View style={styles.expandableFilterContainer}>
+                                                    <TouchableOpacity
+                                                        style={styles.expandableHeader}
+                                                        onPress={() => setIsStatusExpanded(!isStatusExpanded)}
+                                                        activeOpacity={0.7}
+                                                    >
+                                                        <View style={styles.expandableHeaderLeft}>
+                                                            <MaterialIcons name="tune" size={16} color={filterStatus === 'All' ? 'rgba(255,255,255,0.4)' : '#fff'} />
+                                                            <Text style={styles.expandableHeaderText}>
+                                                                {filterStatus === 'All' ? ' Status' : ` ${filterStatus}`}
+                                                            </Text>
+                                                        </View>
+                                                        <MaterialIcons
+                                                            name={isStatusExpanded ? "expand-less" : "expand-more"}
+                                                            size={20}
+                                                            color="rgba(255,255,255,0.3)"
+                                                        />
+                                                    </TouchableOpacity>
+
+                                                    {isStatusExpanded && (
+                                                        <View style={styles.expandedContent}>
+                                                            {['All', 'Running', 'Paused', 'Upcoming', 'Completed'].map(status => (
+                                                                <TouchableOpacity
+                                                                    key={status}
+                                                                    style={[styles.miniChip, filterStatus === status && styles.miniChipActive]}
+                                                                    onPress={() => setFilterStatus(status)}
+                                                                >
+                                                                    <Text style={[styles.miniChipText, filterStatus === status && styles.miniChipTextActive]}>{status}</Text>
+                                                                </TouchableOpacity>
+                                                            ))}
+                                                        </View>
+                                                    )}
+                                                </View>
+                                            </View>
+
+                                            {/* Detailed Reports Link */}
                                             <TouchableOpacity
-                                                key={cat.id}
-                                                style={[
-                                                    styles.miniChip,
-                                                    filterCategoryId === cat.id && { backgroundColor: `${cat.color}20`, borderColor: cat.color }
-                                                ]}
-                                                onPress={() => setFilterCategoryId(cat.id)}
+                                                style={[styles.detailedReportsBtn, { marginTop: 4 }]}
+                                                onPress={() => setShowReportPopup(true)}
                                             >
-                                                <MaterialIcons name={cat.icon} size={10} color={filterCategoryId === cat.id ? cat.color : 'rgba(255,255,255,0.4)'} />
-                                                <Text style={[styles.miniChipText, filterCategoryId === cat.id && { color: cat.color }]}> {cat.name}</Text>
+                                                <Text style={styles.detailedReportsText}>DETAILED REPORTS</Text>
+                                                <MaterialIcons name="chevron-right" size={20} color="rgba(255,255,255,0.5)" />
                                             </TouchableOpacity>
-                                        ))}
-
-                                        <View style={styles.filterDividerPortrait} />
-
-                                        {['All', 'Running', 'Paused', 'Upcoming', 'Completed'].map(status => (
-                                            <TouchableOpacity
-                                                key={status}
-                                                style={[styles.miniChip, filterStatus === status && styles.miniChipActive]}
-                                                onPress={() => setFilterStatus(status)}
-                                            >
-                                                <Text style={[styles.miniChipText, filterStatus === status && styles.miniChipTextActive]}>{status}</Text>
-                                            </TouchableOpacity>
-                                        ))}
-                                    </ScrollView>
-                                </View>
+                                        </>
+                                    )}
+                                </>
                             )}
 
-                            {showCalendar && (
-                                <View style={styles.portraitCalendarContainer}>
-                                    {renderCalendar()}
-                                </View>
-                            )}
                         </View>
 
                         {/* Separator Line */}
@@ -907,6 +1360,8 @@ export default function TimerList({
                                 style={styles.separator}
                             />
                         </View>
+                            </>
+                        )}
 
                         {/* Timer Cards */}
                         <ScrollView
@@ -918,12 +1373,23 @@ export default function TimerList({
                         </ScrollView>
 
                         {/* Add Button */}
-                        <TouchableOpacity style={styles.addButton} onPress={onAddTimer} activeOpacity={0.8}>
+                        <TouchableOpacity style={[styles.addButton, { bottom: 16, right: 24 }]} onPress={onAddTimer} activeOpacity={0.8}>
                             <MaterialIcons name="add" size={28} color="#000" />
                         </TouchableOpacity>
-                    </>
+                    </View>
                 )}
             </SafeAreaView>
+
+            {showNotesPanel && (
+                <View style={styles.notesTakeoverOverlay}>
+                    <NotesPanel
+                        visible={showNotesPanel}
+                        dateKey={selectedLogical}
+                        onClose={() => setShowNotesPanel(false)}
+                        onPresenceChange={setSelectedDateHasNote}
+                    />
+                </View>
+            )}
 
             {/* Detailed Report Upcoming Feature Modal */}
             <Modal
@@ -991,158 +1457,42 @@ export default function TimerList({
                 >
                     <BlurView intensity={25} tint="dark" style={StyleSheet.absoluteFill} />
 
-                    {isLandscape ? (
-                        /* LANDSCAPE: Combined compact layout */
-                        <View style={styles.completedPopupCombinedLandscape}>
-                            <LinearGradient
-                                colors={['#000000', '#000000']}
-                                style={styles.completedPopupCombinedGradient}
+                    {completedPopupTimer && (() => {
+                        const popupCategory = categories.find(c => c.id === completedPopupTimer.categoryId);
+                        const now = new Date();
+                        return (
+                            <TouchableOpacity
+                                activeOpacity={1}
+                                style={[styles.completedPopupCard, isLandscape && styles.completedPopupCardLandscape]}
                             >
-                                <View style={styles.completedPopupLandscapeRow}>
-                                    {/* Left Section - Info */}
-                                    <View style={styles.completedPopupCombinedLeft}>
-                                        <View style={styles.completedPopupIconCircleCompact}>
-                                            <MaterialIcons name="check" size={20} color="#4CAF50" />
-                                        </View>
-                                        <Text style={styles.completedPopupTitleLandscapeCompact}>COMPLETED!</Text>
-                                        <Text style={styles.completedPopupTimerNameLandscapeCompact}>
-                                            {completedPopupTimer?.title || 'Timer'}
-                                        </Text>
-
-                                        <View style={styles.completedPopupDetailsContainerCompact}>
-                                            <View style={styles.completedPopupDetailRowCompact}>
-                                                <MaterialIcons name="play-circle-outline" size={12} color="#fff" />
-                                                <Text style={styles.completedPopupDetailLabelCompact}>Started</Text>
-                                                <Text style={styles.completedPopupDetailValueCompact}>
-                                                    {formatISOToTime(completedPopupTimer?.startTime)}
-                                                </Text>
-                                            </View>
-                                            <View style={styles.completedPopupDetailRowCompact}>
-                                                <MaterialIcons name="check-circle-outline" size={12} color="#4CAF50" />
-                                                <Text style={styles.completedPopupDetailLabelCompact}>Ended</Text>
-                                                <Text style={styles.completedPopupDetailValueCompact}>
-                                                    {new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })}
-                                                </Text>
-                                            </View>
-                                            <View style={styles.completedPopupDetailRowCompact}>
-                                                <MaterialIcons name="add-alarm" size={12} color="#FFD740" />
-                                                <Text style={styles.completedPopupDetailLabelCompact}>Extended</Text>
-                                                <Text style={styles.completedPopupDetailValueCompact}>
-                                                    {completedPopupTimer?.borrowedTime
-                                                        ? `${Math.floor((completedPopupTimer.borrowedTime || 0) / 60)}m`
-                                                        : 'None'}
-                                                </Text>
-                                            </View>
-                                        </View>
-                                    </View>
-
-                                    {/* Vertical Divider */}
-                                    <View style={styles.completedPopupDividerVerticalLandscape} />
-
-                                    {/* Right Section - Actions */}
-                                    <View style={styles.completedPopupCombinedRight}>
-                                        <Text style={styles.completedPopupExtendLabelLandscapeCompact}>EXTEND SESSION</Text>
-                                        <View style={styles.completedPopupExtendButtonsLandscapeCompact}>
-                                            {[1, 5, 10].map((mins) => (
-                                                <TouchableOpacity
-                                                    key={mins}
-                                                    style={styles.completedPopupExtendBtnLandscapeCompact}
-                                                    onPress={() => {
-                                                        if (completedPopupTimer && onBorrowTime) {
-                                                            onBorrowTime(completedPopupTimer, mins * 60);
-                                                            setCompletedPopupTimer(null);
-                                                        }
-                                                    }}
-                                                >
-                                                    <Text style={styles.completedPopupExtendBtnTextLandscapeCompact}>+{mins}m</Text>
-                                                </TouchableOpacity>
-                                            ))}
-                                        </View>
-
-                                        <TouchableOpacity
-                                            style={styles.completedPopupCloseBtnRedlandscape}
-                                            onPress={() => setCompletedPopupTimer(null)}
-                                        >
-                                            <Text style={styles.completedPopupCloseBtnTextRedlandscape}>CLOSE</Text>
-                                        </TouchableOpacity>
-                                    </View>
-                                </View>
-                            </LinearGradient>
-                        </View>
-                    ) : (
-                        /* PORTRAIT: Combined compact layout (Vertical) */
-                        <View style={styles.completedPopupCombinedPortrait}>
-                            <LinearGradient
-                                colors={['#000000', '#000000']}
-                                style={styles.completedPopupCombinedGradient}
-                            >
-                                <View style={styles.completedPopupPortraitColumn}>
-                                    {/* Top Section - Info */}
-                                    <View style={styles.completedPopupCombinedTop}>
-                                        <View style={styles.completedPopupIconCircleCompact}>
-                                            <MaterialIcons name="check" size={24} color="#4CAF50" />
-                                        </View>
-                                        <Text style={styles.completedPopupTitleLandscapeCompact}>COMPLETED!</Text>
-                                        <Text style={styles.completedPopupTimerNameLandscapeCompact}>
-                                            {completedPopupTimer?.title || 'Timer'}
-                                        </Text>
-
-                                        <View style={styles.completedPopupDetailsContainerPortraitCompact}>
-                                            <View style={styles.completedPopupDetailRowCompact}>
-                                                <MaterialIcons name="play-circle-outline" size={14} color="#fff" />
-                                                <Text style={styles.completedPopupDetailLabelCompact}>Started</Text>
-                                                <Text style={styles.completedPopupDetailValueCompact}>
-                                                    {formatISOToTime(completedPopupTimer?.startTime)}
-                                                </Text>
-                                            </View>
-                                            <View style={styles.completedPopupDetailRowCompact}>
-                                                <MaterialIcons name="check-circle-outline" size={14} color="#4CAF50" />
-                                                <Text style={styles.completedPopupDetailLabelCompact}>Ended</Text>
-                                                <Text style={styles.completedPopupDetailValueCompact}>
-                                                    {new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })}
-                                                </Text>
-                                            </View>
-                                        </View>
-                                    </View>
-
-                                    {/* Horizontal Divider */}
-                                    <View style={styles.completedPopupDividerHorizontalPortrait} />
-
-                                    {/* Bottom Section - Actions */}
-                                    <View style={styles.completedPopupCombinedBottom}>
-                                        <Text style={styles.completedPopupExtendLabelLandscapeCompact}>EXTEND SESSION</Text>
-                                        <View style={styles.completedPopupExtendButtonsLandscapeCompact}>
-                                            {[1, 5, 10].map((mins) => (
-                                                <TouchableOpacity
-                                                    key={mins}
-                                                    style={styles.completedPopupExtendBtnLandscapeCompact}
-                                                    onPress={() => {
-                                                        if (completedPopupTimer && onBorrowTime) {
-                                                            onBorrowTime(completedPopupTimer, mins * 60);
-                                                            setCompletedPopupTimer(null);
-                                                        }
-                                                    }}
-                                                >
-                                                    <Text style={styles.completedPopupExtendBtnTextLandscapeCompact}>+{mins}m</Text>
-                                                </TouchableOpacity>
-                                            ))}
-                                        </View>
-
-                                        <TouchableOpacity
-                                            style={styles.completedPopupCloseBtnRedlandscape}
-                                            onPress={() => setCompletedPopupTimer(null)}
-                                        >
-                                            <Text style={styles.completedPopupCloseBtnTextRedlandscape}>CLOSE</Text>
-                                        </TouchableOpacity>
-                                    </View>
-                                </View>
-                            </LinearGradient>
-                        </View>
-                    )}
+                                <CompletionSummary
+                                    variant="popup"
+                                    horizontal={isLandscape}
+                                    title={completedPopupTimer.title || 'Timer'}
+                                    accentColor={popupCategory?.color}
+                                    categoryName={popupCategory?.name}
+                                    categoryIcon={popupCategory?.icon}
+                                    startTime={completedPopupTimer.startTime}
+                                    endedAt={`${now.getHours().toString().padStart(2, '0')}:${now.getMinutes().toString().padStart(2, '0')}`}
+                                    totalSeconds={parseTimeToSeconds(completedPopupTimer.total)}
+                                    extendedSeconds={completedPopupTimer.borrowedTime || 0}
+                                    onExtend={(secs) => {
+                                        if (onBorrowTime) {
+                                            onBorrowTime(completedPopupTimer, secs);
+                                            setCompletedPopupTimer(null);
+                                        }
+                                    }}
+                                    onPrimary={() => setCompletedPopupTimer(null)}
+                                    primaryLabel="CLOSE"
+                                    primaryIcon="close"
+                                />
+                            </TouchableOpacity>
+                        );
+                    })()}
                 </TouchableOpacity>
             </Modal>
 
-        </LinearGradient>
+        </LinearGradient >
     );
 }
 
@@ -1155,20 +1505,6 @@ interface TimerCardProps {
     categories: Category[];
     isReadOnly?: boolean;
 }
-
-// Status badge configuration
-const getStatusConfig = (status: Timer['status']) => {
-    switch (status) {
-        case 'Running':
-            return { label: 'RUNNING', color: '#00E5FF', bgColor: 'rgba(0,229,255,0.1)' };
-        case 'Paused':
-            return { label: 'PAUSED', color: '#FFA500', bgColor: 'rgba(255,165,0,0.15)' };
-        case 'Completed':
-            return { label: 'COMPLETED', color: '#4CAF50', bgColor: 'rgba(76,175,80,0.15)' };
-        default:
-            return { label: 'UPCOMING', color: 'rgba(255,255,255,0.5)', bgColor: 'rgba(255,255,255,0.08)' };
-    }
-};
 
 function TimerCard({ timer, onLongPress, onPress, onPlayPause, isLandscape, categories, isReadOnly }: TimerCardProps) {
     const isCompleted = timer.status === 'Completed';
@@ -1210,197 +1546,222 @@ function TimerCard({ timer, onLongPress, onPress, onPlayPause, isLandscape, cate
         }).start();
     }, [completionPercentage]);
 
-    const statusConfig = getStatusConfig(timer.status);
-
     return (
         <View
             style={[
-                styles.timerCard,
+                styles.timerCardBezel,
+                isLandscape && styles.timerCardLandscape,
                 isRunning && styles.timerCardActive,
                 isPaused && styles.timerCardPaused,
                 isCompleted && styles.timerCardCompleted,
-                isLandscape && styles.timerCardLandscape
             ]}
         >
-            {/* Background Touchable for the whole card navigation */}
             <TouchableOpacity
-                style={StyleSheet.absoluteFill}
+                style={[styles.timerCardTrack, isLandscape && styles.timerCardTrackLandscape]}
                 onPress={isReadOnly ? undefined : onPress}
                 onLongPress={onLongPress}
                 activeOpacity={isReadOnly ? 1 : 0.9}
                 delayLongPress={500}
-                disabled={isReadOnly && isCompleted} // Still allow viewing completed timers
-            />
+                disabled={isReadOnly && isCompleted}
+            >
+                {/* Background Gradient for Depth */}
+                <LinearGradient
+                    colors={isRunning ? ['rgba(0,229,255,0.06)', 'rgba(0,0,0,0.2)'] : isPaused ? ['rgba(255,165,0,0.05)', 'rgba(0,0,0,0.15)'] : isCompleted ? ['rgba(76,175,80,0.05)', 'rgba(0,0,0,0.15)'] : ['rgba(255,255,255,0.03)', 'rgba(0,0,0,0.1)']}
+                    style={StyleSheet.absoluteFill}
+                />
 
-            {/* Progress Fill - Shows completion percentage */}
-            {(isActive || isCompleted) && (
-                <View style={styles.progressFillContainer} pointerEvents="none">
-                    {isCompleted ? (
-                        // Completed timers show three segments: Original Used, Borrowed Used, Saved
-                        <View style={styles.multiProgressWrapper}>
-                            {/* Segment 1: Original Time Used */}
-                            <View
-                                style={[
-                                    styles.progressFill,
-                                    {
-                                        width: `${Math.min(originalTotalSeconds, Math.max(0, totalSeconds - (timer.savedTime || 0))) / totalSeconds * 100}%`,
-                                        backgroundColor: 'rgba(76,175,80,0.45)' // Slightly more opaque
-                                    }
-                                ]}
-                            />
-                            {/* Segment 2: Borrowed Time Used */}
-                            {totalSeconds > originalTotalSeconds && (totalSeconds - (timer.savedTime || 0)) > originalTotalSeconds && (
+                {/* Progress Fill - Shows completion percentage */}
+                {(isActive || isCompleted) && (
+                    <View style={styles.progressFillContainer} pointerEvents="none">
+                        {isCompleted ? (
+                            // Completed timers show three segments: Original Used, Borrowed Used, Saved
+                            <View style={styles.multiProgressWrapper}>
+                                {/* Segment 1: Original Time Used */}
                                 <View
                                     style={[
                                         styles.progressFill,
                                         {
-                                            left: `${originalTotalSeconds / totalSeconds * 100}%`,
-                                            width: `${(Math.min(totalSeconds, totalSeconds - (timer.savedTime || 0)) - originalTotalSeconds) / totalSeconds * 100}%`,
-                                            backgroundColor: 'rgba(38,120,40,0.6)' // More distinct dark green
+                                            width: `${Math.min(originalTotalSeconds, Math.max(0, totalSeconds - (timer.savedTime || 0))) / totalSeconds * 100}%`,
+                                            backgroundColor: 'rgba(76,175,80,0.45)' // Slightly more opaque
                                         }
                                     ]}
                                 />
-                            )}
-                            {/* Segment 3: Saved Time (Remaining) */}
-                            {(timer.savedTime || 0) > 0 && (
-                                <View
-                                    style={[
-                                        styles.progressFill,
-                                        {
-                                            left: `${Math.max(0, totalSeconds - (timer.savedTime || 0)) / totalSeconds * 100}%`,
-                                            width: `${(timer.savedTime || 0) / totalSeconds * 100}%`,
-                                            backgroundColor: 'rgba(255,255,255,0.3)' // Even brighter ghost shade
-                                        }
-                                    ]}
-                                />
-                            )}
-                        </View>
-                    ) : (
-                        // Active timers show animated progress with two segments
-                        <View style={styles.multiProgressWrapper}>
-                            {/* Original Segment Fill */}
-                            <Animated.View
-                                style={[
-                                    styles.progressFill,
-                                    {
-                                        width: animatedProgress.interpolate({
-                                            inputRange: [0, originalWeight * 100, 100],
-                                            outputRange: ['0%', `${originalWeight * 100}%`, `${originalWeight * 100}%`],
-                                        }),
-                                        backgroundColor: isRunning ? 'rgba(0, 229, 255, 0.25)' : 'rgba(255,165,0,0.35)'
-                                    }
-                                ]}
-                            />
-                            {/* Borrowed Segment Fill */}
-                            {borrowedSeconds > 0 && (
+                                {/* Segment 2: Borrowed Time Used */}
+                                {totalSeconds > originalTotalSeconds && (totalSeconds - (timer.savedTime || 0)) > originalTotalSeconds && (
+                                    <View
+                                        style={[
+                                            styles.progressFill,
+                                            {
+                                                left: `${originalTotalSeconds / totalSeconds * 100}%`,
+                                                width: `${(Math.min(totalSeconds, totalSeconds - (timer.savedTime || 0)) - originalTotalSeconds) / totalSeconds * 100}%`,
+                                                backgroundColor: 'rgba(38,120,40,0.6)' // More distinct dark green
+                                            }
+                                        ]}
+                                    />
+                                )}
+                                {/* Segment 3: Saved Time (Remaining) */}
+                                {(timer.savedTime || 0) > 0 && (
+                                    <View
+                                        style={[
+                                            styles.progressFill,
+                                            {
+                                                left: `${Math.max(0, totalSeconds - (timer.savedTime || 0)) / totalSeconds * 100}%`,
+                                                width: `${(timer.savedTime || 0) / totalSeconds * 100}%`,
+                                                backgroundColor: 'rgba(255,255,255,0.3)' // Even brighter ghost shade
+                                            }
+                                        ]}
+                                    />
+                                )}
+                            </View>
+                        ) : (
+                            // Active timers show animated progress with two segments
+                            <View style={styles.multiProgressWrapper}>
+                                {/* Original Segment Fill */}
                                 <Animated.View
                                     style={[
                                         styles.progressFill,
                                         {
-                                            left: `${originalWeight * 100}%`,
                                             width: animatedProgress.interpolate({
                                                 inputRange: [0, originalWeight * 100, 100],
-                                                outputRange: ['0%', '0%', `${(1 - originalWeight) * 100}%`],
+                                                outputRange: ['0%', `${originalWeight * 100}%`, `${originalWeight * 100}%`],
                                             }),
-                                            backgroundColor: isRunning ? 'rgba(0, 180, 204, 0.45)' : 'rgba(128,82,0,0.5)' // Darker cyan for borrowed segment
+                                            backgroundColor: isRunning ? 'rgba(0, 229, 255, 0.25)' : 'rgba(255,165,0,0.35)'
                                         }
                                     ]}
                                 />
+                                {/* Borrowed Segment Fill */}
+                                {borrowedSeconds > 0 && (
+                                    <Animated.View
+                                        style={[
+                                            styles.progressFill,
+                                            {
+                                                left: `${originalWeight * 100}%`,
+                                                width: animatedProgress.interpolate({
+                                                    inputRange: [0, originalWeight * 100, 100],
+                                                    outputRange: ['0%', '0%', `${(1 - originalWeight) * 100}%`],
+                                                }),
+                                                backgroundColor: isRunning ? 'rgba(0, 180, 204, 0.45)' : 'rgba(128,82,0,0.5)' // Darker cyan for borrowed segment
+                                            }
+                                        ]}
+                                    />
+                                )}
+                            </View>
+                        )}
+                    </View>
+                )}
+
+                {/* Interior shadow for depth */}
+                <View style={[styles.timerCardInteriorShadow, isLandscape && styles.timerCardInteriorShadowLandscape]} pointerEvents="none" />
+
+                {/* Timer Info and Actions */}
+                <View style={[styles.cardContent, isLandscape && styles.cardContentLandscape]} pointerEvents="box-none">
+                    <View style={styles.cardLeft} pointerEvents="none">
+                        {/* Top Row: Category + Status (interchanged with borrow time) + saved badge */}
+                        <View style={styles.topStatusRow}>
+                            <View style={[styles.categoryBadge, { backgroundColor: `${categoryColor}15`, borderColor: `${categoryColor}30` }]}>
+                                <MaterialIcons name={categoryIcon} size={10} color={categoryColor} />
+                                <Text style={[styles.categoryBadgeText, { color: categoryColor }]}>
+                                    {category?.name.toUpperCase() || 'GENERAL'}
+                                </Text>
+                            </View>
+                            <View style={[styles.statusBadge, { backgroundColor: `${getStatusColor()}15` }]}>
+                                <Text style={[styles.statusText, { color: getStatusColor() }]}>
+                                    {timer.status.toUpperCase()}
+                                </Text>
+                            </View>
+                            {isCompleted && (timer.savedTime || 0) > 0 && (
+                                <View style={styles.savedBadgeSmall}>
+                                    <MaterialIcons name="speed" size={10} color="rgba(76,175,80,0.6)" />
+                                    <Text style={styles.savedTextSmall}>
+                                        {formatSavedTime(timer.savedTime || 0)}
+                                    </Text>
+                                </View>
                             )}
+                        </View>
+
+                        {/* Title Row: Title only */}
+                        <View style={styles.titleRow}>
+                            <View style={styles.timerTitleWrap}>
+                                <Text
+                                    style={[styles.timerTitle, isCompleted && styles.timerTitleCompleted]}
+                                    numberOfLines={1}
+                                >
+                                    {timer.title}
+                                </Text>
+                            </View>
+                        </View>
+                        <View style={styles.timeRow}>
+                            <Text style={[styles.timerTime, isCompleted && styles.timerTimeCompleted, isLandscape && styles.timerTimeLandscape]}>
+                                {timer.time}
+                            </Text>
+                            <Text style={[styles.timerTotal, isLandscape && styles.timerTotalLandscape]}>
+                                / {getExpandedTotal(timer.total, timer.borrowedTime || 0)}
+                            </Text>
+                            {borrowedSeconds > 0 && (
+                                <View style={styles.borrowedBadgeSmall}>
+                                    <MaterialIcons name="add-alarm" size={8} color="rgba(255,255,255,0.4)" />
+                                    <Text style={styles.borrowedTextSmall}>
+                                        {formatBorrowedTime(borrowedSeconds)}
+                                    </Text>
+                                </View>
+                            )}
+                        </View>
+                    </View>
+
+                    {timer.isPinned && (
+                        <View style={[styles.pinIconContainer, isLandscape ? styles.pinIconContainerLandscape : styles.pinIconContainerPortrait]}>
+                            <MaterialIcons
+                                name="local-offer"
+                                size={10}
+                                color="#fff"
+                            />
+                        </View>
+                    )}
+
+                    {isReadOnly && !isCompleted && (
+                        <View style={styles.readOnlyIcon}>
+                            <MaterialIcons name="lock" size={20} color="rgba(255,255,255,0.3)" />
+                        </View>
+                    )}
+
+                    {isCompleted ? (
+                        <View style={styles.completedCheckIcon}>
+                            <MaterialIcons name="check-circle" size={28} color="#4CAF50" />
+                        </View>
+                    ) : (
+                        <View style={styles.cardPlayButtonBezel}>
+                            <TouchableOpacity
+                                style={[
+                                    styles.cardPlayButtonTrack,
+                                    isRunning && styles.playButtonActive,
+                                ]}
+                                onPress={isReadOnly ? undefined : onPlayPause}
+                                hitSlop={{ top: 15, bottom: 15, left: 15, right: 15 }}
+                                activeOpacity={isReadOnly ? 1 : 0.6}
+                                disabled={isReadOnly}
+                            >
+                                <LinearGradient
+                                    colors={isRunning ? ['rgba(0,229,255,0.1)', 'rgba(0,0,0,0.2)'] : ['rgba(255,255,255,0.05)', 'rgba(0,0,0,0.15)']}
+                                    style={StyleSheet.absoluteFill}
+                                />
+                                <View style={styles.cardPlayButtonInteriorShadow} pointerEvents="none" />
+                                <MaterialIcons
+                                    name={isRunning ? "pause" : "play-arrow"}
+                                    size={28}
+                                    color={isRunning ? "#fff" : "rgba(255,255,255,0.7)"}
+                                />
+                                <View style={styles.cardPlayButtonTopRim} pointerEvents="none" />
+                            </TouchableOpacity>
                         </View>
                     )}
                 </View>
-            )}
 
-            {/* Inset shadow */}
-            <LinearGradient
-                colors={['rgba(0,0,0,0.5)', 'rgba(0,0,0,0.2)', 'transparent']}
-                style={styles.cardInset}
-                pointerEvents="none"
-            />
+                {/* Top Rim Highlight */}
+                <View style={[styles.timerCardTopRim, isLandscape && styles.timerCardTopRimLandscape]} pointerEvents="none" />
+            </TouchableOpacity>
 
-
-            {/* Timer Info and Actions */}
-            <View style={styles.cardContent} pointerEvents="box-none">
-                <View style={styles.cardLeft} pointerEvents="none">
-                    {/* Status Row */}
-                    <View style={styles.topStatusRow}>
-                        <View style={[styles.statusBadge, { backgroundColor: `${getStatusColor()}15` }]}>
-                            <Text style={[styles.statusText, { color: getStatusColor() }]}>
-                                {timer.status.toUpperCase()}
-                            </Text>
-                        </View>
-                        {borrowedSeconds > 0 && !isCompleted && (
-                            <View style={styles.borrowedBadgeSmall}>
-                                <MaterialIcons name="add-alarm" size={10} color="rgba(255,255,255,0.4)" />
-                                <Text style={styles.borrowedTextSmall}>
-                                    {formatBorrowedTime(borrowedSeconds)}
-                                </Text>
-                            </View>
-                        )}
-                        {isCompleted && (timer.savedTime || 0) > 0 && (
-                            <View style={styles.savedBadgeSmall}>
-                                <MaterialIcons name="speed" size={10} color="rgba(76,175,80,0.6)" />
-                                <Text style={styles.savedTextSmall}>
-                                    {formatSavedTime(timer.savedTime || 0)}
-                                </Text>
-                            </View>
-                        )}
-                    </View>
-
-                    <View style={styles.titleRow}>
-                        <Text
-                            style={[styles.timerTitle, isCompleted && styles.timerTitleCompleted]}
-                            numberOfLines={1}
-                        >
-                            {timer.title}
-                        </Text>
-                        <View style={[styles.categoryBadge, { backgroundColor: `${categoryColor}15`, borderColor: `${categoryColor}30` }]}>
-                            <MaterialIcons name={categoryIcon} size={10} color={categoryColor} />
-                            <Text style={[styles.categoryBadgeText, { color: categoryColor }]}>
-                                {category?.name.toUpperCase() || 'GENERAL'}
-                            </Text>
-                        </View>
-                    </View>
-                    <View style={styles.timeRow}>
-                        <Text style={[styles.timerTime, isCompleted && styles.timerTimeCompleted]}>
-                            {timer.time}
-                        </Text>
-                        <Text style={styles.timerTotal}>
-                            / {getExpandedTotal(timer.total, timer.borrowedTime || 0)}
-                        </Text>
-                    </View>
-                </View>
-
-                {isReadOnly && !isCompleted && (
-                    <View style={styles.readOnlyIcon}>
-                        <MaterialIcons name="lock" size={20} color="rgba(255,255,255,0.3)" />
-                    </View>
-                )}
-
-                {isCompleted ? (
-                    <View style={styles.completedCheckIcon}>
-                        <MaterialIcons name="check-circle" size={28} color="#4CAF50" />
-                    </View>
-                ) : (
-                    <TouchableOpacity
-                        style={[
-                            styles.playButton,
-                            isRunning && styles.playButtonActive,
-                        ]}
-                        onPress={isReadOnly ? undefined : onPlayPause}
-                        hitSlop={{ top: 15, bottom: 15, left: 15, right: 15 }}
-                        activeOpacity={isReadOnly ? 1 : 0.6}
-                        disabled={isReadOnly}
-                    >
-                        <MaterialIcons
-                            name={isRunning ? "pause" : "play-arrow"}
-                            size={28}
-                            color={isRunning ? "#fff" : "rgba(255,255,255,0.7)"}
-                        />
-                    </TouchableOpacity>
-                )}
-            </View>
+            {/* Outer Boundary Highlight */}
+            <View style={[styles.timerCardOuterBoundaryHighlight, isLandscape && styles.timerCardOuterBoundaryHighlightLandscape]} pointerEvents="none" />
         </View>
     );
 }
@@ -1459,12 +1820,104 @@ const styles = StyleSheet.create({
     headerCardPortrait: {
         marginHorizontal: 16,
         marginTop: 10,
-        paddingVertical: 14,
-        paddingHorizontal: 16,
+        paddingVertical: 12,
+        paddingHorizontal: 14,
         borderRadius: 24,
-        backgroundColor: 'rgba(15, 15, 15, 0.6)',
+        backgroundColor: 'rgba(10, 10, 12, 0.85)',
         borderWidth: 1,
-        borderColor: 'rgba(255,255,255,0.06)',
+        borderColor: 'rgba(0, 229, 255, 0.07)',
+        shadowColor: '#00E5FF',
+        shadowOffset: { width: 0, height: 2 },
+        shadowOpacity: 0.08,
+        shadowRadius: 12,
+    },
+    headerCardPortraitGoal: {
+        marginTop: 8,
+        paddingVertical: 10,
+        paddingHorizontal: 10,
+        borderRadius: 20,
+        borderColor: 'rgba(0,229,255,0.12)',
+        backgroundColor: 'rgba(7, 10, 12, 0.92)',
+    },
+
+    headerCollapseBtnTop: {
+        width: 32,
+        height: 32,
+        alignItems: 'center',
+        justifyContent: 'center',
+        borderRadius: 16,
+        backgroundColor: 'rgba(255,255,255,0.05)',
+        borderWidth: 1,
+        borderColor: 'rgba(255,255,255,0.08)',
+    },
+    headerCollapseBtnTopGoal: {
+        width: 30,
+        height: 30,
+        borderRadius: 15,
+        backgroundColor: 'rgba(255,255,255,0.04)',
+    },
+
+    portraitLogoWrapper: {
+        width: 32,
+        height: 32,
+        marginRight: 4,
+        justifyContent: 'center',
+        alignItems: 'center',
+    },
+
+    portraitLogo: {
+        width: 32,
+        height: 32,
+    },
+
+    toggleWithCountRowPortrait: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        marginBottom: 12,
+        gap: 8,
+    },
+    toggleClusterPortrait: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        flex: 1,
+        minWidth: 0,
+        gap: 6,
+    },
+    headerRightActionsPortrait: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 6,
+        flexShrink: 0,
+    },
+    toggleWithCountRowPortraitGoal: {
+        marginBottom: 8,
+        gap: 6,
+    },
+
+    portraitHeaderTitleRow: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        marginBottom: 12,
+        paddingBottom: 10,
+        borderBottomWidth: 1,
+        borderBottomColor: 'rgba(255,255,255,0.05)',
+    },
+
+    portraitHeaderTitle: {
+        fontSize: 11,
+        fontWeight: '900' as const,
+        letterSpacing: 3,
+        color: 'rgba(255,255,255,0.45)',
+        textTransform: 'uppercase' as const,
+    },
+
+    dateControlRowPortrait: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        marginBottom: 16,
     },
 
     headerMainRowPortrait: {
@@ -1483,6 +1936,12 @@ const styles = StyleSheet.create({
         justifyContent: 'center',
         borderWidth: 1,
         borderColor: 'rgba(255,255,255,0.08)',
+    },
+    headerIconBtnPortraitGoal: {
+        width: 32,
+        height: 32,
+        borderRadius: 10,
+        backgroundColor: 'rgba(255,255,255,0.04)',
     },
 
     headerIconBtnActivePortrait: {
@@ -1561,6 +2020,10 @@ const styles = StyleSheet.create({
 
     todayBtnTextActivePortrait: {
         color: '#4CAF50',
+    },
+    todayLabelBlockPortrait: {
+        marginLeft: 4,
+        alignItems: 'flex-start',
     },
 
     settingsButton: {
@@ -1752,8 +2215,69 @@ const styles = StyleSheet.create({
         paddingBottom: 100,
     },
 
+    timerCardBezel: {
+        marginBottom: 12,
+        borderRadius: 32,
+        padding: 4,
+        backgroundColor: 'rgba(255,255,255,0.03)',
+        borderColor: 'rgba(255,255,255,0.12)',
+        borderWidth: 1.5,
+        overflow: 'hidden',
+        position: 'relative',
+    },
+
+    timerCardTrack: {
+        borderRadius: 28,
+        paddingHorizontal: 12,
+        paddingVertical: 20,
+        backgroundColor: 'rgba(0,0,0,0.15)',
+        overflow: 'hidden',
+        position: 'relative',
+    },
+
+    timerCardTrackLandscape: {
+        borderRadius: 20,
+        paddingHorizontal: 8,
+        paddingVertical: 10,
+    },
+
+    timerCardInteriorShadow: {
+        ...StyleSheet.absoluteFill,
+        borderBottomWidth: 2,
+        borderRightWidth: 1,
+        borderColor: 'rgba(0,0,0,0.25)',
+        borderRadius: 28,
+    },
+
+    timerCardInteriorShadowLandscape: {
+        borderRadius: 20,
+    },
+
+    timerCardTopRim: {
+        ...StyleSheet.absoluteFill,
+        borderTopWidth: 1,
+        borderLeftWidth: 0.5,
+        borderColor: 'rgba(255,255,255,0.15)',
+        borderRadius: 28,
+    },
+
+    timerCardTopRimLandscape: {
+        borderRadius: 20,
+    },
+
+    timerCardOuterBoundaryHighlight: {
+        ...StyleSheet.absoluteFill,
+        borderRadius: 32,
+        borderWidth: 1,
+        borderColor: 'rgba(255,255,255,0.08)',
+    },
+
+    timerCardOuterBoundaryHighlightLandscape: {
+        borderRadius: 24,
+    },
+
     timerCard: {
-        marginBottom: 16,
+        marginBottom: 12,
         borderRadius: 32,
         paddingHorizontal: 16,
         paddingVertical: 24,
@@ -1831,22 +2355,24 @@ const styles = StyleSheet.create({
         paddingVertical: 3,
         borderRadius: 99,
         borderWidth: 1,
+        flexShrink: 0,
     },
 
     borrowedBadgeSmall: {
         flexDirection: 'row',
         alignItems: 'center',
-        gap: 4,
-        paddingHorizontal: 8,
-        paddingVertical: 4,
+        gap: 3,
+        paddingHorizontal: 6,
+        paddingVertical: 3,
         borderRadius: 8,
-        backgroundColor: 'rgba(255,255,255,0.05)',
+        backgroundColor: 'rgba(113, 94, 94, 0.58)',
+        marginLeft: 10,
     },
 
     borrowedTextSmall: {
-        fontSize: 10,
+        fontSize: 8,
         fontWeight: '600',
-        color: 'rgba(255,255,255,0.4)',
+        color: 'rgba(0, 0, 0, 0.4)',
     },
 
     savedBadgeSmall: {
@@ -1881,13 +2407,20 @@ const styles = StyleSheet.create({
 
     cardLeft: {
         flex: 1,
+        minWidth: 0,
+        marginRight: 12,
+    },
+
+    timerTitleWrap: {
+        flex: 1,
+        minWidth: 0,
+        marginRight: 8,
     },
 
     timerTitle: {
         fontSize: 14,
         fontFamily: 'PlusJakartaSans_700Bold',
         color: '#fff',
-        marginRight: 8,
     },
 
     timerTitleCompleted: {
@@ -1915,6 +2448,7 @@ const styles = StyleSheet.create({
         flexDirection: 'row',
         alignItems: 'center',
         marginBottom: 4,
+        minWidth: 0,
     },
 
     categoryBadge: {
@@ -1925,6 +2459,7 @@ const styles = StyleSheet.create({
         borderRadius: 6,
         borderWidth: 1,
         gap: 4,
+        flexShrink: 0,
     },
 
     categoryBadgeText: {
@@ -1940,6 +2475,43 @@ const styles = StyleSheet.create({
         marginLeft: 4,
         fontVariant: ['tabular-nums'],
         letterSpacing: 0.5,
+    },
+
+    cardPlayButtonBezel: {
+        width: 48,
+        height: 48,
+        borderRadius: 24,
+        padding: 3,
+        backgroundColor: 'rgba(255,255,255,0.03)',
+        alignItems: 'center',
+        justifyContent: 'center',
+    },
+
+    cardPlayButtonTrack: {
+        width: 42,
+        height: 42,
+        borderRadius: 21,
+        backgroundColor: 'rgba(0,0,0,0.12)',
+        alignItems: 'center',
+        justifyContent: 'center',
+        overflow: 'hidden',
+        position: 'relative',
+    },
+
+    cardPlayButtonInteriorShadow: {
+        ...StyleSheet.absoluteFill,
+        borderBottomWidth: 2,
+        borderRightWidth: 1,
+        borderColor: 'rgba(0,0,0,0.25)',
+        borderRadius: 21,
+    },
+
+    cardPlayButtonTopRim: {
+        ...StyleSheet.absoluteFill,
+        borderTopWidth: 1,
+        borderLeftWidth: 0.5,
+        borderColor: 'rgba(255,255,255,0.1)',
+        borderRadius: 21,
     },
 
     playButton: {
@@ -1959,8 +2531,8 @@ const styles = StyleSheet.create({
     },
 
     completedCheckIcon: {
-        width: 42,
-        height: 42,
+        width: 48,
+        height: 48,
         alignItems: 'center',
         justifyContent: 'center',
     },
@@ -2130,6 +2702,35 @@ const styles = StyleSheet.create({
         color: 'rgba(255,255,255,0.7)',
         marginBottom: 6,
     },
+    completionCountText: {
+        fontSize: 10,
+        fontWeight: 'bold',
+        color: 'rgba(255,255,255,0.7)',
+        marginLeft: 4,
+    },
+    // Goal Header Styles for Unified Row 2
+    goalHeaderMetricCard: {
+        backgroundColor: 'rgba(255,255,255,0.08)',
+        borderRadius: 12,
+        paddingHorizontal: 12,
+        paddingVertical: 6,
+        flexDirection: 'row',
+        alignItems: 'center',
+        borderWidth: 1,
+        borderColor: 'rgba(255,255,255,0.1)',
+        marginRight: 8,
+    },
+    goalHeaderMetricLabel: {
+        color: 'rgba(255,255,255,0.4)',
+        fontSize: 10,
+        fontWeight: '800',
+        marginRight: 6,
+    },
+    goalHeaderMetricValue: {
+        color: '#fff',
+        fontSize: 12,
+        fontWeight: '700',
+    },
 
     timeRemainingValueRow: {
         flexDirection: 'row',
@@ -2166,6 +2767,15 @@ const styles = StyleSheet.create({
         borderTopWidth: 1,
         borderColor: 'rgba(255,255,255,0.06)',
         marginTop: 8,
+    },
+    footerLeftIcons: {
+        flexDirection: 'row',
+        alignItems: 'center',
+    },
+    notesTakeoverOverlay: {
+        ...StyleSheet.absoluteFill,
+        zIndex: 999,
+        elevation: 999,
     },
 
     settingsIconBtn: {
@@ -2268,8 +2878,8 @@ const styles = StyleSheet.create({
 
     cardRow: {
         flexDirection: 'row',
-        gap: 8,
-        marginBottom: 8,
+        gap: 4,
+        marginBottom: 4,
     },
 
     cardPlaceholder: {
@@ -2279,19 +2889,30 @@ const styles = StyleSheet.create({
     timerCardLandscape: {
         flex: 1,
         marginBottom: 0,
-        borderRadius: 16,
-        paddingVertical: 8,
-        paddingHorizontal: 8,
+        borderRadius: 24,
+        padding: 3,
         minHeight: 80,
+    },
+
+    cardContentLandscape: {
+        paddingVertical: 4,
+    },
+
+    timerTimeLandscape: {
+        fontSize: 18,
+    },
+
+    timerTotalLandscape: {
+        fontSize: 11,
     },
 
     addButtonLandscape: {
         position: 'absolute',
         right: 16,
         bottom: 16,
-        width: 56,
-        height: 56,
-        borderRadius: 28,
+        width: 60,
+        height: 60,
+        borderRadius: 30,
         backgroundColor: '#FFFFFF',
         alignItems: 'center',
         justifyContent: 'center',
@@ -2403,6 +3024,23 @@ const styles = StyleSheet.create({
     miniChipTextActive: {
         color: '#fff',
         fontWeight: '800',
+    },
+
+
+    pinIconContainer: {
+        position: 'absolute',
+        zIndex: 21,
+    },
+
+    pinIconContainerPortrait: {
+        top: -10,
+        right: -5,
+    },
+
+    pinIconContainerLandscape: {
+        top: -3,
+        right: -3,
+        transform: [{ rotate: '4deg' }],
     },
 
     // ========== MODAL STYLES ==========
@@ -2540,6 +3178,20 @@ const styles = StyleSheet.create({
     },
 
     // UNIFIED COMPACT COMPLETION POPUP STYLES
+    completedPopupCard: {
+        width: '88%',
+        maxWidth: 380,
+        borderRadius: 28,
+        padding: 22,
+        backgroundColor: '#000000',
+        borderWidth: 1,
+        borderColor: 'rgba(255, 255, 255, 0.2)',
+    },
+    completedPopupCardLandscape: {
+        width: '82%',
+        maxWidth: 680,
+        padding: 20,
+    },
     completedPopupCombinedLandscape: {
         width: '75%',
         maxWidth: 520,
@@ -2744,15 +3396,15 @@ const styles = StyleSheet.create({
     },
     dayCell: {
         width: '14.28%',
-        height: 32,
+        minHeight: 34,
         alignItems: 'center',
         justifyContent: 'center',
         marginBottom: 2,
     },
     dayCircle: {
-        width: 24,
-        height: 24,
-        borderRadius: 12,
+        width: 20,
+        height: 20,
+        borderRadius: 10,
         alignItems: 'center',
         justifyContent: 'center',
     },
@@ -2793,6 +3445,28 @@ const styles = StyleSheet.create({
         color: '#FF5050',
         fontWeight: '800',
     },
+    dayTaskCountBar: {
+        width: 20,
+        height: 10,
+        borderRadius: 5,
+        alignItems: 'center',
+        justifyContent: 'center',
+        marginTop: 2,
+    },
+    dayTaskCountBarPortrait: {
+        width: 22,
+        height: 10,
+    },
+    dayTaskCount: {
+        fontSize: 8,
+        fontWeight: '800',
+        color: 'rgba(255,255,255,0.7)',
+    },
+    dayTaskCountZero: {
+        fontSize: 8,
+        fontWeight: '600',
+        color: 'rgba(255,255,255,0.22)',
+    },
     datePortraitRow: {
         flex: 1,
         flexDirection: 'row',
@@ -2814,9 +3488,9 @@ const styles = StyleSheet.create({
         paddingBottom: 0,
     },
     dayCirclePortrait: {
-        width: 26,
-        height: 26,
-        borderRadius: 13,
+        width: 22,
+        height: 22,
+        borderRadius: 11,
     },
     dayTextPortrait: {
         fontSize: 11,
@@ -2920,11 +3594,119 @@ const styles = StyleSheet.create({
     todayNavTextActive: {
         color: '#4CAF50',
     },
+    todayLabelBlock: {
+        marginLeft: 3,
+        alignItems: 'flex-start',
+    },
+    todayRangeLabel: {
+        fontSize: 8,
+        fontWeight: '600',
+        color: 'rgba(255,255,255,0.5)',
+        letterSpacing: 0.3,
+        marginTop: 1,
+    },
+    todayRangeLabelActive: {
+        color: 'rgba(76,175,80,0.85)',
+    },
     readOnlyIcon: {
         position: 'absolute',
         right: 50,
         top: '50%',
         marginTop: -10,
         opacity: 0.6,
+    },
+    viewToggleContainer: {
+        flex: 1,
+        flexDirection: 'row',
+        backgroundColor: 'rgba(15, 15, 15, 0.5)',
+        borderRadius: 12,
+        padding: 2,
+        borderWidth: 1,
+        borderColor: 'rgba(255, 255, 255, 0.1)',
+    },
+    viewToggleContainerInteracting: {
+        borderColor: 'rgba(255, 255, 255, 0.2)',
+        backgroundColor: 'rgba(20, 20, 20, 0.8)',
+    },
+    viewToggleContainerPortrait: {
+        minWidth: 0,
+    },
+    viewToggleContainerGoal: {
+        borderRadius: 12,
+        borderColor: 'rgba(255, 255, 255, 0.1)',
+        backgroundColor: 'rgba(15, 15, 15, 0.5)',
+    },
+    viewToggleBtn: {
+        flexShrink: 0,
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'center',
+        gap: 4,
+        paddingVertical: 8,
+        paddingHorizontal: 8,
+        borderRadius: 10,
+        backgroundColor: 'transparent',
+    },
+    viewToggleBtnCompact: {
+        flex: 1,
+        flexShrink: 1,
+    },
+    viewToggleScroll: {
+        flex: 1,
+    },
+    viewToggleScrollContent: {
+        alignItems: 'center',
+    },
+    viewToggleBtnInner: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'center',
+        gap: 4,
+    },
+    viewToggleBtnGoal: {
+        gap: 4,
+        paddingVertical: 7,
+        paddingHorizontal: 8,
+        borderRadius: 10,
+    },
+    viewToggleBtnActive: {
+        backgroundColor: '#fff',
+    },
+    viewToggleText: {
+        fontSize: 9,
+        fontWeight: '800',
+        color: 'rgba(255, 255, 255, 0.4)',
+        letterSpacing: 0.8,
+    },
+    viewToggleTextGoal: {
+        fontSize: 9,
+        letterSpacing: 0.8,
+    },
+    viewToggleTextActive: {
+        color: '#000',
+        fontWeight: '900',
+    },
+    toggleWithCountRow: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        marginBottom: 12,
+        gap: 8,
+    },
+    toggleWithCountRowGoal: {
+        marginBottom: 10,
+        gap: 6,
+    },
+    completionCountBadge: {
+        backgroundColor: 'rgba(76, 175, 80, 0.15)',
+        paddingHorizontal: 10,
+        paddingVertical: 6,
+        borderRadius: 10,
+        borderWidth: 1,
+        borderColor: 'rgba(76, 175, 80, 0.25)',
+    },
+    completionCountBadgeCompactPortrait: {
+        paddingHorizontal: 8,
+        paddingVertical: 5,
     },
 });

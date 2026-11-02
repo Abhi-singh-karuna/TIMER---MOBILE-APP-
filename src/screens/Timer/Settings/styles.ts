@@ -1,0 +1,2072 @@
+import { StyleSheet, Platform } from 'react-native';
+
+export const styles = StyleSheet.create({
+    container: {
+        flex: 1,
+    },
+
+    safeArea: {
+        flex: 1,
+    },
+
+    header: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        paddingHorizontal: 20,
+        paddingTop: Platform.OS === 'ios' ? 44 : 20,
+        paddingBottom: 16,
+    },
+    headerGlass: {
+        backgroundColor: 'transparent',
+    },
+
+    headerLandscape: {
+        paddingTop: 8,
+        paddingBottom: 8,
+    },
+
+    backButton: {
+        width: 44,
+        height: 44,
+        borderRadius: 22,
+        backgroundColor: 'rgba(255,255,255,0.03)',
+        alignItems: 'center',
+        justifyContent: 'center',
+    },
+
+    headerTitle: {
+        fontSize: 16,
+        fontWeight: '900',
+        letterSpacing: 4,
+        color: '#FFFFFF',
+        textTransform: 'uppercase',
+    },
+
+    headerSpacer: {
+        width: 44,
+    },
+    portraitHeaderTitle: {
+        fontSize: 12,
+        fontWeight: '900',
+        color: '#FFFFFF',
+        letterSpacing: 2.2,
+        textTransform: 'uppercase',
+    },
+
+    content: {
+        flex: 1,
+    },
+
+    scrollContent: {
+        paddingHorizontal: 16,
+        paddingTop: 16,
+        paddingBottom: 100,
+        gap: 8,
+    },
+
+    // ========== Timer-Card-Style Bezel/Track/Rim System ==========
+    settingsCardBezel: {
+        marginBottom: 20,
+        borderRadius: 16,
+        backgroundColor: 'rgba(255,255,255,0.04)',
+        borderWidth: 1,
+        borderColor: 'rgba(255,255,255,0.08)',
+        position: 'relative' as const,
+    },
+
+    settingsCardTrack: {
+        borderRadius: 14,
+        padding: 16,
+        backgroundColor: 'transparent',
+        position: 'relative' as const,
+    },
+
+    // Kept as no-op so overlay Views don't crash
+    settingsCardInteriorShadow: {},
+    settingsCardTopRim: {},
+    settingsCardOuterGlow: {},
+
+    settingsCardBezelSmall: {
+        borderRadius: 14,
+        backgroundColor: 'rgba(255,255,255,0.04)',
+        borderWidth: 1,
+        borderColor: 'rgba(255,255,255,0.08)',
+        overflow: 'hidden' as const,
+        position: 'relative' as const,
+        marginBottom: 12,
+    },
+
+    settingsCardTrackSmall: {
+        borderRadius: 12,
+        padding: 10,
+        backgroundColor: 'transparent',
+        position: 'relative' as const,
+    },
+    settingsCardTrackUnified: {
+        borderRadius: 12,
+        backgroundColor: 'transparent',
+        position: 'relative' as const,
+        overflow: 'visible',
+    },
+    settingsCardTrackUnifiedLarge: {
+        borderRadius: 14,
+        backgroundColor: 'transparent',
+        padding: 20,
+        position: 'relative' as const,
+        overflow: 'visible',
+    },
+    // No-op overlays
+    settingsCardInteriorShadowSmall: {},
+    settingsCardTopRimSmall: {},
+    settingsCardOuterGlowSmall: {},
+
+    settingsCardBezelExtraSmall: {
+        borderRadius: 12,
+        padding: 4,
+        backgroundColor: 'rgba(255,255,255,0.04)',
+        borderWidth: 1,
+        borderColor: 'rgba(255,255,255,0.08)',
+        position: 'relative' as const,
+        marginBottom: 10,
+    },
+
+    settingsCardTrackExtraSmall: {
+        borderRadius: 10,
+        padding: 4,
+        paddingHorizontal: 6,
+        backgroundColor: 'transparent',
+        overflow: 'hidden' as const,
+        position: 'relative' as const,
+        flexDirection: 'row',
+        alignItems: 'center',
+    },
+
+    // No-op overlays
+    settingsCardInteriorShadowExtraSmall: {},
+    settingsCardTopRimExtraSmall: {},
+    settingsCardOuterGlowExtraSmall: {},
+
+    // Legacy section kept for sub-components that use it directly
+    section: {
+        marginBottom: 20,
+        padding: 16,
+    },
+
+    sectionTitle: {
+        fontSize: 12,
+        fontWeight: '800',
+        letterSpacing: 2.5,
+        color: 'rgba(255,255,255,0.45)',
+        marginBottom: 14,
+        textTransform: 'uppercase',
+    },
+
+    sectionTitleLandscape: {
+        fontSize: 11,
+        fontWeight: '700',
+        letterSpacing: 2,
+        color: 'rgba(255,255,255,0.5)',
+        marginBottom: 10,
+    },
+
+    sectionDescription: {
+        fontSize: 13,
+        color: 'rgba(255,255,255,0.5)',
+        lineHeight: 18,
+        marginBottom: 16,
+    },
+
+    landscapeContainer: {
+        flex: 1,
+        flexDirection: 'row',
+        paddingVertical: 12,
+        gap: 20,
+    },
+
+    leftSidebarCard: {
+        paddingVertical: 12,
+        paddingHorizontal: 10,
+        justifyContent: 'flex-start',
+        position: 'relative' as const,
+        zIndex: 10,
+    },
+
+    sidebarSectionTitle: {
+        fontSize: 9,
+        fontWeight: '900',
+        color: 'rgba(255,255,255,0.25)',
+        letterSpacing: 2,
+        marginBottom: 8,
+        paddingLeft: 4,
+        textTransform: 'uppercase',
+    },
+
+    sidebarPreviewWrapper: {
+        alignItems: 'center',
+        justifyContent: 'center',
+        width: '100%',
+        minHeight: 140,
+        zIndex: 50,
+        paddingVertical: 10,
+    },
+    sidebarPreviewWrapperMinimized: {
+        minHeight: 60,
+        paddingVertical: 4,
+    },
+
+    sidebarNavSection: {
+        flex: 1,
+        marginTop: 10,
+        marginBottom: 50,
+    },
+
+    sidebarButtonsScroll: {
+        paddingBottom: 20,
+    },
+
+    sidebarButtonsList: {
+        gap: 4,
+    },
+
+    sidebarIconLabelContainer: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 12,
+    },
+
+    rightContentCard: {
+        flex: 1,
+        backgroundColor: '#000000',
+        borderRadius: 16,
+        borderWidth: 1,
+        borderColor: 'rgba(255,255,255,0.08)',
+        padding: 1,
+        position: 'relative' as const,
+    },
+
+    sectionDivider: {
+        height: 1,
+        backgroundColor: 'rgba(255,255,255,0.06)',
+        marginVertical: 12,
+        width: '100%',
+        borderTopWidth: 0.5,
+        borderTopColor: 'rgba(0,0,0,0.3)',
+        borderBottomWidth: 0.5,
+        borderBottomColor: 'rgba(255,255,255,0.04)',
+    },
+
+    sidebarButtonRow: {
+        width: '100%',
+        flexDirection: 'row',
+        justifyContent: 'space-between',
+        alignItems: 'center',
+        paddingVertical: 9,
+        paddingHorizontal: 12,
+        borderRadius: 14,
+        backgroundColor: 'transparent',
+        borderWidth: 1,
+        borderColor: 'transparent',
+    },
+
+    sidebarButtonRowActive: {
+        backgroundColor: 'rgba(255, 255, 255, 0.08)',
+        borderColor: 'rgba(255,255,255,0.10)',
+    },
+
+    sidebarButtonText: {
+        fontSize: 10,
+        fontWeight: '700',
+        textTransform: 'uppercase',
+        letterSpacing: 0.5,
+    },
+
+    sidebarButtonTextActive: {
+        color: '#FFFFFF',
+    },
+
+    sidebarButtonTextInactive: {
+        color: 'rgba(255,255,255,0.35)',
+    },
+
+    activeIndicatorSmall: {
+        width: 5,
+        height: 5,
+        borderRadius: 2.5,
+        backgroundColor: '#FFFFFF',
+    },
+
+    smallBackButton: {
+        position: 'absolute',
+        bottom: 12,
+        left: 16,
+        width: 40,
+        height: 40,
+        borderRadius: 20,
+        backgroundColor: 'rgba(255,255,255,0.08)',
+        alignItems: 'center',
+        justifyContent: 'center',
+    },
+
+    permanentPreviewHeader: {
+        padding: 16,
+        paddingBottom: 0,
+        backgroundColor: 'rgba(0,0,0,0.2)',
+        borderBottomWidth: 1,
+        borderBottomColor: 'rgba(255,255,255,0.05)',
+    },
+
+    rightContentScroll: {
+        flex: 1,
+    },
+
+    rightContentScrollPadding: {
+        paddingHorizontal: 20,
+        paddingVertical: 16,
+    },
+
+    // ========== Phone Preview Styles ==========
+    phoneFrameContainer: {
+        marginBottom: 20,
+        zIndex: 100,
+        alignItems: 'center',
+        justifyContent: 'center',
+    },
+
+    phoneFrameContainerLandscape: {
+        marginBottom: 0,
+    },
+
+    phoneFrame: {
+        backgroundColor: '#111',
+        borderRadius: 24,
+        padding: 4,
+        borderWidth: 1,
+        borderColor: 'rgba(255,255,255,0.1)',
+        alignSelf: 'center',
+        position: 'relative' as const,
+    },
+
+    phoneInternalFrame: {
+        backgroundColor: '#000',
+        borderRadius: 18,
+        overflow: 'hidden',
+        position: 'relative',
+    },
+
+    previewScroll: {
+        flexGrow: 0,
+    },
+
+    previewCard: {
+        overflow: 'hidden',
+    },
+
+    landscapePreview: {
+        height: 160,
+        flexDirection: 'row',
+        position: 'relative',
+        backgroundColor: '#000',
+        borderRadius: 10,
+        overflow: 'hidden',
+    },
+    landscapePreviewMinimized: {
+        height: 70,
+    },
+    previewTitleInside: {
+        position: 'absolute',
+        top: 6,
+        left: 0,
+        right: 0,
+        textAlign: 'center',
+        fontSize: 8,
+        fontWeight: '900',
+        color: 'rgba(255,255,255,0.25)',
+        letterSpacing: 2,
+        zIndex: 30,
+        textTransform: 'uppercase',
+    },
+    minimizeToggleButton: {
+        position: 'absolute',
+        top: -6,
+        right: -6,
+        width: 24,
+        height: 24,
+        borderRadius: 12,
+        backgroundColor: '#222',
+        borderWidth: 1,
+        borderColor: 'rgba(255,255,255,0.15)',
+        justifyContent: 'center',
+        alignItems: 'center',
+        zIndex: 110,
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 2 },
+        shadowOpacity: 0.3,
+        shadowRadius: 3,
+        elevation: 4,
+    },
+    showPreviewButton: {
+        paddingVertical: 6,
+        paddingHorizontal: 12,
+        borderRadius: 20,
+        backgroundColor: 'rgba(255,255,255,0.08)',
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'center',
+        alignSelf: 'flex-start',
+        marginLeft: 4,
+        marginBottom: 16,
+        borderWidth: 1,
+        borderColor: 'rgba(255,255,255,0.12)',
+    },
+    showPreviewText: {
+        fontSize: 9,
+        fontWeight: '900',
+        color: 'rgba(255,255,255,0.5)',
+        letterSpacing: 2,
+        textTransform: 'uppercase',
+    },
+
+    previewGlow: {
+        position: 'absolute',
+        top: -50,
+        left: -50,
+        width: 150,
+        height: 150,
+        borderRadius: 75,
+        opacity: 0.15,
+        shadowRadius: 100,
+        shadowOpacity: 1,
+        elevation: 10,
+    },
+
+    previewFiller: {
+        position: 'absolute',
+        left: 0,
+        top: 0,
+        bottom: 0,
+        width: '35%',
+    },
+
+    previewLeftSection: {
+        flexDirection: 'row',
+        alignItems: 'flex-end',
+        paddingLeft: 16,
+        paddingBottom: 16,
+        zIndex: 10,
+    },
+
+    previewSliderTrack: {
+        width: 32,
+        height: 120,
+        backgroundColor: 'rgba(255,255,255,0.12)',
+        borderRadius: 16,
+        alignItems: 'center',
+        paddingTop: 4,
+        marginRight: 12,
+    },
+
+    previewSliderHandle: {
+        width: 24,
+        height: 24,
+        borderRadius: 12,
+        alignItems: 'center',
+        justifyContent: 'center',
+    },
+
+    previewSliderText: {
+        fontSize: 7,
+        fontWeight: '800',
+        marginTop: 6,
+        letterSpacing: 0.8,
+    },
+
+    previewPlayButton: {
+        width: 38,
+        height: 38,
+        borderRadius: 19,
+        alignItems: 'center',
+        justifyContent: 'center',
+        marginRight: 10,
+    },
+
+    previewCancelButton: {
+        width: 30,
+        height: 30,
+        borderRadius: 15,
+        backgroundColor: 'rgba(255,255,255,0.15)',
+        alignItems: 'center',
+        justifyContent: 'center',
+    },
+
+    previewTimerSection: {
+        flex: 1,
+        justifyContent: 'center',
+        alignItems: 'center',
+        paddingRight: 16,
+        paddingTop: 10,
+    },
+
+    previewLabelContainer: {
+        position: 'absolute',
+        top: 24,
+        right: 16,
+        zIndex: 20,
+    },
+
+    labelPill: {
+        paddingHorizontal: 10,
+        paddingVertical: 4,
+        borderRadius: 10,
+        opacity: 0.9,
+    },
+
+    previewTimerLabelAlt: {
+        fontSize: 9,
+        fontWeight: '900',
+        color: '#000',
+        letterSpacing: 1.2,
+    },
+
+    previewTimerRow: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        marginTop: 15,
+    },
+
+    previewTimerText: {
+        fontSize: 38,
+        fontWeight: '800',
+        letterSpacing: -1.8,
+        fontVariant: ['tabular-nums'],
+    },
+
+    previewTimerTextLandscape: {
+        fontSize: 34,
+    },
+
+    pagination: {
+        flexDirection: 'row',
+        justifyContent: 'center',
+        alignItems: 'center',
+        paddingTop: 16,
+    },
+
+    dot: {
+        width: 6,
+        height: 6,
+        borderRadius: 3,
+        backgroundColor: 'rgba(255,255,255,0.25)',
+        marginHorizontal: 5,
+    },
+
+    // ========== Color Picker Card Styles (Now simplified shells) ==========
+    colorPickerCard: {
+        marginBottom: 12,
+    },
+
+    colorPickerCardLandscape: {
+        marginBottom: 8,
+    },
+
+    colorPickerHeader: {
+        flexDirection: 'row',
+        justifyContent: 'space-between',
+        alignItems: 'center',
+        marginBottom: 16,
+        paddingHorizontal: 0,
+    },
+
+    colorPickerTitleRow: {
+        flexDirection: 'row',
+        alignItems: 'center',
+    },
+
+    iconWell: {
+        width: 30,
+        height: 30,
+        borderRadius: 15,
+        backgroundColor: 'rgba(255,255,255,0.06)',
+        justifyContent: 'center',
+        alignItems: 'center',
+        marginRight: 10,
+    },
+
+    colorPickerTitle: {
+        fontSize: 14,
+        fontWeight: '600',
+        color: '#FFFFFF',
+        opacity: 0.8,
+        letterSpacing: 0.3,
+    },
+
+    colorPickerTitleLandscape: {
+        fontSize: 14,
+    },
+
+    currentColorBadge: {
+        width: 26,
+        height: 26,
+        borderRadius: 13,
+        borderWidth: 1.5,
+        borderColor: 'rgba(255,255,255,0.2)',
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 2 },
+        shadowOpacity: 0.3,
+        shadowRadius: 3,
+    },
+
+    colorGemInnerGlow: {},
+
+    colorScrollerContent: {
+        paddingRight: 16,
+        paddingVertical: 4,
+    },
+
+    colorChip: {
+        padding: 4,
+        borderRadius: 20,
+        borderWidth: 2,
+        borderColor: 'transparent',
+        marginRight: 12,
+    },
+
+    colorChipSelected: {
+        borderColor: 'rgba(255,255,255,0.5)',
+    },
+
+    colorChipSwatch: {
+        width: 32,
+        height: 32,
+        borderRadius: 16,
+        alignItems: 'center',
+        justifyContent: 'center',
+    },
+
+    // ========== Slider Styles ==========
+    sliderContainer: {
+        marginTop: 14,
+        paddingHorizontal: 2,
+    },
+    hueSlider: {
+        width: '100%',
+        height: 40,
+    },
+    sliderTrackBg: {
+        height: 8,
+        borderRadius: 4,
+        position: 'absolute',
+        left: 12,
+        right: 12,
+        top: '50%',
+        marginTop: -4,
+        backgroundColor: '#050505',
+        borderWidth: 1,
+        borderColor: 'rgba(255,255,255,0.02)',
+        overflow: 'hidden',
+    },
+    sliderTrenchShadow: {
+        position: 'absolute' as const,
+        top: 0,
+        left: 0,
+        right: 0,
+        height: 2,
+        backgroundColor: 'rgba(0,0,0,0.5)',
+    },
+    hueGradient: {
+        height: '100%',
+        width: '100%',
+        opacity: 0.9,
+    },
+
+    // ========== Reset Button Styles ==========
+    headerWithReset: {
+        flexDirection: 'row',
+        justifyContent: 'space-between',
+        alignItems: 'center',
+        marginBottom: 12,
+    },
+    topRightResetBezel: {
+        padding: 2,
+        borderRadius: 12,
+        backgroundColor: 'rgba(255,255,255,0.03)',
+        borderWidth: 1.2,
+        borderColor: 'rgba(255,255,255,0.08)',
+    },
+    topRightResetTrack: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        paddingHorizontal: 10,
+        paddingVertical: 5,
+        backgroundColor: '#111',
+        borderRadius: 10,
+        position: 'relative' as const,
+    },
+    resetTextCompact: {
+        color: '#FFF',
+        fontSize: 12,
+        fontWeight: '600',
+        marginLeft: 6,
+        opacity: 0.9,
+    },
+    soundTrench: {
+        height: 8,
+        borderRadius: 4,
+        position: 'absolute',
+        left: 12,
+        right: 12,
+        top: 12,
+        backgroundColor: '#050505',
+        borderWidth: 1,
+        borderColor: 'rgba(255,255,255,0.02)',
+        overflow: 'hidden',
+    },
+    soundSection: {
+        marginBottom: 8,
+    },
+
+    soundSectionLandscape: {
+        marginBottom: 4,
+    },
+
+    soundOptionsRow: {
+        flexDirection: 'row',
+        gap: 12,
+    },
+
+    soundCard: {
+        flex: 1,
+        position: 'relative',
+    },
+
+    soundCardLandscape: {
+        flex: 1,
+        position: 'relative',
+    },
+
+    soundCardSelected: {
+        borderColor: 'transparent',
+    },
+    soundCardSelectedThemed: {
+        borderWidth: 0,
+        // Glow effect is handled by animation
+    },
+    soundIconContainer: {
+        width: 48,
+        height: 48,
+        borderRadius: 24,
+        backgroundColor: 'transparent',
+        justifyContent: 'center',
+        alignItems: 'center',
+        marginBottom: 8,
+    },
+    soundName: {
+        fontSize: 12,
+        fontWeight: '600',
+        color: 'rgba(255,255,255,0.6)',
+        marginBottom: 8,
+    },
+
+    previewButton: {
+        width: 36,
+        height: 36,
+        borderRadius: 18,
+        alignItems: 'center',
+        justifyContent: 'center',
+        backgroundColor: 'transparent',
+    },
+
+    selectedIndicator: {
+        position: 'absolute',
+        top: 8,
+        right: 8,
+        width: 20,
+        height: 20,
+        borderRadius: 10,
+        alignItems: 'center',
+        justifyContent: 'center',
+    },
+
+    // ========== Repetition Section Styles ==========
+    repetitionSection: {
+        marginTop: 4,
+    },
+    repetitionSectionLandscape: {
+        marginTop: 0,
+    },
+    repetitionHeader: {
+        flexDirection: 'row',
+        justifyContent: 'space-between',
+        alignItems: 'center',
+        marginBottom: 8,
+        paddingHorizontal: 12,
+        paddingTop: 12,
+    },
+    repetitionTitleRow: {
+        flexDirection: 'row',
+        alignItems: 'center',
+    },
+    repetitionTitle: {
+        fontSize: 14,
+        fontWeight: '600',
+        color: 'rgba(255,255,255,0.9)',
+        marginLeft: 10,
+    },
+    repetitionValue: {
+        fontSize: 16,
+        fontWeight: '700',
+        color: '#FFFFFF',
+    },
+    repetitionSliderContainer: {
+        marginTop: 4,
+        paddingHorizontal: 12,
+        paddingBottom: 16,
+    },
+    repetitionPill: {
+        flex: 1,
+        paddingVertical: 12,
+        paddingHorizontal: 16,
+        borderRadius: 12,
+        backgroundColor: 'rgba(255,255,255,0.06)',
+        alignItems: 'center',
+        justifyContent: 'center',
+        borderWidth: 1,
+        borderColor: 'rgba(255,255,255,0.08)',
+    },
+    repetitionPillSelected: {
+        backgroundColor: 'rgba(255, 255, 255, 0.12)',
+        borderColor: 'rgba(255,255,255,0.15)',
+    },
+    repetitionPillText: {
+        fontSize: 14,
+        fontWeight: '600',
+        color: 'rgba(255,255,255,0.6)',
+    },
+    repetitionPillTextSelected: {
+        color: '#FFFFFF',
+    },
+
+    // ========== Reset Button Styles ==========
+    resetButton: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'center',
+        padding: 16,
+        borderRadius: 12,
+        backgroundColor: 'rgba(255, 255, 255, 0.08)',
+        borderWidth: 1,
+        borderColor: 'rgba(255,255,255,0.1)',
+    },
+
+    resetButtonText: {
+        fontSize: 14,
+        fontWeight: '600',
+        color: '#FFFFFF',
+        marginLeft: 8,
+    },
+
+    landscapeResetButton: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'center',
+        padding: 14,
+        borderRadius: 12,
+        backgroundColor: 'rgba(255, 255, 255, 0.06)',
+        borderWidth: 1,
+        borderColor: 'rgba(255,255,255,0.08)',
+        marginTop: 20,
+    },
+
+    // ========== About Styles ==========
+    aboutCard: {
+        padding: 20,
+        borderRadius: 14,
+        backgroundColor: 'rgba(255,255,255,0.05)',
+        borderWidth: 1,
+        borderColor: 'rgba(255,255,255,0.08)',
+    },
+
+    aboutText: {
+        fontSize: 16,
+        fontWeight: '600',
+        color: '#fff',
+        marginBottom: 4,
+    },
+
+    aboutSubtext: {
+        fontSize: 14,
+        color: 'rgba(255,255,255,0.5)',
+    },
+
+    aboutContainerLandscape: {
+        paddingHorizontal: 4,
+    },
+
+    aboutHeaderLandscape: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        marginBottom: 16,
+        paddingTop: 4,
+    },
+
+    aboutIconContainer: {
+        width: 60,
+        height: 60,
+        borderRadius: 20,
+        alignItems: 'center',
+        justifyContent: 'center',
+        marginRight: 16,
+    },
+
+    aboutTextMain: {
+        fontSize: 18,
+        fontWeight: '800',
+        color: '#fff',
+        letterSpacing: 0.5,
+    },
+
+    aboutTextSub: {
+        fontSize: 13,
+        color: 'rgba(255,255,255,0.4)',
+        marginTop: 2,
+    },
+
+    aboutDescription: {
+        fontSize: 13,
+        color: 'rgba(255,255,255,0.5)',
+        lineHeight: 20,
+        marginBottom: 24,
+        paddingHorizontal: 4,
+    },
+
+    aboutDivider: {
+        height: 1,
+        backgroundColor: 'rgba(255,255,255,0.1)',
+        marginBottom: 16,
+    },
+
+    aboutFooterText: {
+        fontSize: 12,
+        color: 'rgba(255,255,255,0.3)',
+        textAlign: 'center',
+    },
+
+    aboutFooterRow: {
+        flexDirection: 'row',
+        justifyContent: 'space-between',
+        alignItems: 'center',
+        marginTop: 8,
+    },
+
+    aboutHeader: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        marginBottom: 20,
+    },
+
+    sidebarContent: {
+        flex: 1,
+    },
+
+    // ========== Category Management Styles ==========
+    categoriesSection: {
+        flex: 1,
+    },
+
+    categoriesHeader: {
+        flexDirection: 'row',
+        justifyContent: 'space-between',
+        alignItems: 'center',
+        marginBottom: 16,
+    },
+
+    addCategoryBtn: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        backgroundColor: 'rgba(255, 255, 255, 0.1)',
+        paddingVertical: 8,
+        paddingHorizontal: 16,
+        borderRadius: 12,
+        borderWidth: 1,
+        borderColor: 'rgba(255,255,255,0.1)',
+    },
+
+    addCategoryBtnText: {
+        fontSize: 11,
+        fontWeight: '800',
+        color: '#FFFFFF',
+        marginLeft: 6,
+        letterSpacing: 0.5,
+    },
+
+    categoriesList: {
+        // Gap removed to rely on item padding for tighter spacing
+    },
+
+    categoryItem: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        paddingVertical: 8,
+        paddingHorizontal: 4,
+    },
+
+    categoryIconCircle: {
+        width: 32,
+        height: 32,
+        borderRadius: 16,
+        backgroundColor: 'rgba(255,255,255,0.06)',
+        alignItems: 'center',
+        justifyContent: 'center',
+        marginRight: 8,
+    },
+
+    categoryInfo: {
+        flex: 1,
+        alignSelf: 'stretch',
+        justifyContent: 'center',
+    },
+
+    categoryNameText: {
+        fontSize: 14,
+        fontWeight: '700',
+        color: '#fff',
+        marginBottom: 4,
+    },
+
+    categoryColorPill: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        paddingHorizontal: 6,
+        paddingVertical: 2,
+        borderRadius: 8,
+        alignSelf: 'flex-start',
+        marginTop: 3,
+    },
+
+    colorDot: {
+        width: 6,
+        height: 6,
+        borderRadius: 3,
+        marginRight: 6,
+    },
+
+    categoryColorText: {
+        fontSize: 10,
+        fontWeight: '600',
+        fontFamily: Platform.OS === 'ios' ? 'Courier' : 'monospace',
+    },
+
+    categoryActions: {
+        flexDirection: 'row',
+        gap: 6,
+        alignItems: 'center',
+    },
+
+    actionBtn: {
+        width: 28,
+        height: 28,
+        borderRadius: 8,
+        backgroundColor: 'rgba(255,255,255,0.06)',
+        alignItems: 'center',
+        justifyContent: 'center',
+        borderWidth: 0.5,
+        borderTopColor: 'rgba(255,255,255,0.15)',
+        borderLeftColor: 'rgba(255,255,255,0.10)',
+        borderRightColor: 'rgba(0,0,0,0.05)',
+        borderBottomColor: 'rgba(0,0,0,0.1)',
+    },
+
+    // Draggable category card (compact – black background, like Quick Message)
+    categoryCardItem: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 8,
+        minHeight: 44,
+        backgroundColor: 'transparent',
+    },
+    categoryCardDragging: {
+        backgroundColor: 'rgba(255,255,255,0.22)',
+        borderRadius: 16,
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 24 },
+        shadowOpacity: 0.9,
+        shadowRadius: 36,
+        elevation: 35,
+        zIndex: 1000,
+    },
+    categoryBezelDragging: {
+        borderColor: 'rgba(255,255,255,0.5)',
+        backgroundColor: 'rgba(255,255,255,0.12)',
+    },
+    categoryCardDragHandle: {
+        width: 32,
+        height: 32,
+        alignItems: 'center',
+        justifyContent: 'center',
+        opacity: 0.5,
+    },
+    categoryOrderCircle: {
+        width: 24,
+        height: 24,
+        borderRadius: 12,
+        backgroundColor: 'rgba(255,255,255,0.06)',
+        alignItems: 'center',
+        justifyContent: 'center',
+    },
+    categoryOrderText: {
+        fontSize: 10,
+        fontWeight: '800',
+        color: 'rgba(255,255,255,0.5)',
+    },
+    categoryOrderTextDragging: {
+        color: '#FFFFFF',
+    },
+    categoryCardName: {
+        fontSize: 13,
+        color: '#fff',
+        fontWeight: '700',
+        minWidth: 0,
+        textAlignVertical: 'center',
+    },
+    categoryCardNameDragging: {
+        color: '#FFFFFF',
+    },
+    categoryCardDeleteBtn: {
+        width: 28,
+        height: 28,
+        borderRadius: 8,
+        backgroundColor: 'rgba(255,59,48,0.1)',
+        alignItems: 'center',
+        justifyContent: 'center',
+        borderWidth: 0.5,
+        borderColor: 'rgba(255,59,48,0.2)',
+    },
+
+    categoryForm: {
+        paddingVertical: 8,
+    },
+
+    categoryInputContainer: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        marginBottom: 20,
+    },
+
+    inputLabel: {
+        fontSize: 10,
+        fontWeight: '800',
+        color: 'rgba(255,255,255,0.3)',
+        letterSpacing: 1,
+        marginBottom: 6,
+    },
+
+    categoryInput: {
+        backgroundColor: 'rgba(255,255,255,0.04)',
+        borderRadius: 12,
+        padding: 12,
+        borderWidth: 1,
+        borderColor: 'rgba(255,255,255,0.08)',
+        color: '#fff',
+        fontSize: 14,
+        fontWeight: '600',
+    },
+
+    iconsGrid: {
+        flexDirection: 'row',
+        flexWrap: 'wrap',
+        gap: 5,
+        marginBottom: 16,
+    },
+
+    iconPickerItem: {
+        width: 28,
+        height: 28,
+        borderRadius: 8,
+        alignItems: 'center',
+        justifyContent: 'center',
+        backgroundColor: 'rgba(255,255,255,0.05)',
+        borderWidth: 1.5,
+        borderColor: 'transparent',
+    },
+
+    catColorChip: {
+        width: 32,
+        height: 32,
+        borderRadius: 16,
+        padding: 3,
+        borderWidth: 2,
+        borderColor: 'transparent',
+        marginRight: 10,
+    },
+
+    catColorInner: {
+        flex: 1,
+        borderRadius: 13,
+    },
+
+    categoryFormActions: {
+        flexDirection: 'row',
+        justifyContent: 'flex-end',
+        gap: 12,
+        marginTop: 24,
+    },
+
+    categoryCancelBtn: {
+        paddingVertical: 10,
+        paddingHorizontal: 16,
+    },
+
+    categoryCancelText: {
+        fontSize: 12,
+        fontWeight: '700',
+        color: 'rgba(255,255,255,0.4)',
+    },
+
+    categorySaveBtn: {
+        backgroundColor: '#FFFFFF',
+        paddingVertical: 10,
+        paddingHorizontal: 20,
+        borderRadius: 12,
+    },
+
+    categorySaveText: {
+        fontSize: 12,
+        fontWeight: '800',
+        color: '#000',
+    },
+
+    // ========== General/Behavior Styles ==========
+    generalTabContainer: {
+        flex: 1,
+    },
+
+    behaviorList: {
+        marginTop: 8,
+    },
+
+    attemptStepper: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        backgroundColor: 'rgba(255,255,255,0.03)',
+        borderRadius: 16,
+        borderWidth: 1,
+        borderColor: 'rgba(255,255,255,0.06)',
+        paddingHorizontal: 6,
+        height: 38,
+        gap: 6,
+    },
+    attemptStepBtn: {
+        width: 34,
+        height: 30,
+        borderRadius: 12,
+        backgroundColor: 'rgba(255,255,255,0.04)',
+        borderWidth: 1,
+        borderColor: 'rgba(255,255,255,0.06)',
+        alignItems: 'center',
+        justifyContent: 'center',
+    },
+    attemptStepBtnDisabled: {
+        backgroundColor: 'rgba(255,255,255,0.02)',
+        borderColor: 'rgba(255,255,255,0.04)',
+    },
+    attemptValuePill: {
+        minWidth: 40,
+        height: 30,
+        borderRadius: 12,
+        backgroundColor: 'rgba(0,255,255,0.08)',
+        borderWidth: 1,
+        borderColor: 'rgba(0,255,255,0.16)',
+        alignItems: 'center',
+        justifyContent: 'center',
+        paddingHorizontal: 10,
+    },
+    attemptValueText: {
+        color: '#00FFFF',
+        fontWeight: '900',
+        fontSize: 12,
+        letterSpacing: 0.4,
+    },
+
+    // Restore page (portrait section + landscape right panel)
+    restoreSectionDescription: {
+        fontSize: 13,
+        color: 'rgba(255,255,255,0.5)',
+        lineHeight: 18,
+        marginBottom: 14,
+    },
+    restoreSectionDescriptionLandscape: {
+        fontSize: 13,
+        color: 'rgba(255,255,255,0.5)',
+        lineHeight: 18,
+        marginBottom: 16,
+        marginTop: 4,
+    },
+    restorePageButton: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'center',
+        paddingVertical: 14,
+        paddingHorizontal: 16,
+        borderRadius: 12,
+        backgroundColor: 'rgba(255, 255, 255, 0.08)',
+        borderWidth: 1,
+        borderColor: 'rgba(255,255,255,0.1)',
+        marginBottom: 10,
+    },
+    restorePageButtonText: {
+        fontSize: 14,
+        fontWeight: '600',
+        color: '#FFFFFF',
+        marginLeft: 10,
+    },
+
+    // Restore landscape: detailed page with card-style action buttons
+    restoreLandscapeContainer: {
+        flex: 1,
+        paddingHorizontal: 4,
+    },
+    restoreLandscapeHeader: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        marginBottom: 12,
+        paddingTop: 4,
+    },
+    restoreLandscapeIconWrap: {
+        width: 48,
+        height: 48,
+        borderRadius: 14,
+        backgroundColor: 'rgba(255,255,255,0.06)',
+        alignItems: 'center',
+        justifyContent: 'center',
+        marginRight: 14,
+    },
+    restoreLandscapeTitle: {
+        fontSize: 17,
+        fontWeight: '800',
+        color: '#fff',
+        letterSpacing: 0.3,
+    },
+    restoreLandscapeSubtitle: {
+        fontSize: 12,
+        color: 'rgba(255,255,255,0.45)',
+        marginTop: 2,
+    },
+    restoreLandscapeIntro: {
+        fontSize: 13,
+        color: 'rgba(255,255,255,0.55)',
+        lineHeight: 20,
+        marginBottom: 20,
+        paddingRight: 8,
+    },
+    restoreLandscapeDivider: {
+        height: 1,
+        backgroundColor: 'rgba(255,255,255,0.08)',
+        marginBottom: 18,
+    },
+    restoreActionCard: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        paddingVertical: 16,
+        paddingHorizontal: 18,
+        borderRadius: 14,
+        backgroundColor: 'rgba(255,255,255,0.05)',
+        borderWidth: 1,
+        borderColor: 'rgba(255,255,255,0.08)',
+        marginBottom: 12,
+    },
+    restoreActionCardIconWrap: {
+        width: 44,
+        height: 44,
+        borderRadius: 12,
+        backgroundColor: 'rgba(255,255,255,0.08)',
+        alignItems: 'center',
+        justifyContent: 'center',
+        marginRight: 14,
+    },
+    restoreActionCardContent: {
+        flex: 1,
+    },
+    restoreActionCardTitle: {
+        fontSize: 15,
+        fontWeight: '700',
+        color: '#fff',
+        marginBottom: 4,
+    },
+    restoreActionCardDesc: {
+        fontSize: 12,
+        color: 'rgba(255,255,255,0.45)',
+        lineHeight: 16,
+    },
+    restoreActionCardChevron: {
+        marginLeft: 8,
+    },
+    restoreLandscapeWarning: {
+        fontSize: 11,
+        color: 'rgba(255,255,255,0.35)',
+        lineHeight: 16,
+        marginTop: 16,
+        paddingHorizontal: 4,
+        fontStyle: 'italic',
+    },
+
+    settingRow: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        paddingVertical: 14,
+    },
+
+    settingInfo: {
+        flex: 1,
+        marginRight: 20,
+    },
+
+    settingLabel: {
+        fontSize: 14,
+        fontWeight: '700',
+        color: '#fff',
+        marginBottom: 2,
+    },
+
+    settingDescription: {
+        fontSize: 11,
+        color: 'rgba(255,255,255,0.4)',
+        lineHeight: 14,
+    },
+
+    customSwitch: {
+        width: 46,
+        height: 26,
+        borderRadius: 13,
+        backgroundColor: 'rgba(255,255,255,0.08)',
+        borderWidth: 1,
+        borderColor: 'rgba(255,255,255,0.1)',
+        justifyContent: 'center',
+        paddingHorizontal: 2,
+    },
+
+    customSwitchActive: {
+        backgroundColor: '#FFFFFF',
+        borderColor: '#FFFFFF',
+    },
+
+    switchKnob: {
+        width: 20,
+        height: 20,
+        borderRadius: 10,
+        backgroundColor: '#FFFFFF',
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 1 },
+        shadowOpacity: 0.3,
+        shadowRadius: 2,
+    },
+
+    switchKnobActive: {
+        backgroundColor: '#000000',
+        transform: [{ translateX: 20 }],
+    },
+
+    // Portrait Profile Header Styles (Centered Premium)
+    portraitProfileCentered: {
+        alignItems: 'center',
+        paddingTop: 40,
+        paddingBottom: 30,
+        width: '100%',
+    },
+    avatarGlowWrapper: {
+        position: 'relative',
+        alignItems: 'center',
+        justifyContent: 'center',
+        marginBottom: 20,
+    },
+    avatarGlow: {
+        position: 'absolute',
+        width: 140,
+        height: 140,
+        borderRadius: 70,
+        backgroundColor: 'rgba(90, 80, 255, 0.3)',
+        opacity: 0.6,
+    },
+    portraitProfileAvatarCentered: {
+        width: 110,
+        height: 110,
+        borderRadius: 55,
+        borderWidth: 3,
+        borderColor: '#1A1A1A',
+    },
+    portraitProfileAvatarPlaceholder: {
+        backgroundColor: 'rgba(255,255,255,0.08)',
+        alignItems: 'center',
+        justifyContent: 'center',
+    },
+    portraitProfileAvatarText: {
+        fontSize: 22,
+        fontWeight: '700',
+        color: '#fff',
+        textTransform: 'uppercase',
+    },
+    editIconOverlay: {
+        position: 'absolute',
+        bottom: 5,
+        right: 5,
+        width: 28,
+        height: 28,
+        borderRadius: 14,
+        backgroundColor: '#4A80F0',
+        alignItems: 'center',
+        justifyContent: 'center',
+        borderWidth: 2,
+        borderColor: '#121212',
+    },
+    portraitProfileNameCentered: {
+        fontSize: 26,
+        fontWeight: '800',
+        color: '#fff',
+        marginBottom: 4,
+        textAlign: 'center',
+    },
+    portraitProfileEmailCentered: {
+        fontSize: 14,
+        color: 'rgba(255,255,255,0.4)',
+        fontWeight: '500',
+        marginBottom: 16,
+        textAlign: 'center',
+    },
+    proMemberPill: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        backgroundColor: 'rgba(90, 80, 255, 0.15)',
+        paddingHorizontal: 18,
+        paddingVertical: 8,
+        borderRadius: 20,
+        borderWidth: 1,
+        borderColor: 'rgba(90, 80, 255, 0.4)',
+        gap: 6,
+    },
+    proMemberText: {
+        fontSize: 11,
+        fontWeight: '900',
+        color: '#7A9AFF',
+        letterSpacing: 2,
+        textTransform: 'uppercase',
+    },
+    
+    // Premium Login Button Styles
+    premiumLoginBtn: {
+        flexDirection: 'row',
+        backgroundColor: '#FFFFFF',
+        height: 44,
+        borderRadius: 22,
+        alignItems: 'center',
+        justifyContent: 'center',
+        paddingHorizontal: 20,
+        gap: 10,
+        marginTop: 10,
+        shadowColor: '#fff',
+        shadowOffset: { width: 0, height: 4 },
+        shadowOpacity: 0.1,
+        shadowRadius: 10,
+        elevation: 5,
+    },
+    premiumLoginBtnText: {
+        color: '#000',
+        fontSize: 14,
+        fontWeight: '800',
+        letterSpacing: 0.5,
+    },
+    googleIconWrapper: {
+        width: 24,
+        height: 24,
+        alignItems: 'center',
+        justifyContent: 'center',
+    },
+
+    // Landscape specific refinements
+    landscapeProfileHeader: {
+        paddingTop: 20,
+        paddingBottom: 20,
+    },
+    landscapeProfileAvatar: {
+        width: 90,
+        height: 90,
+        borderRadius: 45,
+    },
+    landscapeAvatarGlow: {
+        width: 120,
+        height: 120,
+        borderRadius: 60,
+    },
+    landscapeProfileName: {
+        fontSize: 22,
+    },
+
+    // Landscape Sidebar Profile Section
+    landscapeSidebarProfile: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        paddingHorizontal: 16,
+        paddingVertical: 12,
+        marginBottom: 8,
+        backgroundColor: 'rgba(255,255,255,0.03)',
+        borderRadius: 16,
+        marginHorizontal: 16,
+        marginTop: 10,
+        borderWidth: 1,
+        borderColor: 'rgba(255,255,255,0.05)',
+    },
+    landscapeSidebarAvatar: {
+        width: 36,
+        height: 36,
+        borderRadius: 18,
+        marginRight: 12,
+        backgroundColor: 'rgba(255,255,255,0.1)',
+        alignItems: 'center',
+        justifyContent: 'center',
+    },
+    landscapeSidebarAvatarImage: {
+        width: 36,
+        height: 36,
+        borderRadius: 18,
+    },
+    landscapeSidebarAvatarText: {
+        fontSize: 16,
+        fontWeight: '700',
+        color: '#fff',
+    },
+    landscapeSidebarName: {
+        fontSize: 14,
+        fontWeight: '700',
+        color: '#fff',
+        flex: 1,
+    },
+
+    portraitMenuSection: {
+        marginBottom: 24,
+        paddingHorizontal: 16,
+    },
+    portraitSectionHeaderRow: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 6,
+        marginLeft: 2,
+        marginBottom: 12,
+    },
+    portraitSectionLabel: {
+        fontSize: 11,
+        fontWeight: '900',
+        color: 'rgba(255,255,255,0.35)',
+        letterSpacing: 1.5,
+        textTransform: 'uppercase',
+    },
+    portraitMenuCardBezel: {
+        backgroundColor: 'rgba(20,20,24,0.96)',
+        borderRadius: 18,
+        marginBottom: 10,
+        borderWidth: 1,
+        borderColor: 'rgba(255,255,255,0.08)',
+        overflow: 'hidden',
+    },
+    portraitMenuCardTrack: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        paddingVertical: 16,
+        paddingHorizontal: 16,
+    },
+    portraitMenuIconWrap: {
+        width: 42,
+        height: 42,
+        borderRadius: 13,
+        backgroundColor: 'rgba(255,255,255,0.08)',
+        alignItems: 'center',
+        justifyContent: 'center',
+        marginRight: 14,
+        borderWidth: 1,
+        borderColor: 'rgba(255,255,255,0.1)',
+    },
+    portraitMenuTextWrap: {
+        flex: 1,
+    },
+    portraitMenuTitleRow: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 8,
+        marginBottom: 2,
+    },
+    portraitMenuTitle: {
+        fontSize: 14,
+        fontWeight: '700',
+        color: '#FFFFFF',
+    },
+    portraitMenuDesc: {
+        fontSize: 11,
+        color: 'rgba(255,255,255,0.4)',
+        fontWeight: '500',
+        letterSpacing: 0.2,
+    },
+    portraitMenuChevronWrap: {
+        width: 30,
+        height: 30,
+        borderRadius: 15,
+        backgroundColor: 'rgba(255,255,255,0.06)',
+        borderWidth: 1,
+        borderColor: 'rgba(255,255,255,0.08)',
+        alignItems: 'center',
+        justifyContent: 'center',
+        marginLeft: 8,
+    },
+    portraitPillNeutral: {
+        height: 18,
+        paddingHorizontal: 7,
+        borderRadius: 9,
+        alignItems: 'center',
+        justifyContent: 'center',
+        backgroundColor: 'rgba(122,154,255,0.18)',
+        borderWidth: 1,
+        borderColor: 'rgba(122,154,255,0.4)',
+    },
+    portraitPillNeutralText: {
+        fontSize: 8,
+        fontWeight: '900',
+        color: '#9CB5FF',
+        letterSpacing: 0.8,
+    },
+    portraitPillWarning: {
+        height: 18,
+        paddingHorizontal: 7,
+        borderRadius: 9,
+        alignItems: 'center',
+        justifyContent: 'center',
+        backgroundColor: 'rgba(255,176,60,0.18)',
+        borderWidth: 1,
+        borderColor: 'rgba(255,176,60,0.38)',
+    },
+    portraitPillWarningText: {
+        fontSize: 8,
+        fontWeight: '900',
+        color: '#FFC56B',
+        letterSpacing: 0.8,
+    },
+    // Restore / Clear confirm modals (same theme as AddTaskModal)
+    restoreOverlay: {
+        flex: 1,
+        justifyContent: 'center',
+        alignItems: 'center',
+        padding: 20,
+    },
+    restoreDimLayer: {
+        ...StyleSheet.absoluteFill,
+        backgroundColor: 'rgba(0,0,0,0.7)',
+    },
+    restoreModal: {
+        width: '85%',
+        maxWidth: 340,
+        backgroundColor: '#0F0F0F',
+        borderRadius: 24,
+        borderWidth: 1,
+        borderColor: 'rgba(255,255,255,0.08)',
+        padding: 20,
+        alignItems: 'center',
+    },
+    restoreModalLandscape: {
+        maxWidth: 360,
+        padding: 24,
+    },
+    restoreTitle: {
+        fontSize: 14,
+        fontWeight: '900',
+        color: '#fff',
+        textAlign: 'center',
+        marginBottom: 8,
+        letterSpacing: 1.5,
+        textTransform: 'uppercase',
+    },
+    restoreSubtitle: {
+        fontSize: 13,
+        fontWeight: '500',
+        color: 'rgba(255,255,255,0.4)',
+        textAlign: 'center',
+        lineHeight: 18,
+        marginBottom: 24,
+    },
+    restoreLabel: {
+        fontSize: 11,
+        fontWeight: '600',
+        color: 'rgba(255,255,255,0.4)',
+        letterSpacing: 1.2,
+        marginBottom: 8,
+    },
+    restoreInput: {
+        width: '100%',
+        backgroundColor: 'rgba(255,255,255,0.03)',
+        borderRadius: 16,
+        paddingHorizontal: 16,
+        paddingVertical: 14,
+        color: '#fff',
+        fontSize: 15,
+        fontWeight: '600',
+        borderWidth: 1,
+        borderColor: 'rgba(255,255,255,0.06)',
+        marginBottom: 24,
+        textAlign: 'center',
+    },
+    restoreInputError: {
+        borderColor: '#FF5050',
+        backgroundColor: 'rgba(255, 80, 80, 0.05)',
+    },
+    restoreButtonRow: {
+        width: '100%',
+        flexDirection: 'row',
+        gap: 12,
+    },
+    restoreButtonRowLandscape: {
+        flexDirection: 'row',
+    },
+    restorePrimaryBtn: {
+        flex: 1,
+        borderRadius: 14,
+        backgroundColor: '#FFFFFF',
+        height: 48,
+        alignItems: 'center',
+        justifyContent: 'center',
+    },
+    restorePrimaryBtnLandscape: {
+        flex: 1,
+    },
+    restorePrimaryBtnText: {
+        fontSize: 14,
+        fontWeight: '800',
+        color: '#000000',
+    },
+    restoreSecondaryBtn: {
+        flex: 1,
+        borderRadius: 14,
+        height: 48,
+        alignItems: 'center',
+        justifyContent: 'center',
+        borderWidth: 1,
+        borderColor: 'rgba(255,255,255,0.1)',
+        backgroundColor: 'rgba(255,255,255,0.05)',
+    },
+    restoreSecondaryBtnLandscape: {
+    },
+    restoreSecondaryBtnText: {
+        fontSize: 14,
+        fontWeight: '600',
+        color: 'rgba(255,255,255,0.8)',
+    },
+
+    // Premium Account Section Styles
+    premiumAccountContainer: {
+        flex: 1,
+        width: '100%',
+        alignItems: 'center',
+        paddingBottom: 24,
+    },
+    portraitHeroCard: {
+        borderRadius: 26,
+        marginHorizontal: 16,
+        paddingHorizontal: 18,
+        paddingTop: 16,
+        paddingBottom: 12,
+        borderWidth: 1,
+        borderColor: 'rgba(255,255,255,0.12)',
+        marginBottom: 20,
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 16 },
+        shadowOpacity: 0.4,
+        shadowRadius: 28,
+        elevation: 10,
+    },
+    portraitHeroTopRow: {
+        width: '100%',
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        marginBottom: 10,
+    },
+    portraitHeroEyebrow: {
+        fontSize: 10,
+        fontWeight: '900',
+        color: 'rgba(255,255,255,0.5)',
+        letterSpacing: 1.8,
+        textTransform: 'uppercase',
+    },
+    portraitHeroStatus: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        paddingHorizontal: 10,
+        height: 24,
+        borderRadius: 12,
+        backgroundColor: 'rgba(255,255,255,0.08)',
+        borderWidth: 1,
+        borderColor: 'rgba(255,255,255,0.1)',
+    },
+    portraitHeroStatusDot: {
+        width: 6,
+        height: 6,
+        borderRadius: 3,
+        marginRight: 6,
+    },
+    portraitHeroStatusText: {
+        fontSize: 9,
+        fontWeight: '900',
+        color: 'rgba(255,255,255,0.72)',
+        letterSpacing: 1.2,
+        textTransform: 'uppercase',
+    },
+    premiumGlassPanel: {
+        width: '100%',
+        backgroundColor: 'rgba(255, 255, 255, 0.03)',
+        borderRadius: 32,
+        padding: 30,
+        borderWidth: 1,
+        borderColor: 'rgba(255, 255, 255, 0.08)',
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 20 },
+        shadowOpacity: 0.5,
+        shadowRadius: 40,
+        elevation: 15,
+    },
+    premiumGlassPanelLandscape: {
+        padding: 24,
+        borderRadius: 24,
+    },
+    premiumGlowIconContainer: {
+        width: 80,
+        height: 80,
+        borderRadius: 40,
+        backgroundColor: 'rgba(255, 255, 255, 0.02)',
+        alignItems: 'center',
+        justifyContent: 'center',
+        marginBottom: 24,
+        borderWidth: 1,
+        borderColor: 'rgba(255, 255, 255, 0.05)',
+    },
+    premiumTitle: {
+        fontSize: 26,
+        fontWeight: '800',
+        color: '#fff',
+        marginBottom: 6,
+        letterSpacing: -0.5,
+        textAlign: 'center',
+    },
+    premiumSubtitle: {
+        fontSize: 13,
+        color: 'rgba(255, 255, 255, 0.45)',
+        textAlign: 'center',
+        lineHeight: 20,
+        marginBottom: 16,
+        paddingHorizontal: 10,
+    },
+    premiumLoginButton: {
+        flexDirection: 'row',
+        backgroundColor: '#fff',
+        height: 56,
+        borderRadius: 18,
+        alignItems: 'center',
+        justifyContent: 'center',
+        paddingHorizontal: 28,
+        width: '100%',
+        shadowColor: '#fff',
+        shadowOffset: { width: 0, height: 4 },
+        shadowOpacity: 0.2,
+        shadowRadius: 12,
+        elevation: 8,
+    },
+    premiumLoginButtonText: {
+        color: '#000',
+        fontSize: 16,
+        fontWeight: '800',
+        letterSpacing: 0.2,
+    },
+    premiumGoogleIconWrap: {
+        width: 24,
+        height: 24,
+        marginRight: 12,
+        alignItems: 'center',
+        justifyContent: 'center',
+    },
+    
+    // Authenticated Premium Styles
+    premiumProfileHeader: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        width: '100%',
+        marginBottom: 32,
+    },
+    premiumAvatarContainer: {
+        position: 'relative',
+        marginRight: 20,
+    },
+    premiumAvatarGlow: {
+        position: 'absolute',
+        top: -10,
+        left: -10,
+        right: -10,
+        bottom: -10,
+        borderRadius: 40,
+        backgroundColor: 'rgba(80, 120, 255, 0.1)',
+    },
+    premiumAvatar: {
+        width: 90,
+        height: 90,
+        borderRadius: 45,
+        borderWidth: 2,
+        borderColor: 'rgba(90, 80, 255, 0.4)',
+    },
+    premiumUserInfo: {
+        flex: 1,
+    },
+    premiumName: {
+        fontSize: 22,
+        fontWeight: '800',
+        color: '#fff',
+        marginBottom: 4,
+    },
+    premiumEmail: {
+        fontSize: 13,
+        color: 'rgba(255, 255, 255, 0.4)',
+    },
+    premiumStatusCard: {
+        backgroundColor: 'rgba(255, 255, 255, 0.03)',
+        borderRadius: 20,
+        padding: 16,
+        width: '100%',
+        marginBottom: 20,
+        borderWidth: 1,
+        borderColor: 'rgba(255, 255, 255, 0.05)',
+    },
+    premiumStatusRow: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+    },
+    premiumStatusLabel: {
+        fontSize: 12,
+        fontWeight: '700',
+        color: 'rgba(255, 255, 255, 0.5)',
+        textTransform: 'uppercase',
+        letterSpacing: 1,
+    },
+    premiumStatusValue: {
+        fontSize: 13,
+        fontWeight: '800',
+        color: '#fff',
+    },
+    premiumSignOutBtn: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'center',
+        paddingVertical: 14,
+        width: '100%',
+        borderRadius: 16,
+        backgroundColor: 'rgba(255, 80, 80, 0.08)',
+        marginTop: 10,
+    },
+    premiumSignOutText: {
+        fontSize: 14,
+        fontWeight: '700',
+        color: '#FF5050',
+        marginLeft: 8,
+    },
+});

@@ -1,0 +1,347 @@
+<title>Goals Improvement Plan</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+/* Layout: one readable column. Findings first, then the target design with mockups, then a tickable plan
+   in phases, then what each change touches, then the open decisions. Mockups are drawn in the app's own
+   black glass look, so they stay dark in both page themes. */
+:root {
+  color-scheme: light;
+  --bg: #f6f7f9; --surface: #ffffff; --line: #dfe3ea; --text: #14171c; --mute: #5b6472;
+  --accent: #1f6feb; --accent-soft: #e6f0ff;
+  --keep: #1a7f4b; --keep-soft: #e3f4ea;
+  --change: #b25e09; --change-soft: #fdf0dc;
+  --remove: #b42318; --remove-soft: #fde7e4;
+  --body: 'Plus Jakarta Sans', system-ui, sans-serif;
+  --mono: 'IBM Plex Mono', ui-monospace, monospace;
+  /* app mockup palette (fixed) */
+  --app-bg: #050506; --app-card: #101114; --app-line: rgba(255,255,255,.12); --app-text: #f4f4f5; --app-mute: rgba(244,244,245,.55);
+  --g-blue: #4da3ff; --g-green: #4caf50; --g-amber: #ffd740; --g-red: #ff6b6b;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    color-scheme: dark;
+    --bg: #0c0e12; --surface: #151922; --line: #262c38; --text: #eef0f4; --mute: #9aa3b2;
+    --accent: #6aa5ff; --accent-soft: #14233d;
+    --keep: #4cc38a; --keep-soft: #12281d;
+    --change: #f0a54a; --change-soft: #2c200e;
+    --remove: #ff7a6e; --remove-soft: #2f1512;
+  }
+}
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --bg: #0c0e12; --surface: #151922; --line: #262c38; --text: #eef0f4; --mute: #9aa3b2;
+  --accent: #6aa5ff; --accent-soft: #14233d;
+  --keep: #4cc38a; --keep-soft: #12281d;
+  --change: #f0a54a; --change-soft: #2c200e;
+  --remove: #ff7a6e; --remove-soft: #2f1512;
+}
+* { box-sizing: border-box; }
+html, body { background: var(--bg); color: var(--text); margin: 0; }
+body {
+  font-family: var(--body); font-size: 15px; line-height: 1.6;
+  padding-block: 32px 72px;
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+}
+.wrap { max-width: 880px; margin: 0 auto; display: grid; gap: 44px; }
+h1 { font-size: 28px; line-height: 1.2; margin: 0 0 8px; letter-spacing: -.01em; text-wrap: balance; }
+h2 { font-size: 20px; margin: 0 0 6px; }
+h3 { font-size: 16px; margin: 0; }
+p { margin: 0; }
+.lede { color: var(--mute); max-width: 66ch; }
+.sub { color: var(--mute); font-size: 14px; max-width: 68ch; }
+code { font-family: var(--mono); font-size: 12.5px; background: var(--accent-soft); color: var(--accent); padding: 1px 6px; border-radius: 5px; }
+section { display: grid; gap: 16px; }
+.card { background: var(--surface); border: 1px solid var(--line); border-radius: 14px; padding: 18px 20px; }
+
+/* findings */
+.findings { display: grid; gap: 12px; padding: 0; margin: 0; list-style: none; }
+.findings li { display: grid; grid-template-columns: auto 1fr; gap: 12px; align-items: start; }
+.sev { font-size: 11px; font-weight: 800; letter-spacing: .06em; padding: 3px 9px; border-radius: 99px; white-space: nowrap; }
+.sev.high { background: var(--remove-soft); color: var(--remove); }
+.sev.mid { background: var(--change-soft); color: var(--change); }
+.sev.low { background: var(--accent-soft); color: var(--accent); }
+.findings .where { display: block; color: var(--mute); font-size: 13px; margin-top: 2px; }
+
+/* mockups */
+.mocks { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 16px; align-items: start; }
+.mock-wrap { display: grid; gap: 8px; }
+.mock-cap { font-size: 13px; color: var(--mute); }
+.mock-cap b { color: var(--text); }
+.app { background: var(--app-bg); color: var(--app-text); border-radius: 22px; padding: 16px; border: 1px solid var(--line); display: grid; gap: 10px; font-size: 13px; }
+.a-title { font-size: 11px; letter-spacing: .2em; color: var(--app-mute); font-weight: 700; }
+.gcard { background: var(--app-card); border: 1px solid var(--app-line); border-radius: 18px; padding: 14px; display: grid; gap: 10px; }
+.g-top { display: flex; gap: 12px; align-items: center; }
+.ring { --p: 60; --c: var(--g-blue); width: 54px; height: 54px; border-radius: 50%; flex: none; display: grid; place-items: center; font-weight: 800; font-size: 13px;
+  background: conic-gradient(var(--c) calc(var(--p) * 1%), rgba(255,255,255,.1) 0); position: relative; }
+.ring::before { content: ""; position: absolute; inset: 5px; border-radius: 50%; background: var(--app-card); }
+.ring span { position: relative; }
+.g-name { font-weight: 800; font-size: 15px; }
+.g-meta { color: var(--app-mute); font-size: 12px; }
+.pill { font-size: 10.5px; font-weight: 800; letter-spacing: .08em; padding: 3px 9px; border-radius: 99px; margin-left: auto; white-space: nowrap; }
+.pill.ok { background: rgba(76,175,80,.16); color: var(--g-green); }
+.pill.warn { background: rgba(255,215,64,.16); color: var(--g-amber); }
+.pill.bad { background: rgba(255,107,107,.16); color: var(--g-red); }
+.bar { height: 6px; background: rgba(255,255,255,.1); border-radius: 9px; overflow: hidden; }
+.bar i { display: block; height: 100%; border-radius: 9px; }
+.next { display: flex; align-items: center; gap: 8px; padding: 9px 11px; border-radius: 12px; background: rgba(255,255,255,.06); font-weight: 600; }
+.next small { color: var(--app-mute); font-weight: 500; margin-left: auto; }
+.chk { width: 16px; height: 16px; border-radius: 50%; border: 2px solid var(--app-mute); flex: none; }
+.chk.on { background: var(--g-green); border-color: var(--g-green); }
+.row-sm { display: flex; align-items: center; gap: 8px; padding: 7px 0; border-top: 1px solid var(--app-line); }
+.row-sm .t { font-weight: 600; }
+.row-sm small { margin-left: auto; color: var(--app-mute); }
+.heat { display: grid; grid-template-columns: repeat(7, 1fr); gap: 4px; }
+.heat i { aspect-ratio: 1; border-radius: 4px; background: rgba(255,255,255,.08); }
+.heat i.d { background: var(--g-green); } .heat i.m { background: rgba(255,107,107,.7); } .heat i.p { background: rgba(77,163,255,.5); }
+.steps { display: flex; gap: 6px; }
+.steps span { flex: 1; text-align: center; padding: 6px 4px; border-radius: 10px; background: rgba(255,255,255,.07); color: var(--app-mute); font-weight: 700; font-size: 11.5px; }
+.steps span.on { background: #fff; color: #000; }
+.field { padding: 10px 12px; border-radius: 12px; border: 1px solid var(--app-line); color: var(--app-mute); }
+.btn { text-align: center; padding: 11px; border-radius: 14px; background: #fff; color: #000; font-weight: 800; }
+
+/* plan */
+.progress { height: 8px; background: var(--line); border-radius: 99px; overflow: hidden; }
+.progress i { display: block; height: 100%; width: 0; background: var(--keep); transition: width .25s; }
+.progress-text { font-size: 13px; color: var(--mute); }
+.phase { display: grid; gap: 8px; }
+.phase-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 12px; }
+.phase-head .meta { color: var(--mute); font-size: 13px; }
+.todo { display: grid; grid-template-columns: auto 1fr; gap: 12px; padding: 12px 14px; background: var(--surface); border: 1px solid var(--line); border-radius: 12px; cursor: pointer; }
+.todo input { width: 20px; height: 20px; margin-top: 2px; accent-color: var(--keep); cursor: pointer; }
+.todo .t { font-weight: 600; }
+.todo .d { color: var(--mute); font-size: 13.5px; margin-top: 2px; }
+.tags { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+.tag { font-size: 11.5px; font-weight: 600; padding: 2px 9px; border-radius: 99px; background: var(--accent-soft); color: var(--accent); }
+.tag.fn { background: var(--keep-soft); color: var(--keep); }
+.tag.ui { background: var(--change-soft); color: var(--change); }
+.todo:has(input:checked) { opacity: .6; }
+.todo:has(input:checked) .t { text-decoration: line-through; }
+.todo:focus-within { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+/* impact table */
+.tablewrap { overflow-x: auto; }
+table { border-collapse: collapse; width: 100%; font-size: 14px; min-width: 560px; }
+th, td { text-align: left; padding: 10px 12px; border-bottom: 1px solid var(--line); vertical-align: top; }
+th { font-size: 12px; letter-spacing: .08em; color: var(--mute); }
+
+.legend { display: flex; gap: 8px; flex-wrap: wrap; font-size: 13px; color: var(--mute); align-items: center; }
+.decisions ol { margin: 8px 0 0; padding-left: 20px; display: grid; gap: 10px; }
+.chip { display: inline-block; font-size: 12px; font-weight: 700; padding: 1px 8px; border-radius: 99px; background: var(--accent-soft); color: var(--accent); }
+@media (prefers-reduced-motion: reduce) { .progress i { transition: none; } }
+</style>
+
+<div class="wrap">
+  <header>
+    <h1>Goals improvement plan</h1>
+    <p class="lede">Goals exist in the app, but they work like a report: you link tasks and watch a percentage. Nothing tells you what to do next, the target settings you enter are never used, and some numbers are wrong or made up. This plan fixes the numbers first, then makes goals useful, then redesigns the screens. Tick items as you finish them. Ticks are saved in this browser.</p>
+  </header>
+
+  <!-- 1. How it works today -->
+  <section aria-labelledby="s1">
+    <h2 id="s1">How goals work today</h2>
+    <div class="card">
+      <ul class="findings">
+        <li><span class="sev low">WHERE</span><span>Third tab in the top switch (Timer, Task, Goal). Code: <code>GoalManagement/index.tsx</code> (4,369 lines) and <code>AddGoalModal.tsx</code> (2,392 lines). State and save handlers are in <code>App.tsx</code>; data is stored under <code>@goals</code>.</span></li>
+        <li><span class="sev low">MODEL</span><span>A goal has a title, description, card color, dates, a type, an optional parent, linked task ids and target settings (hours per day, days per week, monthly goal).</span></li>
+        <li><span class="sev low">CREATE</span><span>One large modal: title, description, start and end date, card color, pick tasks by category or date range, and target settings.</span></li>
+        <li><span class="sev low">SHOW</span><span>A card per top-level goal with a progress bar, a status pill (Upcoming, Running, Completed, Failed), linked tasks, an activity graph and monthly analytics.</span></li>
+        <li><span class="sev low">PROGRESS</span><span>Calculated on screen from linked tasks: the share of stages marked Done, or the share of completed tasks if there are no stages.</span></li>
+      </ul>
+    </div>
+  </section>
+
+  <!-- 2. Findings -->
+  <section aria-labelledby="s2">
+    <h2 id="s2">Why it feels unused</h2>
+    <p class="sub">Ordered by how much each one hurts. "Where" shows the place in the code I checked.</p>
+    <div class="card">
+      <ul class="findings">
+        <li><span class="sev high">HIGH</span><span><strong>Target settings are collected but never used.</strong> Hours per day, days per week and the monthly goal are saved, then ignored, so a goal cannot say "you are behind this week".<span class="where">AddGoalModal saves <code>targetSettings</code>; GoalManagement never reads it.</span></span></li>
+        <li><span class="sev high">HIGH</span><span><strong>No "what do I do next".</strong> A goal does not show its next task, and tasks do not show which goal they belong to. You have to open the Goal tab to see anything.</span></li>
+        <li><span class="sev high">HIGH</span><span><strong>Recurring tasks are counted wrongly.</strong> Progress and done counts read the base task, but a recurring task keeps status and stages per date. A daily habit can show 0% or 100% by mistake.<span class="where"><code>renderDashboardCard</code> uses <code>task.stages</code> and <code>task.status</code> directly.</span></span></li>
+        <li><span class="sev high">HIGH</span><span><strong>Dates use UTC, not your day.</strong> Eight places use <code>toISOString()</code>, so between midnight and 5:30 AM in India the "today" date is yesterday. They also ignore the logical day start you set in Settings.<span class="where">Status (Failed, Upcoming), the activity graph and the day popup.</span></span></li>
+        <li><span class="sev mid">MEDIUM</span><span><strong>Made-up numbers in the header.</strong> The header stats show a fixed "42.0H" and fall back to "3" goals. They are placeholders.<span class="where"><code>goalHeaderStats</code> in GoalManagement.</span></span></li>
+        <li><span class="sev mid">MEDIUM</span><span><strong>Sub-goals are not real.</strong> A child goal only exists to hold tasks and is never shown as its own card with progress. Task totals only go one level deep.</span></li>
+        <li><span class="sev mid">MEDIUM</span><span><strong>Deleting a goal has no confirmation.</strong> It also deletes every sub-goal. Only unlinking a task asks first.</span></li>
+        <li><span class="sev mid">MEDIUM</span><span><strong>Dead code.</strong> The stored <code>progress</code> value, <code>handleUpdateGoalProgress</code> and the <code>onUpdateProgress</code> prop are never used by the screen. The type <code>category</code> is never used either.</span></li>
+        <li><span class="sev low">LOW</span><span><strong>Confusing words.</strong> "Strategic objective", "operational target", "core target", "strategic timeline". Plain words work better: goal, milestone, task, dates.</span></li>
+        <li><span class="sev low">LOW</span><span><strong>Heavy before useful.</strong> Graphs and analytics come first, and the code is two huge files, so every change is slow and risky.</span></li>
+      </ul>
+    </div>
+  </section>
+
+  <!-- 3. Design -->
+  <section aria-labelledby="s3">
+    <h2 id="s3">The simpler design</h2>
+    <p class="sub">A goal answers three questions at a glance: how far along am I, am I on track, and what should I do next. Everything else is one tap deeper. Same black glass look as the rest of the app.</p>
+    <div class="mocks">
+      <div class="mock-wrap">
+        <div class="app" aria-label="Goal list mockup">
+          <div class="a-title">GOALS</div>
+          <div class="gcard">
+            <div class="g-top"><div class="ring" style="--p:62;--c:var(--g-blue)"><span>62%</span></div><div><div class="g-name">Read 12 books</div><div class="g-meta">Due 31 Dec · 41 days left</div></div><span class="pill ok">ON TRACK</span></div>
+            <div class="bar"><i style="width:62%;background:var(--g-blue)"></i></div>
+            <div class="next"><span class="chk"></span>Read 20 pages<small>today</small></div>
+          </div>
+          <div class="gcard">
+            <div class="g-top"><div class="ring" style="--p:35;--c:var(--g-amber)"><span>35%</span></div><div><div class="g-name">Exercise 4x a week</div><div class="g-meta">This week 2 of 4 sessions</div></div><span class="pill warn">BEHIND</span></div>
+            <div class="bar"><i style="width:50%;background:var(--g-amber)"></i></div>
+            <div class="next"><span class="chk"></span>Evening run<small>today</small></div>
+          </div>
+        </div>
+        <p class="mock-cap"><b>Goal list.</b> Ring, days left, an On track or Behind pill, this week's target, and the next task.</p>
+      </div>
+
+      <div class="mock-wrap">
+        <div class="app" aria-label="Goal detail mockup">
+          <div class="a-title">READ 12 BOOKS</div>
+          <div class="g-top"><div class="ring" style="--p:62;--c:var(--g-blue);width:70px;height:70px"><span>62%</span></div><div><div class="g-name">7 of 12 books</div><div class="g-meta">This week 3h of 4h target</div></div></div>
+          <div class="bar"><i style="width:75%;background:var(--g-blue)"></i></div>
+          <div class="a-title" style="margin-top:4px">MILESTONES</div>
+          <div class="row-sm"><span class="chk on"></span><span class="t">Finish 3 books</span><small>done</small></div>
+          <div class="row-sm"><span class="chk"></span><span class="t">Finish 6 books</span><small>30 Sep</small></div>
+          <div class="row-sm"><span class="chk"></span><span class="t">Finish 12 books</span><small>31 Dec</small></div>
+          <div class="a-title" style="margin-top:4px">LAST 4 WEEKS</div>
+          <div class="heat"><i class="d"></i><i class="d"></i><i class="m"></i><i class="d"></i><i class="d"></i><i></i><i class="d"></i><i class="d"></i><i class="d"></i><i class="d"></i><i class="m"></i><i class="d"></i><i></i><i class="d"></i><i class="d"></i><i class="d"></i><i class="p"></i><i class="p"></i><i></i><i></i><i></i></div>
+        </div>
+        <p class="mock-cap"><b>Goal detail.</b> A full page instead of expanding the card. Progress, weekly target, milestones, linked tasks and a streak calendar.</p>
+      </div>
+
+      <div class="mock-wrap">
+        <div class="app" aria-label="Create goal mockup">
+          <div class="a-title">NEW GOAL</div>
+          <div class="steps"><span class="on">1 What</span><span>2 When</span><span>3 Tasks</span></div>
+          <div class="field">Goal name, for example "Read 12 books"</div>
+          <div class="a-title" style="margin-top:2px">OR START FROM A TEMPLATE</div>
+          <div class="row-sm"><span class="t">Read more</span><small>4h a week</small></div>
+          <div class="row-sm"><span class="t">Exercise</span><small>4 times a week</small></div>
+          <div class="row-sm"><span class="t">Learn a skill</span><small>30 min a day</small></div>
+          <div class="btn">Next</div>
+        </div>
+        <p class="mock-cap"><b>Create in 3 steps.</b> What, When (dates and weekly target), Tasks (pick existing or create new). Replaces the 2,392-line single form.</p>
+      </div>
+    </div>
+
+    <div class="card">
+      <h3>Rules for the design</h3>
+      <ul style="margin:8px 0 0;padding-left:20px;color:var(--mute)">
+        <li><strong style="color:var(--text)">Status words with fixed rules:</strong> Upcoming (starts later), On track (this week's target met or ahead), Behind (below target), Done (all tasks and milestones complete), Missed (past the end date and not done).</li>
+        <li><strong style="color:var(--text)">One color per goal</strong> for its ring and bar. The status pill uses the shared green, amber and red.</li>
+        <li><strong style="color:var(--text)">Landscape:</strong> goal list on the left, detail on the right.</li>
+        <li><strong style="color:var(--text)">Empty state:</strong> three templates and one big "Create your first goal" button, instead of two grey placeholder cards.</li>
+        <li><strong style="color:var(--text)">Graphs and analytics</strong> move under a "More" section in the detail page.</li>
+      </ul>
+    </div>
+  </section>
+
+  <!-- 4. Plan -->
+  <section aria-labelledby="s4">
+    <h2 id="s4">The plan</h2>
+    <div class="legend"><span class="tag fn">FUNCTION</span> how it works <span class="tag ui">UI</span> how it looks <span class="tag">CODE</span> where it changes</div>
+    <p class="sub">Do the phases in order. Each one leaves the app working, so you can stop after any of them. Phase 0 is the most important because the other phases rely on correct numbers.</p>
+    <div class="card" style="display:grid;gap:8px">
+      <div class="progress" aria-hidden="true"><i id="bar"></i></div>
+      <div class="progress-text" id="barText" aria-live="polite">0 of 0 done</div>
+    </div>
+
+    <div class="phase">
+      <div class="phase-head"><h3>Phase 0: Fix the numbers</h3><span class="meta">Small and safe. No visible redesign yet.</span></div>
+      <label class="todo"><input type="checkbox" id="g1"><div><div class="t">One function that calculates goal progress</div><div class="d">Create <code>src/utils/goalUtils.ts</code> with <code>getGoalProgress(goal, goals, tasks)</code>. It collects tasks from the goal and all its sub-goals at any depth, and for recurring tasks reads the per-date instance (<code>expandRecurringTaskForDate</code>) instead of the base task. The card, the graph and the status all call it.</div><div class="tags"><span class="tag fn">FUNCTION</span><span class="tag">goalUtils.ts</span><span class="tag">GoalManagement</span></div></div></label>
+      <label class="todo"><input type="checkbox" id="g2"><div><div class="t">Use your logical day for every goal date</div><div class="d">Replace the 8 uses of <code>toISOString().split('T')[0]</code> with <code>getLogicalDate()</code> from <code>dailyStartTime.ts</code>, and parse stored dates as local dates. Fixes the wrong "today" after midnight.</div><div class="tags"><span class="tag fn">FUNCTION</span><span class="tag">GoalManagement</span><span class="tag">dailyStartTime.ts</span></div></div></label>
+      <label class="todo"><input type="checkbox" id="g3"><div><div class="t">Remove the made-up header numbers</div><div class="d">Replace "42.0H" and the fallback "3" with real values: active goals, due this week, average progress.</div><div class="tags"><span class="tag fn">FUNCTION</span><span class="tag">GoalManagement</span></div></div></label>
+      <label class="todo"><input type="checkbox" id="g4"><div><div class="t">Ask before deleting a goal</div><div class="d">Show "Delete this goal and its N sub-goals?" with Cancel and Delete. Linked tasks are not deleted.</div><div class="tags"><span class="tag fn">FUNCTION</span><span class="tag ui">UI</span><span class="tag">GoalManagement</span></div></div></label>
+      <label class="todo"><input type="checkbox" id="g5"><div><div class="t">Remove dead code, keep old data readable</div><div class="d">Delete <code>handleUpdateGoalProgress</code>, the <code>onUpdateProgress</code> prop and the unused <code>category</code> type. Keep the <code>progress</code> field in the type so saved goals still load.</div><div class="tags"><span class="tag">CODE</span><span class="tag">App.tsx</span><span class="tag">data.ts</span></div></div></label>
+      <label class="todo"><input type="checkbox" id="g6"><div><div class="t">Add the first tests</div><div class="d">Unit tests for <code>getGoalProgress</code> and the status rules: recurring task, nested sub-goals, a goal that ends today, and a task done after midnight.</div><div class="tags"><span class="tag">CODE</span><span class="tag">goalUtils.test.ts</span></div></div></label>
+    </div>
+
+    <div class="phase">
+      <div class="phase-head"><h3>Phase 1: Make goals useful</h3><span class="meta">Adds the missing behavior.</span></div>
+      <label class="todo"><input type="checkbox" id="g7"><div><div class="t">Weekly target that actually tracks</div><div class="d">Use the saved hours per day and days per week to compute a weekly target, then show "this week 3h of 4h" and set On track or Behind. Add an optional <code>weeklyTargetMinutes</code> field for new goals.</div><div class="tags"><span class="tag fn">FUNCTION</span><span class="tag">goalUtils.ts</span><span class="tag">data.ts</span></div></div></label>
+      <label class="todo"><input type="checkbox" id="g8"><div><div class="t">Real milestones (sub-goals)</div><div class="d">Show sub-goals as a checklist with their own date and progress, rolling up into the parent. Allow adding one from the goal detail.</div><div class="tags"><span class="tag fn">FUNCTION</span><span class="tag ui">UI</span><span class="tag">GoalManagement</span></div></div></label>
+      <label class="todo"><input type="checkbox" id="g9"><div><div class="t">Show the next task for each goal</div><div class="d">The first not-done task for today (or the next day it appears). Tapping it opens the task.</div><div class="tags"><span class="tag fn">FUNCTION</span><span class="tag">GoalManagement</span><span class="tag">Task screen</span></div></div></label>
+      <label class="todo"><input type="checkbox" id="g10"><div><div class="t">Link a task to a goal from the task side</div><div class="d">Add a "Goal" field in the task create and edit screens, and a small goal chip on task cards. Today the link is only made from the goal screen.</div><div class="tags"><span class="tag fn">FUNCTION</span><span class="tag ui">UI</span><span class="tag">AddTaskModal</span><span class="tag">Task/index.tsx</span><span class="tag">App.tsx</span></div></div></label>
+      <label class="todo"><input type="checkbox" id="g11"><div><div class="t">Finish moment and reminders</div><div class="d">When a goal reaches 100%, show a short completion card with haptics, reusing the completion design. Optional: a weekly review reminder and a deadline reminder through <code>backgroundTimer.ts</code> notifications.</div><div class="tags"><span class="tag fn">FUNCTION</span><span class="tag ui">UI</span><span class="tag">backgroundTimer.ts</span></div></div></label>
+    </div>
+
+    <div class="phase">
+      <div class="phase-head"><h3>Phase 2: New screens</h3><span class="meta">The visible redesign.</span></div>
+      <label class="todo"><input type="checkbox" id="g12"><div><div class="t">New goal list</div><div class="d">Compact cards as in the mockup: ring, days left, status pill, weekly target, next task. Filter chips Active, Done, All. Three templates in the empty state.</div><div class="tags"><span class="tag ui">UI</span><span class="tag">GoalCard.tsx</span></div></div></label>
+      <label class="todo"><input type="checkbox" id="g13"><div><div class="t">Goal detail page</div><div class="d">Replaces the expanding card. Sections: progress, weekly target, milestones, linked tasks, notes, and "More" for graph and analytics. In landscape it shows next to the list.</div><div class="tags"><span class="tag ui">UI</span><span class="tag">GoalDetail.tsx</span></div></div></label>
+      <label class="todo"><input type="checkbox" id="g14"><div><div class="t">Three-step create and edit</div><div class="d">What (name, color, template), When (dates, weekly target), Tasks (pick or create). Replaces the single form in <code>AddGoalModal</code>.</div><div class="tags"><span class="tag ui">UI</span><span class="tag">AddGoalModal</span></div></div></label>
+      <label class="todo"><input type="checkbox" id="g15"><div><div class="t">Simpler streak calendar</div><div class="d">Replace the activity graph by default with a month calendar of done, missed and planned days plus the current streak. Keep the existing graph and monthly analytics under "More".</div><div class="tags"><span class="tag ui">UI</span><span class="tag">ActivityGraph</span></div></div></label>
+      <label class="todo"><input type="checkbox" id="g16"><div><div class="t">Plain wording</div><div class="d">Goal, Milestone, Task. Remove "strategic objective", "operational target", "core target" and "strategic timeline".</div><div class="tags"><span class="tag ui">UI</span><span class="tag">All goal files</span></div></div></label>
+    </div>
+
+    <div class="phase">
+      <div class="phase-head"><h3>Phase 3: Code health</h3><span class="meta">So the next change is easier.</span></div>
+      <label class="todo"><input type="checkbox" id="g17"><div><div class="t">Split the two huge files</div><div class="d">Break <code>GoalManagement/index.tsx</code> (4,369 lines) into GoalList, GoalCard, GoalDetail, ActivityGraph and MonthlyAnalytics, with styles in their own file. Do this together with Phase 2, not before it.</div><div class="tags"><span class="tag">CODE</span></div></div></label>
+      <label class="todo"><input type="checkbox" id="g18"><div><div class="t">Check goals in Google Drive backup</div><div class="d">Confirm that <code>@goals</code> is saved and restored by the backup, and add it if it is missing.</div><div class="tags"><span class="tag fn">FUNCTION</span><span class="tag">GoogleDriveService</span></div></div></label>
+      <label class="todo"><input type="checkbox" id="g19"><div><div class="t">Final checks</div><div class="d"><code>npx tsc --noEmit</code>, run the tests, then try on a device: create, edit, delete, link, complete a goal, in portrait and landscape, around midnight and with a recurring task. Update the README and the branch log.</div><div class="tags"><span class="tag">CODE</span></div></div></label>
+    </div>
+  </section>
+
+  <!-- 5. Impact -->
+  <section aria-labelledby="s5">
+    <h2 id="s5">What each change touches</h2>
+    <div class="card tablewrap">
+      <table>
+        <thead><tr><th>Area</th><th>What changes</th><th>Risk</th></tr></thead>
+        <tbody>
+          <tr><td><strong>Saved goals (<code>@goals</code>)</strong></td><td>Only optional fields are added (<code>weeklyTargetMinutes</code>). Existing goals load as before. No data migration.</td><td>Low</td></tr>
+          <tr><td><strong>Task screen and task create</strong></td><td>A goal chip and a Goal field. Tasks keep the same shape, because the link stays in <code>goal.taskIds</code>.</td><td>Medium</td></tr>
+          <tr><td><strong>Recurring tasks</strong></td><td>Goal progress reads per-date instances. Numbers for existing goals will change, and become correct.</td><td>Medium</td></tr>
+          <tr><td><strong><code>App.tsx</code></strong></td><td>Delete the unused progress handler. Add a small handler to link or unlink a task from the task side.</td><td>Low</td></tr>
+          <tr><td><strong>Notifications</strong></td><td>Optional weekly and deadline reminders use the existing notification code. Needs a development build to test.</td><td>Low</td></tr>
+          <tr><td><strong>Google Drive backup</strong></td><td>Verify goals are included. No change if they already are.</td><td>Low</td></tr>
+          <tr><td><strong>Timers, Live Focus, Settings</strong></td><td>Not touched.</td><td>None</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <div class="card">
+      <h3>Proposed data change (additive only)</h3>
+      <p class="sub" style="margin-top:6px"><code>Goal</code> gets <code>weeklyTargetMinutes?: number</code>. Status, progress and "next task" are always calculated, never stored. The old <code>progress</code>, <code>taskId</code> and <code>targetSettings</code> fields stay in the type so older saved goals and backups still work.</p>
+    </div>
+  </section>
+
+  <!-- 6. Decisions -->
+  <section aria-labelledby="s6" class="decisions">
+    <h2 id="s6">Decide before starting</h2>
+    <div class="card">
+      <ol>
+        <li><span class="chip">Meaning</span> What is a goal mostly about for you: hours of effort (study 4h a week), tasks done (finish 20 tasks), or milestones (ship v1)? The weekly target and the status rules depend on this. My suggestion is to support hours and milestones, and show tasks done as the progress.</li>
+        <li><span class="chip">Sub-goals</span> Do you want real sub-goals with their own tasks, or only a simple milestone checklist? The checklist is much simpler.</li>
+        <li><span class="chip">Graphs</span> Keep the current activity graph and analytics under "More", or remove them to cut about 1,000 lines?</li>
+        <li><span class="chip">Create flow</span> Three steps, or keep one form but shorter?</li>
+        <li><span class="chip">Reminders</span> Include weekly and deadline reminders, or skip for now?</li>
+        <li><span class="chip">Order</span> Start with Phase 0 only (fix the numbers), then look at the result before going on?</li>
+      </ol>
+    </div>
+  </section>
+</div>
+
+<script>
+(function () {
+  var KEY = 'goals-plan-v1';
+  var boxes = Array.prototype.slice.call(document.querySelectorAll('.todo input'));
+  var saved = {};
+  try { saved = JSON.parse(localStorage.getItem(KEY) || '{}'); } catch (e) { saved = {}; }
+  function update() {
+    var done = boxes.filter(function (b) { return b.checked; }).length;
+    document.getElementById('bar').style.width = (boxes.length ? Math.round(done / boxes.length * 100) : 0) + '%';
+    document.getElementById('barText').textContent = done + ' of ' + boxes.length + ' done';
+  }
+  boxes.forEach(function (b) {
+    if (saved[b.id]) b.checked = true;
+    b.addEventListener('change', function () {
+      saved[b.id] = b.checked;
+      try { localStorage.setItem(KEY, JSON.stringify(saved)); } catch (e) {}
+      update();
+    });
+  });
+  update();
+})();
+</script>
