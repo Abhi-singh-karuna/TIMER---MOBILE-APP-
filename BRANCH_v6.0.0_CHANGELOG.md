@@ -1,4 +1,4 @@
-# Branch `v.6.0.0` — change log
+# Branch `v6.0.0_ios_stable_old` (formerly `v.6.0.0`) — change log
 
 Tracks every commit on this branch. **Add a new row/section for each new commit.**
 
