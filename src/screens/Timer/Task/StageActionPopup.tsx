@@ -31,85 +31,129 @@ const STAGE_STATUS_CONFIG: Record<StageStatus, { icon: keyof typeof MaterialIcon
     Undone: { icon: 'cancel', color: '#FF5252', label: 'Undone' },
 };
 
+// Deep style: raised card, status rows with a sunken socket + raised dome (same disc as the timeline bars)
+const STATUS_DISC_COLOR: Record<StageStatus, string> = {
+    Upcoming: '#9AA1AE',
+    Process: '#FFB74D',
+    Done: '#7BE18A',
+    Undone: '#FF8A8A',
+};
+const STATUS_DISC_ICON: Record<StageStatus, keyof typeof MaterialIcons.glyphMap> = {
+    Upcoming: 'schedule',
+    Process: 'schedule',
+    Done: 'check',
+    Undone: 'close',
+};
+
 const stagePopupStyles = StyleSheet.create({
     overlay: {
         flex: 1,
-        backgroundColor: 'rgba(0,0,0,0.3)',
+        backgroundColor: 'rgba(0,0,0,0.45)',
     },
     popup: {
         position: 'absolute',
-        backgroundColor: 'rgba(30, 30, 30, 0.98)',
-        borderRadius: 14,
-        paddingVertical: 6,
-        minWidth: 140,
-        shadowColor: '#000',
-        shadowOffset: { width: 0, height: 8 },
-        shadowOpacity: 0.4,
-        shadowRadius: 16,
-        elevation: 20,
+        width: 138,
+        padding: 6,
+        gap: 2,
+        borderRadius: 18,
+        backgroundColor: '#14171B',
         borderWidth: 1,
-        borderColor: 'rgba(255,255,255,0.1)',
+        borderColor: 'rgba(255,255,255,0.07)',
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 12 },
+        shadowOpacity: 0.7,
+        shadowRadius: 18,
+        elevation: 24,
+        boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.08), inset 0 -2px 0 rgba(0,0,0,0.35)',
     },
     option: {
         flexDirection: 'row',
         alignItems: 'center',
-        paddingHorizontal: 14,
-        paddingVertical: 10,
-        gap: 10,
+        height: 32,
+        paddingHorizontal: 6,
+        borderRadius: 14,
+        gap: 8,
     },
     optionActive: {
-        backgroundColor: 'rgba(255,255,255,0.05)',
+        backgroundColor: '#1D2128',
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 4 },
+        shadowOpacity: 0.55,
+        shadowRadius: 5,
+        boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.1), inset 0 -2px 0 rgba(0,0,0,0.3)',
     },
-    optionText: {
-        fontSize: 13,
-        fontWeight: '600',
-    },
-    separator: {
-        height: 1,
-        backgroundColor: 'rgba(255,255,255,0.08)',
-        marginHorizontal: 10,
-    },
-    futureToggle: {
-        flexDirection: 'row',
+    socket: {
+        width: 22,
+        height: 22,
+        borderRadius: 11,
         alignItems: 'center',
         justifyContent: 'center',
-        paddingHorizontal: 12,
-        paddingVertical: 6,
-        gap: 6,
-        borderTopWidth: 1,
-        borderTopColor: 'rgba(255,255,255,0.06)',
-        marginTop: 4,
+        backgroundColor: 'rgba(0,0,0,0.4)',
+        boxShadow: 'inset 0 2px 4px rgba(0,0,0,0.65), 0 1px 0 rgba(255,255,255,0.08)',
+    },
+    dome: {
+        width: 17,
+        height: 17,
+        borderRadius: 8.5,
+        alignItems: 'center',
+        justifyContent: 'center',
+        boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.6), inset 0 -2px 0 rgba(0,0,0,0.25), 0 2px 3px rgba(0,0,0,0.55)',
+    },
+    optionText: {
+        flex: 1,
+        fontSize: 11.5,
+        fontWeight: '700',
+        letterSpacing: 0.2,
+        color: 'rgba(255,255,255,0.88)',
+    },
+    optionTextActive: {
+        color: '#FFFFFF',
+        fontWeight: '800',
+    },
+    checkChip: {
+        width: 16,
+        height: 16,
+        borderRadius: 8,
+        alignItems: 'center',
+        justifyContent: 'center',
+        backgroundColor: '#0B0C0F',
+        boxShadow: 'inset 0 2px 3px rgba(0,0,0,0.8)',
+    },
+    futureToggle: {
+        alignItems: 'center',
+        marginTop: 2,
+        paddingTop: 6,
+        paddingBottom: 2,
+        borderTopWidth: 2,
+        borderTopColor: 'rgba(0,0,0,0.5)',
     },
     syncBadge: {
         flexDirection: 'row',
         alignItems: 'center',
-        paddingHorizontal: 8,
-        paddingVertical: 3,
-        borderRadius: 10,
-        backgroundColor: 'rgba(255,255,255,0.05)',
-        borderWidth: 0.5,
-        borderColor: 'rgba(255,255,255,0.1)',
+        paddingHorizontal: 9,
+        paddingVertical: 4,
+        borderRadius: 14,
+        backgroundColor: '#0B0C0F',
+        boxShadow: 'inset 0 2px 4px rgba(0,0,0,0.8), 0 1px 0 rgba(255,255,255,0.06)',
         gap: 5,
     },
     syncBadgeAll: {
-        backgroundColor: 'rgba(33, 150, 243, 0.08)',
-        borderColor: 'rgba(33, 150, 243, 0.2)',
+        backgroundColor: '#0D1A2A',
     },
     syncBadgeFuture: {
-        backgroundColor: 'rgba(76, 175, 80, 0.08)',
-        borderColor: 'rgba(76, 175, 80, 0.2)',
+        backgroundColor: '#0F2214',
     },
     futureToggleText: {
-        fontSize: 10,
-        color: 'rgba(255,255,255,0.4)',
-        fontWeight: '700',
-        letterSpacing: 0.2,
+        fontSize: 9,
+        color: 'rgba(255,255,255,0.55)',
+        fontWeight: '800',
+        letterSpacing: 0.6,
     },
     futureToggleActive: {
-        color: '#4CAF50',
+        color: '#7BE18A',
     },
     futureToggleAll: {
-        color: '#2196F3',
+        color: '#64B5F6',
     },
 });
 
@@ -143,8 +187,8 @@ export default function StageActionPopup({ visible, position, onSelectStatus, on
 
     if (!visible) return null;
 
-    const popupWidth = 140;
-    const popupHeight = showFutureToggle ? 220 : 180;
+    const popupWidth = 138;
+    const popupHeight = showFutureToggle ? 186 : 148;
     const padding = 12;
 
     let adjustedX = position.x - popupWidth / 2;
@@ -190,37 +234,36 @@ export default function StageActionPopup({ visible, position, onSelectStatus, on
                         },
                     ]}
                 >
-                    {statusOrder.map((status, index) => {
+                    {statusOrder.map((status) => {
                         const config = STAGE_STATUS_CONFIG[status];
                         const isActive = currentStatus === status;
                         return (
-                            <React.Fragment key={status}>
-                                {index > 0 && <View style={stagePopupStyles.separator} />}
-                                <TouchableOpacity
-                                    style={[
-                                        stagePopupStyles.option,
-                                        isActive && stagePopupStyles.optionActive,
-                                    ]}
-                                    onPress={() => {
-                                        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                                        onSelectStatus(status, syncMode);
-                                    }}
-                                    activeOpacity={0.7}
-                                >
-                                    <MaterialIcons name={config.icon} size={18} color={config.color} />
-                                    <Text style={[stagePopupStyles.optionText, { color: config.color }]}>
-                                        {config.label}
-                                    </Text>
-                                    {isActive && (
-                                        <MaterialIcons
-                                            name="check"
-                                            size={16}
-                                            color={config.color}
-                                            style={{ marginLeft: 'auto' }}
-                                        />
-                                    )}
-                                </TouchableOpacity>
-                            </React.Fragment>
+                            <TouchableOpacity
+                                key={status}
+                                style={[
+                                    stagePopupStyles.option,
+                                    isActive && stagePopupStyles.optionActive,
+                                ]}
+                                onPress={() => {
+                                    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                                    onSelectStatus(status, syncMode);
+                                }}
+                                activeOpacity={0.7}
+                            >
+                                <View style={stagePopupStyles.socket}>
+                                    <View style={[stagePopupStyles.dome, { backgroundColor: STATUS_DISC_COLOR[status] }]}>
+                                        <MaterialIcons name={STATUS_DISC_ICON[status]} size={11} color="#0A0C10" />
+                                    </View>
+                                </View>
+                                <Text style={[stagePopupStyles.optionText, isActive && stagePopupStyles.optionTextActive]}>
+                                    {config.label}
+                                </Text>
+                                {isActive && (
+                                    <View style={stagePopupStyles.checkChip}>
+                                        <MaterialIcons name="check" size={11} color={STATUS_DISC_COLOR[status]} />
+                                    </View>
+                                )}
+                            </TouchableOpacity>
                         );
                     })}
 
@@ -234,7 +277,7 @@ export default function StageActionPopup({ visible, position, onSelectStatus, on
                                 <MaterialIcons
                                     name={syncMode === 'all' ? "sync" : syncMode === 'future' ? "update" : "query-builder"}
                                     size={12}
-                                    color={syncMode === 'all' ? "#2196F3" : syncMode === 'future' ? "#4CAF50" : "rgba(255,255,255,0.4)"}
+                                    color={syncMode === 'all' ? "#64B5F6" : syncMode === 'future' ? "#7BE18A" : "rgba(255,255,255,0.45)"}
                                 />
                                 <Text style={[
                                     stagePopupStyles.futureToggleText,

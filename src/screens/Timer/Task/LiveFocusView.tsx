@@ -20,14 +20,21 @@ import {
     HostInstance,
 } from 'react-native';
 import { MaterialIcons, Ionicons } from '@expo/vector-icons';
+import { useSharedValue } from 'react-native-reanimated';
+import IdeaTray from './IdeaTray';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as Haptics from 'expo-haptics';
+import Svg, { Circle } from 'react-native-svg';
+import { BlurView } from 'expo-blur';
+import { LinearGradient } from 'expo-linear-gradient';
 import { activateKeepAwakeAsync, deactivateKeepAwake } from 'expo-keep-awake';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { Task, Category, TaskStage, StageStatus, Timer } from '../../../constants/data';
+import { Task, Category, TaskStage, StageStatus, Timer, Idea, JournalEntry } from '../../../constants/data';
 import AddSubtaskModal from '../../../components/AddSubtaskModal';
-import ApprovalPopup from './ApprovalPopup';
+import { NotificationButton, NotificationPopup, getApprovalItems, getApprovalType } from './NotificationCenter';
 import StageActionPopup from './StageActionPopup';
 import FullScreenTimer from './FullScreenTimer';
+import AgendaView, { AgendaItem } from './AgendaView';
 import { buildTimeOfDayBackgroundSegments, DEFAULT_TIME_OF_DAY_SLOTS, TimeOfDaySlotConfigList } from '../../../utils/timeOfDaySlots';
 import { getLogicalDate, getStartOfLogicalDay, getStartOfLogicalDayFromString, isSameLogicalDay, toDisplayMinutes, DEFAULT_DAILY_START_MINUTES } from '../../../utils/dailyStartTime';
 
@@ -36,6 +43,8 @@ type TaskStageEntry = { task: Task; stage: TaskStage };
 
 interface LiveFocusViewProps {
     tasks: Task[];
+    /** Every task (not only the selected day); the Agenda page expands recurring tasks per day from this. */
+    allTasks?: Task[];
     selectedDate: Date;
     onDateChange: (date: Date) => void;
     categories: Category[];
@@ -44,6 +53,15 @@ interface LiveFocusViewProps {
     onExpandTask?: (task: Task) => void;
     onUpdateStageLayout?: (taskId: number, stageId: number, startTimeMinutes: number, durationMinutes: number) => void;
     onUpdateStages?: (task: Task, stages: TaskStage[], syncMode?: SyncMode) => void;
+    /** Idea tray (portrait planner): subtasks not placed on a task yet. */
+    ideas?: Idea[];
+    onAddIdea?: (title: string, dueDate: string) => void;
+    onDeleteIdea?: (id: number) => void;
+    /** Day journal (notes + expenses): the pull-up journal in the portrait planner. */
+    journal?: JournalEntry[];
+    onAddJournal?: (entry: Omit<JournalEntry, 'id' | 'createdAt'>) => void;
+    onUpdateJournal?: (entry: JournalEntry) => void;
+    onDeleteJournal?: (id: number) => void;
     timeOfDaySlots?: TimeOfDaySlotConfigList;
     /** Daily start time (minutes from midnight) from General Settings. Used for date rollover: when the clock crosses this time, the calendar day changes. Must match the app config (Daily start time) so Live Focus stays in sync with TaskList and TimerList. */
     dailyStartMinutes?: number;
@@ -87,6 +105,102 @@ const STAGE_STATUS_CONFIG: Record<StageStatus, { icon: keyof typeof MaterialIcon
     Done: { icon: 'check-circle', color: '#4CAF50' },
     Undone: { icon: 'cancel', color: '#FF5252' },
 };
+// Rail accent per stage status (left rail of the timeline bars)
+const STAGE_RAIL: Record<StageStatus, string> = {
+    Upcoming: '#9AA1AE',
+    Process: '#FFB74D',
+    Done: '#7BE18A',
+    Undone: '#FF8A8A',
+};
+
+// How far through its slot a stage is right now (0-100), wraps past midnight
+const stageElapsedPct = (startMin: number, durMin: number, nowMin: number): number => {
+    if (durMin <= 0) return 0;
+    const elapsed = (nowMin - startMin + 1440) % 1440;
+    return Math.max(0, Math.min(100, (elapsed / durMin) * 100));
+};
+
+// Task progress ring: done (green) + undone (red) arcs over a sunken track, count in the centre
+const TrackProgressRing = ({ done, undone, total, size = 44 }: { done: number; undone: number; total: number; size?: number }) => {
+    const SIZE = size;
+    const STROKE = size >= 40 ? 6 : 5;
+    const R = (SIZE - STROKE) / 2;
+    const C = 2 * Math.PI * R;
+    const doneLen = total > 0 ? (C * done) / total : 0;
+    const undoneLen = total > 0 ? (C * undone) / total : 0;
+    return (
+        <View style={[trackRingStyles.wrap, { width: SIZE, height: SIZE, marginTop: -SIZE / 2 }]} pointerEvents="none">
+            <Svg width={SIZE} height={SIZE}>
+                <Circle cx={SIZE / 2} cy={SIZE / 2} r={R} stroke="#0B0C0F" strokeWidth={STROKE} fill="none" />
+                {doneLen > 0 && (
+                    <Circle
+                        cx={SIZE / 2} cy={SIZE / 2} r={R} stroke="#4CAF50" strokeWidth={STROKE} fill="none"
+                        strokeLinecap="round" strokeDasharray={`${doneLen} ${C}`} rotation={-90} origin={`${SIZE / 2}, ${SIZE / 2}`}
+                    />
+                )}
+                {undoneLen > 0 && (
+                    <Circle
+                        cx={SIZE / 2} cy={SIZE / 2} r={R} stroke="#FF5252" strokeWidth={STROKE} fill="none"
+                        strokeLinecap="round" strokeDasharray={`${undoneLen} ${C}`}
+                        rotation={-90 + (total > 0 ? (360 * done) / total : 0)} origin={`${SIZE / 2}, ${SIZE / 2}`}
+                    />
+                )}
+            </Svg>
+            <View style={trackRingStyles.center}>
+                <Text style={[trackRingStyles.text, size < 40 && { fontSize: 8 }]}>{done}/{total}</Text>
+            </View>
+        </View>
+    );
+};
+// Progress ring for the collapsed Progress pill: done (green), in progress (amber), undone (red) by time,
+// the rest of the ring stays an empty sunken track. The overall percentage sits in the middle.
+const PillProgressRing = ({ total, done, active, undone, pct, size = 28, stroke = 4, fontSize = 7 }: { total: number; done: number; active: number; undone: number; pct: number; size?: number; stroke?: number; fontSize?: number }) => {
+    const SIZE = size;
+    const STROKE = stroke;
+    const R = (SIZE - STROKE) / 2;
+    const C = 2 * Math.PI * R;
+    const frac = (m: number) => (total > 0 ? Math.max(0, Math.min(1, m / total)) : 0);
+    const doneF = frac(done);
+    const activeF = Math.min(frac(active), 1 - doneF);
+    const undoneF = Math.min(frac(undone), Math.max(0, 1 - doneF - activeF));
+    const segments = [
+        { color: '#4CAF50', start: 0, f: doneF },
+        { color: '#FFB74D', start: doneF, f: activeF },
+        { color: '#FF5252', start: doneF + activeF, f: undoneF },
+    ];
+    return (
+        <View style={{ width: SIZE, height: SIZE }}>
+            <Svg width={SIZE} height={SIZE}>
+                <Circle cx={SIZE / 2} cy={SIZE / 2} r={R} stroke="#000" strokeWidth={STROKE} fill="none" opacity={0.55} />
+                {segments.filter(seg => seg.f > 0.002).map(seg => (
+                    <Circle
+                        key={seg.color}
+                        cx={SIZE / 2} cy={SIZE / 2} r={R} stroke={seg.color} strokeWidth={STROKE} fill="none"
+                        strokeDasharray={`${Math.max(0, C * seg.f - 1.2)} ${C}`}
+                        rotation={-90 + 360 * seg.start} origin={`${SIZE / 2}, ${SIZE / 2}`}
+                    />
+                ))}
+            </Svg>
+            <View style={{ position: 'absolute', left: 0, top: 0, right: 0, bottom: 0, alignItems: 'center', justifyContent: 'center' }}>
+                <Text style={{ fontSize, fontWeight: '900', color: '#FFFFFF' }}>{pct}%</Text>
+            </View>
+        </View>
+    );
+};
+
+const trackRingStyles = StyleSheet.create({
+    wrap: { position: 'absolute', left: 16, top: '50%', marginTop: -22, width: 44, height: 44 },
+    center: { position: 'absolute', left: 0, top: 0, right: 0, bottom: 0, alignItems: 'center', justifyContent: 'center' },
+    text: { fontSize: 9, fontWeight: '800', color: '#FFFFFF' },
+});
+
+// Deep, solid stage bar colours (timeline cards)
+const DEEP_STAGE_BG: Record<StageStatus, string> = {
+    Upcoming: '#2C3038',
+    Process: '#5A3F12',
+    Done: '#1E4D2B',
+    Undone: '#5A2026',
+};
 // Labels for the Status button (matches StageActionPopup)
 const STAGE_STATUS_LABELS: Record<StageStatus, string> = {
     Upcoming: 'Upcoming',
@@ -104,6 +218,7 @@ type LiveViewMode = 'task' | 'merged' | 'category';
 
 export default function LiveFocusView({
     tasks,
+    allTasks,
     selectedDate,
     onDateChange,
     categories,
@@ -112,6 +227,13 @@ export default function LiveFocusView({
     onExpandTask,
     onUpdateStageLayout,
     onUpdateStages,
+    ideas = [],
+    onAddIdea,
+    onDeleteIdea,
+    journal = [],
+    onAddJournal,
+    onUpdateJournal,
+    onDeleteJournal,
     timeOfDaySlots,
     dailyStartMinutes = DEFAULT_DAILY_START_MINUTES,
     initialZoom,
@@ -130,7 +252,8 @@ export default function LiveFocusView({
     const { width: screenWidth, height: screenHeight } = useWindowDimensions();
     const isLandscape = screenWidth > screenHeight;
     const insets = useSafeAreaInsets();
-    const progressDockHeight = isLandscape ? 55 : 100; // 100px for portrait (two rows), 55px for landscape (single row)
+    const dockBottomPad = Math.round(insets.bottom * 0.5); // portrait sheet: only half of the home-indicator inset stays empty
+    const progressDockHeight = isLandscape ? 64 : 170 + dockBottomPad; // portrait: two rows + the home-indicator inset; landscape: single row
     // Ref for live "now" — updated every second with nowHHMMSS so NOW line and getNowPosition stay in sync
     const currentTimeRef = useRef(new Date());
     const DEBUG_LANES = false;
@@ -147,6 +270,7 @@ export default function LiveFocusView({
     const lastPinchDistanceRef = useRef(0);
     const horizontalScrollTimelineRef = useRef<ScrollViewInstance>(null);
     const timelineScrollXRef = useRef(0);
+    const lastScrollReportAtRef = useRef(0);
     const animatedScrollX = useRef(new Animated.Value(0)).current;
     const horizontalScrollLockTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
     const isScrollingVertically = useRef(false);
@@ -203,6 +327,11 @@ export default function LiveFocusView({
     // Version counter to trigger re-renders when pending layouts change
     const [pendingLayoutsVersion, setPendingLayoutsVersion] = useState(0);
 
+    const [ideasOpen, setIdeasOpen] = useState(false); // idea popup (portrait: over the planner, landscape: top right)
+    const ideaDragX = useSharedValue(0); // landscape has no drag, the tray just needs the values
+    const ideaDragY = useSharedValue(0);
+    const ideaDragOn = useSharedValue(0);
+
     // Add subtask modal state
     const [addSubtaskModal, setAddSubtaskModal] = useState<{
         visible: boolean;
@@ -213,6 +342,9 @@ export default function LiveFocusView({
         existingText?: string;
         existingStartTime?: number;
         existingDuration?: number;
+        initialDuration?: number;
+        initialText?: string;
+        ideaId?: number;
     }>({
         visible: false,
         taskId: null,
@@ -229,6 +361,20 @@ export default function LiveFocusView({
     const [isTaskColumnVisible, setIsTaskColumnVisible] = useState(true);
     // View mode: by task (per-task rows) | merged (all subtasks one section) | category (one section per category, ascending order). Initial from parent (persisted).
     const [viewMode, setViewMode] = useState<LiveViewMode>(initialViewMode ?? 'task');
+    // Stack subtasks: every subtask of a task gets its own row, each one below the previous (instead of sharing a row when they don't overlap)
+    const [stackSubtasks, setStackSubtasks] = useState(false);
+    useEffect(() => {
+        AsyncStorage.getItem('@live_stack_subtasks').then(v => { if (v === '1') setStackSubtasks(true); }).catch(() => { });
+    }, []);
+    const toggleStackSubtasks = () => {
+        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+        LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+        setStackSubtasks(prev => {
+            const next = !prev;
+            AsyncStorage.setItem('@live_stack_subtasks', next ? '1' : '0').catch(() => { });
+            return next;
+        });
+    };
     // View mode selector popup (opened from progress bar button) — same design as StageActionPopup (positioned, compact)
     const [viewModePopupVisible, setViewModePopupVisible] = useState(false);
     const [viewModePopupPosition, setViewModePopupPosition] = useState({ x: 0, y: 0 });
@@ -253,6 +399,9 @@ export default function LiveFocusView({
 
     // Stage status popup (reuses timer subtask status popup) — when a stage is selected in the dock
     const [stageStatusPopupVisible, setStageStatusPopupVisible] = useState(false);
+    const [statusPopupTarget, setStatusPopupTarget] = useState<{ taskId: number; stageId: number } | null>(null);
+    // Tasks the user has minimised (empty set = every task expanded, the default)
+    const [collapsedTaskIds, setCollapsedTaskIds] = useState<Set<number>>(() => new Set());
     const [stageStatusPopupPosition, setStageStatusPopupPosition] = useState({ x: 0, y: 0 });
     const statusButtonRef = useRef<HostInstance>(null);
 
@@ -268,6 +417,10 @@ export default function LiveFocusView({
     const [isTimerRunning, setIsTimerRunning] = useState(false);
     const timerIntervalRef = useRef<ReturnType<typeof setTimeout> | null>(null);
     const [fullScreenTimerVisible, setFullScreenTimerVisible] = useState(false);
+    const [journalToggle, setJournalToggle] = useState(0); // the journal button in the bottom controls bumps this
+    const [journalStage, setJournalStage] = useState<1 | 2 | 3>(1); // pull-up journal: 1 handle, 2 half, 3 full screen
+    const journalOpen = !isLandscape && journalStage >= 2; // the bottom controls step aside while it covers them
+    const [plannerAdding, setPlannerAdding] = useState(false); // portrait planner: the add bar takes the place of the bottom controls
 
     // Animate progress panel expand/collapse
     useEffect(() => {
@@ -402,7 +555,13 @@ export default function LiveFocusView({
         if (a && temp && (onUpdateStages || onUpdateStageLayout)) {
             const displayStart = (temp.left / CELL_WIDTH) * mpc;
             const startTime = (Math.round(displayStart) + dailyStartMinutes) % 1440;
-            const duration = Math.round((temp.width / CELL_WIDTH) * mpc);
+            let duration = Math.round((temp.width / CELL_WIDTH) * mpc);
+            if (!isResizingRef.current) {
+                // A plain move keeps the stage's real duration (the drawn width can be clamped at the day end)
+                const origStage = tasksRef.current.find(t => t.id === a.taskId)?.stages?.find(st => st.id === a.stageId);
+                const origDuration = pendingLayoutsRef.current.get(a.stageId)?.durationMinutes ?? origStage?.durationMinutes;
+                if (origDuration != null) duration = origDuration;
+            }
 
             // 1. Synchronously update pending layouts REF
             pendingLayoutsRef.current.set(a.stageId, {
@@ -588,10 +747,16 @@ export default function LiveFocusView({
     const TOTAL_MINUTES = 1440;
     const TOTAL_CELLS = Math.ceil(TOTAL_MINUTES / minutesPerCell);
     const TRACK_HEIGHT = 80; // Reduced for compact design
-    const TRACK_LABEL_WIDTH = 150;
+    const TRACK_LABEL_WIDTH = 190;
+    /** Space after the last hour of the day: the right rim of a task card (matches the well's right inset). */
+    const TIMELINE_END_PAD = 12;
     /** Same as BASE_TOP: space between the last card and the horizontal separator below, so it matches the gap between the top separator and the first card. */
-    const TRACK_BOTTOM_PADDING = 7;
-    const TIMELINE_WIDTH = TRACK_LABEL_WIDTH + TOTAL_CELLS * CELL_WIDTH + 100;
+    const TRACK_BOTTOM_PADDING = 12;
+    /** Outer gap between two task rows (left cards and timeline rows use the same value). */
+    const ROW_GAP = 4;
+    /** Height of a minimised task row (left card and timeline strip). */
+    const COLLAPSED_ROW_HEIGHT = 48;
+    const TIMELINE_WIDTH = TRACK_LABEL_WIDTH + TOTAL_CELLS * CELL_WIDTH + TIMELINE_END_PAD;
 
     // Generate time labels based on zoom level.
     // Display axis 0..1440; label shows wall clock: (displayMinutes + dailyStartMinutes) % 1440.
@@ -696,6 +861,7 @@ export default function LiveFocusView({
     // Set isScrollingHorizontally before programmatic scrollTo so scroll handlers skip onScrollChange.
     useEffect(() => {
         const x = initialScrollX ?? 0;
+        if (Date.now() - lastScrollReportAtRef.current < 1500) return; // our own echo, not a restore
         if (Math.abs(x - timelineScrollXRef.current) <= 2) return;
         timelineScrollXRef.current = x;
         isScrollingHorizontally.current = true;
@@ -736,7 +902,7 @@ export default function LiveFocusView({
 
         // Clamp scroll position to valid range
         const taskColumnWidth = isTaskColumnVisible ? TRACK_LABEL_WIDTH : 0;
-        const timelineWidth = Math.ceil(TOTAL_MINUTES / minutesPerCell) * CELL_WIDTH + 100;
+        const timelineWidth = Math.ceil(TOTAL_MINUTES / minutesPerCell) * CELL_WIDTH + TIMELINE_END_PAD;
         const maxScroll = Math.max(0, timelineWidth - (screenWidth - taskColumnWidth));
         newScrollX = Math.max(0, Math.min(maxScroll, newScrollX));
 
@@ -776,20 +942,10 @@ export default function LiveFocusView({
                 // If we're already dragging or resizing, capture immediately to prevent scroll
                 return isDraggingRef.current || isResizingRef.current;
             },
-            onMoveShouldSetPanResponder: (evt, gestureState) => {
-                // If already dragging or resizing, always capture to prevent scroll interference
-                if (isDraggingRef.current || isResizingRef.current) return true;
-
-                // Require minimum movement to avoid accidental drags
-                // Allow both horizontal and vertical movement for 2D drag
-                const shouldCapture = Math.abs(gestureState.dx) > 3 || Math.abs(gestureState.dy) > 3;
-
-                // If we're about to drag, disable scrolling immediately
-                if (shouldCapture && activeStageRef.current) {
-                    // Scroll will be disabled via scrollEnabled={!activeStage} prop
-                }
-
-                return shouldCapture;
+            onMoveShouldSetPanResponder: () => {
+                // Only an active long-press drag or resize owns the gesture. Capturing every swipe that
+                // started on a bar blocked scrolling and ran the commit/reset path after plain swipes.
+                return isDraggingRef.current || isResizingRef.current;
             },
             onPanResponderGrant: (evt) => {
                 // Provide immediate feedback on successful grab
@@ -814,11 +970,12 @@ export default function LiveFocusView({
                     // CRITICAL: Add scroll offset to compensate for auto-scroll
                     // This keeps the card under the finger even when timeline scrolls
                     const adjustedDx = dx + currentAutoScrollOffsetRef.current;
-                    const newLeft = Math.max(0, initial.left + adjustedDx);
+                    const axisW = Math.ceil(TOTAL_MINUTES / minutesPerCellRef.current) * CELL_WIDTH;
+                    const newLeft = Math.max(0, Math.min(axisW - initial.width, initial.left + adjustedDx));
 
-                    const CARD_HEIGHT = 23;
-                    const LANE_SPACING = 10;
-                    const BASE_TOP = 7;
+                    const CARD_HEIGHT = 32;
+                    const LANE_SPACING = 5;
+                    const BASE_TOP = 12;
                     const laneHeight = CARD_HEIGHT + LANE_SPACING;
 
                     const laneOffset = dy / laneHeight;
@@ -854,7 +1011,8 @@ export default function LiveFocusView({
                     const adjustedDx = dx + currentAutoScrollOffsetRef.current;
 
                     if (handleSide === 'right') {
-                        const newWidth = Math.max(30, initial.width + adjustedDx);
+                        const axisW = Math.ceil(TOTAL_MINUTES / mpcCurrent) * CELL_WIDTH;
+                        const newWidth = Math.max(30, Math.min(axisW - initial.left, initial.width + adjustedDx));
 
                         // Haptic feedback for resizing precision
                         if (temp && Math.abs(temp.width - newWidth) >= pixelsPer5Min) {
@@ -961,30 +1119,55 @@ export default function LiveFocusView({
     }, [tasks]);
 
     // Sync vertical scrolling from timeline to labels – smooth, bidirectional
-    const handleVerticalScroll = useCallback((event: NativeSyntheticEvent<NativeScrollEvent>) => {
-        if (isScrollingVertically.current) return;
-        const offsetY = event.nativeEvent.contentOffset.y;
-        if (verticalScrollLabelsRef.current) {
-            isScrollingVertically.current = true;
-            verticalScrollLabelsRef.current.scrollTo({ y: offsetY, animated: false });
-            requestAnimationFrame(() => {
-                isScrollingVertically.current = false;
-            });
+    const lastVerticalSyncY = useRef(0);
+    // The list under the finger is the only one that drives the other. The two lists can have slightly
+    // different maximum offsets, and letting both write to each other made them fight at the ends.
+    const verticalMasterRef = useRef<'timeline' | 'labels' | null>(null);
+    const verticalMasterReleaseRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+    const cancelVerticalMasterRelease = useCallback(() => {
+        if (verticalMasterReleaseRef.current != null) {
+            clearTimeout(verticalMasterReleaseRef.current);
+            verticalMasterReleaseRef.current = null;
         }
     }, []);
+    const claimVerticalMaster = useCallback((who: 'timeline' | 'labels') => {
+        cancelVerticalMasterRelease();
+        verticalMasterRef.current = who;
+    }, [cancelVerticalMasterRelease]);
+    const releaseVerticalMaster = useCallback((delay: number) => {
+        cancelVerticalMasterRelease();
+        verticalMasterReleaseRef.current = setTimeout(() => {
+            verticalMasterReleaseRef.current = null;
+            verticalMasterRef.current = null;
+        }, delay);
+    }, [cancelVerticalMasterRelease]);
 
-    // Sync vertical scrolling from labels to timeline – smooth, bidirectional
-    const handleVerticalScrollLabels = useCallback((event: NativeSyntheticEvent<NativeScrollEvent>) => {
-        if (isScrollingVertically.current) return;
+    const handleVerticalScroll = useCallback((event: NativeSyntheticEvent<NativeScrollEvent>) => {
         const offsetY = event.nativeEvent.contentOffset.y;
-        if (verticalScrollRef.current) {
-            isScrollingVertically.current = true;
-            verticalScrollRef.current.scrollTo({ y: offsetY, animated: false });
-            requestAnimationFrame(() => {
-                isScrollingVertically.current = false;
-            });
+        if (offsetY < 0) return;
+        if (verticalMasterRef.current === 'labels') return; // echo of our own scrollTo
+        if (verticalMasterRef.current == null) {
+            verticalMasterRef.current = 'timeline';
+            releaseVerticalMaster(200);
         }
-    }, []);
+        if (Math.abs(offsetY - lastVerticalSyncY.current) < 0.5) return;
+        lastVerticalSyncY.current = offsetY;
+        verticalScrollLabelsRef.current?.scrollTo({ y: offsetY, animated: false });
+    }, [releaseVerticalMaster]);
+
+    // Sync vertical scrolling from labels to timeline
+    const handleVerticalScrollLabels = useCallback((event: NativeSyntheticEvent<NativeScrollEvent>) => {
+        const offsetY = event.nativeEvent.contentOffset.y;
+        if (offsetY < 0) return;
+        if (verticalMasterRef.current === 'timeline') return; // echo of our own scrollTo
+        if (verticalMasterRef.current == null) {
+            verticalMasterRef.current = 'labels';
+            releaseVerticalMaster(200);
+        }
+        if (Math.abs(offsetY - lastVerticalSyncY.current) < 0.5) return;
+        lastVerticalSyncY.current = offsetY;
+        verticalScrollRef.current?.scrollTo({ y: offsetY, animated: false });
+    }, [releaseVerticalMaster]);
 
     // Single horizontal scroll source (timeline). Time header follows via Animated transform – no second ScrollView, no flicker.
     const handleHorizontalScroll = useCallback((event: NativeSyntheticEvent<NativeScrollEvent>) => {
@@ -992,12 +1175,21 @@ export default function LiveFocusView({
 
         const offsetX = event.nativeEvent.contentOffset.x;
         timelineScrollXRef.current = offsetX;
+        lastScrollReportAtRef.current = Date.now();
         onScrollChange?.(offsetX);
-        animatedScrollX.setValue(offsetX);
 
         // Mark that user has manually scrolled (prevents auto-scroll to NOW)
         userHasScrolled.current = true;
     }, [onScrollChange]);
+
+    const onTimelineScroll = useMemo(
+        () => Animated.event(
+            [{ nativeEvent: { contentOffset: { x: animatedScrollX } } }],
+            { useNativeDriver: true, listener: handleHorizontalScroll as any }
+        ),
+        [animatedScrollX, handleHorizontalScroll]
+    );
+    const negScrollX = useMemo(() => Animated.multiply(animatedScrollX, -1), [animatedScrollX]);
 
     // NOW position (relative to timeline). Display axis: 0 = daily start, 1440 = next daily start.
     // Includes seconds for smooth sub-minute movement
@@ -1011,15 +1203,24 @@ export default function LiveFocusView({
     };
 
     // Ref callback: apply initialScrollX (from parent) when ScrollView mounts
+    // Stable callback: it must NOT depend on initialScrollX. The parent echoes our own (debounced) scroll
+    // position back as that prop; a new callback identity would re-run this and snap the timeline back
+    // to a stale offset in the middle of a scroll, which showed up as flicker.
+    const latestInitialScrollXRef = useRef(initialScrollX);
+    latestInitialScrollXRef.current = initialScrollX;
+    // Animated.ScrollView re-invokes its ref callback on re-renders, so only restore for a NEW instance.
+    // Restoring on every call threw the timeline back to the last saved offset (06:00 if none yet).
+    const lastAttachedTimelineRef = useRef<ScrollViewInstance | null>(null);
     const setTimelineScrollRef = useCallback((ref: ScrollViewInstance | null) => {
         horizontalScrollTimelineRef.current = ref;
-        if (ref) {
-            const x = initialScrollX ?? 0;
+        if (ref && ref !== lastAttachedTimelineRef.current) {
+            lastAttachedTimelineRef.current = ref;
+            const x = latestInitialScrollXRef.current ?? 0;
             timelineScrollXRef.current = x;
             ref.scrollTo({ x, animated: false });
             animatedScrollX.setValue(x);
         }
-    }, [initialScrollX]);
+    }, []);
 
     // Check if two stages overlap
     const checkStagesOverlap = useCallback((stage1: TaskStage, stage2: TaskStage): boolean => {
@@ -1068,6 +1269,11 @@ export default function LiveFocusView({
         });
 
         const laneMap = new Map<number, number>();
+        if (stackSubtasks) {
+            // cascade: each subtask sits one row below the previous one
+            sortedStages.forEach((st, i) => laneMap.set(st.id, i));
+            return laneMap;
+        }
         const b0 = getDisplayBounds(sortedStages[0]);
         let prevLane = 0;
         let prevDisplayStart = b0.displayStart;
@@ -1086,14 +1292,21 @@ export default function LiveFocusView({
             prevDisplayEnd = cb.displayEnd;
         }
         return laneMap;
-    }, [dailyStartMinutes]);
+    }, [dailyStartMinutes, stackSubtasks]);
 
     // Stage position based on zoom level (relative to timeline start, not including label width)
     const getStageLayout = (stage: TaskStage, stageIndex: number, lane?: number): { left: number; width: number; top: number } => {
         // Constants for lane calculation
-        const CARD_HEIGHT = 23; // minHeight from timelineStageCard
-        const LANE_SPACING = 10; // 4px gap between consecutive subtasks (lanes)
-        const BASE_TOP = 7; // Original top position
+        const CARD_HEIGHT = 32; // minHeight from timelineStageCard
+        const LANE_SPACING = 5; // 4px gap between consecutive subtasks (lanes)
+        const BASE_TOP = 12; // Original top position
+
+        // The day axis is 0..1440 display minutes; a bar must start and end inside it
+        const axisWidth = Math.ceil(TOTAL_MINUTES / minutesPerCell) * CELL_WIDTH;
+        const fitToAxis = (l: number, w: number) => {
+            const left = Math.max(0, Math.min(l, axisWidth - 60));
+            return { left, width: Math.min(Math.max(w, 60), axisWidth - left) };
+        };
 
         if (activeStage?.stageId === stage.id && tempStageLayout) {
             // Return temp layout during drag (includes 2D position)
@@ -1113,7 +1326,8 @@ export default function LiveFocusView({
             const displayStart = (pending.startTimeMinutes - dailyStartMinutes + 1440) % 1440;
             const pendingLeft = (displayStart / minutesPerCell) * CELL_WIDTH;
             const pendingWidth = (pending.durationMinutes / minutesPerCell) * CELL_WIDTH;
-            return { left: pendingLeft, width: Math.max(pendingWidth, 60), top };
+            const fitted = fitToAxis(pendingLeft, pendingWidth);
+            return { left: fitted.left, width: fitted.width, top };
         }
 
         // Default values: startTime = 0 (00:00), duration = 180 minutes (3 hours)
@@ -1123,7 +1337,8 @@ export default function LiveFocusView({
         const left = (displayStart / minutesPerCell) * CELL_WIDTH;
         const width = (duration / minutesPerCell) * CELL_WIDTH;
 
-        return { left, width: Math.max(width, 60), top };
+        const fitted = fitToAxis(left, width);
+        return { left: fitted.left, width: fitted.width, top };
     };
 
     // Get effective stage time (live during drag/resize, or from pending layouts, or from props).
@@ -1182,6 +1397,16 @@ export default function LiveFocusView({
         return `${String(startHour % 24).padStart(2, '0')}:${String(startMin).padStart(2, '0')} - ${String(endHour % 24).padStart(2, '0')}:${String(endMin).padStart(2, '0')}`;
     };
 
+    // The part of a stage that falls on this day's axis (daily start -> next daily start).
+    // A stage that crosses the day end is cut at the boundary, so its time range and duration are recalculated.
+    const visibleOnDay = (t: { startTimeMinutes: number; durationMinutes: number }) => {
+        const displayStart = (t.startTimeMinutes - dailyStartMinutes + 1440) % 1440;
+        return {
+            startTimeMinutes: t.startTimeMinutes,
+            durationMinutes: Math.max(0, Math.min(t.durationMinutes, 1440 - displayStart)),
+        };
+    };
+
     // Date line for dock: "21 JAN"
     const formatDateLabel = (d: Date) => `${d.getDate()} ${MONTHS_SHORT[d.getMonth()]}`;
 
@@ -1192,6 +1417,27 @@ export default function LiveFocusView({
         setViewDate(prev => new Date(prev.getFullYear(), prev.getMonth() + delta, 1));
         Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     };
+
+    // Sliding month change: swipe the grid left/right (or tap the chevrons) to slide to the next / previous month
+    const calSlide = useRef(new Animated.Value(0)).current;
+    const slideMonth = useCallback((delta: number) => {
+        Animated.timing(calSlide, { toValue: -delta * 40, duration: 90, useNativeDriver: true }).start(() => {
+            setViewDate(prev => new Date(prev.getFullYear(), prev.getMonth() + delta, 1));
+            Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+            calSlide.setValue(delta * 40);
+            Animated.timing(calSlide, { toValue: 0, duration: 160, useNativeDriver: true }).start();
+        });
+    }, [calSlide]);
+    const calPan = useRef(PanResponder.create({
+        onMoveShouldSetPanResponder: (_, g) => Math.abs(g.dx) > 10 && Math.abs(g.dx) > Math.abs(g.dy) * 1.5,
+        onPanResponderMove: (_, g) => calSlide.setValue(Math.max(-40, Math.min(40, g.dx * 0.4))),
+        onPanResponderRelease: (_, g) => {
+            if (g.dx < -40) slideMonth(1);
+            else if (g.dx > 40) slideMonth(-1);
+            else Animated.spring(calSlide, { toValue: 0, useNativeDriver: true }).start();
+        },
+        onPanResponderTerminate: () => Animated.spring(calSlide, { toValue: 0, useNativeDriver: true }).start(),
+    })).current;
 
     const renderDockCalendar = () => {
         const days = getDaysInMonth(viewDate.getFullYear(), viewDate.getMonth());
@@ -1211,24 +1457,42 @@ export default function LiveFocusView({
         const weekDays = ['S', 'M', 'T', 'W', 'T', 'F', 'S'];
         const todayLogical = getLogicalDate(new Date(), dailyStartMinutes);
 
+        const selectedLogical = getLogicalDate(selectedDate, dailyStartMinutes);
+        const goToToday = () => {
+            const [ty, tm] = todayLogical.split('-').map(Number);
+            setViewDate(new Date(ty, tm - 1, 1));
+            onDateChange(getStartOfLogicalDayFromString(todayLogical, dailyStartMinutes));
+            setShowDockCalendar(false);
+            Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+        };
+
         return (
             <View style={styles.calendarMini}>
                 <View style={styles.calHeader}>
-                    <TouchableOpacity onPress={() => { setShowDockCalendar(false); Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); }} style={styles.calBack}>
-                        <MaterialIcons name="arrow-back" size={20} color="#fff" />
-                    </TouchableOpacity>
-                    <Text style={styles.calTitle}>{MONTHS_CAL[viewDate.getMonth()]} {viewDate.getFullYear()}</Text>
+                    <Text style={styles.calMonth}>
+                        {MONTHS_CAL[viewDate.getMonth()]} <Text style={styles.calYear}>{viewDate.getFullYear()}</Text>
+                    </Text>
                     <View style={styles.calNav}>
-                        <TouchableOpacity onPress={() => changeMonth(-1)} style={styles.calNavBtn}>
-                            <MaterialIcons name="chevron-left" size={20} color="#fff" />
+                        <TouchableOpacity onPress={goToToday} style={styles.calTodayPill} activeOpacity={0.8}>
+                            <Text style={styles.calTodayText}>TODAY</Text>
                         </TouchableOpacity>
-                        <TouchableOpacity onPress={() => changeMonth(1)} style={styles.calNavBtn}>
-                            <MaterialIcons name="chevron-right" size={20} color="#fff" />
+                        <TouchableOpacity onPress={() => slideMonth(-1)} style={styles.calNavBtn}>
+                            <MaterialIcons name="chevron-left" size={16} color="rgba(255,255,255,0.9)" />
+                        </TouchableOpacity>
+                        <TouchableOpacity onPress={() => slideMonth(1)} style={styles.calNavBtn}>
+                            <MaterialIcons name="chevron-right" size={16} color="rgba(255,255,255,0.9)" />
                         </TouchableOpacity>
                     </View>
                 </View>
+                <Animated.View
+                    {...calPan.panHandlers}
+                    style={{
+                        opacity: calSlide.interpolate({ inputRange: [-40, 0, 40], outputRange: [0, 1, 0] }),
+                        transform: [{ translateX: calSlide }],
+                    }}
+                >
                 <View style={styles.weekRow}>
-                    {weekDays.map((d, i) => <Text key={i} style={styles.weekText}>{d}</Text>)}
+                    {weekDays.map((d, i) => <Text key={i} style={[styles.weekText, (i === 0 || i === 6) && { color: 'rgba(255,138,138,0.7)' }]}>{d}</Text>)}
                 </View>
                 <View style={styles.daysGrid}>
                     {daysArray.map((item, i) => {
@@ -1236,7 +1500,7 @@ export default function LiveFocusView({
                         const cellLogical = item.current
                             ? `${viewDate.getFullYear()}-${String(viewDate.getMonth() + 1).padStart(2, '0')}-${String(item.day).padStart(2, '0')}`
                             : '';
-                        const isSelected = item.current && cellLogical === getLogicalDate(selectedDate, dailyStartMinutes);
+                        const isSelected = item.current && cellLogical === selectedLogical;
                         const isToday = item.current && cellLogical === todayLogical;
 
                         return (
@@ -1244,6 +1508,7 @@ export default function LiveFocusView({
                                 key={i}
                                 style={styles.dayCell}
                                 disabled={!item.current}
+                                activeOpacity={0.7}
                                 onPress={() => {
                                     if (item.current && cellLogical) {
                                         onDateChange(getStartOfLogicalDayFromString(cellLogical, dailyStartMinutes));
@@ -1252,27 +1517,29 @@ export default function LiveFocusView({
                                     }
                                 }}
                             >
-                                <View style={[
-                                    styles.dayCircle,
-                                    !item.current && { opacity: 0.2 },
-                                    isToday && styles.todayCircle,
-                                    isSelected && styles.selectedFutureCircle,
-                                ]}>
-                                    <Text style={[
-                                        styles.dayText,
-                                        isToday && { color: '#000' },
-                                        isSelected && { color: '#4CAF50', fontWeight: '800' },
-                                    ]}>{item.day}</Text>
-                                </View>
+                                {item.current && (
+                                    <View style={[
+                                        styles.dayTile,
+                                        isToday && styles.todayTile,
+                                        isSelected && styles.selectedTile,
+                                    ]}>
+                                        <Text style={[
+                                            styles.dayText,
+                                            isToday && !isSelected && { color: '#FFB74D', fontWeight: '800' },
+                                            isSelected && { color: '#0A0C10', fontWeight: '900' },
+                                        ]}>{item.day}</Text>
+                                    </View>
+                                )}
                             </TouchableOpacity>
                         );
                     })}
                 </View>
+                </Animated.View>
             </View>
         );
     };
 
-    const TIMELINE_ONLY_WIDTH = TOTAL_CELLS * CELL_WIDTH + 100; // Width without label column
+    const TIMELINE_ONLY_WIDTH = TOTAL_CELLS * CELL_WIDTH + TIMELINE_END_PAD; // Width without label column
 
     // Scroll timeline so the NOW line is centered when viewing the current logical day; otherwise scroll to start (daily start).
     const scrollToNow = useCallback(() => {
@@ -1310,7 +1577,7 @@ export default function LiveFocusView({
 
         const now = new Date();
         const timelineVisibleWidth = screenWidth - (isTaskColumnVisible ? TRACK_LABEL_WIDTH : 0);
-        const timelineOnlyWidth = TOTAL_CELLS * CELL_WIDTH + 100; // Recalculate since it depends on minutesPerCell
+        const timelineOnlyWidth = TOTAL_CELLS * CELL_WIDTH + TIMELINE_END_PAD; // Recalculate since it depends on minutesPerCell
         const maxScrollX = Math.max(0, timelineOnlyWidth - timelineVisibleWidth);
 
         let scrollX: number;
@@ -1723,9 +1990,9 @@ export default function LiveFocusView({
     // Calculate content height based on number of tasks and untimed subtasks
     // Calculate content height using measured heights or fallback to estimation
     const calculateContentHeight = useCallback(() => {
-        const CARD_HEIGHT = 23;
-        const LANE_SPACING = 10;
-        const BASE_TOP = 7;
+        const CARD_HEIGHT = 32;
+        const LANE_SPACING = 5;
+        const BASE_TOP = 12;
 
         if (viewMode === 'merged') {
             const untimedListHeight = mergedUntimedEntries.length > 0
@@ -1798,9 +2065,9 @@ export default function LiveFocusView({
                 const maxLane = timedStages.length > 0
                     ? Math.max(...Array.from(timedStageLanes.values()), -1)
                     : -1;
-                const CARD_HEIGHT = 23;
-                const LANE_SPACING = 10; // 4px gap between consecutive subtasks
-                const BASE_TOP = 7;
+                const CARD_HEIGHT = 32;
+                const LANE_SPACING = 5; // 4px gap between consecutive subtasks
+                const BASE_TOP = 12;
                 const timedStagesHeight = maxLane >= 0
                     ? BASE_TOP + ((maxLane + 1) * (CARD_HEIGHT + LANE_SPACING)) - LANE_SPACING + TRACK_BOTTOM_PADDING
                     : 0;
@@ -1966,6 +2233,32 @@ export default function LiveFocusView({
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
     }, [tasks, onUpdateStages]);
 
+    // Create a new subtask on a task (used by the add form and by the portrait slide-to-add sheet)
+    const handleAddSubtask = useCallback((taskId: number, text: string, startTime: number, duration: number, syncMode?: SyncMode) => {
+        if (!onUpdateStages) return;
+        const task = tasks.find(t => t.id === taskId);
+        if (!task) return;
+
+        // Generate a stable stage id (avoid collisions within the task)
+        const existingIds = new Set((task.stages || []).map(s => s.id));
+        let stageId = Date.now();
+        while (existingIds.has(stageId)) stageId += 1;
+
+        const newStage: TaskStage = {
+            id: stageId,
+            text: text,
+            isCompleted: false,
+            status: 'Upcoming',
+            createdAt: new Date().toISOString(),
+            // 6-to-6: default start to beginning of logical day (e.g. 06:00) when missing
+            startTimeMinutes: startTime ?? dailyStartMinutes,
+            durationMinutes: duration ?? 180,
+        };
+
+        onUpdateStages(task, [...(task.stages || []), newStage], syncMode);
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    }, [tasks, onUpdateStages, dailyStartMinutes]);
+
     const handleDeleteStage = useCallback((taskId: number, stageId: number) => {
         if (!onUpdateStages) return;
         const task = tasks.find(t => t.id === taskId);
@@ -2022,47 +2315,99 @@ export default function LiveFocusView({
     // 6-to-6 day as one: use toDisplayMinutes so 23:55→00:25 and "now" 01:30 compare correctly across midnight.
     const getApprovalCount = useCallback(() => {
         const currentMinutes = currentTimeRef.current.getHours() * 60 + currentTimeRef.current.getMinutes();
-        const nowD = toDisplayMinutes(currentMinutes, dailyStartMinutes);
-        let count = 0;
-
-        tasks.forEach(task => {
-            task.stages?.forEach(stage => {
-                const startTime = stage.startTimeMinutes ?? 0;
-                const duration = stage.durationMinutes ?? 0;
-                const endTime = startTime + duration;
-
-                const startD = toDisplayMinutes(startTime, dailyStartMinutes);
-                const endD = toDisplayMinutes(endTime >= 1440 ? endTime - 1440 : endTime, dailyStartMinutes);
-
-                const needsFinishApproval = stage.status === 'Process' && endD <= nowD;
-                const needsStartApproval = stage.status === 'Upcoming' && startD <= nowD;
-
-                if (needsFinishApproval || needsStartApproval) {
-                    count++;
-                }
-            });
-        });
-        return count;
-    }, [tasks, dailyStartMinutes]);
+        return getApprovalItems(tasks, categories, dailyStartMinutes, currentMinutes).length;
+    }, [tasks, categories, dailyStartMinutes]);
 
     const approvalCount = getApprovalCount();
 
     // Same 6-to-6 display comparison as getApprovalCount/ApprovalPopup.
     const stageNeedsApproval = useCallback((stage: TaskStage): 'START' | 'FINISH' | null => {
         const currentMinutes = currentTimeRef.current.getHours() * 60 + currentTimeRef.current.getMinutes();
-        const nowD = toDisplayMinutes(currentMinutes, dailyStartMinutes);
-        const startTime = stage.startTimeMinutes ?? 0;
-        const duration = stage.durationMinutes ?? 0;
-        const endTime = startTime + duration;
-        const startD = toDisplayMinutes(startTime, dailyStartMinutes);
-        const endD = toDisplayMinutes(endTime >= 1440 ? endTime - 1440 : endTime, dailyStartMinutes);
-        if (stage.status === 'Process' && endD <= nowD) return 'FINISH';
-        if (stage.status === 'Upcoming' && startD <= nowD) return 'START';
-        return null;
+        return getApprovalType(stage, currentMinutes, dailyStartMinutes);
     }, [dailyStartMinutes]);
 
+    // Round status disc at the start of a timeline bar. Tapping it opens the status picker for that stage.
+    const STATUS_DISC_ICON: Record<StageStatus, keyof typeof MaterialIcons.glyphMap> = {
+        Upcoming: 'schedule',
+        Process: 'schedule',
+        Done: 'check',
+        Undone: 'close',
+    };
+    const renderStageStatusDisc = (taskId: number, stage: TaskStage) => {
+        const status = (stage.status || 'Upcoming') as StageStatus;
+        return (
+            // Full-height, vertically centred slot: the disc is always centred in the bar whatever its height
+            <View pointerEvents="box-none" style={styles.stageStatusSlotDeep}>
+                <TouchableOpacity
+                    activeOpacity={0.7}
+                    hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
+                    style={styles.stageStatusSocketDeep}
+                    onPress={(e) => {
+                        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                        const { pageX, pageY } = e.nativeEvent;
+                        setStageStatusPopupPosition({ x: pageX, y: pageY + 16 });
+                        setStatusPopupTarget({ taskId, stageId: stage.id });
+                        setStageStatusPopupVisible(true);
+                    }}
+                >
+                    <View style={[styles.stageStatusDiscDeep, { backgroundColor: STAGE_RAIL[status] }]}>
+                        <MaterialIcons name={STATUS_DISC_ICON[status]} size={12} color="#0A0C10" />
+                    </View>
+                </TouchableOpacity>
+            </View>
+        );
+    };
+
+    const toggleTaskCollapsed = (taskId: number) => {
+        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+        LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+        clearEditingState();
+        setCollapsedTaskIds(prev => {
+            const next = new Set(prev);
+            if (next.has(taskId)) next.delete(taskId); else next.add(taskId);
+            return next;
+        });
+    };
+
+    // Minimised row: the task's stages as small status capsules on two thin lanes
+    const renderCollapsedStrip = (task: Task, timed: TaskStage[]) => {
+        const laneEnds = [-1, -1];
+        return timed.map((stage, idx) => {
+            const { left, width } = getStageLayout(stage, idx, 0);
+            const w = Math.max(18, width);
+            const status = (stage.status || 'Upcoming') as StageStatus;
+            const lane = laneEnds[0] <= left ? 0 : 1;
+            laneEnds[lane] = left + w;
+            return (
+                <View
+                    key={`mini-${task.id}-${stage.id}`}
+                    pointerEvents="none"
+                    style={[styles.miniCapsuleDeep, { left, width: w, top: 11 + lane * 15, backgroundColor: DEEP_STAGE_BG[status] }]}
+                >
+                    <View style={[styles.miniCapsuleDotDeep, { backgroundColor: STAGE_RAIL[status] }]} />
+                    {w > 64 && <Text style={styles.miniCapsuleTextDeep} numberOfLines={1}>{stage.text}</Text>}
+                </View>
+            );
+        });
+    };
+
+    // Sunken well inside each task row (the timeline half of the rail card)
+    const renderRailWell = () => (
+        <View pointerEvents="none" style={styles.railWellDeep}>
+            {timeOfDayBackgroundSegments.map((seg, i) => (
+                <View
+                    key={`rw-tint-${seg.key}-${i}`}
+                    style={[styles.timeOfDayBackgroundSegment, { left: seg.left - 4, width: seg.width, backgroundColor: seg.colorHex }]}
+                />
+            ))}
+            {getTimeLabels().map((label, i) => (
+                <View key={`rw-line-${i}`} style={[styles.railWellLineDeep, { left: label.left - 5 }]} />
+            ))}
+        </View>
+    );
+
     return (
-        <View style={styles.container}>
+        <View style={[styles.container, !isLandscape && { paddingTop: insets.top }]}>
 
             {/* Main Container: Fixed Labels + Scrollable Timeline. When progress bar is open, reserve bottom space so time log scrolls above it. */}
             <View style={[styles.mainContainer, isProgressExpanded && { paddingBottom: progressDockHeight }]}>
@@ -2071,6 +2416,8 @@ export default function LiveFocusView({
                     style={[
                         styles.taskColumnToggleWrapper,
                         {
+                            // Fixed vertical centre of the screen: independent of the progress dock opening/closing
+                            top: screenHeight / 2,
                             left: taskColumnWidthAnim.interpolate({
                                 inputRange: [0, 1],
                                 outputRange: [0, TRACK_LABEL_WIDTH - 12],
@@ -2092,11 +2439,13 @@ export default function LiveFocusView({
                         }}
                         activeOpacity={0.85}
                     >
+                        <View style={styles.taskColumnToggleGrip} />
                         <MaterialIcons
                             name={isTaskColumnVisible ? 'chevron-left' : 'chevron-right'}
-                            size={16}
-                            color="rgba(255,255,255,0.9)"
+                            size={18}
+                            color={isTaskColumnVisible ? 'rgba(255,255,255,0.85)' : '#22E3F5'}
                         />
+                        <View style={styles.taskColumnToggleGrip} />
                     </TouchableOpacity>
                 </Animated.View>
 
@@ -2115,7 +2464,37 @@ export default function LiveFocusView({
                     ]}
                 >
                     {/* Top left: minimal header (view toggle moved to progress bar) */}
-                    <View style={[styles.stickyHeaderFixed, styles.taskListHeaderMinimal, { width: TRACK_LABEL_WIDTH, height: 25 }]} />
+                    <View style={[styles.stickyHeaderFixed, styles.taskListHeaderMinimal, { width: TRACK_LABEL_WIDTH, height: 25 }]}>
+                        <Text style={styles.taskHeaderLabelDeep}>TASKS · {tasks.length}</Text>
+                        <View style={styles.collapseAllPillDeep}>
+                            <TouchableOpacity
+                                style={styles.collapseAllBtnDeep}
+                                hitSlop={{ top: 8, bottom: 8, left: 4, right: 4 }}
+                                onPress={() => {
+                                    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                                    LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+                                    clearEditingState();
+                                    setCollapsedTaskIds(new Set(tasks.map(t => t.id)));
+                                }}
+                                activeOpacity={0.7}
+                            >
+                                <MaterialIcons name="unfold-less" size={14} color="#FFFFFF" />
+                            </TouchableOpacity>
+                            <View style={styles.collapseAllDividerDeep} />
+                            <TouchableOpacity
+                                style={styles.collapseAllBtnDeep}
+                                hitSlop={{ top: 8, bottom: 8, left: 4, right: 4 }}
+                                onPress={() => {
+                                    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                                    LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+                                    setCollapsedTaskIds(new Set());
+                                }}
+                                activeOpacity={0.7}
+                            >
+                                <MaterialIcons name="unfold-more" size={14} color="rgba(255,255,255,0.6)" />
+                            </TouchableOpacity>
+                        </View>
+                    </View>
 
                     {/* Vertical Scroll for Labels (synced with timeline) */}
                     <ScrollView
@@ -2128,13 +2507,17 @@ export default function LiveFocusView({
                         showsVerticalScrollIndicator={false}
                         scrollEnabled={!activeStage}
                         onScroll={handleVerticalScrollLabels}
+                        onScrollBeginDrag={() => claimVerticalMaster('labels')}
+                        onScrollEndDrag={() => releaseVerticalMaster(250)}
+                        onMomentumScrollBegin={cancelVerticalMasterRelease}
+                        onMomentumScrollEnd={() => releaseVerticalMaster(0)}
                         scrollEventThrottle={16}
-                        bounces={true}
+                        bounces={false}
                         bouncesZoom={false}
-                        alwaysBounceVertical={true}
+                        alwaysBounceVertical={false}
                         removeClippedSubviews={false}
                         overScrollMode="never"
-                        decelerationRate="fast"
+                        decelerationRate="normal"
                     >
                         <View>
                             {viewMode === 'merged' ? (() => {
@@ -2146,9 +2529,9 @@ export default function LiveFocusView({
                                 const maxLane = mergedTimedStages.length > 0
                                     ? Math.max(...Array.from(mergedLanes.values()), -1)
                                     : -1;
-                                const CARD_HEIGHT = 23;
-                                const LANE_SPACING = 10;
-                                const BASE_TOP = 7;
+                                const CARD_HEIGHT = 32;
+                                const LANE_SPACING = 5;
+                                const BASE_TOP = 12;
                                 const timedStagesHeight = maxLane >= 0
                                     ? BASE_TOP + ((maxLane + 1) * (CARD_HEIGHT + LANE_SPACING)) - LANE_SPACING + TRACK_BOTTOM_PADDING
                                     : 0;
@@ -2163,7 +2546,7 @@ export default function LiveFocusView({
                                     <View key="merged">
                                         <View style={styles.trackSeparator} />
                                         <View
-                                            style={[styles.trackLabelContainer, { height: trackHeight, marginBottom: TRACK_BOTTOM_PADDING }]}
+                                            style={[styles.trackLabelContainer, { height: trackHeight, marginBottom: ROW_GAP }]}
                                             onLayout={(event: any) => {
                                                 const { height } = event.nativeEvent.layout;
                                                 if (height > 0) requestAnimationFrame(() => handleTaskHeightMeasured(MERGED_TRACK_ID, height));
@@ -2171,8 +2554,9 @@ export default function LiveFocusView({
                                         >
                                             <TouchableOpacity
                                                 activeOpacity={1}
-                                                style={[styles.trackLabel, { width: TRACK_LABEL_WIDTH, borderLeftWidth: 3, borderLeftColor: 'rgba(76,175,80,0.5)' }]}
+                                                style={[styles.trackLabel, { width: TRACK_LABEL_WIDTH - 8 }]}
                                             >
+                                                <View pointerEvents="none" style={styles.trackGrooveDeep} />
                                                 <View style={styles.trackLabelInner}>
                                                     <View style={[styles.categoryPill, { borderLeftColor: 'rgba(76,175,80,0.6)' }]}>
                                                         <Text style={[styles.categoryPillText, { color: '#4CAF50' }]}>ALL SUBTASKS</Text>
@@ -2199,20 +2583,7 @@ export default function LiveFocusView({
                                                             <MaterialIcons name="add" size={14} color="rgba(255,255,255,0.6)" />
                                                         </TouchableOpacity>
                                                     </View>
-                                                    <View style={styles.progressBarWrap}>
-                                                        <View style={styles.progressBarTrack}>
-                                                            {s.length > 0 ? (
-                                                                <>
-                                                                    <View style={[styles.progressBarSegment, styles.progressBarDone, { flex: doneCount / den }]} />
-                                                                    <View style={[styles.progressBarSegment, styles.progressBarUndone, { flex: undoneCount / den }]} />
-                                                                    <View style={[styles.progressBarSegment, styles.progressBarPending, { flex: pendingCount / den }]} />
-                                                                </>
-                                                            ) : (
-                                                                <View style={[styles.progressBarSegment, styles.progressBarPending, { flex: 1 }]} />
-                                                            )}
-                                                        </View>
-                                                        <Text style={styles.progressBarLabel}>{doneCount}/{s.length || 0}</Text>
-                                                    </View>
+                                                    <TrackProgressRing done={doneCount} undone={undoneCount} total={s.length || 0} />
                                                 </View>
                                             </TouchableOpacity>
                                         </View>
@@ -2227,9 +2598,9 @@ export default function LiveFocusView({
                                 const maxLane = section.timedStages.length > 0
                                     ? Math.max(...Array.from(sectionLanes.values()), -1)
                                     : -1;
-                                const CARD_HEIGHT = 23;
-                                const LANE_SPACING = 10;
-                                const BASE_TOP = 7;
+                                const CARD_HEIGHT = 32;
+                                const LANE_SPACING = 5;
+                                const BASE_TOP = 12;
                                 const timedStagesHeight = maxLane >= 0
                                     ? BASE_TOP + ((maxLane + 1) * (CARD_HEIGHT + LANE_SPACING)) - LANE_SPACING + TRACK_BOTTOM_PADDING
                                     : 0;
@@ -2245,7 +2616,7 @@ export default function LiveFocusView({
                                     <View key={section.categoryId || 'uncategorized'}>
                                         <View style={styles.trackSeparator} />
                                         <View
-                                            style={[styles.trackLabelContainer, { height: trackHeight, marginBottom: TRACK_BOTTOM_PADDING }]}
+                                            style={[styles.trackLabelContainer, { height: trackHeight, marginBottom: ROW_GAP }]}
                                             onLayout={(event: any) => {
                                                 const { height } = event.nativeEvent.layout;
                                                 if (height > 0) requestAnimationFrame(() => handleCategorySectionHeightMeasured(section.categoryId, height));
@@ -2253,8 +2624,9 @@ export default function LiveFocusView({
                                         >
                                             <TouchableOpacity
                                                 activeOpacity={1}
-                                                style={[styles.trackLabel, { width: TRACK_LABEL_WIDTH, borderLeftWidth: 3, borderLeftColor: cat?.color || 'rgba(255,255,255,0.2)' }]}
+                                                style={[styles.trackLabel, { width: TRACK_LABEL_WIDTH - 8 }]}
                                             >
+                                                <View pointerEvents="none" style={styles.trackGrooveDeep} />
                                                 <View style={styles.trackLabelInner}>
                                                     <View style={[styles.categoryPill, { borderLeftColor: cat?.color || 'rgba(255,255,255,0.2)' }]}>
                                                         {cat && <MaterialIcons name={cat.icon as any} size={9} color={cat.color} style={styles.categoryPillIcon} />}
@@ -2286,20 +2658,7 @@ export default function LiveFocusView({
                                                             <MaterialIcons name="add" size={14} color="rgba(255,255,255,0.6)" />
                                                         </TouchableOpacity>
                                                     </View>
-                                                    <View style={styles.progressBarWrap}>
-                                                        <View style={styles.progressBarTrack}>
-                                                            {s.length > 0 ? (
-                                                                <>
-                                                                    <View style={[styles.progressBarSegment, styles.progressBarDone, { flex: doneCount / den }]} />
-                                                                    <View style={[styles.progressBarSegment, styles.progressBarUndone, { flex: undoneCount / den }]} />
-                                                                    <View style={[styles.progressBarSegment, styles.progressBarPending, { flex: pendingCount / den }]} />
-                                                                </>
-                                                            ) : (
-                                                                <View style={[styles.progressBarSegment, styles.progressBarPending, { flex: 1 }]} />
-                                                            )}
-                                                        </View>
-                                                        <Text style={styles.progressBarLabel}>{doneCount}/{s.length || 0}</Text>
-                                                    </View>
+                                                    <TrackProgressRing done={doneCount} undone={undoneCount} total={s.length || 0} />
                                                 </View>
                                             </TouchableOpacity>
                                         </View>
@@ -2310,6 +2669,7 @@ export default function LiveFocusView({
                                 const liveStatus = getTaskLiveStatus(task);
                                 const isActive = liveStatus === 'ACTIVE';
                                 const category = categories.find(c => c.id === task.categoryId);
+                                const isCollapsed = collapsedTaskIds.has(task.id);
 
                                 // Get measured height or calculate fallback (must grow when new lanes appear)
                                 const measuredHeight = taskHeights.get(task.id) ?? 0;
@@ -2333,15 +2693,15 @@ export default function LiveFocusView({
                                 const maxLane = timedStages.length > 0
                                     ? Math.max(...Array.from(timedStageLanes.values()), -1)
                                     : -1;
-                                const CARD_HEIGHT = 23;
-                                const LANE_SPACING = 10; // 4px gap between consecutive subtasks
-                                const BASE_TOP = 7;
+                                const CARD_HEIGHT = 32;
+                                const LANE_SPACING = 5; // 4px gap between consecutive subtasks
+                                const BASE_TOP = 12;
                                 const timedStagesHeight = maxLane >= 0
                                     ? BASE_TOP + ((maxLane + 1) * (CARD_HEIGHT + LANE_SPACING)) - LANE_SPACING + TRACK_BOTTOM_PADDING
                                     : 0;
 
                                 const computedHeight = Math.max(TRACK_HEIGHT, untimedListHeight, timedStagesHeight);
-                                const trackHeight = Math.max(measuredHeight, computedHeight);
+                                const trackHeight = isCollapsed ? COLLAPSED_ROW_HEIGHT : Math.max(measuredHeight, computedHeight);
 
                                 const handleLabelLayout = (event: any) => {
                                     const { height } = event.nativeEvent.layout;
@@ -2359,7 +2719,7 @@ export default function LiveFocusView({
                                         <View
                                             style={[
                                                 styles.trackLabelContainer,
-                                                { height: trackHeight, marginBottom: TRACK_BOTTOM_PADDING },
+                                                { height: trackHeight, marginBottom: ROW_GAP },
                                                 task.isDisabled && { opacity: 0.4 },
                                             ]}
                                             onLayout={handleLabelLayout}
@@ -2372,12 +2732,22 @@ export default function LiveFocusView({
                                                 }}
                                                 style={[
                                                     styles.trackLabel,
-                                                    { width: TRACK_LABEL_WIDTH, borderLeftWidth: 3, borderLeftColor: category?.color || 'rgba(255,255,255,0.12)' },
+                                                    { width: TRACK_LABEL_WIDTH - 8 },
                                                     isActive && styles.trackLabelActive,
                                                 ]}
                                             >
-                                                <View style={styles.trackLabelInner}>
+                                                <View pointerEvents="none" style={styles.trackGrooveDeep} />
+                                                <TouchableOpacity
+                                                    style={[styles.taskCollapseBtnDeep, isCollapsed && styles.taskCollapseBtnDeepCentered]}
+                                                    onPress={() => toggleTaskCollapsed(task.id)}
+                                                    hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                                                    activeOpacity={0.7}
+                                                >
+                                                    <MaterialIcons name={isCollapsed ? 'keyboard-arrow-down' : 'keyboard-arrow-up'} size={16} color="rgba(255,255,255,0.85)" />
+                                                </TouchableOpacity>
+                                                <View style={[styles.trackLabelInner, isCollapsed && styles.trackLabelInnerCollapsedDeep]}>
                                                     {/* Category pill: icon + name */}
+                                                    {!isCollapsed && (
                                                     <View style={[styles.categoryPill, { borderLeftColor: category?.color || 'rgba(255,255,255,0.2)' }]}>
                                                         {category && (
                                                             <MaterialIcons name={category.icon as any} size={9} color={category.color} style={styles.categoryPillIcon} />
@@ -2386,6 +2756,7 @@ export default function LiveFocusView({
                                                             {category ? category.name.toUpperCase() : 'GENERAL'}
                                                         </Text>
                                                     </View>
+                                                    )}
 
                                                     {/* Task title + active indicator + add button */}
                                                     <View style={styles.titleRow}>
@@ -2410,6 +2781,7 @@ export default function LiveFocusView({
                                                         )}
                                                         <View style={styles.titleRowRight}>
                                                             {isActive && <View style={styles.activeDot} />}
+                                                            {!isCollapsed && (
                                                             <TouchableOpacity
                                                                 style={styles.taskAddSubtaskBtn}
                                                                 onPress={() => {
@@ -2426,6 +2798,7 @@ export default function LiveFocusView({
                                                             >
                                                                 <MaterialIcons name="add" size={14} color="rgba(255,255,255,0.6)" />
                                                             </TouchableOpacity>
+                                                            )}
                                                         </View>
                                                     </View>
 
@@ -2438,20 +2811,7 @@ export default function LiveFocusView({
                                                         const pendingCount = Math.max(0, total - doneCount - undoneCount);
                                                         const den = total || 1;
                                                         return (
-                                                            <View style={styles.progressBarWrap}>
-                                                                <View style={styles.progressBarTrack}>
-                                                                    {total > 0 ? (
-                                                                        <>
-                                                                            <View style={[styles.progressBarSegment, styles.progressBarDone, { flex: doneCount / den }]} />
-                                                                            <View style={[styles.progressBarSegment, styles.progressBarUndone, { flex: undoneCount / den }]} />
-                                                                            <View style={[styles.progressBarSegment, styles.progressBarPending, { flex: pendingCount / den }]} />
-                                                                        </>
-                                                                    ) : (
-                                                                        <View style={[styles.progressBarSegment, styles.progressBarPending, { flex: 1 }]} />
-                                                                    )}
-                                                                </View>
-                                                                <Text style={styles.progressBarLabel}>{doneCount}/{total}</Text>
-                                                            </View>
+                                                            <TrackProgressRing done={doneCount} undone={undoneCount} total={total} size={isCollapsed ? 30 : 44} />
                                                         );
                                                     })()}
                                                 </View>
@@ -2478,7 +2838,7 @@ export default function LiveFocusView({
                             style={[
                                 styles.timelineContent,
                                 { width: TIMELINE_ONLY_WIDTH, height: 25 },
-                                { transform: [{ translateX: Animated.multiply(animatedScrollX, -1) }] }
+                                { transform: [{ translateX: negScrollX }] }
                             ]}
                         >
                             {/* Time-of-day background layer (behind header labels) */}
@@ -2501,6 +2861,18 @@ export default function LiveFocusView({
                                 </View>
                             ))}
 
+                            {/* Ruler ticks: major on each label, minor halfway between */}
+                            {(() => {
+                                const lb = getTimeLabels();
+                                const step = lb.length > 1 ? lb[1].left - lb[0].left : 0;
+                                return lb.map((label, i) => (
+                                    <React.Fragment key={`tick-${i}`}>
+                                        <View pointerEvents="none" style={[styles.hourTickMajor, { left: label.left }]} />
+                                        {step > 0 && <View pointerEvents="none" style={[styles.hourTickMinor, { left: label.left + step / 2 }]} />}
+                                    </React.Fragment>
+                                ));
+                            })()}
+
                             {/* NOW Line Dot (Top portion) — only when selected date is the current logical day (today) */}
                             {isSameLogicalDay(selectedDate, new Date(), dailyStartMinutes) && (
                                 <View style={[styles.nowLineSticky, { left: getNowPosition() }]}>
@@ -2518,23 +2890,27 @@ export default function LiveFocusView({
                             minHeight: minScrollHeight,
                             paddingBottom: BOTTOM_SPACING,
                         }}
-                        showsVerticalScrollIndicator={true}
+                        showsVerticalScrollIndicator={false}
                         scrollEnabled={!activeStage}
                         onScroll={handleVerticalScroll}
+                        onScrollBeginDrag={() => claimVerticalMaster('timeline')}
+                        onScrollEndDrag={() => releaseVerticalMaster(250)}
+                        onMomentumScrollBegin={cancelVerticalMasterRelease}
+                        onMomentumScrollEnd={() => releaseVerticalMaster(0)}
                         scrollEventThrottle={16}
-                        bounces={true}
+                        bounces={false}
                         bouncesZoom={false}
-                        alwaysBounceVertical={true}
+                        alwaysBounceVertical={false}
                         removeClippedSubviews={false}
                         overScrollMode="never"
-                        decelerationRate="fast"
+                        decelerationRate="normal"
                     >
                         <View
                             onTouchMove={handleTouchMove}
                             onTouchEnd={handleTouchEnd}
                             style={{ flex: 1, minHeight: minScrollHeight }}
                         >
-                            <ScrollView
+                            <Animated.ScrollView
                                 horizontal
                                 ref={setTimelineScrollRef}
                                 showsHorizontalScrollIndicator={true}
@@ -2542,8 +2918,8 @@ export default function LiveFocusView({
                                 directionalLockEnabled={true}
                                 contentContainerStyle={{ width: TIMELINE_ONLY_WIDTH, minHeight: minScrollHeight }}
                                 nestedScrollEnabled={true}
-                                onScroll={handleHorizontalScroll}
-                                scrollEventThrottle={0}
+                                onScroll={onTimelineScroll}
+                                scrollEventThrottle={16}
                                 bounces={true}
                                 alwaysBounceHorizontal={true}
                                 decelerationRate="normal"
@@ -2552,26 +2928,6 @@ export default function LiveFocusView({
                                 overScrollMode="never"
                             >
                                 <View style={[styles.timelineContent, { width: TIMELINE_ONLY_WIDTH, minHeight: minScrollHeight }]}>
-                                    {/* Time-of-day background layer (behind grid lines & cards) */}
-                                    <View pointerEvents="none" style={styles.timeOfDayBackgroundLayer}>
-                                        {timeOfDayBackgroundSegments.map((seg, i) => (
-                                            <View
-                                                key={`${seg.key}-${i}`}
-                                                style={[
-                                                    styles.timeOfDayBackgroundSegment,
-                                                    { left: seg.left, width: seg.width, backgroundColor: seg.colorHex }
-                                                ]}
-                                            />
-                                        ))}
-                                    </View>
-
-                                    {/* Vertical Lines (Grid) */}
-                                    {getTimeLabels().map((label, i) => (
-                                        <View key={i} style={[styles.hourLineOnly, { left: label.left }]}>
-                                            <View style={styles.hourLineExtend} />
-                                        </View>
-                                    ))}
-
                                     {/* NOW Line - Vertical segment — only when selected date is the current logical day (today) */}
                                     {isSameLogicalDay(selectedDate, new Date(), dailyStartMinutes) && (
                                         <View style={[styles.nowLine, { left: getNowPosition() }]} />
@@ -2600,9 +2956,9 @@ export default function LiveFocusView({
                                             if (activeStage != null && frozenCategoryIdRef.current === section.categoryId && tempStageLayout?.lane != null) {
                                                 maxLane = Math.max(maxLane, tempStageLayout.lane);
                                             }
-                                            const CARD_HEIGHT = 23;
-                                            const LANE_SPACING = 10;
-                                            const BASE_TOP = 7;
+                                            const CARD_HEIGHT = 32;
+                                            const LANE_SPACING = 5;
+                                            const BASE_TOP = 12;
                                             const timedStagesHeight = maxLane >= 0
                                                 ? BASE_TOP + ((maxLane + 1) * (CARD_HEIGHT + LANE_SPACING)) - LANE_SPACING + TRACK_BOTTOM_PADDING
                                                 : 0;
@@ -2618,7 +2974,7 @@ export default function LiveFocusView({
                                                         onPress={() => { if (resizeModeStage) setResizeModeStage(null); }}
                                                         style={[
                                                             styles.track,
-                                                            { height: trackHeight, marginBottom: TRACK_BOTTOM_PADDING },
+                                                            { height: trackHeight, marginBottom: ROW_GAP },
                                                             isTrackActive && { overflow: 'visible' as const },
                                                         ]}
                                                         onLayout={(event: any) => {
@@ -2626,6 +2982,7 @@ export default function LiveFocusView({
                                                             if (height > 0) requestAnimationFrame(() => handleCategorySectionHeightMeasured(section.categoryId, height));
                                                         }}
                                                     >
+                                                        {renderRailWell()}
                                                         {section.untimedEntries.length > 0 && (
                                                             <UntimedStagesDraggableList
                                                                 entries={section.untimedEntries}
@@ -2679,8 +3036,7 @@ export default function LiveFocusView({
                                                                     <View
                                                                         style={[
                                                                             styles.timelineStageCard,
-                                                                            { backgroundColor: STAGE_STATUS_CONFIG[stage.status || 'Upcoming'].color },
-                                                                            { borderLeftWidth: 3, borderLeftColor: section.category?.color || 'rgba(255,255,255,0.2)' },
+                                                                            { backgroundColor: DEEP_STAGE_BG[stage.status || 'Upcoming'] },
                                                                             isBeingEdited && styles.stageCardDragging,
                                                                             isInResizeMode && styles.stageCardResizeMode,
                                                                             { left, width, top },
@@ -2688,6 +3044,13 @@ export default function LiveFocusView({
                                                                         ]}
                                                                         {...stagePanResponder.panHandlers}
                                                                     >
+                                                                        {(stage.status || 'Upcoming') === 'Process' && (
+                                                                            <View
+                                                                                pointerEvents="none"
+                                                                                style={[styles.stageProgressFillDeep, { width: `${stageElapsedPct(effectiveTime.startTimeMinutes, effectiveTime.durationMinutes, currentTimeRef.current.getHours() * 60 + currentTimeRef.current.getMinutes())}%` }]}
+                                                                            />
+                                                                        )}
+                                                                        {renderStageStatusDisc(task.id, stage)}
                                                                         {isInResizeMode && (
                                                                             <TouchableOpacity
                                                                                 style={styles.resizeHandleLeft}
@@ -2736,13 +3099,13 @@ export default function LiveFocusView({
                                                                             style={[{ flex: 1, flexDirection: 'column', alignItems: 'flex-start', justifyContent: 'center', gap: 1 }]}
                                                                         >
                                                                             <View style={{ flexDirection: 'row', alignItems: 'center', width: '100%' }}>
-                                                                                <Text style={[styles.untimedStageName, { flexShrink: 1, color: '#FFFFFF', fontSize: 8.5 }, isBeingEdited && styles.stageTextDragging, isInResizeMode && styles.stageTextResizeMode]} numberOfLines={1} ellipsizeMode="tail">
+                                                                                <Text style={[styles.untimedStageName, { flexShrink: 1, color: '#FFFFFF', fontSize: 10 }, isBeingEdited && styles.stageTextDragging, isInResizeMode && styles.stageTextResizeMode]} numberOfLines={1} ellipsizeMode="tail">
                                                                                     {stage.text}
                                                                                 </Text>
                                                                                 {width > 80 && (
-                                                                                    <View style={[{ backgroundColor: 'rgba(255,255,255,0.15)', paddingHorizontal: 4, paddingVertical: 1.5, borderRadius: 3, marginLeft: 5 }, isBeingEdited && { backgroundColor: 'rgba(0,0,0,0.1)' }, isInResizeMode && { backgroundColor: 'rgba(0,0,0,0.1)' }]}>
-                                                                                        <Text style={[{ color: '#FFFFFF', fontSize: 6.5, fontWeight: '800' }, isBeingEdited && styles.stageTimeTextEditing, isInResizeMode && styles.stageTimeTextEditing]}>
-                                                                                            {formatDurationCompact(effectiveTime.durationMinutes)}
+                                                                                    <View style={[styles.stageDurationChipDeep, isBeingEdited && { backgroundColor: 'rgba(0,0,0,0.1)' }, isInResizeMode && { backgroundColor: 'rgba(0,0,0,0.1)' }]}>
+                                                                                        <Text style={[{ color: '#FFFFFF', fontSize: 7.2, fontWeight: '800' }, isBeingEdited && styles.stageTimeTextEditing, isInResizeMode && styles.stageTimeTextEditing]}>
+                                                                                            {formatDurationCompact(visibleOnDay(effectiveTime).durationMinutes)}
                                                                                         </Text>
                                                                                     </View>
                                                                                 )}
@@ -2752,11 +3115,11 @@ export default function LiveFocusView({
                                                                                 )}
                                                                             </View>
                                                                             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
-                                                                                <Text style={[styles.stageTimeText, { color: 'rgba(255, 255, 255, 0.8)', fontSize: 7 }, isBeingEdited && styles.stageTimeTextEditing, isInResizeMode && styles.stageTimeTextEditing]} numberOfLines={1}>
-                                                                                    {formatTimeRange(effectiveTime.startTimeMinutes, effectiveTime.startTimeMinutes + effectiveTime.durationMinutes)}
+                                                                                <Text style={[styles.stageTimeText, { color: 'rgba(255, 255, 255, 0.8)', fontSize: 7.7 }, isBeingEdited && styles.stageTimeTextEditing, isInResizeMode && styles.stageTimeTextEditing]} numberOfLines={1}>
+                                                                                    {formatTimeRange(visibleOnDay(effectiveTime).startTimeMinutes, visibleOnDay(effectiveTime).startTimeMinutes + visibleOnDay(effectiveTime).durationMinutes)}
                                                                                 </Text>
                                                                                 <View style={{ width: 3, height: 3, borderRadius: 1.5, backgroundColor: 'rgba(255,255,255,0.4)', marginTop: 0.5 }} />
-                                                                                <Text style={[styles.stageDurationText, { color: 'rgba(255, 255, 255, 0.9)', fontSize: 6.5, fontWeight: '700', textTransform: 'uppercase' }, isBeingEdited && styles.stageTimeTextEditing, isInResizeMode && styles.stageTimeTextEditing]} numberOfLines={1}>
+                                                                                <Text style={[styles.stageDurationText, { color: 'rgba(255, 255, 255, 0.9)', fontSize: 7.2, fontWeight: '800', textTransform: 'uppercase' }, isBeingEdited && styles.stageTimeTextEditing, isInResizeMode && styles.stageTimeTextEditing]} numberOfLines={1}>
                                                                                     {STAGE_STATUS_LABELS[stage.status || 'Upcoming']}
                                                                                 </Text>
                                                                             </View>
@@ -2820,7 +3183,7 @@ export default function LiveFocusView({
                                                                     }}
                                                                     activeOpacity={0.7}
                                                                 >
-                                                                    <MaterialIcons name="add" size={18} color="#808080" />
+                                                                    <MaterialIcons name="add" size={18} color="rgba(255,255,255,0.85)" />
                                                                 </TouchableOpacity>
                                                             );
                                                         })()}
@@ -2843,9 +3206,9 @@ export default function LiveFocusView({
                                             if (activeStage != null && tempStageLayout?.lane != null) {
                                                 maxLane = Math.max(maxLane, tempStageLayout.lane);
                                             }
-                                            const CARD_HEIGHT = 23;
-                                            const LANE_SPACING = 10;
-                                            const BASE_TOP = 7;
+                                            const CARD_HEIGHT = 32;
+                                            const LANE_SPACING = 5;
+                                            const BASE_TOP = 12;
                                             const timedStagesHeight = maxLane >= 0
                                                 ? BASE_TOP + ((maxLane + 1) * (CARD_HEIGHT + LANE_SPACING)) - LANE_SPACING + TRACK_BOTTOM_PADDING
                                                 : 0;
@@ -2860,7 +3223,7 @@ export default function LiveFocusView({
                                                         onPress={() => { if (resizeModeStage) setResizeModeStage(null); }}
                                                         style={[
                                                             styles.track,
-                                                            { height: trackHeight, marginBottom: TRACK_BOTTOM_PADDING },
+                                                            { height: trackHeight, marginBottom: ROW_GAP },
                                                             isTrackActive && { overflow: 'visible' as const },
                                                         ]}
                                                         onLayout={(event: any) => {
@@ -2868,6 +3231,7 @@ export default function LiveFocusView({
                                                             if (height > 0) requestAnimationFrame(() => handleTaskHeightMeasured(MERGED_TRACK_ID, height));
                                                         }}
                                                     >
+                                                        {renderRailWell()}
                                                         {sortedMergedUntimed.length > 0 && (
                                                             <UntimedStagesDraggableList
                                                                 entries={mergedUntimedEntries}
@@ -2922,8 +3286,7 @@ export default function LiveFocusView({
                                                                     <View
                                                                         style={[
                                                                             styles.timelineStageCard,
-                                                                            { backgroundColor: STAGE_STATUS_CONFIG[stage.status || 'Upcoming'].color },
-                                                                            { borderLeftWidth: 3, borderLeftColor: category?.color || 'rgba(255,255,255,0.2)' },
+                                                                            { backgroundColor: DEEP_STAGE_BG[stage.status || 'Upcoming'] },
                                                                             isBeingEdited && styles.stageCardDragging,
                                                                             isInResizeMode && styles.stageCardResizeMode,
                                                                             { left, width, top },
@@ -2931,6 +3294,13 @@ export default function LiveFocusView({
                                                                         ]}
                                                                         {...stagePanResponder.panHandlers}
                                                                     >
+                                                                        {(stage.status || 'Upcoming') === 'Process' && (
+                                                                            <View
+                                                                                pointerEvents="none"
+                                                                                style={[styles.stageProgressFillDeep, { width: `${stageElapsedPct(effectiveTime.startTimeMinutes, effectiveTime.durationMinutes, currentTimeRef.current.getHours() * 60 + currentTimeRef.current.getMinutes())}%` }]}
+                                                                            />
+                                                                        )}
+                                                                        {renderStageStatusDisc(task.id, stage)}
                                                                         {isInResizeMode && (
                                                                             <TouchableOpacity
                                                                                 style={styles.resizeHandleLeft}
@@ -2978,13 +3348,13 @@ export default function LiveFocusView({
                                                                             style={[{ flex: 1, flexDirection: 'column', alignItems: 'flex-start', justifyContent: 'center', gap: 1 }]}
                                                                         >
                                                                             <View style={{ flexDirection: 'row', alignItems: 'center', width: '100%' }}>
-                                                                                <Text style={[styles.untimedStageName, { flexShrink: 1, color: '#FFFFFF', fontSize: 8.5 }, isBeingEdited && styles.stageTextDragging, isInResizeMode && styles.stageTextResizeMode]} numberOfLines={1} ellipsizeMode="tail">
+                                                                                <Text style={[styles.untimedStageName, { flexShrink: 1, color: '#FFFFFF', fontSize: 10 }, isBeingEdited && styles.stageTextDragging, isInResizeMode && styles.stageTextResizeMode]} numberOfLines={1} ellipsizeMode="tail">
                                                                                     {stage.text}
                                                                                 </Text>
                                                                                 {width > 80 && (
-                                                                                    <View style={[{ backgroundColor: 'rgba(255,255,255,0.15)', paddingHorizontal: 4, paddingVertical: 1.5, borderRadius: 3, marginLeft: 5 }, isBeingEdited && { backgroundColor: 'rgba(0,0,0,0.1)' }, isInResizeMode && { backgroundColor: 'rgba(0,0,0,0.1)' }]}>
-                                                                                        <Text style={[{ color: '#FFFFFF', fontSize: 6.5, fontWeight: '800' }, isBeingEdited && styles.stageTimeTextEditing, isInResizeMode && styles.stageTimeTextEditing]}>
-                                                                                            {formatDurationCompact(effectiveTime.durationMinutes)}
+                                                                                    <View style={[styles.stageDurationChipDeep, isBeingEdited && { backgroundColor: 'rgba(0,0,0,0.1)' }, isInResizeMode && { backgroundColor: 'rgba(0,0,0,0.1)' }]}>
+                                                                                        <Text style={[{ color: '#FFFFFF', fontSize: 7.2, fontWeight: '800' }, isBeingEdited && styles.stageTimeTextEditing, isInResizeMode && styles.stageTimeTextEditing]}>
+                                                                                            {formatDurationCompact(visibleOnDay(effectiveTime).durationMinutes)}
                                                                                         </Text>
                                                                                     </View>
                                                                                 )}
@@ -2994,11 +3364,11 @@ export default function LiveFocusView({
                                                                                 )}
                                                                             </View>
                                                                             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
-                                                                                <Text style={[styles.stageTimeText, { color: 'rgba(255, 255, 255, 0.8)', fontSize: 7 }, isBeingEdited && styles.stageTimeTextEditing, isInResizeMode && styles.stageTimeTextEditing]} numberOfLines={1}>
-                                                                                    {formatTimeRange(effectiveTime.startTimeMinutes, effectiveTime.startTimeMinutes + effectiveTime.durationMinutes)}
+                                                                                <Text style={[styles.stageTimeText, { color: 'rgba(255, 255, 255, 0.8)', fontSize: 7.7 }, isBeingEdited && styles.stageTimeTextEditing, isInResizeMode && styles.stageTimeTextEditing]} numberOfLines={1}>
+                                                                                    {formatTimeRange(visibleOnDay(effectiveTime).startTimeMinutes, visibleOnDay(effectiveTime).startTimeMinutes + visibleOnDay(effectiveTime).durationMinutes)}
                                                                                 </Text>
                                                                                 <View style={{ width: 3, height: 3, borderRadius: 1.5, backgroundColor: 'rgba(255,255,255,0.4)', marginTop: 0.5 }} />
-                                                                                <Text style={[styles.stageDurationText, { color: 'rgba(255, 255, 255, 0.9)', fontSize: 6.5, fontWeight: '700', textTransform: 'uppercase' }, isBeingEdited && styles.stageTimeTextEditing, isInResizeMode && styles.stageTimeTextEditing]} numberOfLines={1}>
+                                                                                <Text style={[styles.stageDurationText, { color: 'rgba(255, 255, 255, 0.9)', fontSize: 7.2, fontWeight: '800', textTransform: 'uppercase' }, isBeingEdited && styles.stageTimeTextEditing, isInResizeMode && styles.stageTimeTextEditing]} numberOfLines={1}>
                                                                                     {STAGE_STATUS_LABELS[stage.status || 'Upcoming']}
                                                                                 </Text>
                                                                             </View>
@@ -3062,7 +3432,7 @@ export default function LiveFocusView({
                                                                     }}
                                                                     activeOpacity={0.7}
                                                                 >
-                                                                    <MaterialIcons name="add" size={18} color="#808080" />
+                                                                    <MaterialIcons name="add" size={18} color="rgba(255,255,255,0.85)" />
                                                                 </TouchableOpacity>
                                                             );
                                                         })()}
@@ -3122,16 +3492,17 @@ export default function LiveFocusView({
                                             if (activeStage?.taskId === task.id && tempStageLayout?.lane != null) {
                                                 maxLane = Math.max(maxLane, tempStageLayout.lane);
                                             }
-                                            const CARD_HEIGHT = 23;
-                                            const LANE_SPACING = 10; // 4px gap between consecutive subtasks
-                                            const BASE_TOP = 7;
+                                            const CARD_HEIGHT = 32;
+                                            const LANE_SPACING = 5; // 4px gap between consecutive subtasks
+                                            const BASE_TOP = 12;
                                             // Calculate height for all lanes: base + (number of lanes * (card height + spacing)) - last spacing + bottom padding (matches top)
                                             const timedStagesHeight = maxLane >= 0
                                                 ? BASE_TOP + ((maxLane + 1) * (CARD_HEIGHT + LANE_SPACING)) - LANE_SPACING + TRACK_BOTTOM_PADDING
                                                 : 0;
 
                                             // Dynamic track height: ALWAYS allow growth when new lanes appear
-                                            const trackHeight = Math.max(measuredHeight ?? 0, TRACK_HEIGHT, untimedListHeight, timedStagesHeight);
+                                            const isCollapsed = collapsedTaskIds.has(task.id);
+                                            const trackHeight = isCollapsed ? COLLAPSED_ROW_HEIGHT : Math.max(measuredHeight ?? 0, TRACK_HEIGHT, untimedListHeight, timedStagesHeight);
 
                                             const handleTrackLayout = (event: any) => {
                                                 const { height } = event.nativeEvent.layout;
@@ -3155,6 +3526,11 @@ export default function LiveFocusView({
                                                     <TouchableOpacity
                                                         activeOpacity={1}
                                                         onPress={() => {
+                                                            // A minimised row expands when tapped
+                                                            if (isCollapsed) {
+                                                                toggleTaskCollapsed(task.id);
+                                                                return;
+                                                            }
                                                             // Exit resize mode when tapping on track background
                                                             if (resizeModeStage) {
                                                                 setResizeModeStage(null);
@@ -3162,14 +3538,15 @@ export default function LiveFocusView({
                                                         }}
                                                         style={[
                                                             styles.track,
-                                                            { height: trackHeight, marginBottom: TRACK_BOTTOM_PADDING },
+                                                            { height: trackHeight, marginBottom: ROW_GAP },
                                                             isTrackActive && { overflow: 'visible' as const },
                                                             task.isDisabled && { borderLeftWidth: 2, borderLeftColor: 'rgba(255,145,0,0.6)' },
                                                         ]}
                                                         onLayout={handleTrackLayout}
                                                     >
+                                                        {renderRailWell()}
                                                         {/* Untimed Subtasks List (on the left) - Draggable */}
-                                                        {sortedUntimedStages.length > 0 && (
+                                                        {!isCollapsed && sortedUntimedStages.length > 0 && (
                                                             <UntimedStagesDraggableList
                                                                 entries={sortedUntimedStages.map(s => ({ task, stage: s }))}
                                                                 cellWidth={CELL_WIDTH}
@@ -3229,7 +3606,7 @@ export default function LiveFocusView({
                                                         )}
 
                                                         {/* Timed Subtasks (on the timeline) */}
-                                                        {(() => {
+                                                        {!isCollapsed && (() => {
                                                             // Lane map for rendering. During a timed-stage drag we freeze lanes so
                                                             // non-dragged stages never jump while you move another one.
                                                             const isDraggingThisTask = isDragging && activeStage?.taskId === task.id;
@@ -3254,14 +3631,20 @@ export default function LiveFocusView({
                                                                         <View
                                                                             style={[
                                                                                 styles.timelineStageCard,
-                                                                                { backgroundColor: STAGE_STATUS_CONFIG[stage.status || 'Upcoming'].color },
-                                                                                { borderLeftWidth: 3, borderLeftColor: category?.color || 'rgba(255,255,255,0.2)' },
+                                                                                { backgroundColor: DEEP_STAGE_BG[stage.status || 'Upcoming'] },
                                                                                 isBeingEdited && styles.stageCardDragging,
                                                                                 isInResizeMode && styles.stageCardResizeMode,
                                                                                 { left, width, top },
                                                                             ]}
                                                                             {...stagePanResponder.panHandlers}
                                                                         >
+                                                                        {(stage.status || 'Upcoming') === 'Process' && (
+                                                                            <View
+                                                                                pointerEvents="none"
+                                                                                style={[styles.stageProgressFillDeep, { width: `${stageElapsedPct(effectiveTime.startTimeMinutes, effectiveTime.durationMinutes, currentTimeRef.current.getHours() * 60 + currentTimeRef.current.getMinutes())}%` }]}
+                                                                            />
+                                                                        )}
+                                                                        {renderStageStatusDisc(task.id, stage)}
                                                                             {isInResizeMode && (
                                                                                 <TouchableOpacity
                                                                                     style={styles.resizeHandleLeft}
@@ -3338,16 +3721,16 @@ export default function LiveFocusView({
                                                                                 <View style={{ flexDirection: 'row', alignItems: 'center', width: '100%' }}>
                                                                                     <Text style={[
                                                                                         styles.untimedStageName,
-                                                                                        { flexShrink: 1, color: '#FFFFFF', fontSize: 8.5 },
+                                                                                        { flexShrink: 1, color: '#FFFFFF', fontSize: 10 },
                                                                                         isBeingEdited && styles.stageTextDragging,
                                                                                         isInResizeMode && styles.stageTextResizeMode
                                                                                     ]} numberOfLines={1} ellipsizeMode="tail">
                                                                                         {stage.text}
                                                                                     </Text>
                                                                                     {width > 80 && (
-                                                                                        <View style={[{ backgroundColor: 'rgba(255,255,255,0.15)', paddingHorizontal: 4, paddingVertical: 1.5, borderRadius: 3, marginLeft: 5 }, isBeingEdited && { backgroundColor: 'rgba(0,0,0,0.1)' }, isInResizeMode && { backgroundColor: 'rgba(0,0,0,0.1)' }]}>
-                                                                                            <Text style={[{ color: '#FFFFFF', fontSize: 6.5, fontWeight: '800' }, isBeingEdited && styles.stageTimeTextEditing, isInResizeMode && styles.stageTimeTextEditing]}>
-                                                                                                {formatDurationCompact(effectiveTime.durationMinutes)}
+                                                                                        <View style={[styles.stageDurationChipDeep, isBeingEdited && { backgroundColor: 'rgba(0,0,0,0.1)' }, isInResizeMode && { backgroundColor: 'rgba(0,0,0,0.1)' }]}>
+                                                                                            <Text style={[{ color: '#FFFFFF', fontSize: 7.2, fontWeight: '800' }, isBeingEdited && styles.stageTimeTextEditing, isInResizeMode && styles.stageTimeTextEditing]}>
+                                                                                                {formatDurationCompact(visibleOnDay(effectiveTime).durationMinutes)}
                                                                                             </Text>
                                                                                         </View>
                                                                                     )}
@@ -3359,16 +3742,16 @@ export default function LiveFocusView({
                                                                                 <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
                                                                                     <Text style={[
                                                                                         styles.stageTimeText,
-                                                                                        { color: 'rgba(255, 255, 255, 0.8)', fontSize: 7 },
+                                                                                        { color: 'rgba(255, 255, 255, 0.8)', fontSize: 7.7 },
                                                                                         isBeingEdited && styles.stageTimeTextEditing,
                                                                                         isInResizeMode && styles.stageTimeTextEditing
                                                                                     ]} numberOfLines={1}>
-                                                                                        {formatTimeRange(effectiveTime.startTimeMinutes, effectiveTime.startTimeMinutes + effectiveTime.durationMinutes)}
+                                                                                        {formatTimeRange(visibleOnDay(effectiveTime).startTimeMinutes, visibleOnDay(effectiveTime).startTimeMinutes + visibleOnDay(effectiveTime).durationMinutes)}
                                                                                     </Text>
                                                                                     <View style={{ width: 3, height: 3, borderRadius: 1.5, backgroundColor: 'rgba(255,255,255,0.4)', marginTop: 0.5 }} />
                                                                                     <Text style={[
                                                                                         styles.stageDurationText,
-                                                                                        { color: 'rgba(255, 255, 255, 0.9)', fontSize: 6.5, fontWeight: '700', textTransform: 'uppercase' },
+                                                                                        { color: 'rgba(255, 255, 255, 0.9)', fontSize: 7.2, fontWeight: '800', textTransform: 'uppercase' },
                                                                                         isBeingEdited && styles.stageTimeTextEditing,
                                                                                         isInResizeMode && styles.stageTimeTextEditing
                                                                                     ]} numberOfLines={1}>
@@ -3421,6 +3804,8 @@ export default function LiveFocusView({
                                                             });
                                                         })()}
 
+                                                        {isCollapsed && renderCollapsedStrip(task, sortedTimedStages)}
+
                                                         {/* Add Subtask Plus Button — placed after the selected subtask (when in resize mode) */}
                                                         {(() => {
                                                             // Only show button if a subtask is selected (in resize mode) for this task
@@ -3464,7 +3849,7 @@ export default function LiveFocusView({
                                                                     }}
                                                                     activeOpacity={0.7}
                                                                 >
-                                                                    <MaterialIcons name="add" size={18} color="#808080" />
+                                                                    <MaterialIcons name="add" size={18} color="rgba(255,255,255,0.85)" />
                                                                 </TouchableOpacity>
                                                             );
                                                         })()}
@@ -3475,7 +3860,7 @@ export default function LiveFocusView({
                                         })}
                                     </View>
                                 </View>
-                            </ScrollView>
+                            </Animated.ScrollView>
                         </View>
                     </ScrollView>
                 </View>
@@ -3486,7 +3871,7 @@ export default function LiveFocusView({
                 pointerEvents={isProgressExpanded ? 'auto' : 'none'}
                 style={[
                     styles.bottomProgressDock,
-                    { height: progressDockHeight, maxHeight: progressDockHeight },
+                    { height: progressDockHeight, maxHeight: progressDockHeight, paddingBottom: 0 },
                     {
                         transform: [
                             {
@@ -3500,7 +3885,17 @@ export default function LiveFocusView({
                 ]}
             >
                 {/* Bar header (improved progress) */}
-                <View style={styles.bottomDockBar}>
+                <View style={[styles.bottomDockPlate, !isLandscape && styles.bottomDockPlateSheet, !isLandscape && { paddingBottom: dockBottomPad }]}>
+                    <BlurView intensity={55} tint="dark" style={StyleSheet.absoluteFill} pointerEvents="none" />
+                    <View pointerEvents="none" style={[StyleSheet.absoluteFill, styles.dockGlassTint]} />
+                    <LinearGradient
+                        pointerEvents="none"
+                        colors={['rgba(255,255,255,0.16)', 'rgba(255,255,255,0)']}
+                        start={{ x: 0.5, y: 0 }}
+                        end={{ x: 0.5, y: 1 }}
+                        style={styles.dockGlassSheen}
+                    />
+
                     {/* Time progress bar (TOTAL split by Done / Pending / Undone) */}
                     <View style={styles.bottomDockTimeBarTrack}>
                         {progressSummary.totalMinutes > 0 ? (
@@ -3551,10 +3946,19 @@ export default function LiveFocusView({
                                     onClose();
                                 }}
                             >
-                                <MaterialIcons name="arrow-back" size={18} color="rgb(0, 0, 0)" />
+                                <MaterialIcons name="arrow-back" size={13} color="rgba(255,255,255,0.9)" />
                             </TouchableOpacity>
 
-                            <View style={styles.bottomDockDivider} />
+<View style={styles.dockRingSocket}>
+    <PillProgressRing size={32} stroke={4.5} fontSize={8}
+        total={progressSummary.totalMinutes}
+        done={progressSummary.doneMinutes}
+        active={progressSummary.activeMinutes}
+        undone={progressSummary.undoneMinutes}
+        pct={progressSummary.pct}
+    />
+</View>
+
 
                             {/* Time summary OR Selected card details (compact; fits 55px dock) */}
                             {(() => {
@@ -3627,41 +4031,45 @@ export default function LiveFocusView({
                                         );
                                     }
                                 }
-                                // Default: show general time summary
+                                // Default: show general time summary (four sunken cells)
                                 return (
-                                    <View style={styles.bottomDockTimeSummary}>
-                                        <Text numberOfLines={1} style={styles.bottomDockTimeSummaryTop}>
-                                            <Text style={styles.bottomDockTimeSummaryLabel}>TOTAL </Text>
-                                            <Text style={styles.bottomDockTimeSummaryValue}>
+                                    <View style={styles.dockStatCells}>
+                                        <View style={styles.dockStatCell}>
+                                            <Text style={styles.dockStatCellLabel}>TOTAL</Text>
+                                            <Text style={styles.dockStatCellValue} numberOfLines={1}>
                                                 {formatDurationCompact(progressSummary.totalMinutes)}
+                                                <Text style={styles.dockStatCellMeta}> {progressSummary.completed}/{progressSummary.totalStages}</Text>
                                             </Text>
-                                            <Text style={styles.bottomDockTimeSummaryMeta}>
-                                                {' '}
-                                                · {progressSummary.completed}/{progressSummary.totalStages}
-                                            </Text>
-                                        </Text>
-                                        <Text numberOfLines={1} style={styles.bottomDockTimeSummaryBottom}>
-                                            <Text style={styles.bottomDockTimeSummaryK}>DONE </Text>
-                                            <Text style={[styles.bottomDockTimeSummaryV, { color: '#4CAF50' }]}>
+                                        </View>
+                                        <View style={styles.dockStatCell}>
+                                            <Text style={styles.dockStatCellLabel}>DONE</Text>
+                                            <Text style={[styles.dockStatCellValue, { color: '#7BE18A' }]} numberOfLines={1}>
                                                 {formatDurationCompact(progressSummary.doneMinutes)}
                                             </Text>
-                                            <Text style={styles.bottomDockTimeSummarySep}>  ·  </Text>
-                                            <Text style={styles.bottomDockTimeSummaryK}>UNDONE </Text>
-                                            <Text style={[styles.bottomDockTimeSummaryV, { color: '#FF5252' }]}>
+                                        </View>
+                                        <View style={styles.dockStatCell}>
+                                            <Text style={styles.dockStatCellLabel}>ACTIVE</Text>
+                                            <Text style={[styles.dockStatCellValue, { color: '#FFB74D' }]} numberOfLines={1}>
+                                                {formatDurationCompact(progressSummary.activeMinutes)}
+                                            </Text>
+                                        </View>
+                                        <View style={styles.dockStatCell}>
+                                            <Text style={styles.dockStatCellLabel}>UNDONE</Text>
+                                            <Text style={[styles.dockStatCellValue, { color: '#FF6B6B' }]} numberOfLines={1}>
                                                 {formatDurationCompact(progressSummary.undoneMinutes)}
                                             </Text>
-                                            <Text style={styles.bottomDockTimeSummarySep}>  ·  </Text>
-                                            <Text style={styles.bottomDockTimeSummaryK}>PENDING </Text>
-                                            <Text style={styles.bottomDockTimeSummaryV}>
-                                                {formatDurationCompact(progressSummary.pendingMinutes)}
+                                        </View>
+                                        <View style={styles.dockStatCell}>
+                                            <Text style={styles.dockStatCellLabel}>LEFT</Text>
+                                            <Text style={[styles.dockStatCellValue, { color: '#FFB74D' }]} numberOfLines={1}>
+                                                {formatDurationCompact(progressSummary.remainingMinutes)}
                                             </Text>
-                                        </Text>
+                                        </View>
                                     </View>
                                 );
                             })()}
 
                             {/* Running timer from TimerList: name above, time below; tap opens Timer view (portrait running timer) */}
-                            <View style={styles.bottomDockDivider} />
                             <TouchableOpacity
                                 style={styles.liveRunningTimerSection}
                                 onPress={() => {
@@ -3679,60 +4087,23 @@ export default function LiveFocusView({
                                     <Text style={styles.liveRunningTimerInactive}>Not active timer</Text>
                                 )}
                             </TouchableOpacity>
-                            <View style={styles.bottomDockDivider} />
 
                             <View style={styles.bottomDockSpacer} />
 
-                            {/* Timer controls (always visible, on right side); tap display opens full-screen timer */}
-                            <View style={styles.bottomDockTimerSection}>
-                                <TouchableOpacity
-                                    style={styles.bottomDockTimerDisplay}
-                                    onPress={() => {
-                                        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                                        setFullScreenTimerVisible(true);
-                                    }}
-                                    activeOpacity={0.7}
-                                >
-                                    <Text style={styles.bottomDockTimerLabel}>TIMER</Text>
-                                    <Text style={styles.bottomDockTimerValue}>
-                                        {formatTimer(timerSeconds)}
-                                    </Text>
-                                </TouchableOpacity>
-                                <View style={styles.bottomDockTimerControls}>
-                                    <TouchableOpacity
-                                        style={styles.dockTimerBtn}
-                                        onPress={() => {
-                                            setIsTimerRunning(!isTimerRunning);
-                                            Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-                                        }}
-                                        activeOpacity={0.7}
-                                    >
-                                        <MaterialIcons
-                                            name={isTimerRunning ? 'pause' : 'play-arrow'}
-                                            size={16}
-                                            color="#FFFFFF"
-                                        />
-                                    </TouchableOpacity>
-                                    <TouchableOpacity
-                                        style={styles.dockTimerBtn}
-                                        onPress={() => {
-                                            setIsTimerRunning(false);
-                                            setTimerSeconds(0);
-                                            Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-                                        }}
-                                        activeOpacity={0.7}
-                                    >
-                                        <MaterialIcons name="refresh" size={16} color="#FFFFFF" />
-                                    </TouchableOpacity>
-                                </View>
-                            </View>
 
-                            {/* Horizontal divider */}
-                            <View style={styles.bottomDockDivider} />
+
+                            {/* Stack subtasks: each subtask on its own row, one below the other */}
+                            <TouchableOpacity
+                                style={[styles.dockViewModeBtn, stackSubtasks && { backgroundColor: 'rgba(76,175,80,0.28)' }]}
+                                onPress={toggleStackSubtasks}
+                                activeOpacity={0.7}
+                            >
+                                <MaterialIcons name="stairs" size={12} color={stackSubtasks ? '#7BE18A' : 'rgba(255,255,255,0.6)'} />
+                            </TouchableOpacity>
 
                             {/* Date line (e.g. 21 JAN): clickable, opens calendar to pick date and switch live view */}
                             <TouchableOpacity
-                                style={styles.dockDateBtn}
+                                style={styles.dockToolDome}
                                 onPress={() => {
                                     setViewDate(new Date(selectedDate.getFullYear(), selectedDate.getMonth(), 1));
                                     setShowDockCalendar(true);
@@ -3740,26 +4111,22 @@ export default function LiveFocusView({
                                 }}
                                 activeOpacity={0.7}
                             >
-                                <MaterialIcons name="calendar-today" size={12} color="rgba(255,255,255,0.7)" />
-                                <Text style={styles.dockDateValue}>{formatDateLabel(selectedDate)}</Text>
+                                <MaterialIcons name="calendar-today" size={11} color="rgba(255,255,255,0.9)" />
                             </TouchableOpacity>
 
-                            <View style={styles.bottomDockDivider} />
 
                             {/* Now: scroll to center NOW line; shows current time HH:MM:SS */}
                             <TouchableOpacity
-                                style={styles.dockNowBtn}
+                                style={styles.dockToolDome}
                                 onPress={() => {
                                     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
                                     scrollToNow();
                                 }}
                                 activeOpacity={0.7}
                             >
-                                <MaterialIcons name="schedule" size={14} color="rgba(255,255,255,0.7)" />
-                                <Text style={styles.dockNowValue}>{nowHHMMSS || '--:--:--'}</Text>
+                                <MaterialIcons name="schedule" size={12} color="rgba(255,255,255,0.9)" />
                             </TouchableOpacity>
 
-                            <View style={styles.bottomDockDivider} />
 
                             {/* View mode: button opens popup to select Task / Merge / Category (persisted); same design as status popup */}
                             <View ref={viewModeButtonRef} collapsable={false} style={styles.dockViewModeBtnContainer}>
@@ -3776,13 +4143,12 @@ export default function LiveFocusView({
                                 >
                                     <MaterialIcons
                                         name={viewMode === 'task' ? 'list' : viewMode === 'merged' ? 'merge-type' : 'category'}
-                                        size={16}
+                                        size={12}
                                         color="#4CAF50"
                                     />
                                 </TouchableOpacity>
                             </View>
 
-                            <View style={styles.bottomDockDivider} />
 
                             {/* DISABLED toggle */}
                             <TouchableOpacity
@@ -3795,39 +4161,14 @@ export default function LiveFocusView({
                             >
                                 <MaterialIcons
                                     name={showDisabledTasks ? 'visibility' : 'visibility-off'}
-                                    size={16}
+                                    size={12}
                                     color={showDisabledTasks ? '#FF9100' : 'rgba(255,255,255,0.35)'}
                                 />
                             </TouchableOpacity>
 
-                            <View style={styles.bottomDockDivider} />
 
-                            {/* Notifications: one list (To START + To FINISH), one count, one popup */}
-                            <View style={styles.dockApprovalsBtnContainer}>
-                                <TouchableOpacity
-                                    style={[styles.dockApprovalsBtn, approvalCount === 0 && styles.dockApprovalsBtnDisabled]}
-                                    onPress={approvalCount > 0 ? () => {
-                                        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-                                        setApprovalPopupVisible(true);
-                                    } : undefined}
-                                    disabled={approvalCount === 0}
-                                    activeOpacity={0.7}
-                                >
-                                    <MaterialIcons
-                                        name="notification-important"
-                                        size={14}
-                                        color={approvalCount > 0 ? '#FFFFFF' : 'rgba(255,255,255,0.4)'}
-                                    />
-                                </TouchableOpacity>
-                                {approvalCount > 0 && (
-                                    <View style={styles.dockApprovalBadge}>
-                                        <Text style={styles.dockApprovalBadgeText}>{approvalCount}</Text>
-                                    </View>
-                                )}
-                            </View>
 
                             {/* Vertical divider */}
-                            <View style={styles.bottomDockDivider} />
 
                             <TouchableOpacity
                                 style={styles.dockCancelBtn}
@@ -3836,254 +4177,194 @@ export default function LiveFocusView({
                                     setIsProgressExpanded(false);
                                 }}
                             >
-                                <MaterialIcons name="close" size={20} color="rgb(1, 1, 1)" />
+                                <MaterialIcons name="close" size={13} color="rgba(255,255,255,0.9)" />
                             </TouchableOpacity>
                         </View>
                     ) : (
                         // PORTRAIT: Two-row layout
-                        <View style={styles.bottomDockPortraitContainer}>
-                            {/* Row 1: Navigation + Core Info */}
-                            <View style={styles.bottomDockRowPortraitTop}>
-                                {/* Exit button */}
+                        <View style={styles.pdWrap}>
+                            <View pointerEvents="none" style={styles.pdGrab} />
+                            {/* Row 1: back, progress ring, running timer, close */}
+                            <View style={styles.pdRow}>
                                 <TouchableOpacity
-                                    style={styles.dockExitBtn}
+                                    style={styles.pdDome}
+                                    activeOpacity={0.8}
                                     onPress={() => {
                                         Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
                                         onClose();
                                     }}
                                 >
-                                    <MaterialIcons name="arrow-back" size={18} color="rgb(0, 0, 0)" />
+                                    <MaterialIcons name="arrow-back" size={16} color="rgba(255,255,255,0.92)" />
                                 </TouchableOpacity>
-
-                                <View style={styles.bottomDockDivider} />
-
-                                {/* Time summary OR Selected card details */}
-                                {(() => {
-                                    if (resizeModeStage) {
-                                        const selectedTask = tasks.find(t => t.id === resizeModeStage.taskId);
-                                        const selectedStage = selectedTask?.stages?.find(s => s.id === resizeModeStage.stageId);
-                                        if (selectedStage) {
-                                            const effectiveTime = getEffectiveStageTime(selectedStage);
-                                            return (
-                                                <View style={[styles.bottomDockTimeSummary, { flex: 1, minWidth: 0 }]}>
-                                                    <Text numberOfLines={1} style={styles.bottomDockTimeSummaryTop}>
-                                                        <Text style={styles.bottomDockTimeSummaryLabel}>{selectedTask?.title?.toUpperCase() || 'TASK'} </Text>
-                                                        <Text style={styles.bottomDockTimeSummaryValue}>
-                                                            {selectedStage.text}
-                                                        </Text>
-                                                    </Text>
-                                                    <Text numberOfLines={1} style={styles.bottomDockTimeSummaryBottom}>
-                                                        <Text style={styles.bottomDockTimeSummaryK}>START </Text>
-                                                        <Text style={styles.bottomDockTimeSummaryV}>
-                                                            {formatTimeCompact(effectiveTime.startTimeMinutes)}
-                                                        </Text>
-                                                        <Text style={styles.bottomDockTimeSummarySep}>  ·  </Text>
-                                                        <Text style={styles.bottomDockTimeSummaryK}>DUR </Text>
-                                                        <Text style={styles.bottomDockTimeSummaryV}>
-                                                            {formatDurationCompact(effectiveTime.durationMinutes)}
-                                                        </Text>
-                                                    </Text>
-                                                </View>
-                                            );
-                                        }
-                                    }
-                                    // Default: show general time summary
-                                    return (
-                                        <View style={[styles.bottomDockTimeSummary, { flex: 1, minWidth: 0 }]}>
-                                            <Text numberOfLines={1} style={styles.bottomDockTimeSummaryTop}>
-                                                <Text style={styles.bottomDockTimeSummaryLabel}>TOTAL </Text>
-                                                <Text style={styles.bottomDockTimeSummaryValue}>
-                                                    {formatDurationCompact(progressSummary.totalMinutes)}
-                                                </Text>
-                                                <Text style={styles.bottomDockTimeSummaryMeta}>
-                                                    {' '}
-                                                    · {progressSummary.completed}/{progressSummary.totalStages}
-                                                </Text>
-                                            </Text>
-                                            <Text numberOfLines={1} style={styles.bottomDockTimeSummaryBottom}>
-                                                <Text style={styles.bottomDockTimeSummaryK}>DONE </Text>
-                                                <Text style={[styles.bottomDockTimeSummaryV, { color: '#4CAF50' }]}>
-                                                    {formatDurationCompact(progressSummary.doneMinutes)}
-                                                </Text>
-                                                <Text style={styles.bottomDockTimeSummarySep}>  ·  </Text>
-                                                <Text style={styles.bottomDockTimeSummaryK}>UNDONE </Text>
-                                                <Text style={[styles.bottomDockTimeSummaryV, { color: '#FF5252' }]}>
-                                                    {formatDurationCompact(progressSummary.undoneMinutes)}
-                                                </Text>
-                                            </Text>
-                                        </View>
-                                    );
-                                })()}
-
-                                {/* Running timer section */}
-                                <View style={styles.bottomDockDivider} />
+                                <View style={styles.dockRingSocket}>
+                                    <PillProgressRing size={32} stroke={4.5} fontSize={8}
+                                        total={progressSummary.totalMinutes}
+                                        done={progressSummary.doneMinutes}
+                                        active={progressSummary.activeMinutes}
+                                        undone={progressSummary.undoneMinutes}
+                                        pct={progressSummary.pct}
+                                    />
+                                </View>
                                 <TouchableOpacity
-                                    style={styles.liveRunningTimerSection}
+                                    style={styles.pdTimer}
+                                    activeOpacity={0.8}
                                     onPress={() => {
                                         Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
                                         onOpenRunningTimer?.(runningTimer ?? null);
                                     }}
-                                    activeOpacity={0.7}
                                 >
-                                    {runningTimer != null ? (
-                                        <>
-                                            <Text style={styles.liveRunningTimerName} numberOfLines={1} ellipsizeMode="tail">{runningTimer.title}</Text>
-                                            <Text style={styles.liveRunningTimerValue}>{runningTimer.time}</Text>
-                                        </>
-                                    ) : (
-                                        <Text style={styles.liveRunningTimerInactive}>Not active timer</Text>
-                                    )}
+                                    <MaterialIcons name="timer" size={15} color={runningTimer != null ? '#00E5FF' : 'rgba(255,255,255,0.35)'} />
+                                    <View style={{ flex: 1, minWidth: 0 }}>
+                                        {runningTimer != null ? (
+                                            <>
+                                                <Text style={styles.pdTimerName} numberOfLines={1}>{runningTimer.title}</Text>
+                                                <Text style={styles.pdTimerVal}>{runningTimer.time}</Text>
+                                            </>
+                                        ) : (
+                                            <Text style={styles.pdTimerOff} numberOfLines={1}>No timer running</Text>
+                                        )}
+                                    </View>
+                                    <MaterialIcons name="chevron-right" size={16} color="rgba(255,255,255,0.4)" />
                                 </TouchableOpacity>
-
-                                <View style={styles.bottomDockSpacer} />
-
-                                {/* Close button */}
                                 <TouchableOpacity
-                                    style={styles.dockCancelBtn}
+                                    style={styles.pdDome}
+                                    activeOpacity={0.8}
                                     onPress={() => {
                                         Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
                                         setIsProgressExpanded(false);
                                     }}
                                 >
-                                    <MaterialIcons name="close" size={20} color="rgb(1, 1, 1)" />
+                                    <MaterialIcons name="close" size={16} color="rgba(255,255,255,0.92)" />
                                 </TouchableOpacity>
                             </View>
 
-                            {/* Row 2: Action Controls */}
-                            <View style={styles.bottomDockRowPortraitBottom}>
-                                {/* Timer display + controls */}
-                                <View style={styles.bottomDockTimerSection}>
-                                    <TouchableOpacity
-                                        style={styles.bottomDockTimerDisplay}
-                                        onPress={() => {
-                                            Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                                            setFullScreenTimerVisible(true);
-                                        }}
-                                        activeOpacity={0.7}
-                                    >
-                                        <Text style={styles.bottomDockTimerLabel}>TIMER</Text>
-                                        <Text style={styles.bottomDockTimerValue}>
-                                            {formatTimer(timerSeconds)}
-                                        </Text>
-                                    </TouchableOpacity>
-                                    <View style={styles.bottomDockTimerControls}>
-                                        <TouchableOpacity
-                                            style={styles.dockTimerBtn}
-                                            onPress={() => {
-                                                setIsTimerRunning(!isTimerRunning);
-                                                Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-                                            }}
-                                            activeOpacity={0.7}
-                                        >
-                                            <MaterialIcons
-                                                name={isTimerRunning ? 'pause' : 'play-arrow'}
-                                                size={16}
-                                                color="#FFFFFF"
-                                            />
-                                        </TouchableOpacity>
-                                        <TouchableOpacity
-                                            style={styles.dockTimerBtn}
-                                            onPress={() => {
-                                                setIsTimerRunning(false);
-                                                setTimerSeconds(0);
-                                                Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-                                            }}
-                                            activeOpacity={0.7}
-                                        >
-                                            <MaterialIcons name="refresh" size={16} color="#FFFFFF" />
-                                        </TouchableOpacity>
+                            {/* Row 2: time summary, or the selected subtask with its status / edit buttons */}
+                            {(() => {
+                                const selectedTask = resizeModeStage ? tasks.find(t => t.id === resizeModeStage.taskId) : undefined;
+                                const selectedStage = resizeModeStage ? selectedTask?.stages?.find(s => s.id === resizeModeStage.stageId) : undefined;
+                                if (resizeModeStage && selectedStage) {
+                                    const effectiveTime = getEffectiveStageTime(selectedStage);
+                                    const status = selectedStage.status || 'Upcoming';
+                                    const statusConfig = STAGE_STATUS_CONFIG[status];
+                                    return (
+                                        <View style={styles.pdRow}>
+                                            <View style={[styles.pdStat, { flex: 1 }]}>
+                                                <Text style={styles.pdStatLabel} numberOfLines={1}>{(selectedTask?.title || 'TASK').toUpperCase()}</Text>
+                                                <Text style={styles.pdStatVal} numberOfLines={1}>{selectedStage.text}</Text>
+                                                <Text style={styles.pdStatMeta} numberOfLines={1}>
+                                                    {formatTimeCompact(effectiveTime.startTimeMinutes)} · {formatDurationCompact(effectiveTime.durationMinutes)}
+                                                </Text>
+                                            </View>
+                                            <View ref={statusButtonRef} collapsable={false}>
+                                                <TouchableOpacity
+                                                    style={styles.pdDome}
+                                                    activeOpacity={0.8}
+                                                    onPress={() => {
+                                                        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                                                        statusButtonRef.current?.measureInWindow((x, y, w, h) => {
+                                                            setStageStatusPopupPosition({ x: x + w / 2, y: y + h });
+                                                            setStageStatusPopupVisible(true);
+                                                        });
+                                                    }}
+                                                >
+                                                    <MaterialIcons name={statusConfig.icon} size={16} color={statusConfig.color} />
+                                                </TouchableOpacity>
+                                            </View>
+                                            <TouchableOpacity
+                                                style={styles.pdDome}
+                                                activeOpacity={0.8}
+                                                onPress={() => {
+                                                    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                                                    setAddSubtaskModal({
+                                                        visible: true,
+                                                        taskId: resizeModeStage.taskId,
+                                                        startTimeMinutes: effectiveTime.startTimeMinutes,
+                                                        mode: 'edit',
+                                                        stageId: resizeModeStage.stageId,
+                                                        existingText: selectedStage.text,
+                                                        existingStartTime: effectiveTime.startTimeMinutes,
+                                                        existingDuration: effectiveTime.durationMinutes,
+                                                    });
+                                                }}
+                                            >
+                                                <MaterialIcons name="edit" size={15} color="rgba(255,255,255,0.85)" />
+                                            </TouchableOpacity>
+                                        </View>
+                                    );
+                                }
+                                return (
+                                    <View style={styles.pdRow}>
+                                        <View style={[styles.pdStat, { flex: 1.25 }]}>
+                                            <Text style={styles.pdStatLabel} numberOfLines={1}>TOTAL · {progressSummary.completed}/{progressSummary.totalStages}</Text>
+                                            <Text style={styles.pdStatVal} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.7}>{formatDurationCompact(progressSummary.totalMinutes)}</Text>
+                                        </View>
+                                        <View style={styles.pdStat}>
+                                            <Text style={styles.pdStatLabel} numberOfLines={1}>DONE</Text>
+                                            <Text style={[styles.pdStatVal, { color: '#7BE18A' }]} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.7}>{formatDurationCompact(progressSummary.doneMinutes)}</Text>
+                                        </View>
+                                        <View style={styles.pdStat}>
+                                            <Text style={styles.pdStatLabel} numberOfLines={1}>UNDONE</Text>
+                                            <Text style={[styles.pdStatVal, { color: '#FF6B6B' }]} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.7}>{formatDurationCompact(progressSummary.undoneMinutes)}</Text>
+                                        </View>
+                                        <View style={styles.pdStat}>
+                                            <Text style={styles.pdStatLabel} numberOfLines={1}>LEFT</Text>
+                                            <Text style={[styles.pdStatVal, { color: '#FFB74D' }]} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.7}>{formatDurationCompact(progressSummary.remainingMinutes)}</Text>
+                                        </View>
                                     </View>
-                                </View>
+                                );
+                            })()}
 
-                                <View style={styles.bottomDockDivider} />
-
-                                {/* Date picker */}
+                            {/* Row 3: tools */}
+                            <View style={styles.pdRow}>
                                 <TouchableOpacity
-                                    style={styles.dockDateBtn}
+                                    style={[styles.pdDome, stackSubtasks && { backgroundColor: 'rgba(76,175,80,0.3)' }]}
+                                    activeOpacity={0.8}
+                                    onPress={toggleStackSubtasks}
+                                >
+                                    <MaterialIcons name="stairs" size={16} color={stackSubtasks ? '#7BE18A' : 'rgba(255,255,255,0.65)'} />
+                                </TouchableOpacity>
+                                <TouchableOpacity
+                                    style={styles.pdTool}
+                                    activeOpacity={0.8}
                                     onPress={() => {
                                         setViewDate(new Date(selectedDate.getFullYear(), selectedDate.getMonth(), 1));
                                         setShowDockCalendar(true);
                                         Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
                                     }}
-                                    activeOpacity={0.7}
                                 >
-                                    <MaterialIcons name="calendar-today" size={12} color="rgba(255,255,255,0.7)" />
-                                    <Text style={styles.dockDateValue}>{formatDateLabel(selectedDate)}</Text>
+                                    <MaterialIcons name="calendar-today" size={13} color="rgba(255,255,255,0.75)" />
+                                    <Text style={styles.pdToolText}>{formatDateLabel(selectedDate)}</Text>
                                 </TouchableOpacity>
-
-                                <View style={styles.bottomDockDivider} />
-
-                                {/* Now button */}
                                 <TouchableOpacity
-                                    style={styles.dockNowBtn}
+                                    style={styles.pdTool}
+                                    activeOpacity={0.8}
                                     onPress={() => {
                                         Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
                                         scrollToNow();
                                     }}
-                                    activeOpacity={0.7}
                                 >
-                                    <MaterialIcons name="schedule" size={14} color="rgba(255,255,255,0.7)" />
-                                    <Text style={styles.dockNowValue}>{nowHHMMSS || '--:--:--'}</Text>
+                                    <MaterialIcons name="schedule" size={14} color="rgba(255,255,255,0.75)" />
+                                    <Text style={[styles.pdToolText, { color: '#00E5FF' }]}>{nowHHMMSS || '--:--:--'}</Text>
                                 </TouchableOpacity>
-
-                                {/* Status & Edit buttons for selected subtask */}
-                                {resizeModeStage && (() => {
-                                    const selectedTask = tasks.find(t => t.id === resizeModeStage.taskId);
-                                    const selectedStage = selectedTask?.stages?.find(s => s.id === resizeModeStage.stageId);
-                                    if (selectedStage) {
-                                        const effectiveTime = getEffectiveStageTime(selectedStage);
-                                        const status = selectedStage.status || 'Upcoming';
-                                        const statusConfig = STAGE_STATUS_CONFIG[status];
-                                        return (
-                                            <>
-                                                <View style={styles.bottomDockDivider} />
-                                                <View ref={statusButtonRef} collapsable={false}>
-                                                    <TouchableOpacity
-                                                        style={styles.dockStatusBtn}
-                                                        onPress={() => {
-                                                            Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                                                            statusButtonRef.current?.measureInWindow((x, y, w, h) => {
-                                                                setStageStatusPopupPosition({ x: x + w / 2, y: y + h });
-                                                                setStageStatusPopupVisible(true);
-                                                            });
-                                                        }}
-                                                        activeOpacity={0.7}
-                                                    >
-                                                        <MaterialIcons name={statusConfig.icon} size={14} color={statusConfig.color} />
-                                                    </TouchableOpacity>
-                                                </View>
-                                                <View style={styles.bottomDockDivider} />
-                                                <TouchableOpacity
-                                                    style={styles.dockEditBtn}
-                                                    onPress={() => {
-                                                        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                                                        setAddSubtaskModal({
-                                                            visible: true,
-                                                            taskId: resizeModeStage.taskId,
-                                                            startTimeMinutes: effectiveTime.startTimeMinutes,
-                                                            mode: 'edit',
-                                                            stageId: resizeModeStage.stageId,
-                                                            existingText: selectedStage.text,
-                                                            existingStartTime: effectiveTime.startTimeMinutes,
-                                                            existingDuration: effectiveTime.durationMinutes,
-                                                        });
-                                                    }}
-                                                    activeOpacity={0.7}
-                                                >
-                                                    <MaterialIcons name="edit" size={14} color="rgba(255,255,255,0.8)" />
-                                                </TouchableOpacity>
-                                            </>
-                                        );
-                                    }
-                                    return null;
-                                })()}
-
-                                <View style={styles.bottomDockSpacer} />
-
-                                {/* View mode */}
-                                <View ref={viewModeButtonRef} collapsable={false} style={styles.dockViewModeBtnContainer}>
+                                <View style={{ flex: 1 }} />
+                                <TouchableOpacity
+                                    style={[styles.pdDome, showDisabledTasks && { backgroundColor: 'rgba(255,145,0,0.22)' }]}
+                                    activeOpacity={0.8}
+                                    onPress={() => {
+                                        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                                        onToggleDisabledTasks?.();
+                                    }}
+                                >
+                                    <MaterialIcons
+                                        name={showDisabledTasks ? 'visibility' : 'visibility-off'}
+                                        size={16}
+                                        color={showDisabledTasks ? '#FF9100' : 'rgba(255,255,255,0.4)'}
+                                    />
+                                </TouchableOpacity>
+                                <View ref={viewModeButtonRef} collapsable={false}>
                                     <TouchableOpacity
-                                        style={styles.dockViewModeBtn}
+                                        style={styles.pdDome}
+                                        activeOpacity={0.8}
                                         onPress={() => {
                                             Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
                                             viewModeButtonRef.current?.measureInWindow((x, y, w, h) => {
@@ -4091,40 +4372,13 @@ export default function LiveFocusView({
                                                 setViewModePopupVisible(true);
                                             });
                                         }}
-                                        activeOpacity={0.7}
                                     >
                                         <MaterialIcons
                                             name={viewMode === 'task' ? 'list' : viewMode === 'merged' ? 'merge-type' : 'category'}
-                                            size={16}
+                                            size={17}
                                             color="#4CAF50"
                                         />
                                     </TouchableOpacity>
-                                </View>
-
-                                <View style={styles.bottomDockDivider} />
-
-                                {/* Approvals */}
-                                <View style={styles.dockApprovalsBtnContainer}>
-                                    <TouchableOpacity
-                                        style={[styles.dockApprovalsBtn, approvalCount === 0 && styles.dockApprovalsBtnDisabled]}
-                                        onPress={approvalCount > 0 ? () => {
-                                            Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-                                            setApprovalPopupVisible(true);
-                                        } : undefined}
-                                        disabled={approvalCount === 0}
-                                        activeOpacity={0.7}
-                                    >
-                                        <MaterialIcons
-                                            name="notification-important"
-                                            size={14}
-                                            color={approvalCount > 0 ? '#FFFFFF' : 'rgba(255,255,255,0.4)'}
-                                        />
-                                    </TouchableOpacity>
-                                    {approvalCount > 0 && (
-                                        <View style={styles.dockApprovalBadge}>
-                                            <Text style={styles.dockApprovalBadgeText}>{approvalCount}</Text>
-                                        </View>
-                                    )}
                                 </View>
                             </View>
                         </View>
@@ -4132,10 +4386,20 @@ export default function LiveFocusView({
                 </View>
             </Animated.View>
 
+            {/* Portrait dock backdrop: planner cards fade out behind the bottom controls instead of showing through them */}
+            {!isLandscape && !isProgressExpanded && !plannerAdding && !journalOpen && (
+                <LinearGradient
+                    pointerEvents="none"
+                    colors={['rgba(0,0,0,0)', 'rgba(0,0,0,0.9)', '#000000']}
+                    locations={[0, 0.55, 1]}
+                    style={{ position: 'absolute', left: 0, right: 0, bottom: 0, height: 78 + insets.bottom, zIndex: 6300 }}
+                />
+            )}
+
             {/* Bottom open button (visible when dock is collapsed) */}
             {
-                !isProgressExpanded && (
-                    <View style={styles.bottomOpenProgressBtn}>
+                !isProgressExpanded && !((plannerAdding || journalOpen) && !isLandscape) && (
+                    <View pointerEvents="box-none" style={[styles.bottomOpenProgressBtn, !isLandscape && { bottom: 8 + insets.bottom, alignItems: 'flex-start', paddingLeft: Math.max(14, insets.left + 10) }]}>
                         <TouchableOpacity
                             style={styles.bottomOpenPill}
                             onPress={() => {
@@ -4144,8 +4408,26 @@ export default function LiveFocusView({
                             }}
                             activeOpacity={0.85}
                         >
-                            <Text style={styles.bottomOpenPillLabel}>PROGRESS</Text>
-                            <Text style={styles.bottomOpenPillValue}>{progressSummary.pct}%</Text>
+                            <BlurView intensity={50} tint="dark" style={StyleSheet.absoluteFill} pointerEvents="none" />
+                            <View style={styles.pillRingSocketDeep}>
+                                <PillProgressRing
+                                    total={progressSummary.totalMinutes}
+                                    done={progressSummary.doneMinutes}
+                                    active={progressSummary.activeMinutes}
+                                    undone={progressSummary.undoneMinutes}
+                                    pct={progressSummary.pct}
+                                />
+                            </View>
+                            <View style={styles.pillTextColDeep}>
+                                <View style={styles.pillStatRowDeep}>
+                                    <Text style={styles.pillStatLabelDeep}>TOTAL</Text>
+                                    <Text style={styles.pillStatValueDeep}>{formatDurationCompact(progressSummary.totalMinutes)}</Text>
+                                </View>
+                                <View style={styles.pillStatRowDeep}>
+                                    <Text style={styles.pillStatLabelDeep}>LEFT</Text>
+                                    <Text style={[styles.pillStatValueDeep, { color: '#FFB74D' }]}>{formatDurationCompact(progressSummary.remainingMinutes)}</Text>
+                                </View>
+                            </View>
                         </TouchableOpacity>
                     </View>
                 )
@@ -4153,16 +4435,16 @@ export default function LiveFocusView({
 
             {/* Back button (visible when progress bar is hidden) */}
             {
-                !isProgressExpanded && (
+                !isProgressExpanded && isLandscape && (
                     <TouchableOpacity
-                        style={styles.dockExitBtnFloating}
+                        style={[styles.dockExitBtnFloating, !isLandscape && { bottom: 8 + insets.bottom }]}
                         onPress={() => {
                             Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
                             onClose();
                         }}
                         activeOpacity={0.7}
                     >
-                        <MaterialIcons name="arrow-back" size={18} color="rgb(3, 3, 3)" />
+                        <MaterialIcons name="arrow-back" size={18} color="rgba(255,255,255,0.9)" />
                     </TouchableOpacity>
                 )
             }
@@ -4177,34 +4459,14 @@ export default function LiveFocusView({
                 existingText={addSubtaskModal.existingText}
                 existingStartTime={addSubtaskModal.existingStartTime}
                 existingDuration={addSubtaskModal.existingDuration}
+                initialDuration={addSubtaskModal.initialDuration}
+                initialText={addSubtaskModal.initialText}
                 onClose={() => setAddSubtaskModal({ visible: false, taskId: null, startTimeMinutes: 0, mode: 'add' })}
                 isRecurring={!!tasks.find(t => t.id === addSubtaskModal.taskId)?.recurrence}
                 isRepeatSync={tasks.find(t => t.id === addSubtaskModal.taskId)?.recurrence?.repeatSync}
                 onAdd={(taskId, text, startTime, duration, syncMode) => {
-                    if (!onUpdateStages) return;
-                    const task = tasks.find(t => t.id === taskId);
-                    if (!task) return;
-
-                    // Generate a stable stage id (avoid collisions within the task)
-                    const existingIds = new Set((task.stages || []).map(s => s.id));
-                    let stageId = Date.now();
-                    while (existingIds.has(stageId)) stageId += 1;
-
-                    const newStage: TaskStage = {
-                        id: stageId,
-                        text: text,
-                        isCompleted: false,
-                        status: 'Upcoming',
-                        createdAt: new Date().toISOString(),
-                        // 6-to-6: default start to beginning of logical day (e.g. 06:00) when missing
-                        startTimeMinutes: startTime ?? dailyStartMinutes,
-                        durationMinutes: duration ?? 180,
-                    };
-
-                    const updatedStages = [...(task.stages || []), newStage];
-                    onUpdateStages(task, updatedStages, syncMode);
-
-                    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+                    handleAddSubtask(taskId, text, startTime, duration, syncMode);
+                    if (addSubtaskModal.ideaId != null) onDeleteIdea?.(addSubtaskModal.ideaId); // the idea became a real subtask
                     setAddSubtaskModal({ visible: false, taskId: null, startTimeMinutes: 0, mode: 'add' });
                 }}
                 onUpdate={(taskId, stageId, text, startTime, duration, syncMode) => {
@@ -4231,17 +4493,64 @@ export default function LiveFocusView({
                 }}
             />
 
-            <ApprovalPopup
+            <NotificationPopup
                 visible={approvalPopupVisible}
                 onClose={() => setApprovalPopupVisible(false)}
                 tasks={tasks}
                 categories={categories}
                 dailyStartMinutes={dailyStartMinutes}
                 currentMinutes={currentTimeRef.current.getHours() * 60 + currentTimeRef.current.getMinutes()}
+                anchorBottom={(isProgressExpanded ? progressDockHeight + 10 : (isLandscape ? 12 : 8 + insets.bottom)) + 50}
+                anchorRight={Math.max(14, insets.right + 10)}
                 onUpdateStageStatus={handleUpdateStageStatus}
-                onDeleteStage={handleDeleteStage}
-                onApproveAll={handleApproveAll}
+                onFinishAll={handleApproveAll}
             />
+
+            {/* Portrait: the Live Focus screen turns into the vertical planner (same actions as landscape) */}
+            {!isLandscape && (
+                <AgendaView
+                    embedded
+                    visible
+                    onClose={onClose}
+                    allTasks={allTasks ?? tasks}
+                    selectedDate={selectedDate}
+                    dailyStartMinutes={dailyStartMinutes}
+                    nowMinutes={currentTimeRef.current.getHours() * 60 + currentTimeRef.current.getMinutes() + currentTimeRef.current.getSeconds() / 60}
+                    showDisabledTasks={showDisabledTasks}
+                    onUpdateStages={onUpdateStages}
+                    addTargets={displayTasks.map(t => ({ id: t.id, title: t.title, color: categories.find(c => c.id === t.categoryId)?.color }))}
+                    ideas={ideas}
+                    onAddIdea={onAddIdea}
+                    onDeleteIdea={onDeleteIdea}
+                    journal={journal}
+                    onAddJournal={onAddJournal}
+                    onUpdateJournal={onUpdateJournal}
+                    onDeleteJournal={onDeleteJournal}
+                    onJournalStageChange={setJournalStage}
+                    journalToggle={journalToggle}
+                    ideasOpen={ideasOpen}
+                    onIdeasOpenChange={setIdeasOpen}
+                    onAddSubtask={(taskId, startTimeMinutes, durationMinutes, ideaId) => {
+                        const idea = ideaId != null ? ideas.find(i => i.id === ideaId) : undefined;
+                        setAddSubtaskModal({ visible: true, taskId, startTimeMinutes, mode: 'add', initialDuration: durationMinutes, initialText: idea?.title, ideaId: idea?.id });
+                    }}
+                    onDayChange={(dayKey) => onDateChange(getStartOfLogicalDayFromString(dayKey, dailyStartMinutes))}
+                    onSlideActiveChange={setPlannerAdding}
+                    onQuickAdd={(taskId, name, startTimeMinutes, durationMinutes) => handleAddSubtask(taskId, name, startTimeMinutes, durationMinutes)}
+                    onEditStage={(item: AgendaItem) => {
+                        setAddSubtaskModal({
+                            visible: true,
+                            taskId: item.taskId,
+                            startTimeMinutes: item.startTimeMinutes,
+                            mode: 'edit',
+                            stageId: item.id,
+                            existingText: item.text,
+                            existingStartTime: item.startTimeMinutes,
+                            existingDuration: item.durationMinutes,
+                        });
+                    }}
+                />
+            )}
 
             <FullScreenTimer
                 visible={fullScreenTimerVisible}
@@ -4275,26 +4584,33 @@ export default function LiveFocusView({
                 visible={stageStatusPopupVisible}
                 position={stageStatusPopupPosition}
                 onSelectStatus={(status, sync) => {
-                    if (resizeModeStage) {
-                        handleUpdateStageStatus(resizeModeStage.taskId, resizeModeStage.stageId, status, sync);
+                    const target = statusPopupTarget ?? resizeModeStage;
+                    if (target) {
+                        handleUpdateStageStatus(target.taskId, target.stageId, status, sync);
                     }
                     setStageStatusPopupVisible(false);
+                    setStatusPopupTarget(null);
                 }}
-                onClose={() => setStageStatusPopupVisible(false)}
+                onClose={() => {
+                    setStageStatusPopupVisible(false);
+                    setStatusPopupTarget(null);
+                }}
                 currentStatus={(() => {
-                    if (!resizeModeStage) return 'Upcoming';
-                    const t = tasks.find(t_ => t_.id === resizeModeStage.taskId);
-                    const s = t?.stages?.find(s_ => s_.id === resizeModeStage.stageId);
+                    const tgt = statusPopupTarget ?? resizeModeStage;
+                    if (!tgt) return 'Upcoming';
+                    const t = tasks.find(t_ => t_.id === tgt.taskId);
+                    const s = t?.stages?.find(s_ => s_.id === tgt.stageId);
                     return (s?.status ?? 'Upcoming') as StageStatus;
                 })()}
                 showFutureToggle={(() => {
-                    const task = tasks.find(t => t.id === resizeModeStage?.taskId);
+                    const task = tasks.find(t => t.id === (statusPopupTarget ?? resizeModeStage)?.taskId);
                     return !!task?.recurrence && !task.recurrence.repeatSync;
                 })()}
                 initialSyncMode={(() => {
-                    if (!resizeModeStage) return 'none';
-                    const t = tasks.find(t_ => t_.id === resizeModeStage.taskId);
-                    const s = t?.stages?.find(s_ => s_.id === resizeModeStage.stageId);
+                    const tgt = statusPopupTarget ?? resizeModeStage;
+                    if (!tgt) return 'none';
+                    const t = tasks.find(t_ => t_.id === tgt.taskId);
+                    const s = t?.stages?.find(s_ => s_.id === tgt.stageId);
                     return s?.syncMode || 'none';
                 })()}
             />
@@ -4312,6 +4628,15 @@ export default function LiveFocusView({
                         <View style={styles.calendarModalTouchable} />
                     </TouchableWithoutFeedback>
                     <View style={styles.calendarPopup}>
+                        <BlurView intensity={55} tint="dark" style={StyleSheet.absoluteFill} pointerEvents="none" />
+                        <View pointerEvents="none" style={[StyleSheet.absoluteFill, styles.dockGlassTint]} />
+                        <LinearGradient
+                            pointerEvents="none"
+                            colors={['rgba(255,255,255,0.16)', 'rgba(255,255,255,0)']}
+                            start={{ x: 0.5, y: 0 }}
+                            end={{ x: 0.5, y: 1 }}
+                            style={styles.dockGlassSheen}
+                        />
                         {renderDockCalendar()}
                     </View>
                 </View>
@@ -4348,6 +4673,15 @@ export default function LiveFocusView({
                         ];
                         return (
                             <View style={[styles.viewModePopupCompact, { left: adjustedX, top: adjustedY }]}>
+                                <BlurView intensity={55} tint="dark" style={StyleSheet.absoluteFill} pointerEvents="none" />
+                                <View pointerEvents="none" style={[StyleSheet.absoluteFill, styles.dockGlassTint]} />
+                                <LinearGradient
+                                    pointerEvents="none"
+                                    colors={['rgba(255,255,255,0.16)', 'rgba(255,255,255,0)']}
+                                    start={{ x: 0.5, y: 0 }}
+                                    end={{ x: 0.5, y: 1 }}
+                                    style={styles.dockGlassSheen}
+                                />
                                 {VIEW_OPTIONS.map((opt, index) => (
                                     <React.Fragment key={opt.mode}>
                                         {index > 0 && <View style={styles.viewModePopupSeparator} />}
@@ -4361,10 +4695,16 @@ export default function LiveFocusView({
                                             }}
                                             activeOpacity={0.7}
                                         >
-                                            <MaterialIcons name={opt.icon} size={18} color={opt.color} />
-                                            <Text style={[styles.viewModePopupOptionText, { color: opt.color }]}>{opt.label}</Text>
+                                            <View style={styles.viewModeIconSocket}>
+                                                <View style={[styles.viewModeIconDome, viewMode === opt.mode && styles.viewModeIconDomeActive]}>
+                                                    <MaterialIcons name={opt.icon} size={13} color={viewMode === opt.mode ? '#7BE18A' : 'rgba(255,255,255,0.8)'} />
+                                                </View>
+                                            </View>
+                                            <Text style={[styles.viewModePopupOptionText, { color: viewMode === opt.mode ? '#fff' : 'rgba(255,255,255,0.75)' }]}>{opt.label}</Text>
                                             {viewMode === opt.mode && (
-                                                <MaterialIcons name="check" size={16} color={opt.color} style={{ marginLeft: 'auto' }} />
+                                                <View style={styles.viewModeCheckChip}>
+                                                    <MaterialIcons name="check" size={11} color="#0A0C10" />
+                                                </View>
                                             )}
                                         </TouchableOpacity>
                                     </React.Fragment>
@@ -4552,22 +4892,94 @@ export default function LiveFocusView({
             </Modal>
 
 
-            {/* Full Screen floating button */}
-            <TouchableOpacity
-                style={[styles.fullScreenToggleBtn, !isLandscape && styles.fullScreenToggleBtnPortrait]}
-                onPress={() => {
-                    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                    setFullScreenTimerVisible(true);
-                }}
-                activeOpacity={0.85}
+            {/* Landscape idea popup (portrait uses the one inside the planner) */}
+            {isLandscape && !!onAddIdea && !!onDeleteIdea && (
+                <View pointerEvents="box-none" style={[StyleSheet.absoluteFill, { zIndex: 9000 }]}>
+                    <IdeaTray
+                        landscape
+                        ideas={ideas}
+                        open={ideasOpen}
+                        onOpenChange={setIdeasOpen}
+                        todayKey={getLogicalDate(new Date(), dailyStartMinutes)}
+                        bottom={0}
+                        right={Math.max(14, insets.right + 10)}
+                        keyboardHeight={0}
+                        onAdd={onAddIdea}
+                        onDelete={onDeleteIdea}
+                        onPlace={() => { }}
+                        onDragStart={() => { }}
+                        dragX={ideaDragX}
+                        dragY={ideaDragY}
+                        dragOn={ideaDragOn}
+                        onDragEnd={() => { }}
+                        tasks={displayTasks.map(t => ({ id: t.id, title: t.title, color: categories.find(c => c.id === t.categoryId)?.color }))}
+                        onPlaceWithTask={(idea, taskId) => {
+                            const now = currentTimeRef.current;
+                            const start = Math.round((now.getHours() * 60 + now.getMinutes()) / 5) * 5 % 1440;
+                            setAddSubtaskModal({ visible: true, taskId, startTimeMinutes: start, mode: 'add', initialText: idea.title, ideaId: idea.id });
+                        }}
+                    />
+                </View>
+            )}
+
+            {/* Floating controls, bottom right: notifications + full screen */}
+            <View
+                pointerEvents="box-none"
+                style={[
+                    styles.floatingControlsDeep,
+                    (plannerAdding || journalOpen) && !isLandscape && { display: 'none' },
+                    {
+                        right: Math.max(14, insets.right + 10),
+                        bottom: isProgressExpanded ? progressDockHeight + 10 : (isLandscape ? 12 : 8 + insets.bottom),
+                    },
+                ]}
             >
-                {isLandscape ? (
-                    <MaterialIcons name="fullscreen" size={16} color="rgba(255,255,255,0.7)" />
-                ) : (
-                    <Ionicons name="expand" size={20} color="#fff" />
+                {!isProgressExpanded && isLandscape && (
+                    <TouchableOpacity
+                        style={styles.fullScreenSocketDeep2}
+                        onPress={toggleStackSubtasks}
+                        activeOpacity={0.85}
+                        hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
+                    >
+                        <View style={[styles.fullScreenDomeDeep, stackSubtasks && { backgroundColor: 'rgba(76,175,80,0.28)' }]}>
+                            <MaterialIcons name="stairs" size={18} color={stackSubtasks ? '#7BE18A' : 'rgba(255,255,255,0.9)'} />
+                        </View>
+                    </TouchableOpacity>
                 )}
-                {isLandscape && <Text style={styles.fullScreenToggleBtnText}>FULL SCREEN</Text>}
-            </TouchableOpacity>
+                {!isLandscape && !!onAddJournal && (
+                    <NotificationButton
+                        count={journal.filter(j => j.day === getLogicalDate(selectedDate, dailyStartMinutes)).length}
+                        icon="menu-book"
+                        iconActive="menu-book"
+                        onPress={() => setJournalToggle(n => n + 1)}
+                    />
+                )}
+                {!!onAddIdea && (
+                    <NotificationButton
+                        count={ideas.length}
+                        icon="lightbulb-outline"
+                        iconActive="lightbulb"
+                        onPress={() => setIdeasOpen(o => !o)}
+                    />
+                )}
+                <NotificationButton
+                    count={approvalCount}
+                    onPress={() => setApprovalPopupVisible(true)}
+                />
+                <TouchableOpacity
+                    style={styles.fullScreenSocketDeep2}
+                    onPress={() => {
+                        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                        setFullScreenTimerVisible(true);
+                    }}
+                    activeOpacity={0.85}
+                    hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
+                >
+                    <View style={styles.fullScreenDomeDeep}>
+                        <MaterialIcons name="fullscreen" size={19} color="rgba(255,255,255,0.9)" />
+                    </View>
+                </TouchableOpacity>
+            </View>
 
         </View >
     );
@@ -4871,9 +5283,9 @@ const styles = StyleSheet.create({
         backgroundColor: '#000000',
     },
     topStatusBar: {
-        backgroundColor: '#000000',
         borderBottomWidth: 1,
         borderBottomColor: 'rgba(76, 175, 80, 0.35)',
+        backgroundColor: '#000000',
     },
     topStatusProgressTrack: {
         height: 3,
@@ -4951,26 +5363,91 @@ const styles = StyleSheet.create({
         borderBottomColor: 'rgba(255,255,255,0.08)',
         overflow: 'hidden',
     },
+    // portrait expanded dock: a sheet that opens from the bottom edge of the screen
+    bottomDockPlateSheet: {
+        marginHorizontal: 0,
+        marginBottom: 0,
+        borderTopLeftRadius: 30,
+        borderTopRightRadius: 30,
+        borderBottomLeftRadius: 0,
+        borderBottomRightRadius: 0,
+        borderBottomWidth: 0,
+        backgroundColor: 'rgba(10,11,14,0.94)',
+        boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.14), inset 0 -2px 0 rgba(0,0,0,0.4), 0 -14px 34px rgba(0,0,0,0.85)',
+    },
+    pdGrab: { alignSelf: 'center', width: 38, height: 4, borderRadius: 2, marginBottom: 2, backgroundColor: 'rgba(255,255,255,0.22)' },
+    // portrait expanded dock: three roomy rows (no clipped text)
+    pdWrap: { flex: 1, justifyContent: 'space-between', paddingHorizontal: 12, paddingTop: 2, paddingBottom: 4 },
+    pdRow: { flexDirection: 'row', alignItems: 'center', gap: 8, minHeight: 42 },
+    pdDome: {
+        width: 38,
+        height: 38,
+        borderRadius: 19,
+        alignItems: 'center',
+        justifyContent: 'center',
+        backgroundColor: '#1D2128',
+        borderWidth: 1,
+        borderColor: 'rgba(255,255,255,0.08)',
+        boxShadow: '0 0 0 3px rgba(0,0,0,0.5), 0 7px 10px rgba(0,0,0,0.8), 0 2px 0 rgba(0,0,0,0.7), inset 0 1px 0 rgba(255,255,255,0.22), inset 0 -3px 0 rgba(0,0,0,0.5)',
+    },
+    pdTimer: {
+        flex: 1,
+        height: 40,
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 8,
+        paddingHorizontal: 12,
+        borderRadius: 14,
+        backgroundColor: 'rgba(0,0,0,0.4)',
+        boxShadow: 'inset 0 3px 6px rgba(0,0,0,0.85), 0 1px 0 rgba(255,255,255,0.06)',
+    },
+    pdTimerName: { fontSize: 10, fontWeight: '800', color: '#FFFFFF' },
+    pdTimerVal: { fontSize: 12, fontWeight: '900', color: '#00E5FF' },
+    pdTimerOff: { fontSize: 11, fontWeight: '700', color: 'rgba(255,255,255,0.5)' },
+    pdStat: {
+        flex: 1,
+        minWidth: 0,
+        minHeight: 44,
+        justifyContent: 'center',
+        paddingHorizontal: 10,
+        paddingVertical: 4,
+        borderRadius: 14,
+        backgroundColor: 'rgba(0,0,0,0.4)',
+        boxShadow: 'inset 0 3px 6px rgba(0,0,0,0.85), 0 1px 0 rgba(255,255,255,0.06)',
+    },
+    pdStatLabel: { fontSize: 7.5, fontWeight: '800', letterSpacing: 1.1, color: 'rgba(255,255,255,0.5)' },
+    pdStatVal: { fontSize: 14, fontWeight: '900', color: '#FFFFFF', marginTop: 1 },
+    pdStatMeta: { fontSize: 9, fontWeight: '700', color: 'rgba(255,255,255,0.55)' },
+    pdTool: {
+        height: 38,
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 6,
+        paddingHorizontal: 12,
+        borderRadius: 19,
+        backgroundColor: '#1D2128',
+        borderWidth: 1,
+        borderColor: 'rgba(255,255,255,0.08)',
+        boxShadow: '0 0 0 3px rgba(0,0,0,0.5), 0 7px 10px rgba(0,0,0,0.8), 0 2px 0 rgba(0,0,0,0.7), inset 0 1px 0 rgba(255,255,255,0.22), inset 0 -3px 0 rgba(0,0,0,0.5)',
+    },
+    pdToolText: { fontSize: 11, fontWeight: '900', color: 'rgba(255,255,255,0.92)' },
     bottomProgressDock: {
         position: 'absolute',
         left: 0,
         right: 0,
         bottom: 0,
-        height: 55,
-        maxHeight: 55,
-        backgroundColor: 'rgba(0,0,0,0.98)',
-        borderTopWidth: 1,
-        borderTopColor: 'rgba(255,255,255,0.14)',
-        overflow: 'hidden',
+        height: 64,
+        maxHeight: 64,
         zIndex: 6500,
+        backgroundColor: 'transparent',
     },
     bottomDockBar: {
         flex: 1,
     },
     bottomDockProgressTrack: {
         height: 3,
-        backgroundColor: 'rgba(255,255,255,0.06)',
         marginBottom: 2,
+        backgroundColor: '#0B0C0F',
     },
     bottomDockProgressFill: {
         position: 'absolute',
@@ -4984,20 +5461,26 @@ const styles = StyleSheet.create({
         backgroundColor: '#FF5252',
     },
     bottomDockTimeBarTrack: {
-        height: 4,
-        backgroundColor: 'rgba(255,255,255,0.06)',
+        height: 5,
         flexDirection: 'row',
         overflow: 'hidden',
+        marginHorizontal: 14,
+        marginTop: 6,
+        borderRadius: 3,
+        backgroundColor: 'rgba(0,0,0,0.55)',
+        boxShadow: 'inset 0 2px 3px rgba(0,0,0,0.9)',
     },
     bottomDockTimeBarSeg: {
         height: '100%',
+        borderRightWidth: 1.5,
+        borderRightColor: '#050607',
     },
     bottomDockRow: {
         flexDirection: 'row',
         alignItems: 'center',
-        paddingHorizontal: 19,
-        paddingVertical: 8,
-        gap: 8,
+        paddingHorizontal: 10,
+        paddingVertical: 3,
+        gap: 7,
     },
     bottomDockPortraitContainer: {
         flex: 1,
@@ -5036,9 +5519,11 @@ const styles = StyleSheet.create({
         color: '#FFFFFF',
     },
     bottomDockDivider: {
-        width: 1,
-        height: 24,
-        backgroundColor: 'rgba(255,255,255,0.10)',
+        width: 2,
+        height: 36,
+        backgroundColor: 'rgba(0,0,0,0.5)',
+        borderRightWidth: 1,
+        borderRightColor: 'rgba(255,255,255,0.06)',
     },
     bottomDockSummaryRow: {
         flexDirection: 'row',
@@ -5099,21 +5584,26 @@ const styles = StyleSheet.create({
         flexDirection: 'column',
         alignItems: 'flex-start',
         justifyContent: 'center',
-        gap: 2,
+        gap: 1,
         minWidth: 0,
-        maxWidth: 180,
+        maxWidth: 130,
         flexShrink: 1,
         overflow: 'hidden',
+        paddingVertical: 3,
+        paddingHorizontal: 8,
+        borderRadius: 9,
+        backgroundColor: 'rgba(0,0,0,0.35)',
+        boxShadow: 'inset 0 3px 6px rgba(0,0,0,0.85), 0 1px 0 rgba(255,255,255,0.06)',
     },
     liveRunningTimerName: {
-        fontSize: 11,
+        fontSize: 7.5,
         fontWeight: '800',
         color: '#FFFFFF',
         minWidth: 0,
         maxWidth: '100%',
     },
     liveRunningTimerValue: {
-        fontSize: 10,
+        fontSize: 7.5,
         fontWeight: '900',
         color: '#00E5FF',
     },
@@ -5131,7 +5621,12 @@ const styles = StyleSheet.create({
     bottomDockTimerDisplay: {
         flexDirection: 'row',
         alignItems: 'center',
-        gap: 4,
+        gap: 8,
+        paddingVertical: 4,
+        paddingHorizontal: 12,
+        borderRadius: 14,
+        backgroundColor: '#0B0C0F',
+        boxShadow: 'inset 0 3px 6px rgba(0,0,0,0.8), inset 0 -1px 0 rgba(255,255,255,0.05)',
     },
     bottomDockTimerLabel: {
         fontSize: 8,
@@ -5140,9 +5635,9 @@ const styles = StyleSheet.create({
         color: 'rgba(255,255,255,0.35)',
     },
     bottomDockTimerValue: {
-        fontSize: 11,
         fontWeight: '900',
         color: '#FFB74D',
+        fontSize: 14,
     },
     bottomDockTimerControls: {
         flexDirection: 'row',
@@ -5153,11 +5648,15 @@ const styles = StyleSheet.create({
         width: 28,
         height: 28,
         borderRadius: 14,
-        backgroundColor: 'rgba(255,255,255,0.12)',
-        borderWidth: 1,
-        borderColor: 'rgba(255,255,255,0.18)',
         alignItems: 'center',
         justifyContent: 'center',
+        backgroundColor: '#1D2128',
+        borderWidth: 0,
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 4 },
+        shadowOpacity: 0.55,
+        shadowRadius: 4,
+        boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.08)',
     },
     bottomDockSpacer: {
         flex: 1,
@@ -5195,37 +5694,125 @@ const styles = StyleSheet.create({
     bottomOpenPill: {
         flexDirection: 'row',
         alignItems: 'center',
-        gap: 8,
-        paddingHorizontal: 14,
-        paddingVertical: 9,
+        backgroundColor: 'rgba(14,16,20,0.96)',
+        overflow: 'hidden',
+        borderWidth: 1,
+        borderColor: 'rgba(255,255,255,0.07)',
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 8 },
+        shadowOpacity: 0.6,
+        shadowRadius: 8,
+        boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.08), inset 0 -2px 0 rgba(0,0,0,0.35)',
         height: 38,
         borderRadius: 19,
-        backgroundColor: 'rgba(0,0,0,0.85)',
-        borderWidth: 1,
-        borderColor: 'rgba(255,255,255,0.12)',
+        paddingLeft: 5,
+        paddingRight: 10,
+        gap: 7,
     },
-    bottomOpenPillLabel: {
+    floatingControlsDeep: {
+        position: 'absolute',
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 8,
+        zIndex: 9999,
+    },
+    fullScreenSocketDeep2: {
+        width: 42,
+        height: 42,
+        borderRadius: 21,
+        alignItems: 'center',
+        justifyContent: 'center',
+        backgroundColor: '#0B0C0F',
+        boxShadow: 'inset 0 3px 6px rgba(0,0,0,0.85), 0 1px 0 rgba(255,255,255,0.07)',
+    },
+    pillStatRowDeep: {
+        flexDirection: 'row',
+        alignItems: 'baseline',
+        justifyContent: 'space-between',
+        gap: 8,
+    },
+    pillStatLabelDeep: {
+        fontSize: 6,
+        fontWeight: '800',
+        letterSpacing: 1.2,
+        color: 'rgba(255,255,255,0.5)',
+    },
+    pillStatValueDeep: {
         fontSize: 10,
         fontWeight: '900',
-        letterSpacing: 2,
+        color: '#FFFFFF',
+    },
+    pillRingSocketDeep: {
+        alignItems: 'center',
+        justifyContent: 'center',
+        backgroundColor: '#0B0C0F',
+        boxShadow: 'inset 0 2px 4px rgba(0,0,0,0.85), 0 1px 0 rgba(255,255,255,0.07)',
+        width: 30,
+        height: 30,
+        borderRadius: 15,
+    },
+    pillTextColDeep: {
+        justifyContent: 'center',
+        gap: 0,
+        minWidth: 58,
+    },
+    pillChevronDeep: {
+        width: 22,
+        height: 22,
+        borderRadius: 11,
+        alignItems: 'center',
+        justifyContent: 'center',
+        backgroundColor: '#22262D',
+        boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.1), 0 2px 4px rgba(0,0,0,0.55)',
+    },
+    fullScreenSocketDeep: {
+        position: 'absolute',
+        right: 14,
+        width: 42,
+        height: 42,
+        borderRadius: 21,
+        alignItems: 'center',
+        justifyContent: 'center',
+        backgroundColor: '#0B0C0F',
+        zIndex: 9999,
+        boxShadow: 'inset 0 3px 6px rgba(0,0,0,0.85), 0 1px 0 rgba(255,255,255,0.07)',
+    },
+    fullScreenDomeDeep: {
+        width: 32,
+        height: 32,
+        borderRadius: 16,
+        alignItems: 'center',
+        justifyContent: 'center',
+        backgroundColor: '#1D2128',
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 3 },
+        shadowOpacity: 0.6,
+        shadowRadius: 4,
+        boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.12), inset 0 -2px 0 rgba(0,0,0,0.3)',
+    },
+    bottomOpenPillLabel: {
         color: 'rgba(255,255,255,0.55)',
+        fontSize: 7,
+        letterSpacing: 1.8,
+        fontWeight: '800',
     },
     bottomOpenPillValue: {
-        fontSize: 12,
         fontWeight: '900',
         color: '#fff',
+        fontSize: 14,
+        lineHeight: 15,
     },
     mainContainer: {
         flex: 1,
         flexDirection: 'row',
     },
     fixedLabelsColumn: {
-        width: 150, // TRACK_LABEL_WIDTH
-        backgroundColor: '#0C0C0C',
+        width: 190, // TRACK_LABEL_WIDTH
         zIndex: 100,
         borderRightWidth: 1,
-        borderRightColor: 'rgba(255,255,255,0.06)',
         overflow: 'hidden',
+        borderRightColor: 'rgba(255,255,255,0.07)',
+        backgroundColor: '#000000',
     },
     /** So task column and timeline get the same height and collapse equally when progress dock is open. */
     mainColumnWhenDockOpen: {
@@ -5235,10 +5822,81 @@ const styles = StyleSheet.create({
         flex: 1,
         flexDirection: 'column',
     },
+    collapseAllPillDeep: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        height: 20,
+        borderRadius: 10,
+        backgroundColor: '#1D2128',
+        boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.09), 0 2px 4px rgba(0,0,0,0.55)',
+    },
+    collapseAllBtnDeep: {
+        width: 28,
+        height: 20,
+        alignItems: 'center',
+        justifyContent: 'center',
+    },
+    collapseAllDividerDeep: {
+        width: 1,
+        height: 12,
+        backgroundColor: 'rgba(255,255,255,0.12)',
+    },
+    taskCollapseBtnDeep: {
+        position: 'absolute',
+        right: 8,
+        top: 8,
+        width: 24,
+        height: 24,
+        borderRadius: 12,
+        alignItems: 'center',
+        justifyContent: 'center',
+        backgroundColor: '#22262D',
+        zIndex: 5,
+        boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.1), 0 3px 6px rgba(0,0,0,0.55)',
+    },
+    taskCollapseBtnDeepCentered: {
+        top: '50%',
+        marginTop: -12,
+    },
+    trackLabelInnerCollapsedDeep: {
+        paddingLeft: 56,
+        paddingRight: 38,
+    },
+    miniCapsuleDeep: {
+        position: 'absolute',
+        height: 13,
+        borderRadius: 7,
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 4,
+        paddingLeft: 4,
+        paddingRight: 5,
+        overflow: 'hidden',
+        zIndex: 2,
+        boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.16), inset 0 -2px 0 rgba(0,0,0,0.3)',
+    },
+    miniCapsuleDotDeep: {
+        width: 7,
+        height: 7,
+        borderRadius: 4,
+        boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.6)',
+    },
+    miniCapsuleTextDeep: {
+        flexShrink: 1,
+        fontSize: 7,
+        fontWeight: '800',
+        color: '#FFFFFF',
+    },
+    taskHeaderLabelDeep: {
+        fontSize: 8,
+        fontWeight: '800',
+        letterSpacing: 2,
+        color: 'rgba(255,255,255,0.5)',
+    },
     stickyHeaderFixed: {
-        backgroundColor: '#0C0C0C',
-        borderBottomWidth: 1,
-        borderBottomColor: 'rgba(76, 175, 80, 0.3)', // Semi-transparent green
+        backgroundColor: '#14171B',
+        borderBottomWidth: 0,
+        boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.09), inset 0 -3px 0 rgba(0,0,0,0.4)',
     },
     taskListHeader: {
         flexDirection: 'row',
@@ -5258,35 +5916,47 @@ const styles = StyleSheet.create({
     taskListHeaderMinimal: {
         flexDirection: 'row',
         alignItems: 'center',
-        justifyContent: 'center',
+        justifyContent: 'space-between',
+        paddingLeft: 14,
+        paddingRight: 10,
     },
     dockViewModeBtnContainer: {
         width: 28,
         height: 28,
     },
     dockViewModeBtn: {
-        width: 28,
-        height: 28,
-        borderRadius: 15,
-        backgroundColor: 'rgba(255,255,255,0.1)',
-        borderWidth: 1,
-        borderColor: 'rgba(255,255,255,0.15)',
+        width: 26,
+        height: 26,
+        borderRadius: 13,
+        marginHorizontal: 4,
         alignItems: 'center',
         justifyContent: 'center',
+        backgroundColor: 'rgba(255,255,255,0.10)',
+        borderWidth: 1,
+        borderColor: 'rgba(255,255,255,0.07)',
+        shadowColor: '#000',
+        shadowOffset: { width: 26, height: 26 },
+        shadowOpacity: 0.7,
+        shadowRadius: 4,
+        boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.14), inset 0 -2px 0 rgba(0,0,0,0.4), 0 0 0 3px rgba(0,0,0,0.30)',
     },
     viewModeIconBtn: {
         width: 20,
         height: 20,
         borderRadius: 6,
-        backgroundColor: 'rgba(255,255,255,0.08)',
-        borderWidth: 1,
-        borderColor: 'rgba(255,255,255,0.12)',
         alignItems: 'center',
         justifyContent: 'center',
+        backgroundColor: '#1D2128',
+        borderWidth: 0,
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 2 },
+        shadowOpacity: 0.55,
+        shadowRadius: 2,
+        boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.08)',
     },
     viewModeIconBtnActive: {
-        backgroundColor: 'rgba(76, 175, 80, 0.25)',
-        borderColor: 'rgba(76, 175, 80, 0.5)',
+        backgroundColor: '#15301B',
+        borderColor: 'transparent',
     },
     taskListHeaderTitle: {
         fontSize: 10,
@@ -5295,12 +5965,13 @@ const styles = StyleSheet.create({
         color: 'rgba(255,255,255,0.6)',
     },
     taskListHeaderBadge: {
-        backgroundColor: 'rgba(255,255,255,0.1)',
         paddingHorizontal: 6,
         paddingVertical: 2,
         borderRadius: 8,
         minWidth: 20,
         alignItems: 'center',
+        backgroundColor: '#1D2128',
+        boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.08)',
     },
     taskListHeaderBadgeText: {
         fontSize: 9,
@@ -5321,13 +5992,18 @@ const styles = StyleSheet.create({
         paddingHorizontal: 4,
         paddingVertical: 2,
         borderRadius: 4,
-        backgroundColor: 'rgba(255,255,255,0.08)',
-        borderWidth: 1,
         borderColor: 'rgba(255,255,255,0.12)',
+        backgroundColor: '#1D2128',
+        borderWidth: 0,
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 2 },
+        shadowOpacity: 0.55,
+        shadowRadius: 2,
+        boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.08)',
     },
     mergedTogglePillActive: {
-        backgroundColor: 'rgba(76, 175, 80, 0.25)',
-        borderColor: 'rgba(76, 175, 80, 0.5)',
+        backgroundColor: '#15301B',
+        borderColor: 'transparent',
     },
     mergedToggleText: {
         fontSize: 7,
@@ -5340,16 +6016,17 @@ const styles = StyleSheet.create({
     },
     stickyHeaderContainer: {
         height: 25,
-        backgroundColor: '#000000',
-        borderBottomWidth: 1,
         borderBottomColor: 'rgba(76, 175, 80, 0.3)', // Semi-transparent green
         zIndex: 1000,
+        backgroundColor: '#14171B',
+        borderBottomWidth: 0,
+        boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.09), inset 0 -3px 0 rgba(0,0,0,0.4)',
     },
     verticalScrollLabels: {
         flex: 1,
-        backgroundColor: '#0C0C0C',
         // Ensure smooth scrolling
         overflow: 'hidden',
+        backgroundColor: '#000000',
     },
     trackLabelContainer: {
         flexDirection: 'row',
@@ -5368,7 +6045,7 @@ const styles = StyleSheet.create({
     hourLabelsScroll: {
         height: 30,
         borderBottomWidth: 1,
-        borderBottomColor: 'rgba(76, 175, 80, 0.3)',
+        borderBottomColor: 'rgba(255,255,255,0.07)',
     },
     hourMarker: {
         position: 'absolute',
@@ -5382,9 +6059,9 @@ const styles = StyleSheet.create({
     },
     verticalScroll: {
         flex: 1,
-        backgroundColor: '#000000',
         // Ensure smooth scrolling
         overflow: 'hidden',
+        backgroundColor: '#000000',
     },
     timelineContent: {
         position: 'relative',
@@ -5411,8 +6088,9 @@ const styles = StyleSheet.create({
     },
     hourText: {
         fontSize: 11,
-        fontWeight: '600',
-        color: 'rgba(255,255,255,0.5)',
+        fontWeight: '700',
+        color: 'rgba(255,255,255,0.62)',
+        letterSpacing: 0.4,
     },
     stickyHeader: {
         position: 'relative',
@@ -5428,11 +6106,14 @@ const styles = StyleSheet.create({
         position: 'absolute',
         top: 0,
         bottom: 0,
-        width: 2,
-        backgroundColor: '#4CAF50',
         zIndex: 10,
         alignItems: 'center',
         justifyContent: 'center',
+        width: 3,
+        backgroundColor: '#3FBF63',
+        borderLeftWidth: 1,
+        borderLeftColor: 'rgba(255,255,255,0.35)',
+        boxShadow: '0 0 0 1px rgba(0,0,0,0.55), 4px 0 10px rgba(0,0,0,0.55)',
     },
     hourLineOnly: {
         position: 'absolute',
@@ -5441,31 +6122,41 @@ const styles = StyleSheet.create({
         alignItems: 'center',
     },
     hourLineExtend: {
-        width: 1,
         flex: 1,
-        backgroundColor: 'rgba(255,255,255,0.15)',
         minHeight: 1000,
+        width: 2,
+        backgroundColor: 'rgba(0,0,0,0.5)',
+        borderRightWidth: 1,
+        borderRightColor: 'rgba(255,255,255,0.07)',
     },
     hourLine: {
         position: 'absolute',
         bottom: 0,
-        width: 1,
-        backgroundColor: 'rgba(255,255,255,0.1)',
         height: 2000,
+        width: 2,
+        backgroundColor: 'rgba(0,0,0,0.5)',
+        borderRightWidth: 1,
+        borderRightColor: 'rgba(255,255,255,0.07)',
     },
     nowLine: {
         position: 'absolute',
         bottom: 0,
-        width: 2,
-        backgroundColor: '#4CAF50',
         zIndex: 100,
         height: 2000,
+        width: 3,
+        backgroundColor: '#3FBF63',
+        borderLeftWidth: 1,
+        borderLeftColor: 'rgba(255,255,255,0.35)',
+        boxShadow: '0 0 0 1px rgba(0,0,0,0.55), 4px 0 10px rgba(0,0,0,0.55)',
     },
     nowDot: {
-        width: 10,
-        height: 10,
-        borderRadius: 5,
-        backgroundColor: '#4CAF50',
+        width: 16,
+        height: 16,
+        borderRadius: 8,
+        backgroundColor: '#7BE18A',
+        borderWidth: 3,
+        borderColor: '#08090B',
+        boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.7), 0 3px 6px rgba(0,0,0,0.65)',
     },
     tracksContainer: {
         paddingTop: 0,
@@ -5486,33 +6177,238 @@ const styles = StyleSheet.create({
     },
     trackSeparator: {
         height: 1,
-        backgroundColor: 'rgba(76, 175, 80, 0.4)', // Slightly more visible green
         marginLeft: 0,
         marginRight: 0,
+        backgroundColor: '#000000',
+    },
+    stageStatusSlotDeep: {
+        position: 'absolute',
+        left: 3,
+        top: 0,
+        bottom: 0,
+        justifyContent: 'center',
+        zIndex: 3,
+    },
+    // sunken socket ...
+    stageStatusSocketDeep: {
+        width: 26,
+        height: 26,
+        borderRadius: 13,
+        alignItems: 'center',
+        justifyContent: 'center',
+        backgroundColor: 'rgba(0,0,0,0.38)',
+        boxShadow: 'inset 0 2px 4px rgba(0,0,0,0.65), 0 1px 0 rgba(255,255,255,0.08)',
+    },
+    // ... with a raised dome inside
+    stageStatusDiscDeep: {
+        width: 20,
+        height: 20,
+        borderRadius: 10,
+        alignItems: 'center',
+        justifyContent: 'center',
+        boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.6), inset 0 -2px 0 rgba(0,0,0,0.25), 0 2px 3px rgba(0,0,0,0.55)',
+    },
+    stageRailDeep: {
+        position: 'absolute',
+        left: 0,
+        top: 0,
+        bottom: 0,
+        width: 6,
+        boxShadow: 'inset -1px 0 0 rgba(0,0,0,0.3)',
+    },
+    stageProgressFillDeep: {
+        position: 'absolute',
+        left: 0,
+        top: 0,
+        bottom: 0,
+        backgroundColor: 'rgba(255,255,255,0.09)',
+    },
+    hourTickMajor: {
+        position: 'absolute',
+        bottom: 0,
+        width: 1,
+        height: 10,
+        backgroundColor: 'rgba(255,255,255,0.3)',
+    },
+    hourTickMinor: {
+        position: 'absolute',
+        bottom: 0,
+        width: 1,
+        height: 6,
+        backgroundColor: 'rgba(255,255,255,0.14)',
+    },
+    dockStatCells: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 5,
+    },
+    dockStatCell: {
+        paddingVertical: 3,
+        paddingHorizontal: 8,
+        borderRadius: 9,
+        backgroundColor: 'rgba(0,0,0,0.35)',
+        boxShadow: 'inset 0 3px 6px rgba(0,0,0,0.85), 0 1px 0 rgba(255,255,255,0.06)',
+    },
+    dockGlassTint: {
+        backgroundColor: 'rgba(14,16,20,0.38)',
+    },
+    dockGlassSheen: {
+        position: 'absolute',
+        left: 0,
+        right: 0,
+        top: 0,
+        height: 44,
+    },
+    bottomDockPlate: {
+        flex: 1,
+        marginHorizontal: 12,
+        marginBottom: 6,
+        borderRadius: 22,
+        overflow: 'hidden',
+        backgroundColor: 'rgba(14,16,20,0.40)',
+        borderWidth: 1,
+        borderColor: 'rgba(255,255,255,0.14)',
+        boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.07), inset 0 -2px 0 rgba(0,0,0,0.4), 0 -10px 24px rgba(0,0,0,0.7)',
+    },
+    dockToolDome: {
+        width: 26,
+        height: 26,
+        borderRadius: 13,
+        marginHorizontal: 4,
+        alignItems: 'center',
+        justifyContent: 'center',
+        backgroundColor: 'rgba(255,255,255,0.10)',
+        borderWidth: 1,
+        borderColor: 'rgba(255,255,255,0.07)',
+        shadowColor: '#000',
+        shadowOffset: { width: 26, height: 26 },
+        shadowOpacity: 0.7,
+        shadowRadius: 4,
+        boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.14), inset 0 -2px 0 rgba(0,0,0,0.4), 0 0 0 3px rgba(0,0,0,0.30)',
+    },
+    dockRingSocket: {
+        width: 40,
+        height: 40,
+        borderRadius: 20,
+        alignItems: 'center',
+        justifyContent: 'center',
+        backgroundColor: 'rgba(0,0,0,0.35)',
+        boxShadow: 'inset 0 2px 4px rgba(0,0,0,0.85), 0 1px 0 rgba(255,255,255,0.07)',
+    },
+    dockStatCellLabel: {
+        fontSize: 5.5,
+        fontWeight: '800',
+        letterSpacing: 1,
+        color: 'rgba(255,255,255,0.5)',
+    },
+    dockStatCellValue: {
+        fontSize: 10,
+        fontWeight: '800',
+        color: '#FFFFFF',
+    },
+    dockStatCellMeta: {
+        fontSize: 6,
+        fontWeight: '700',
+        color: 'rgba(255,255,255,0.45)',
+    },
+    trackGrooveDeep: {
+        position: 'absolute',
+        right: 2,
+        top: 14,
+        bottom: 14,
+        width: 2,
+        backgroundColor: 'rgba(0,0,0,0.5)',
+        borderRightWidth: 1,
+        borderRightColor: 'rgba(255,255,255,0.06)',
+    },
+    railWellDeep: {
+        position: 'absolute',
+        left: 4,
+        right: 12,
+        borderRadius: 16,
+        overflow: 'hidden',
+        top: 8,
+        bottom: 8,
+        backgroundColor: '#090A0C',
+        zIndex: 0,
+        borderTopWidth: 2,
+        borderTopColor: '#000000',
+        borderBottomWidth: 1,
+        borderBottomColor: 'rgba(255,255,255,0.06)',
+    },
+    railWellLineDeep: {
+        position: 'absolute',
+        top: 0,
+        bottom: 0,
+        width: 2,
+        borderRightWidth: 1,
+        backgroundColor: 'rgba(0,0,0,0.65)',
+        borderRightColor: 'rgba(255,255,255,0.16)',
     },
     track: {
         flexDirection: 'row',
         alignItems: 'flex-start', // Align to top for proper containment
         position: 'relative',
         overflow: 'hidden', // Prevent overflow outside track
+        backgroundColor: '#14171B',
+        borderTopRightRadius: 24,
+        borderBottomRightRadius: 24,
+        borderTopWidth: 1,
+        borderTopColor: 'rgba(255,255,255,0.07)',
+        borderBottomWidth: 2,
+        borderBottomColor: 'rgba(0,0,0,0.4)',
     },
     trackLabel: {
         flex: 1,
         flexDirection: 'row',
         alignItems: 'stretch',
         paddingRight: 8,
-        backgroundColor: '#0C0C0C',
-        height: '100%',
+        alignSelf: 'stretch',
+        shadowColor: '#000',
+        marginVertical: 0,
+        marginLeft: 8,
+        marginRight: 0,
+        borderTopLeftRadius: 24,
+        borderBottomLeftRadius: 24,
+        backgroundColor: '#14171B',
+        borderWidth: 1,
+        borderRightWidth: 0,
+        borderColor: 'rgba(255,255,255,0.06)',
+        shadowOffset: { width: 0, height: 6 },
+        shadowOpacity: 0.55,
+        shadowRadius: 8,
+        borderTopColor: 'rgba(255,255,255,0.08)',
+        borderBottomWidth: 2,
+        borderBottomColor: 'rgba(0,0,0,0.4)',
     },
     trackLabelActive: {
-        backgroundColor: 'rgba(255, 255, 255, 0.04)',
+        backgroundColor: '#1A1D23',
+        borderColor: 'rgba(34,227,245,0.45)',
+    },
+    trackAccentDeep: {
+        position: 'absolute',
+        left: 7,
+        top: 12,
+        bottom: 12,
+        width: 4,
+        borderRadius: 2,
+        zIndex: 2,
+    },
+    stageDurationChipDeep: {
+        backgroundColor: 'rgba(0,0,0,0.32)',
+        paddingHorizontal: 5,
+        paddingVertical: 2,
+        borderRadius: 6,
+        marginLeft: 5,
+        boxShadow: 'inset 0 1px 2px rgba(0,0,0,0.6)',
     },
     trackLabelInner: {
         flex: 1,
         paddingVertical: 8,
-        paddingHorizontal: 8,
-        justifyContent: 'flex-start',
         minWidth: 0,
+        paddingRight: 6,
+        paddingLeft: 68,
+        justifyContent: 'center',
     },
     categoryPill: {
         flexDirection: 'row',
@@ -5522,10 +6418,15 @@ const styles = StyleSheet.create({
         paddingHorizontal: 6,
         paddingLeft: 6,
         borderLeftWidth: 2,
-        borderRadius: 4,
-        backgroundColor: 'rgba(255,255,255,0.06)',
         marginBottom: 4,
         maxWidth: '100%',
+        backgroundColor: '#1D2128',
+        borderRadius: 8,
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 3 },
+        shadowOpacity: 0.5,
+        shadowRadius: 3,
+        boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.08)',
     },
     categoryPillIcon: {
         marginRight: 4,
@@ -5543,12 +6444,13 @@ const styles = StyleSheet.create({
     },
     progressBarTrack: {
         flex: 1,
-        height: 4,
-        borderRadius: 2,
         flexDirection: 'row',
         overflow: 'hidden',
-        backgroundColor: 'rgba(255,255,255,0.08)',
         minWidth: 0,
+        height: 6,
+        borderRadius: 3,
+        backgroundColor: '#0B0C0F',
+        boxShadow: 'inset 0 2px 4px rgba(0,0,0,0.8)',
     },
     progressBarSegment: {
         minWidth: 0,
@@ -5565,7 +6467,7 @@ const styles = StyleSheet.create({
     progressBarLabel: {
         fontSize: 8,
         fontWeight: '800',
-        color: 'rgba(255,255,255,0.5)',
+        color: 'rgba(255,255,255,0.6)',
     },
     categoryAccent: {
         width: 4,
@@ -5589,11 +6491,15 @@ const styles = StyleSheet.create({
         width: 20,
         height: 20,
         borderRadius: 10,
-        backgroundColor: 'rgba(255,255,255,0.08)',
-        borderWidth: 1,
-        borderColor: 'rgba(255,255,255,0.12)',
         alignItems: 'center',
         justifyContent: 'center',
+        backgroundColor: '#1D2128',
+        borderWidth: 0,
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 3 },
+        shadowOpacity: 0.55,
+        shadowRadius: 3,
+        boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.08)',
     },
     subtitleRow: {
         flexDirection: 'row',
@@ -5654,22 +6560,13 @@ const styles = StyleSheet.create({
     timelineStageCard: {
         position: 'absolute',
         top: 7,
-        borderRadius: 12,
         backgroundColor: '#FFFFFF',
-        minHeight: 23,
-        paddingHorizontal: 8,
         paddingVertical: 4, // No vertical padding — height is fixed
 
         // Modern elevation shadows (two-layer for depth)
-        shadowColor: '#000',
-        shadowOffset: { width: 0, height: 2 },
-        shadowOpacity: 0.15,
-        shadowRadius: 8,
         elevation: 4,
 
         // Subtle border for definition
-        borderWidth: 0.5,
-        borderColor: 'rgba(255, 255, 255, 0.25)',
 
         // Content layout
         flexDirection: 'row',
@@ -5677,32 +6574,43 @@ const styles = StyleSheet.create({
         justifyContent: 'flex-start',
         gap: 5.6,
         overflow: 'hidden',
+        borderWidth: 0,
+        boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.16), inset 0 -3px 0 rgba(0,0,0,0.3), 0 5px 10px rgba(0,0,0,0.55)',
+        paddingRight: 8,
+        minHeight: 32,
+        zIndex: 2,
+        borderRadius: 18,
+        paddingLeft: 36,
     },
 
     stageBlock: {
         position: 'absolute',
         top: 15,
         height: 30,
-        borderRadius: 6,
         backgroundColor: 'rgba(20, 20, 20, 0.8)',
         borderWidth: 1,
         borderColor: 'rgba(255, 255, 255, 0.1)',
         paddingHorizontal: 10,
         paddingVertical: 8,
         justifyContent: 'center',
+        boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.08), inset 0 -2px 0 rgba(0,0,0,0.3)',
+        borderRadius: 10,
     },
     stageBlockActive: {
         backgroundColor: 'rgba(40, 40, 40, 1)',
         borderColor: 'rgba(255, 255, 255, 0.4)',
+        boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.08), inset 0 -2px 0 rgba(0,0,0,0.3)',
     },
     stageBlockDone: {
         backgroundColor: 'rgba(10, 10, 10, 0.6)',
         borderColor: 'rgba(255, 255, 255, 0.05)',
         opacity: 0.6,
+        boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.08), inset 0 -2px 0 rgba(0,0,0,0.3)',
     },
     stageBlockPlanned: {
         backgroundColor: 'rgba(15, 15, 15, 0.8)',
         borderColor: 'rgba(255, 255, 255, 0.1)',
+        boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.08), inset 0 -2px 0 rgba(0,0,0,0.3)',
     },
     stageBlockEditing: {
         // Keep for any future use, but no cyan highlight.
@@ -5754,8 +6662,6 @@ const styles = StyleSheet.create({
         marginBottom: 3.5, // 5 * 0.7 = 3.5 (compressed by 30%)
         borderRadius: 12, // Increased from 4 for modern MD3 look
         backgroundColor: '#FFFFFF',
-        borderWidth: 0.5,
-        borderColor: 'rgba(255, 255, 255, 0.25)',
         minHeight: 23, // 30 * 0.7 = 21 (compressed by 30%)
         paddingHorizontal: 8, // Match timelineStageCard padding
         paddingVertical: 3,
@@ -5768,6 +6674,8 @@ const styles = StyleSheet.create({
         shadowOpacity: 0.15,
         shadowRadius: 8,
         elevation: 4,
+        borderWidth: 0,
+        boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.35), inset 0 -2px 0 rgba(0,0,0,0.18)',
     },
     untimedStageName: {
         fontSize: 9,
@@ -5892,12 +6800,11 @@ const styles = StyleSheet.create({
         borderColor: '#00E5FF',
         backgroundColor: '#00E5FF',
         borderWidth: 1, // Explicitly match base style
-        borderRadius: 8, // Explicitly match base style
-        paddingHorizontal: 6, // Explicitly match base style
         paddingVertical: 0, // Match fixed-height base style
-        height: 23, // Explicitly match base style
-        minHeight: 23, // Explicitly match base style
         // Keep all layout properties exactly the same - only change colors
+        height: 32,
+        minHeight: 32,
+        borderRadius: 18,
     },
     stageTextDragging: {
         color: '#000000',
@@ -5915,8 +6822,14 @@ const styles = StyleSheet.create({
         flexShrink: 0,
     },
     stageDeleteButton: {
-        padding: 2.8, // 4 * 0.7 = 2.8 (compressed by 30%)
-        opacity: 0.6,
+        backgroundColor: 'rgba(0,0,0,0.32)',
+        opacity: 1,
+        boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.08)',
+        alignItems: 'center',
+        justifyContent: 'center',
+        width: 22,
+        height: 22,
+        borderRadius: 11,
     },
     emptyState: {
         height: 100,
@@ -5972,11 +6885,16 @@ const styles = StyleSheet.create({
         width: 28,
         height: 28,
         borderRadius: 14,
-        backgroundColor: '#1E1E1E',
+        backgroundColor: '#1D2128',
         borderWidth: 1,
-        borderColor: '#2F2F2F',
+        borderColor: 'rgba(255,255,255,0.07)',
         alignItems: 'center',
         justifyContent: 'center',
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 3 },
+        shadowOpacity: 0.7,
+        shadowRadius: 4,
+        boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.14), inset 0 -2px 0 rgba(0,0,0,0.4), 0 0 0 3px #0B0C0F',
     },
     // Time display styles for subtask cards
     stageTimeDisplay: {
@@ -6005,49 +6923,65 @@ const styles = StyleSheet.create({
     taskColumnToggleWrapper: {
         position: 'absolute',
         top: '40%',
-        marginTop: -40,
         zIndex: 5000,
+        marginTop: -38,
+    },
+    taskColumnToggleGrip: {
+        width: 10,
+        height: 2,
+        borderRadius: 1,
+        backgroundColor: 'rgba(255,255,255,0.18)',
     },
     taskColumnToggle: {
-        width: 19,
-        height: 200,
-        backgroundColor: 'rgba(255,255,255,0.08)',
-        borderWidth: 1,
-        borderLeftWidth: 0,
-        borderColor: 'rgba(255,255,255,0.12)',
-        borderTopRightRadius: 8,
-        borderBottomRightRadius: 8,
         alignItems: 'center',
         justifyContent: 'center',
+        width: 24,
+        height: 76,
+        gap: 6,
+        backgroundColor: '#1D2128',
+        borderTopRightRadius: 16,
+        borderBottomRightRadius: 16,
         shadowColor: '#000',
-        shadowOffset: { width: 1, height: 0 },
-        shadowOpacity: 0.12,
-        shadowRadius: 2,
-        elevation: 4,
+        shadowOffset: { width: 4, height: 0 },
+        shadowOpacity: 0.6,
+        shadowRadius: 6,
+        elevation: 6,
+        boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.10), inset -1px 0 0 rgba(255,255,255,0.05), inset 0 -2px 0 rgba(0,0,0,0.3)',
     },
     dockExitBtn: {
-        paddingHorizontal: 5,
-        paddingVertical: 5,
-        borderRadius: 20,
-        backgroundColor: 'rgb(255, 255, 255)',
-        borderWidth: 1,
-        borderColor: 'rgba(255, 255, 255, 0.12)',
+        width: 28,
+        height: 28,
+        borderRadius: 14,
+        marginHorizontal: 4,
         alignItems: 'center',
         justifyContent: 'center',
+        backgroundColor: 'rgba(255,255,255,0.10)',
+        borderWidth: 1,
+        borderColor: 'rgba(255,255,255,0.07)',
+        shadowColor: '#000',
+        shadowOffset: { width: 28, height: 28 },
+        shadowOpacity: 0.7,
+        shadowRadius: 4,
+        boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.14), inset 0 -2px 0 rgba(0,0,0,0.4), 0 0 0 3px rgba(0,0,0,0.30)',
     },
     dockExitBtnFloating: {
         position: 'absolute',
-        left: 19,
+        left: 16,
         bottom: 8,
-        paddingHorizontal: 5,
-        paddingVertical: 5,
-        borderRadius: 20,
-        backgroundColor: 'rgb(254, 254, 254)',
-        borderWidth: 1,
-        borderColor: 'rgba(255, 255, 255, 0.2)',
+        width: 38,
+        height: 38,
+        borderRadius: 19,
+        backgroundColor: '#1D2128',
         alignItems: 'center',
         justifyContent: 'center',
         zIndex: 6400,
+        borderWidth: 1,
+        borderColor: 'rgba(255,255,255,0.07)',
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 4 },
+        shadowOpacity: 0.7,
+        shadowRadius: 5,
+        boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.14), inset 0 -2px 0 rgba(0,0,0,0.4), 0 0 0 4px #0B0C0F',
     },
     dockStatusBtn: {
         flexDirection: 'row',
@@ -6056,9 +6990,14 @@ const styles = StyleSheet.create({
         width: 28,
         height: 28,
         borderRadius: 14,
-        backgroundColor: 'rgba(255,255,255,0.08)',
-        borderWidth: 1,
         borderColor: 'rgba(255,255,255,0.12)',
+        backgroundColor: '#1D2128',
+        borderWidth: 0,
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 4 },
+        shadowOpacity: 0.55,
+        shadowRadius: 4,
+        boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.08)',
     },
     dockStatusBtnText: {
         fontSize: 9,
@@ -6073,9 +7012,14 @@ const styles = StyleSheet.create({
         width: 28,
         height: 28,
         borderRadius: 14,
-        backgroundColor: 'rgba(255,255,255,0.08)',
-        borderWidth: 1,
         borderColor: 'rgba(255,255,255,0.12)',
+        backgroundColor: '#1D2128',
+        borderWidth: 0,
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 4 },
+        shadowOpacity: 0.55,
+        shadowRadius: 4,
+        boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.08)',
     },
     dockApprovalsBtnContainer: {
         position: 'relative',
@@ -6089,14 +7033,19 @@ const styles = StyleSheet.create({
         width: 28,
         height: 28,
         borderRadius: 14,
-        backgroundColor: 'rgba(76, 175, 80, 0.15)',
-        borderWidth: 1,
         borderColor: 'rgba(76, 175, 80, 0.3)',
+        backgroundColor: '#15301B',
+        borderWidth: 0,
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 4 },
+        shadowOpacity: 0.55,
+        shadowRadius: 4,
+        boxShadow: 'inset 0 1px 0 rgba(123,225,138,0.22)',
     },
     dockApprovalsBtnDisabled: {
-        backgroundColor: 'rgba(255,255,255,0.06)',
-        borderColor: 'rgba(255,255,255,0.1)',
         opacity: 0.7,
+        backgroundColor: '#1D2128',
+        borderColor: 'transparent',
     },
     dockApprovalBadge: {
         position: 'absolute',
@@ -6125,9 +7074,14 @@ const styles = StyleSheet.create({
         paddingHorizontal: 6,
         paddingVertical: 5,
         borderRadius: 8,
-        backgroundColor: 'rgba(255,255,255,0.08)',
-        borderWidth: 1,
         borderColor: 'rgba(255,255,255,0.12)',
+        backgroundColor: 'rgba(255,255,255,0.10)',
+        borderWidth: 0,
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 4 },
+        shadowOpacity: 0.55,
+        shadowRadius: 4,
+        boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.12), inset 0 -2px 0 rgba(0,0,0,0.4), 0 0 0 2px rgba(0,0,0,0.35)',
     },
     dockDateValue: {
         fontSize: 10,
@@ -6141,9 +7095,14 @@ const styles = StyleSheet.create({
         paddingHorizontal: 8,
         paddingVertical: 5,
         borderRadius: 10,
-        backgroundColor: 'rgba(255,255,255,0.1)',
-        borderWidth: 1,
         borderColor: 'rgba(255,255,255,0.15)',
+        backgroundColor: 'rgba(255,255,255,0.10)',
+        borderWidth: 0,
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 4 },
+        shadowOpacity: 0.55,
+        shadowRadius: 4,
+        boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.12), inset 0 -2px 0 rgba(0,0,0,0.4), 0 0 0 2px rgba(0,0,0,0.35)',
     },
     dockNowValue: {
         fontSize: 10,
@@ -6151,14 +7110,20 @@ const styles = StyleSheet.create({
         color: '#00E5FF',
     },
     dockCancelBtn: {
-        paddingHorizontal: 5,
-        paddingVertical: 5,
-        borderRadius: 20,
-        backgroundColor: '#FFFFFF',
-        borderWidth: 1,
-        borderColor: 'rgba(255, 255, 255, 0.12)',
+        width: 26,
+        height: 26,
+        borderRadius: 13,
+        marginHorizontal: 4,
         alignItems: 'center',
         justifyContent: 'center',
+        backgroundColor: 'rgba(255,255,255,0.10)',
+        borderWidth: 1,
+        borderColor: 'rgba(255,255,255,0.07)',
+        shadowColor: '#000',
+        shadowOffset: { width: 26, height: 26 },
+        shadowOpacity: 0.7,
+        shadowRadius: 4,
+        boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.14), inset 0 -2px 0 rgba(0,0,0,0.4), 0 0 0 3px rgba(0,0,0,0.30)',
     },
     // Small calendar popup (same design as AddTaskModal)
     calendarModalBackdrop: {
@@ -6175,17 +7140,19 @@ const styles = StyleSheet.create({
         bottom: 0,
     },
     calendarPopup: {
-        width: 280,
-        backgroundColor: 'rgba(20,20,20,0.98)',
-        borderRadius: 12,
+        width: 252,
+        overflow: 'hidden',
+        backgroundColor: 'rgba(14,16,20,0.40)',
+        borderRadius: 20,
         borderWidth: 1,
-        borderColor: 'rgba(255,255,255,0.12)',
-        padding: 12,
+        borderColor: 'rgba(255,255,255,0.14)',
+        padding: 10,
         shadowColor: '#000',
-        shadowOffset: { width: 0, height: 4 },
-        shadowOpacity: 0.3,
-        shadowRadius: 8,
-        elevation: 8,
+        shadowOffset: { width: 0, height: 12 },
+        shadowOpacity: 0.55,
+        shadowRadius: 18,
+        elevation: 12,
+        boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.09)',
     },
     /* View mode popup: same small/compact design as StageActionPopup (status change) */
     viewModePopupOverlay: {
@@ -6194,36 +7161,160 @@ const styles = StyleSheet.create({
     },
     viewModePopupCompact: {
         position: 'absolute',
-        backgroundColor: 'rgba(30, 30, 30, 0.98)',
-        borderRadius: 14,
-        paddingVertical: 6,
-        minWidth: 140,
+        overflow: 'hidden',
+        backgroundColor: 'rgba(14,16,20,0.40)',
+        borderRadius: 22,
+        padding: 6,
+        minWidth: 150,
         shadowColor: '#000',
-        shadowOffset: { width: 0, height: 8 },
-        shadowOpacity: 0.4,
-        shadowRadius: 16,
-        elevation: 20,
+        shadowOffset: { width: 0, height: 12 },
+        shadowOpacity: 0.6,
+        shadowRadius: 20,
+        elevation: 16,
         borderWidth: 1,
-        borderColor: 'rgba(255,255,255,0.1)',
+        borderColor: 'rgba(255,255,255,0.14)',
+        boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.09), inset 0 -2px 0 rgba(0,0,0,0.35)',
     },
     viewModePopupOption: {
         flexDirection: 'row',
         alignItems: 'center',
-        paddingHorizontal: 14,
-        paddingVertical: 10,
-        gap: 10,
+        paddingHorizontal: 8,
+        paddingVertical: 7,
+        gap: 9,
+        borderRadius: 16,
     },
     viewModePopupOptionActive: {
-        backgroundColor: 'rgba(255,255,255,0.05)',
+        backgroundColor: 'rgba(255,255,255,0.08)',
+        boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.12), inset 0 -2px 0 rgba(0,0,0,0.3)',
     },
     viewModePopupOptionText: {
-        fontSize: 13,
-        fontWeight: '600',
+        fontSize: 12,
+        fontWeight: '700',
     },
     viewModePopupSeparator: {
-        height: 1,
-        backgroundColor: 'rgba(255,255,255,0.08)',
-        marginHorizontal: 10,
+        height: 0,
+        marginVertical: 1,
+    },
+    viewModeIconSocket: {
+        width: 28,
+        height: 28,
+        borderRadius: 14,
+        alignItems: 'center',
+        justifyContent: 'center',
+        backgroundColor: 'rgba(0,0,0,0.40)',
+        boxShadow: 'inset 0 2px 4px rgba(0,0,0,0.8), 0 1px 0 rgba(255,255,255,0.07)',
+    },
+    viewModeIconDome: {
+        width: 22,
+        height: 22,
+        borderRadius: 11,
+        alignItems: 'center',
+        justifyContent: 'center',
+        backgroundColor: 'rgba(255,255,255,0.12)',
+        boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.18), inset 0 -2px 0 rgba(0,0,0,0.35), 0 2px 3px rgba(0,0,0,0.5)',
+    },
+    viewModeIconDomeActive: {
+        backgroundColor: 'rgba(76,175,80,0.28)',
+    },
+    viewModeCheckChip: {
+        marginLeft: 'auto',
+        width: 18,
+        height: 18,
+        borderRadius: 9,
+        alignItems: 'center',
+        justifyContent: 'center',
+        backgroundColor: '#7BE18A',
+        boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.6), inset 0 -2px 0 rgba(0,0,0,0.25), 0 2px 3px rgba(0,0,0,0.55)',
+    },
+    calTitleCol: {
+        alignItems: 'center',
+    },
+    calMonth: {
+        color: '#fff',
+        fontSize: 14,
+        fontWeight: '800',
+    },
+    calYear: {
+        color: 'rgba(255,255,255,0.45)',
+        fontSize: 14,
+        fontWeight: '600',
+    },
+    dayTile: {
+        width: 26,
+        height: 26,
+        borderRadius: 13,
+        alignItems: 'center',
+        justifyContent: 'center',
+    },
+    todayTile: {
+        borderWidth: 1.5,
+        borderColor: '#FFB74D',
+    },
+    selectedTile: {
+        backgroundColor: '#7BE18A',
+        boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.6), inset 0 -2px 0 rgba(0,0,0,0.25), 0 2px 4px rgba(0,0,0,0.5)',
+    },
+    todayPip: {
+        position: 'absolute',
+        bottom: 3,
+        width: 4,
+        height: 4,
+        borderRadius: 2,
+        backgroundColor: '#FFB74D',
+    },
+    calFooter: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        marginTop: 10,
+        gap: 8,
+    },
+    calSelectedWell: {
+        flex: 1,
+        paddingVertical: 5,
+        paddingHorizontal: 12,
+        borderRadius: 14,
+        backgroundColor: 'rgba(0,0,0,0.35)',
+        boxShadow: 'inset 0 3px 6px rgba(0,0,0,0.8), 0 1px 0 rgba(255,255,255,0.06)',
+    },
+    calSelectedLabel: {
+        fontSize: 6.5,
+        fontWeight: '800',
+        letterSpacing: 1.6,
+        color: 'rgba(255,255,255,0.5)',
+    },
+    calSelectedValue: {
+        fontSize: 12,
+        fontWeight: '800',
+        color: '#7BE18A',
+    },
+    calTodayPill: {
+        height: 24,
+        paddingHorizontal: 9,
+        borderRadius: 12,
+        alignItems: 'center',
+        justifyContent: 'center',
+        backgroundColor: 'rgba(255,183,77,0.14)',
+        borderWidth: 1,
+        borderColor: 'rgba(255,183,77,0.4)',
+    },
+    calTodayBtn: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 5,
+        height: 36,
+        paddingHorizontal: 14,
+        borderRadius: 18,
+        backgroundColor: 'rgba(255,255,255,0.10)',
+        borderWidth: 1,
+        borderColor: 'rgba(255,255,255,0.07)',
+        boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.14), inset 0 -2px 0 rgba(0,0,0,0.4), 0 3px 5px rgba(0,0,0,0.5)',
+    },
+    calTodayText: {
+        fontSize: 8,
+        fontWeight: '800',
+        letterSpacing: 1.4,
+        color: '#FFB74D',
     },
     calendarMini: {
         paddingBottom: 4,
@@ -6232,34 +7323,55 @@ const styles = StyleSheet.create({
         flexDirection: 'row',
         alignItems: 'center',
         justifyContent: 'space-between',
-        marginBottom: 8,
+        marginBottom: 6,
+        paddingLeft: 4,
     },
     calBack: {
-        padding: 4,
+        width: 28,
+        height: 28,
+        borderRadius: 14,
+        alignItems: 'center',
+        justifyContent: 'center',
+        backgroundColor: 'rgba(255,255,255,0.10)',
+        borderWidth: 1,
+        borderColor: 'rgba(255,255,255,0.07)',
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 3 },
+        shadowOpacity: 0.6,
+        shadowRadius: 4,
+        boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.14), inset 0 -2px 0 rgba(0,0,0,0.4), 0 0 0 3px rgba(0,0,0,0.30)',
     },
     calTitle: {
         color: '#fff',
-        fontSize: 15,
-        fontWeight: '700',
+        fontSize: 14,
+        fontWeight: '800',
+        letterSpacing: 0.4,
     },
     calNav: {
         flexDirection: 'row',
-        gap: 10,
+        alignItems: 'center',
+        gap: 5,
     },
     calNavBtn: {
-        padding: 4,
+        width: 24,
+        height: 24,
+        borderRadius: 12,
+        alignItems: 'center',
+        justifyContent: 'center',
+        backgroundColor: 'rgba(255,255,255,0.09)',
+        boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.14), inset 0 -1px 0 rgba(0,0,0,0.35)',
     },
     weekRow: {
         flexDirection: 'row',
-        justifyContent: 'space-between',
-        marginBottom: 4,
+        justifyContent: 'space-around',
+        marginBottom: 2,
     },
     weekText: {
         width: '14.2%',
         textAlign: 'center',
         color: 'rgba(255,255,255,0.4)',
-        fontSize: 10,
-        fontWeight: '600',
+        fontSize: 8.5,
+        fontWeight: '700',
     },
     daysGrid: {
         flexDirection: 'row',
@@ -6267,29 +7379,35 @@ const styles = StyleSheet.create({
     },
     dayCell: {
         width: '14.28%',
-        height: 28,
+        height: 30,
         alignItems: 'center',
         justifyContent: 'center',
-        marginBottom: 2,
     },
     dayCircle: {
-        width: 22,
-        height: 22,
-        borderRadius: 11,
+        width: 24,
+        height: 24,
+        borderRadius: 12,
         alignItems: 'center',
         justifyContent: 'center',
     },
     dayText: {
-        color: 'rgba(255,255,255,0.8)',
-        fontSize: 10,
-        fontWeight: '500',
+        color: 'rgba(255,255,255,0.85)',
+        fontSize: 11,
+        fontWeight: '600',
     },
     todayCircle: {
-        backgroundColor: '#fff',
+        backgroundColor: 'rgba(255,255,255,0.92)',
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 3 },
+        shadowOpacity: 0.6,
+        shadowRadius: 3,
+        boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.9), inset 0 -2px 0 rgba(0,0,0,0.18)',
     },
     selectedFutureCircle: {
-        borderWidth: 2,
-        borderColor: '#4CAF50',
+        backgroundColor: 'rgba(76,175,80,0.22)',
+        borderWidth: 1.5,
+        borderColor: '#7BE18A',
+        boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.25), inset 0 -2px 0 rgba(0,0,0,0.3)',
     },
     selectedPastCircle: {
         borderWidth: 2,
@@ -6300,11 +7418,7 @@ const styles = StyleSheet.create({
         width: 320,
         maxWidth: '90%',
         maxHeight: '85%',
-        backgroundColor: '#000000',
-        borderRadius: 12,
         borderWidth: 1,
-        borderColor: 'rgba(255,255,255,0.12)',
-        padding: 12,
         overflow: 'hidden',
         shadowColor: '#000',
         shadowOffset: { width: 0, height: 4 },
@@ -6312,6 +7426,11 @@ const styles = StyleSheet.create({
         shadowRadius: 8,
         elevation: 8,
         flexDirection: 'column',
+        backgroundColor: '#121418',
+        borderRadius: 26,
+        borderColor: 'rgba(255,255,255,0.06)',
+        padding: 14,
+        boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.07)',
     },
     taskSubtasksPopupLandscape: {
         width: 520,
@@ -6327,11 +7446,12 @@ const styles = StyleSheet.create({
         width: 150,
         minWidth: 150,
         paddingRight: 14,
-        paddingLeft: 4,
         paddingVertical: 8,
-        borderRightWidth: 1,
-        borderRightColor: 'rgba(255,255,255,0.12)',
-        backgroundColor: 'rgba(0,0,0,0.4)',
+        borderRightWidth: 0,
+        borderRadius: 18,
+        backgroundColor: '#0B0C0F',
+        paddingLeft: 12,
+        boxShadow: 'inset 0 3px 8px rgba(0,0,0,0.75), inset 0 -1px 0 rgba(255,255,255,0.05)',
     },
     taskSubtasksPopupLeftPanelContent: {
         gap: 10,
@@ -6362,7 +7482,17 @@ const styles = StyleSheet.create({
         marginRight: 8,
     },
     taskSubtasksPopupClose: {
-        padding: 4,
+        width: 32,
+        height: 32,
+        borderRadius: 16,
+        alignItems: 'center',
+        justifyContent: 'center',
+        backgroundColor: '#1D2128',
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 3 },
+        shadowOpacity: 0.55,
+        shadowRadius: 3,
+        boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.08)',
     },
     taskSubtasksPopupAnalytics: {
         flexDirection: 'row',
@@ -6419,13 +7549,18 @@ const styles = StyleSheet.create({
         alignItems: 'center',
         paddingVertical: 8,
         paddingHorizontal: 10,
-        marginBottom: 4,
-        borderRadius: 8,
-        backgroundColor: 'rgba(30,30,30,0.98)',
         borderLeftWidth: 3,
         borderColor: 'rgba(255,255,255,0.1)',
         gap: 10,
         minHeight: 44,
+        backgroundColor: '#1A1D23',
+        borderRadius: 16,
+        marginBottom: 8,
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 4 },
+        shadowOpacity: 0.5,
+        shadowRadius: 5,
+        boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.07)',
     },
     taskSubtasksPopupStatusCircle: {
         width: 26,
@@ -6433,6 +7568,7 @@ const styles = StyleSheet.create({
         borderRadius: 13,
         alignItems: 'center',
         justifyContent: 'center',
+        boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.25), inset 0 -2px 0 rgba(0,0,0,0.25)',
     },
     taskSubtasksPopupCardContent: {
         flex: 1,
@@ -6463,16 +7599,17 @@ const styles = StyleSheet.create({
         paddingVertical: 9,
         height: 38,
         borderRadius: 19,
-        backgroundColor: 'rgba(0,0,0,0.85)',
         borderWidth: 1,
-        borderColor: 'rgba(255,255,255,0.12)',
         zIndex: 9999,
         // Elevation/Shadow for premium feel
         shadowColor: '#000',
-        shadowOffset: { width: 0, height: 2 },
-        shadowOpacity: 0.25,
-        shadowRadius: 3.84,
         elevation: 5,
+        backgroundColor: '#14171B',
+        borderColor: 'rgba(255,255,255,0.07)',
+        shadowOffset: { width: 0, height: 6 },
+        shadowOpacity: 0.6,
+        shadowRadius: 8,
+        boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.08)',
     },
     fullScreenToggleBtnPortrait: {
         width: 38,

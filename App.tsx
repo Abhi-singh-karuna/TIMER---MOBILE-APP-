@@ -27,7 +27,7 @@ import AddTaskModal from './src/components/AddTaskModal';
 import AddGoalModal from './src/components/GoalManagement/AddGoalModal';
 import DeleteModal from './src/components/DeleteModal';
 import GoalManagement from './src/screens/Timer/GoalManagement';
-import { Timer, Task, TaskStage, Category, QuickMessage, DEFAULT_CATEGORIES, DEFAULT_QUICK_MESSAGES, CATEGORIES_KEY, QUICK_MESSAGES_KEY, LANDSCAPE_PRESETS, Recurrence, SyncMode, StageStatus, Goal, GoalType } from './src/constants/data';
+import { Timer, Task, TaskStage, Category, QuickMessage, DEFAULT_CATEGORIES, DEFAULT_QUICK_MESSAGES, CATEGORIES_KEY, QUICK_MESSAGES_KEY, LANDSCAPE_PRESETS, Recurrence, SyncMode, StageStatus, Goal, GoalType, Idea, IDEAS_KEY, JournalEntry, JOURNAL_KEY } from './src/constants/data';
 import { Alert } from 'react-native';
 import { loadTimers, saveTimers, loadGoals, saveGoals } from './src/utils/storage';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -249,6 +249,8 @@ export default function App() {
 
   // Task state
   const [tasks, setTasks] = useState<Task[]>([]);
+  const [ideas, setIdeas] = useState<Idea[]>([]);
+  const [journal, setJournal] = useState<JournalEntry[]>([]);
   const [addTaskModalVisible, setAddTaskModalVisible] = useState(false);
   const [taskToEdit, setTaskToEdit] = useState<Task | null>(null);
 
@@ -427,6 +429,28 @@ export default function App() {
         }
       }
 
+      // Load ideas (subtasks not placed on any task yet)
+      try {
+        const storedIdeas = await AsyncStorage.getItem(IDEAS_KEY);
+        if (storedIdeas) {
+          const todayKey = getLogicalDate(new Date(), loadedStart);
+          const all: Idea[] = JSON.parse(storedIdeas);
+          const kept = all.filter(i => !i.dueDate || i.dueDate >= todayKey); // expired ideas are dropped
+          setIdeas(kept);
+          if (kept.length !== all.length) AsyncStorage.setItem(IDEAS_KEY, JSON.stringify(kept)).catch(() => { });
+        }
+      } catch (e) {
+        console.error('Failed to load ideas:', e);
+      }
+
+      // Load the day journal (notes and expenses)
+      try {
+        const storedJournal = await AsyncStorage.getItem(JOURNAL_KEY);
+        if (storedJournal) setJournal(JSON.parse(storedJournal));
+      } catch (e) {
+        console.error('Failed to load journal:', e);
+      }
+
       // Load goals
       const storedGoals = await loadGoals();
       setGoals(storedGoals);
@@ -443,6 +467,30 @@ export default function App() {
       console.error('Failed to load color preferences:', e);
     }
   };
+
+  const updateIdeas = (next: Idea[]) => {
+    setIdeas(next);
+    AsyncStorage.setItem(IDEAS_KEY, JSON.stringify(next)).catch((e) => console.error('Failed to save ideas:', e));
+  };
+  const handleAddIdea = (title: string, dueDate: string) => {
+    const t = title.trim();
+    if (!t) return;
+    updateIdeas([{ id: Date.now(), title: t, createdAt: Date.now(), dueDate }, ...ideas]);
+  };
+  // an idea stays visible until its due day is over (the logical day, so it follows the daily start time)
+  const todayLogicalKey = getLogicalDate(new Date(), dailyStartMinutes);
+  const activeIdeas = ideas.filter(i => !i.dueDate || i.dueDate >= todayLogicalKey);
+  const handleDeleteIdea = (id: number) => updateIdeas(ideas.filter(i => i.id !== id));
+
+  const updateJournal = (next: JournalEntry[]) => {
+    setJournal(next);
+    AsyncStorage.setItem(JOURNAL_KEY, JSON.stringify(next)).catch((e) => console.error('Failed to save journal:', e));
+  };
+  const handleAddJournal = (entry: Omit<JournalEntry, 'id' | 'createdAt'>) =>
+    updateJournal([...journal, { ...entry, id: Date.now(), createdAt: Date.now() }]);
+  const handleUpdateJournal = (entry: JournalEntry) =>
+    updateJournal(journal.map(j => (j.id === entry.id ? entry : j)));
+  const handleDeleteJournal = (id: number) => updateJournal(journal.filter(j => j.id !== id));
 
   // Save tasks to AsyncStorage
   const saveTasks = async (tasksToSave: Task[]) => {
@@ -1830,6 +1878,13 @@ export default function App() {
               onEditComment={handleEditComment}
               onDeleteComment={handleDeleteComment}
               onUpdateStages={handleUpdateStages}
+              ideas={activeIdeas}
+              journal={journal}
+              onAddJournal={handleAddJournal}
+              onUpdateJournal={handleUpdateJournal}
+              onDeleteJournal={handleDeleteJournal}
+              onAddIdea={handleAddIdea}
+              onDeleteIdea={handleDeleteIdea}
               onPinTask={handlePinTask}
               onDisableTask={handleDisableTask}
               categories={categories}
@@ -1870,6 +1925,13 @@ export default function App() {
               onEditComment={handleEditComment}
               onDeleteComment={handleDeleteComment}
               onUpdateStages={handleUpdateStages}
+              ideas={activeIdeas}
+              journal={journal}
+              onAddJournal={handleAddJournal}
+              onUpdateJournal={handleUpdateJournal}
+              onDeleteJournal={handleDeleteJournal}
+              onAddIdea={handleAddIdea}
+              onDeleteIdea={handleDeleteIdea}
               onPinTask={handlePinTask}
               onDisableTask={handleDisableTask}
               categories={categories}

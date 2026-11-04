@@ -61,8 +61,8 @@ const WheelPicker = ({ data, value, onChange }: { data: number[]; value: number;
 
     return (
         <View style={pickerStyles.container}>
-            <LinearGradient colors={['#000000', 'transparent']} style={pickerStyles.fadeTop} pointerEvents="none" />
-            <LinearGradient colors={['transparent', '#000000']} style={pickerStyles.fadeBottom} pointerEvents="none" />
+            <LinearGradient colors={['#020203', 'transparent']} style={pickerStyles.fadeTop} pointerEvents="none" />
+            <LinearGradient colors={['transparent', '#020203']} style={pickerStyles.fadeBottom} pointerEvents="none" />
             <View style={pickerStyles.highlight} pointerEvents="none" />
             <ScrollView
                 ref={scrollRef}
@@ -103,6 +103,10 @@ interface AddSubtaskModalProps {
     existingText?: string;
     existingStartTime?: number;
     existingDuration?: number;
+    /** Add mode: duration (minutes) the form starts with (default 60). */
+    initialDuration?: number;
+    /** Add mode: name the form starts with (an idea being placed). */
+    initialText?: string;
     onUpdate?: (taskId: number, stageId: number, title: string, startTimeMinutes: number, durationMinutes: number, syncMode?: SyncMode) => void;
     timeOfDaySlots?: TimeOfDaySlotConfigList;
     isRecurring?: boolean;
@@ -122,6 +126,8 @@ export default function AddSubtaskModal({
     existingText = '',
     existingStartTime,
     existingDuration,
+    initialDuration,
+    initialText,
     onUpdate,
     timeOfDaySlots = DEFAULT_TIME_OF_DAY_SLOTS,
     isRecurring = false,
@@ -150,15 +156,15 @@ export default function AddSubtaskModal({
                 setSelectedDurationMinutes(existingDuration);
             } else {
                 // Add mode: use defaults
-                setText('');
+                setText(initialText ?? '');
                 setSelectedStartMinutes(startTimeMinutes);
-                setSelectedDurationMinutes(60);
+                setSelectedDurationMinutes(initialDuration && initialDuration > 0 ? initialDuration : 60);
             }
             setActivePicker('start'); // Default to start time selected
             setErrorName(false);
             setSyncMode('none');
         }
-    }, [visible, startTimeMinutes, mode, existingText, existingStartTime, existingDuration]);
+    }, [visible, startTimeMinutes, mode, existingText, existingStartTime, existingDuration, initialDuration, initialText]);
 
     // Handler for time slot selection
     const handleTimeSlotSelect = (slotKey: string) => {
@@ -340,10 +346,7 @@ export default function AddSubtaskModal({
                                                         key={slot.key}
                                                         style={[
                                                             styles.timeSlotChip,
-                                                            selectedTimeSlotKey === slot.key && {
-                                                                backgroundColor: `${slot.colorHex}40`,
-                                                                borderColor: slot.colorHex,
-                                                            }
+                                                            selectedTimeSlotKey === slot.key && styles.timeSlotChipSelected
                                                         ]}
                                                         onPress={() => {
                                                             handleTimeSlotSelect(slot.key);
@@ -352,7 +355,7 @@ export default function AddSubtaskModal({
                                                     >
                                                         <Text style={[
                                                             styles.timeSlotChipText,
-                                                            selectedTimeSlotKey === slot.key && { color: slot.colorHex }
+                                                            selectedTimeSlotKey === slot.key && styles.timeSlotChipTextSelected
                                                         ]}>
                                                             {slot.label}
                                                         </Text>
@@ -512,10 +515,7 @@ export default function AddSubtaskModal({
                                                     key={slot.key}
                                                     style={[
                                                         styles.timeSlotChip,
-                                                        selectedTimeSlotKey === slot.key && {
-                                                            backgroundColor: `${slot.colorHex}40`,
-                                                            borderColor: slot.colorHex,
-                                                        }
+                                                        selectedTimeSlotKey === slot.key && styles.timeSlotChipSelected
                                                     ]}
                                                     onPress={() => {
                                                         handleTimeSlotSelect(slot.key);
@@ -524,7 +524,7 @@ export default function AddSubtaskModal({
                                                 >
                                                     <Text style={[
                                                         styles.timeSlotChipText,
-                                                        selectedTimeSlotKey === slot.key && { color: slot.colorHex }
+                                                        selectedTimeSlotKey === slot.key && styles.timeSlotChipTextSelected
                                                     ]}>
                                                         {slot.label}
                                                     </Text>
@@ -631,7 +631,10 @@ const pickerStyles = StyleSheet.create({
         width: 63, // 70 * 0.9
         borderRadius: 12.6, // 14 * 0.9
         overflow: 'hidden',
-        backgroundColor: 'rgba(30,30,30,0.4)',
+        backgroundColor: '#020203',
+        borderWidth: 1,
+        borderColor: 'rgba(255,255,255,0.05)',
+        boxShadow: 'inset 0 4px 10px rgba(0,0,0,0.95), inset 0 -1px 0 rgba(255,255,255,0.07)',
     },
     highlight: {
         position: 'absolute',
@@ -640,9 +643,10 @@ const pickerStyles = StyleSheet.create({
         right: 2.7, // 3 * 0.9
         height: ITEM_HEIGHT,
         borderRadius: 9.9, // 11 * 0.9
-        backgroundColor: 'rgba(255, 255, 255, 0.05)',
+        backgroundColor: '#1d1d20',
         borderWidth: 1,
-        borderColor: 'rgba(255, 255, 255, 0.3)',
+        borderColor: 'rgba(255, 255, 255, 0.32)',
+        boxShadow: '0 3px 8px rgba(0,0,0,0.8), inset 0 1px 0 rgba(255,255,255,0.25), inset 0 -2px 3px rgba(0,0,0,0.5)',
     },
     fadeTop: { position: 'absolute', top: 0, left: 0, right: 0, height: ITEM_HEIGHT * 0.7, zIndex: 5 },
     fadeBottom: { position: 'absolute', bottom: 0, left: 0, right: 0, height: ITEM_HEIGHT * 0.7, zIndex: 5 },
@@ -667,18 +671,19 @@ const styles = StyleSheet.create({
     },
     dimLayer: {
         ...StyleSheet.absoluteFill,
-        backgroundColor: 'rgba(0,0,0,0.7)',
+        backgroundColor: 'rgba(0,0,0,0.78)',
     },
     modal: {
         width: SCREEN_WIDTH * 0.88,
         maxWidth: 360, // 400 * 0.9
-        backgroundColor: '#000',
-        borderRadius: 25.2, // 28 * 0.9
+        backgroundColor: '#070708',
+        borderRadius: 28, // 28 * 0.9
         paddingTop: 18, // 20 * 0.9
         paddingBottom: 18, // 20 * 0.9
         paddingHorizontal: 18, // 20 * 0.9
         borderWidth: 1,
-        borderColor: 'rgba(255,255,255,0.08)',
+        borderColor: 'rgba(255,255,255,0.1)',
+        boxShadow: '0 28px 70px rgba(0,0,0,0.9), inset 0 1px 0 rgba(255,255,255,0.14), inset 0 -2px 0 rgba(0,0,0,0.6)',
         shadowColor: '#000',
         shadowOffset: { width: 0, height: 9 }, // 10 * 0.9
         shadowOpacity: 0.5,
@@ -779,10 +784,11 @@ const styles = StyleSheet.create({
     unifiedInputWrapper: {
         flexDirection: 'row',
         alignItems: 'center',
-        backgroundColor: 'rgba(20,20,20,0.5)',
+        backgroundColor: '#020203',
         borderRadius: 14.4, // 16 * 0.9
         borderWidth: 1,
         borderColor: 'rgba(255,255,255,0.06)',
+        boxShadow: 'inset 0 4px 10px rgba(0,0,0,0.95), inset 0 -1px 0 rgba(255,255,255,0.07)',
         marginBottom: 14.4, // 16 * 0.9
         width: '100%',
         paddingRight: 6.3, // 7 * 0.9
@@ -866,7 +872,7 @@ const styles = StyleSheet.create({
     },
     colon: {
         fontSize: 25.2, // 28 * 0.9
-        color: 'rgba(255, 255, 255, 0.45)',
+        color: 'rgba(255, 255, 255, 0.6)',
         marginHorizontal: 9, // 10 * 0.9
         marginBottom: 21.6, // 24 * 0.9
     },
@@ -910,12 +916,14 @@ const styles = StyleSheet.create({
         justifyContent: 'center',
     },
     cancelButton: {
-        backgroundColor: 'transparent',
-        borderWidth: 1.5,
-        borderColor: 'rgba(255,255,255,0.15)',
+        backgroundColor: '#020203',
+        borderWidth: 1,
+        borderColor: 'rgba(255,255,255,0.1)',
+        boxShadow: 'inset 0 3px 8px rgba(0,0,0,0.95), inset 0 -1px 0 rgba(255,255,255,0.06)',
     },
     confirmButton: {
         backgroundColor: '#FFFFFF',
+        boxShadow: '0 8px 20px rgba(255,255,255,0.14), inset 0 2px 0 #FFFFFF, inset 0 -4px 6px rgba(0,0,0,0.22)',
     },
     confirmButtonDisabled: {
         opacity: 0.5,
@@ -932,10 +940,11 @@ const styles = StyleSheet.create({
     },
     addBtn: {
         flex: 1,
-        borderRadius: 14.4, // 16 * 0.9
+        borderRadius: 14.4,
         backgroundColor: '#FFFFFF',
-        paddingVertical: 12.6, // 14 * 0.9
+        paddingVertical: 12.6,
         alignItems: 'center',
+        boxShadow: '0 8px 20px rgba(255,255,255,0.14), inset 0 2px 0 #FFFFFF, inset 0 -4px 6px rgba(0,0,0,0.22)',
     },
     addBtnDisabled: {
         opacity: 0.5,
@@ -960,15 +969,17 @@ const styles = StyleSheet.create({
         flex: 1,
     },
     timeSlotCard: {
-        backgroundColor: 'rgba(255,255,255,0.03)',
-        borderRadius: 10.8, // 12 * 0.9 - reduced
-        padding: 9, // 10 * 0.9 - reduced
+        backgroundColor: '#020203',
+        borderRadius: 12,
+        padding: 10,
         borderWidth: 1,
         borderColor: 'rgba(255,255,255,0.05)',
+        boxShadow: 'inset 0 3px 8px rgba(0,0,0,0.95), inset 0 -1px 0 rgba(255,255,255,0.06)',
     },
     timeSlotCardActive: {
-        backgroundColor: 'rgba(255,255,255,0.08)',
-        borderColor: 'rgba(255,255,255,0.2)',
+        backgroundColor: '#1d1d20',
+        borderColor: 'rgba(255,255,255,0.35)',
+        boxShadow: '0 5px 12px rgba(0,0,0,0.8), inset 0 1px 0 rgba(255,255,255,0.25), inset 0 -2px 4px rgba(0,0,0,0.5)',
     },
     timeSlotCardLabel: {
         fontSize: 7.2, // 8 * 0.9 - reduced
@@ -997,14 +1008,16 @@ const styles = StyleSheet.create({
         paddingHorizontal: 12.6, // 14 * 0.9 - reduced
         paddingVertical: 6.3, // 7 * 0.9 - reduced
         borderRadius: 12.6, // 14 * 0.9 - reduced
-        backgroundColor: 'rgba(255,255,255,0.05)',
+        backgroundColor: '#020203',
         borderWidth: 1,
-        borderColor: 'rgba(255,255,255,0.1)',
+        borderColor: 'rgba(255,255,255,0.08)',
+        boxShadow: 'inset 0 2px 5px rgba(0,0,0,0.9), inset 0 -1px 0 rgba(255,255,255,0.06)',
         marginRight: 5.4, // 6 * 0.9 - reduced
     },
     timeSlotChipSelected: {
-        backgroundColor: 'rgba(76, 175, 80, 0.2)',
-        borderColor: '#4CAF50',
+        backgroundColor: '#FFFFFF',
+        borderColor: '#FFFFFF',
+        boxShadow: '0 4px 12px rgba(255,255,255,0.18), inset 0 2px 0 #FFFFFF, inset 0 -3px 4px rgba(0,0,0,0.22)',
     },
     timeSlotChipText: {
         fontSize: 10.8, // 12 * 0.9 - reduced
@@ -1012,7 +1025,7 @@ const styles = StyleSheet.create({
         color: 'rgba(255,255,255,0.6)',
     },
     timeSlotChipTextSelected: {
-        color: '#4CAF50',
+        color: '#000000',
         fontWeight: '800',
     },
     futureToggleText: {

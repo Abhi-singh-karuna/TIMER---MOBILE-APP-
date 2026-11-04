@@ -27,7 +27,7 @@ import { BlurView } from 'expo-blur';
 import { MaterialIcons } from '@expo/vector-icons';
 import ReorderableList, { reorderItems, useIsActive, useReorderableDrag } from 'react-native-reorderable-list';
 import { useSharedValue, withTiming } from 'react-native-reanimated';
-import { Timer, Task, TaskStage, Category, QuickMessage, Goal, StageStatus, LEAVE_DAYS_KEY } from '../../../constants/data';
+import { Timer, Task, TaskStage, Category, QuickMessage, Goal, StageStatus, Idea, JournalEntry, LEAVE_DAYS_KEY } from '../../../constants/data';
 import TaskActionModal from '../../../components/TaskActionModal';
 import LiveFocusView from './LiveFocusView';
 import StageActionPopup from './StageActionPopup';
@@ -2328,6 +2328,15 @@ interface TaskListProps {
     onEditComment?: (task: Task, commentId: number, newText: string) => void;
     onDeleteComment?: (task: Task, commentId: number) => void;
     onUpdateStages?: (task: Task, stages: TaskStage[], syncMode?: SyncMode) => void;
+    /** Subtasks not placed yet (Live Focus idea tray). */
+    ideas?: Idea[];
+    onAddIdea?: (title: string, dueDate: string) => void;
+    onDeleteIdea?: (id: number) => void;
+    /** Day journal (notes + expenses) shown by the pull-up journal in Live Focus. */
+    journal?: JournalEntry[];
+    onAddJournal?: (entry: Omit<JournalEntry, 'id' | 'createdAt'>) => void;
+    onUpdateJournal?: (entry: JournalEntry) => void;
+    onDeleteJournal?: (id: number) => void;
     onPinTask?: (task: Task) => void;
     onDisableTask?: (task: Task) => void;
     quickMessages?: QuickMessage[];
@@ -2350,6 +2359,13 @@ interface TaskListProps {
 
 export default function TaskList({
     tasks,
+    ideas,
+    onAddIdea,
+    onDeleteIdea,
+    journal,
+    onAddJournal,
+    onUpdateJournal,
+    onDeleteJournal,
     onAddTask,
     onToggleTask,
     onDeleteTask,
@@ -3433,6 +3449,7 @@ export default function TaskList({
             <View style={styles.container}>
                 <LiveFocusView
                     tasks={liveViewTasks}
+                    allTasks={tasks}
                     selectedDate={selectedDate}
                     onDateChange={onDateChange}
                     categories={categories}
@@ -3459,6 +3476,13 @@ export default function TaskList({
                     }}
                     onUpdateStageLayout={handleUpdateStageLayout}
                     onUpdateStages={onUpdateStages}
+                    ideas={ideas}
+                    onAddIdea={onAddIdea}
+                    onDeleteIdea={onDeleteIdea}
+                    journal={journal}
+                    onAddJournal={onAddJournal}
+                    onUpdateJournal={onUpdateJournal}
+                    onDeleteJournal={onDeleteJournal}
                     timeOfDaySlots={timeOfDaySlots}
                     dailyStartMinutes={dailyStartMinutes}
                     initialZoom={liveFocusZoom}

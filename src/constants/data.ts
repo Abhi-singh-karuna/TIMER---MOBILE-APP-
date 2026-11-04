@@ -140,6 +140,34 @@ export interface RecurrenceInstance {
   completedAt?: string;       // Optional: per-instance completedAt
 }
 
+/** A subtask that is only a thought for now: no task, date or time until it is placed on the planner. */
+export interface Idea {
+  id: number;
+  title: string;
+  createdAt: number; // ms since epoch
+  dueDate?: string;  // YYYY-MM-DD (logical day): the idea stays visible until this day is over
+}
+
+export const IDEAS_KEY = '@timer_app_ideas';
+
+/** A note or an expense that belongs to one day and, optionally, to one subtask of that day. */
+export interface JournalEntry {
+  id: number;
+  day: string;          // YYYY-MM-DD (logical day)
+  type: 'note' | 'expense';
+  text: string;         // the note, or what the money was for
+  amount?: number;      // expenses only
+  category?: string;    // expenses only
+  timeMinutes: number;  // clock minutes from midnight when it happened
+  taskId?: number;      // linked subtask (both set) or none = a day entry
+  stageId?: number;
+  createdAt: number;
+}
+
+export const JOURNAL_KEY = '@timer_app_journal';
+export const JOURNAL_CURRENCY = '₹';
+export const JOURNAL_CATEGORIES = ['Food', 'Travel', 'Tools', 'Other'];
+
 export interface Task {
   id: number;
   title: string;
